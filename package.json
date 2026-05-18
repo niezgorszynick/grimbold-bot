@@ -1,0 +1,15 @@
+{
+  "name": "grimbold-shopkeeper-bot",
+  "version": "1.0.0",
+  "description": "A D&D themed Discord shopkeeper bot with Google Sheets inventory",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.0",
+    "googleapis": "^140.0.0",
+    "dotenv": "^16.4.5"
+  }
+}
