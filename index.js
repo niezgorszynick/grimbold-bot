@@ -1,6 +1,19 @@
 // index.js — main entry point for Grimbold the Shopkeeper Bot
 
 require('dotenv').config();
+const express = require('express');
+const app = express();
+
+// Render gives us a dynamic port, or we default to 10000
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+    res.send('Grimbold is awake and tending the shop!');
+});
+
+app.listen(PORT, () => {
+    console.log(`🌐 Health check web server listening on port ${PORT}`);
+});
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
