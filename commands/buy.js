@@ -59,7 +59,7 @@ module.exports = {
       }
 
       // apply this player's roll modifier
-      const userRoll  = getUserRoll(interaction.user.id);
+      const userRoll  = await getUserRoll(interaction.user.id);
       const modifier  = userRoll !== null ? getDiscount(userRoll) : { percent: 0, label: 'No roll this week.' };
       const unitPrice = applyModifier(item.price, modifier);
       const totalPaid = unitPrice * quantity;

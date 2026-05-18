@@ -33,7 +33,7 @@ module.exports = {
       }
 
       // ── personalise prices for this specific player ───────────────────────
-      const userRoll = getUserRoll(interaction.user.id);
+      const userRoll = await getUserRoll(interaction.user.id);
       const modifier = userRoll !== null ? getDiscount(userRoll) : null;
 
       // ── group by category ─────────────────────────────────────────────────

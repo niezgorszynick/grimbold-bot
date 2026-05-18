@@ -18,7 +18,7 @@ module.exports = {
     .setDescription("Roll a d20 to set your personal price modifier for the week (once per week)"),
 
   async execute(interaction) {
-    const existing = getUserRoll(interaction.user.id);
+    const existing = await getUserRoll(interaction.user.id);
 
     // already rolled this week
     if (existing !== null) {
@@ -46,7 +46,7 @@ module.exports = {
 
     // fresh roll
     const roll     = Math.floor(Math.random() * 20) + 1;
-    setUserRoll(interaction.user.id, roll);
+    await setUserRoll(interaction.user.id, roll);
     const modifier = getDiscount(roll);
 
     const isNat20 = roll === 20;

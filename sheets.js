@@ -116,4 +116,37 @@ async function logSale({ item, quantity, buyer, buyerId, basePrice, discountPerc
   });
 }
 
-module.exports = { initSheets, getItems, decrementStock, logSale };
+// ─── WRITE/READ: ROLLS ────────────────────────────────────────────────────────
+
+async function getUserRollFromSheet(userId, weekKey) {
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: 'Rolls!A:B',
+    });
+    const rows = response.data.values || [];
+    const key = `${userId}:${weekKey}`;
+    
+    // Look for the exact user+week combination
+    const found = rows.find(row => row[0] === key);
+    return found ? parseInt(found[1]) : null;
+  } catch (err) {
+    console.error('Failed to read Rolls sheet:', err);
+    return null;
+  }
+}
+
+async function setUserRollInSheet(userId, weekKey, roll) {
+  const key = `${userId}:${weekKey}`;
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: 'Rolls!A:B',
+    valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: {
+      values: [[key, roll]],
+    },
+  });
+}
+
+module.exports = { initSheets, getItems, decrementStock, logSale, getUserRollFromSheet, setUserRollInSheet };
