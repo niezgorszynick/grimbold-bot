@@ -1,6 +1,6 @@
 # ⚗️ Grimbold's Emporium — Discord Shopkeeper Bot
 
-A D&D-flavoured Discord bot backed by Google Sheets inventory.
+A D&D-flavoured Discord bot backed entirely by Google Sheets.
 Players can browse the shop, roll for weekly discounts, and post purchase receipts.
 
 ---
@@ -33,19 +33,29 @@ Discounts reset every **Monday at midnight UTC**.
 
 ## Google Sheet Format
 
-Create a sheet named **`Items`** with this layout:
+Your Google Spreadsheet acts as the complete backend database. It requires the following tabs:
 
-| A: Name | B: Description | C: Price (gp) | D: Stock | E: Category |
-|---|---|---|---|---|
-| Health Potion | Restores 2d4+2 HP | 50 | ∞ | Potions |
-| Rope (50ft) | Hempen rope | 1 | 12 | Adventuring Gear |
-| Shortsword | A trusty blade | 10 | 3 | Weapons |
+### 1. `Items` (Active Shop)
+Create a sheet named **`Items`** with this exact layout in Row 1:
+
+| A: Name | B: Description | C: Price (gp) | D: Stock | E: Category | F: Status |
+|---|---|---|---|---|---|
+| Health Potion | Restores 2d4+2 HP | 50 | ∞ | Potions | |
+| Rope (50ft) | Hempen rope | 1 | 12 | Adventuring Gear | |
 
 - **Stock**: use a number for limited stock, or `∞` for unlimited.
 - **Column F (Status)**: leave blank — the bot writes `Sold Out` here automatically when stock hits 0.
 
-The bot also auto-creates a **Sales** tab to log every transaction (timestamp, buyer, item, price paid, modifier applied).
-- Row 1 is the header row (skipped automatically).
+### 2. `Rolls` (Weekly Haggle Tracking)
+Create a completely blank sheet named **`Rolls`**.
+- The bot automatically saves player d20 rolls here across the internet so they persist between server restarts. No headers are needed.
+
+### 3. `Sales` (Receipt Ledger)
+You do not need to create this! The bot auto-creates a **`Sales`** tab to log every single transaction (timestamp, buyer, item, price paid, modifier applied) upon the very first purchase.
+
+### 4. `Catalogue` (Optional Master Database)
+Create a sheet named **`Catalogue`** to store hundreds of items in the background. 
+- You can set up the `Items` tab to use Google Sheets Data Validation (Dropdowns) to pull names directly from the `Catalogue`, using `=ARRAYFORMULA` to auto-fill the descriptions and prices.
 
 ---
 
@@ -60,7 +70,7 @@ The bot also auto-creates a **Sales** tab to log every transaction (timestamp, b
    Permissions needed: `Send Messages`, `Embed Links`, `Read Message History`.
 5. Invite the bot to your server using the generated URL. Copy your **Server ID** → `GUILD_ID`.
 
-> **Note**: The bot needs **Editor** access on the Google Sheet (not just Viewer) to log sales and update stock.
+> **Note**: The bot needs **Editor** access on the Google Sheet (not just Viewer) to log sales, update stock, and track rolls.
 
 > **Privileged Intents**: No privileged intents are needed for slash commands.
 
@@ -73,7 +83,7 @@ The bot also auto-creates a **Sales** tab to log every transaction (timestamp, b
 3. Create a **Service Account**: IAM & Admin → Service Accounts → Create.
 4. Generate a JSON key for the service account and save it as `service-account.json` in the bot folder.
 5. Copy the service account's email address (looks like `name@project.iam.gserviceaccount.com`).
-6. **Share your Google Sheet** with that email address (Viewer permission is enough).
+6. **Share your Google Sheet** with that email address, making sure to grant **Editor** permission.
 7. Copy your sheet's ID from its URL:
    `https://docs.google.com/spreadsheets/d/`**`THIS_PART`**`/edit`
    → `SPREADSHEET_ID`
@@ -81,7 +91,6 @@ The bot also auto-creates a **Sales** tab to log every transaction (timestamp, b
 ---
 
 ### 3. Configure the Bot
-
 ```bash
 cp .env.example .env
 ```
@@ -123,11 +132,10 @@ grimbold-bot/
 │   ├── show.js          # /show — browse inventory
 │   ├── buy.js           # /buy  — purchase an item
 │   └── roll.js          # /roll — weekly d20 discount roll
-├── index.js             # Bot entry point
-├── sheets.js            # Google Sheets integration
-├── rollTracker.js       # Per-user weekly roll persistence
+├── index.js             # Bot entry point & Express health check server
+├── sheets.js            # Google Sheets integration (Read/Write)
+├── rollTracker.js       # Bridges the roll logic to Google Sheets
 ├── deploy-commands.js   # Register slash commands with Discord
-├── rolls.json           # Auto-created: stores weekly roll data
 ├── service-account.json # Your Google service account key (keep secret!)
 ├── .env                 # Your secrets (keep secret!)
 └── package.json
@@ -139,5 +147,5 @@ grimbold-bot/
 
 - **Shopkeeper personality**: search for Grimbold's dialogue strings in the command files and rewrite to taste.
 - **More commands**: add a new file to `commands/`, export `{ data, execute }`, and re-run `npm run deploy`.
-- **Hosting**: the bot runs as a simple Node.js process. Free options include [Railway](https://railway.app), [Fly.io](https://fly.io), or a cheap VPS.
-- **rolls.json** grows over time but stays small — old week keys are never cleaned up automatically. Feel free to delete it; players just lose their roll history.
+- **Hosting on Render**: The bot includes a built-in Express web server (port 10000) for health checks. To host it 24/7 on Render's free tier, deploy it as a Web Service and use a free uptime monitor (like cron-job.org) to ping your Render URL every 14 minutes. This prevents the bot from going to sleep!
+
