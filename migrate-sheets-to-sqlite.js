@@ -1,12 +1,12 @@
 // migrate-sheets-to-sqlite.js — jednorazowy import danych z Sheets do SQLite
 require('dotenv').config();
-const { getShopInventory } = require('./sheets');
+const { getItems } = require('./sheets');
 const db = require('./db');
 
 async function migrate() {
   console.log('🔄 Pobieram dane z Google Sheets...');
   try {
-    const items = await getShopInventory();
+    const items = await getItems();
     console.log(`📦 Znaleziono ${items.length} pozycji w arkuszu. Rozpoczynam zapis do bazy...`);
 
     let imported = 0;
@@ -29,9 +29,9 @@ async function migrate() {
       }
     }
 
-    console.log(`\n Migracja zakończona sukcesem!`);
-    console.log(` Zaimportowano: ${imported}`);
-    console.log(` Pominięto: ${skipped}`);
+    console.log(`\n🎉 Migracja zakończona sukcesem!`);
+    console.log(`✅ Zaimportowano: ${imported}`);
+    console.log(`⚠️ Pominięto: ${skipped}`);
   } catch (error) {
     console.error('❌ Błąd krytyczny migracji:', error);
   }
