@@ -3,21 +3,27 @@
 require('dotenv').config();
 const express = require('express');
 const app = express();
+const adminRouter = require('./server');
 
-// Render gives us a dynamic port, or we default to 10000
+// Body parsing
+app.use(express.json());
+
+// DM Panel route
+app.use('/admin', adminRouter);
+
+// Health check endpoint
 const PORT = process.env.PORT || 10000;
-
 app.get('/', (req, res) => {
-    res.send('Grimbold is awake and tending the shop!');
+  res.send('Grimbold is awake and tending the shop!');
 });
 
 app.listen(PORT, () => {
-    console.log(`🌐 Health check web server listening on port ${PORT}`);
+  console.log(`🌐 Health check web server & Admin Panel listening on port ${PORT}`);
 });
+
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
-const { initSheets } = require('./sheets');
 
 // ─── Discord client ───────────────────────────────────────────────────────────
 
@@ -44,20 +50,25 @@ for (const file of commandFiles) {
 
 // ─── Ready ────────────────────────────────────────────────────────────────────
 
-client.once('ready', async () => {
-  console.log(`\n🏪  ${client.user.tag} is open for business!`);
-  try {
-    await initSheets();
-    console.log('📊  Google Sheets connected.\n');
-  } catch (err) {
-    console.error('❌  Failed to connect to Google Sheets:', err.message);
-    console.error('    Check GOOGLE_KEY_FILE and SPREADSHEET_ID in your .env\n');
-  }
+client.once('ready', () => {
+  console.log(`\n🏪  ${client.user.tag} is open for business! (SQLite Backend Active)\n`);
 });
 
 // ─── Slash command handler ────────────────────────────────────────────────────
 
 client.on('interactionCreate', async interaction => {
+  // Handle autocompletions
+  if (interaction.isAutocomplete()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command || !command.autocomplete) return;
+    try {
+      await command.autocomplete(interaction);
+    } catch (error) {
+      console.error(`[ERROR] Autocomplete for /${interaction.commandName}:`, error);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);

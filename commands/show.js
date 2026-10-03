@@ -1,112 +1,104 @@
-// commands/show.js — /show [category] — ephemeral; each player sees their own prices
-
+// commands/show.js — displays all active items grouped by category with player discounts
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { getItems }                          = require('../sheets');
+const db = require('../db');
 const { getUserRoll, getDiscount, applyModifier } = require('../rollTracker');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('show')
-    .setDescription("Browse Grimbold's Emporium — prices shown are YOUR personal prices")
-    .addStringOption(opt =>
-      opt.setName('category')
-        .setDescription('Filter by category (e.g. Potions, Weapons)')
-        .setRequired(false)
-    ),
+    .setDescription("View Grimbold's current inventory and your personal prices"),
 
   async execute(interaction) {
-    // Defer as ephemeral so only the requester sees their personalised price list
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      let items    = await getItems();
-      const filter = interaction.options.getString('category');
+      const items = db.getAllActiveItems();
 
-      if (filter) {
-        items = items.filter(i => i.category.toLowerCase() === filter.toLowerCase());
+      if (!items || items.length === 0) {
+        return interaction.editReply({
+          content:
+            `*Grimbold sweeps an arm across bare wooden shelves.*\n` +
+            `"Nothing for sale right now, traveler. Check back soon."`,
+        });
       }
 
-      if (items.length === 0) {
-        return interaction.editReply(
-          `*Grimbold squints at you.* "Ain't got nothin' like that. Try /show without a filter."`
-        );
-      }
+      // Check player's weekly roll
+      const roll = getUserRoll(interaction.user.id);
+      const modifier = roll !== null ? getDiscount(roll) : null;
 
-      // ── personalise prices for this specific player ───────────────────────
-      const userRoll = await getUserRoll(interaction.user.id);
-      const modifier = userRoll !== null ? getDiscount(userRoll) : null;
-
-      // ── group by category ─────────────────────────────────────────────────
-      const grouped = items.reduce((acc, item) => {
-        (acc[item.category] = acc[item.category] || []).push(item);
-        return acc;
-      }, {});
-
-      // ── build embed ───────────────────────────────────────────────────────
-      let headerNote;
-      if (!modifier) {
-        headerNote = '*No roll this week — prices shown are base prices.\nUse `/roll` for a personal modifier!*';
-      } else if (modifier.percent < 0) {
-        headerNote = `*Prices shown already include your **${Math.abs(modifier.percent)}% discount** from this week's roll.*`;
-      } else if (modifier.percent > 0) {
-        headerNote = `*⚠️ Your **Natural 1** raised prices by ${modifier.percent}% for you this week. Better luck next Monday.*`;
+      // Header description explaining the prices shown
+      let headerDesc = `*"Welcome, traveler. These prices are between you and me."*\n\n`;
+      if (modifier && modifier.percent !== 0) {
+        const sign = modifier.percent < 0 ? 'discount' : 'surcharge';
+        headerDesc += `*Prices shown already include your **${Math.abs(modifier.percent)}% ${sign}** from this week's roll.*`;
+      } else if (roll !== null) {
+        headerDesc += `*Standard prices apply to you this week.*`;
       } else {
-        headerNote = `*Your roll this week gave no modifier — standard prices apply.*`;
+        headerDesc += `*You haven't rolled for a discount this week! Use \`/roll\` to try your luck.*`;
       }
 
       const embed = new EmbedBuilder()
-        .setTitle("⚗️  Grimbold's Emporium — Your Prices")
-        .setDescription(
-          `*"Welcome, traveler. These prices are between you and me."\n\n${headerNote}*`
-        )
-        .setColor(
-          !modifier         ? 0x8B4513 :
-          modifier.percent < 0 ? 0x2E8B57 :
-          modifier.percent > 0 ? 0x8B0000 : 0x8B4513
-        )
-        .setFooter({ text: 'Only you can see this message • /buy <item> to purchase • /roll for your weekly modifier' });
+        .setTitle("Grimbold's Emporium — Your Prices")
+        .setColor(0x2B2D31)
+        .setDescription(headerDesc);
 
-      for (const [cat, catItems] of Object.entries(grouped)) {
+      // Group items by category (preserving insertion order)
+      const categories = {};
+      for (const item of items) {
+        const cat = item.category || 'General';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(item);
+      }
+
+      for (const [catName, catItems] of Object.entries(categories)) {
         const lines = catItems.map(item => {
-          const soldOut   = item.status === 'Sold Out' || item.stock === '0';
-          const stockNote = soldOut
-            ? ' 🚫 *(Sold Out)*'
-            : item.stock === '∞' ? '' : ` *(${item.stock} left)*`;
+          const finalPrice = modifier ? applyModifier(item.price, modifier) : item.price;
+          const isSoldOut = item.stock !== null && item.stock <= 0;
 
-          let priceStr;
-          if (soldOut) {
-            priceStr = '~~sold out~~';
-          } else if (modifier && modifier.percent !== 0) {
-            const adjusted = applyModifier(item.price, modifier);
-            const arrow    = modifier.percent < 0 ? '→' : '→';
-            priceStr       = `~~${item.price} gp~~ ${arrow} **${adjusted} gp**`;
+          let stockTag = '';
+          if (isSoldOut) stockTag = ' **(Sold Out)**';
+          else if (item.stock !== null) stockTag = ` (${item.stock} left)`;
+
+          let priceStr = '';
+          if (isSoldOut) {
+            priceStr = ' — *sold out*';
+          } else if (modifier && modifier.percent !== 0 && finalPrice !== item.price) {
+            priceStr = ` — ~~${item.price} gp~~ → **${finalPrice} gp**`;
           } else {
-            priceStr = `**${item.price} gp**`;
+            priceStr = ` — **${item.price} gp**`;
           }
 
-          return `**${item.name}**${stockNote} — ${priceStr}\n> *${item.description}*`;
+          return `**${item.name}**${stockTag}${priceStr}\n*${item.description}*`;
         });
 
         embed.addFields({
-          name:   `📦  ${cat}`,
-          value:  lines.join('\n\n').slice(0, 1024),
+          name: catName,
+          value: lines.join('\n\n'),
           inline: false,
         });
       }
 
-      // Modifier summary field
-      if (modifier) {
+      // Add their roll info at the bottom if they've rolled
+      if (roll !== null && modifier) {
         embed.addFields({
-          name:  '🎲  Your Roll This Week',
-          value: modifier.label,
+          name: 'Your Roll This Week',
+          value:
+            `${modifier.label}\n` +
+            `*Only you can see this message • \`/buy <item>\` to purchase • \`/roll\` for your weekly modifier*`,
           inline: false,
+        });
+      } else {
+        embed.setFooter({
+          text: 'Only you can see this message • /buy <item> to purchase • /roll for your weekly modifier',
         });
       }
 
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {
-      console.error('[/show]', err);
-      await interaction.editReply('*Grimbold fumbles with his ledger.* "Give me a moment — something\'s wrong."');
+      console.error('Error in /show:', err);
+      await interaction.editReply({
+        content: `*Grimbold squints at his ledger and shakes his head.*\n"Can't seem to find my inventory list right now. Try again in a moment."`,
+      });
     }
   },
 };
