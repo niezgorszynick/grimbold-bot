@@ -26,7 +26,7 @@ module.exports = {
       const roll = getUserRoll(interaction.user.id);
       const modifier = roll !== null ? getDiscount(roll) : null;
 
-      // Header description explaining the prices shown
+      // Header description
       let headerDesc = `*"Welcome, traveler. These prices are between you and me."*\n\n`;
       if (modifier && modifier.percent !== 0) {
         const sign = modifier.percent < 0 ? 'discount' : 'surcharge';
@@ -42,7 +42,7 @@ module.exports = {
         .setColor(0x2B2D31)
         .setDescription(headerDesc);
 
-      // Group items by category (preserving insertion order)
+      // Group items by category
       const categories = {};
       for (const item of items) {
         const cat = item.category || 'General';
@@ -50,8 +50,13 @@ module.exports = {
         categories[cat].push(item);
       }
 
+      // Add fields with 1024-character safety chunking
       for (const [catName, catItems] of Object.entries(categories)) {
-        const lines = catItems.map(item => {
+        let currentChunk = [];
+        let currentLength = 0;
+        let part = 1;
+
+        for (const item of catItems) {
           const finalPrice = modifier ? applyModifier(item.price, modifier) : item.price;
           const isSoldOut = item.stock !== null && item.stock <= 0;
 
@@ -68,17 +73,34 @@ module.exports = {
             priceStr = ` — **${item.price} gp**`;
           }
 
-          return `**${item.name}**${stockTag}${priceStr}\n*${item.description}*`;
-        });
+          const entry = `**${item.name}**${stockTag}${priceStr}\n*${item.description}*`;
 
-        embed.addFields({
-          name: catName,
-          value: lines.join('\n\n'),
-          inline: false,
-        });
+          // Discord limit is 1024 chars per field value. Keep safety margin at 950.
+          if (currentLength + entry.length + 2 > 950 && currentChunk.length > 0) {
+            embed.addFields({
+              name: part === 1 ? catName : `${catName} (cont.)`,
+              value: currentChunk.join('\n\n'),
+              inline: false,
+            });
+            currentChunk = [entry];
+            currentLength = entry.length;
+            part++;
+          } else {
+            currentChunk.push(entry);
+            currentLength += entry.length + 2;
+          }
+        }
+
+        if (currentChunk.length > 0) {
+          embed.addFields({
+            name: part === 1 ? catName : `${catName} (cont.)`,
+            value: currentChunk.join('\n\n'),
+            inline: false,
+          });
+        }
       }
 
-      // Add their roll info at the bottom if they've rolled
+      // Roll info footer / field
       if (roll !== null && modifier) {
         embed.addFields({
           name: 'Your Roll This Week',
