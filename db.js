@@ -130,12 +130,15 @@ module.exports = {
   getAllItemsForAdmin: () => queries.getAllItemsAdmin.all(),
   findItemByName: (name) => queries.getItemByName.get(name),
 
-  // Metody zarządzania tabelą catalog
+ // ─── MASTER CATALOG & SYNCHRONIZACJA Z LADĄ (ITEMS) ───────────────────────
+
+  // Pobranie pojedynczego wpisu z katalogu po ID
   getCatalogItemById: (id) => {
-    return db.prepare('SELECT * FROM catalog WHERE id = ?').get(id);
+    return db.prepare('SELECT * FROM catalog WHERE id = ?').get(parseInt(id, 10));
   },
 
-  updateCatalogItem: ({ id, name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
+  // Aktualizacja pozycji w catalog wraz z natychmiastową synchronizacją items
+  updateCatalogItem: db.transaction(({ id, name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
     const trimmedName = (name || '').trim();
     const trimmedCat = (category || '').trim();
     const trimmedDesc = (description || '').trim();
@@ -150,7 +153,12 @@ module.exports = {
     if (isNaN(max_stock) || max_stock < min_stock) throw new Error('Max stock must be >= min stock.');
     if (!trimmedDesc) throw new Error('Description is required.');
 
-    const stmt = db.prepare(`
+    // 1. Sprawdzamy starą nazwę w katalogu, aby znaleźć powiązany rekord w items
+    const oldItem = db.prepare('SELECT name FROM catalog WHERE id = ?').get(parseInt(id, 10));
+    if (!oldItem) throw new Error('Catalog item not found.');
+
+    // 2. Aktualizujemy Master Catalog
+    db.prepare(`
       UPDATE catalog
       SET name = ?,
           category = ?,
@@ -161,9 +169,7 @@ module.exports = {
           min_stock = ?,
           max_stock = ?
       WHERE id = ?
-    `);
-
-    return stmt.run(
+    `).run(
       trimmedName,
       trimmedCat,
       tier,
@@ -174,11 +180,38 @@ module.exports = {
       parseInt(max_stock, 10),
       parseInt(id, 10)
     );
-  },
 
-  deleteCatalogItem: (id) => {
-    return db.prepare('DELETE FROM catalog WHERE id = ?').run(parseInt(id, 10));
-  },
+    // 3. Jeśli przedmiot znajduje się obecnie na ladzie (tabela items), synchronizujemy go od razu
+    const shelfItem = db.prepare('SELECT id FROM items WHERE name = ? COLLATE NOCASE').get(oldItem.name);
+    if (shelfItem) {
+      const newPriceGp = Math.max(1, Math.round(parseInt(base_price_cp, 10) / 100));
+      db.prepare(`
+        UPDATE items
+        SET name = ?,
+            category = ?,
+            price = ?,
+            description = ?
+        WHERE id = ?
+      `).run(
+        trimmedName,
+        trimmedCat,
+        newPriceGp,
+        trimmedDesc,
+        shelfItem.id
+      );
+    }
+  }),
+
+  // Usunięcie z katalogu wraz z wyczyszczeniem z lady sklepowej
+  deleteCatalogItem: db.transaction((id) => {
+    const item = db.prepare('SELECT name FROM catalog WHERE id = ?').get(parseInt(id, 10));
+    if (item) {
+      db.prepare('DELETE FROM items WHERE name = ? COLLATE NOCASE').run(item.name);
+      db.prepare('DELETE FROM catalog WHERE id = ?').run(parseInt(id, 10));
+    }
+  }),
+
+  // ─── ZARZĄDZANIE ASORTYMENTEM SKLEPU (ITEMS) ──────────────────────────────
 
   addItem: ({ name, category, price, stock, description, is_active = 1 }) => {
     const trimmedName = (name || '').trim();
@@ -209,7 +242,7 @@ module.exports = {
   purchaseItemTransaction: db.transaction((itemId, quantity, saleData) => {
     const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
     if (!item) throw new Error('ITEM_NOT_FOUND');
-    
+
     if (item.stock !== null) {
       if (item.stock < quantity) {
         throw new Error(`INSUFFICIENT_STOCK:${item.stock}`);
@@ -225,7 +258,15 @@ module.exports = {
   setPrice: (id, newPrice) => queries.updatePrice.run(newPrice, id),
   setActive: (id, isActive) => queries.toggleActive.run(isActive ? 1 : 0, id),
   deleteItem: (id) => queries.deleteItem.run(id),
-  getAllCatalogItems: () => db.prepare("SELECT * FROM catalog ORDER BY name ASC").all(),
-  getAllSales: () => db.prepare("SELECT * FROM sales ORDER BY created_at DESC LIMIT 100").all(),
-  getAllRolls: () => db.prepare("SELECT * FROM rolls ORDER BY week_start DESC, created_at DESC LIMIT 100").all()
+
+  // ─── POBIERANIE DANYCH DO PANELU DM ───────────────────────────────────────
+
+  getAllCatalogItems: () => db.prepare('SELECT * FROM catalog ORDER BY name ASC').all(),
+  getAllSales: () => db.prepare('SELECT * FROM sales ORDER BY created_at DESC LIMIT 100').all(),
+  getAllRolls: () => db.prepare('SELECT * FROM rolls ORDER BY week_start DESC, created_at DESC LIMIT 100').all(),
+
+  // Eksport instancji bazy dla zewnętrznych skryptów
+  db,
+  prepare: (sql) => db.prepare(sql),
+  transaction: (fn) => db.transaction(fn)
 };
