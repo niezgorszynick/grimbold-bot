@@ -347,7 +347,6 @@ router.get('/', (req, res) => {
           </div>
         </form>
       </div>
-      </div>
 
       <div class="card">
         <h3>Add Item to Shop Shelf</h3>
