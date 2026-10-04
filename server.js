@@ -193,7 +193,15 @@ router.get('/', (req, res) => {
         <table>
           <thead>
             <tr>
-              <th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th>
+              <th class="sortable">ID</th>
+              <th class="sortable">Name</th>
+              <th class="sortable">Category</th>
+              <th class="sortable">Price</th>
+              <th class="sortable">Stock</th>
+              <th class="sortable">Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
             </tr>
           </thead>
           <tbody>
@@ -310,13 +318,12 @@ router.get('/', (req, res) => {
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Category</th>
-              <th>Tier</th>
-              <th>Base Price</th>
-              <th>Min Lvl</th>
-              <th>Stock Range</th>
+              <th class="sortable">ID</th>
+              <th class="sortable">Name</th>
+              <th class="sortable">Category</th>
+              <th class="sortable">Price</th>
+              <th class="sortable">Stock</th>
+              <th class="sortable">Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -352,7 +359,14 @@ router.get('/', (req, res) => {
         <h3>Transaction Ledger (Last 100 Sales)</h3>
         <table>
           <thead>
-            <tr><th>Date</th><th>Buyer</th><th>Item</th><th>Qty</th><th>Final Price</th><th>Total Paid</th></tr>
+            <tr>
+              <th class="sortable">Date</th>
+              <th class="sortable">Buyer</th>
+              <th class="sortable">Item</th>
+              <th class="sortable">Qty</th>
+              <th class="sortable">Final Price</th>
+              <th class="sortable">Total Paid</th>
+            </tr>
           </thead>
           <tbody>
             ${sales.length === 0 ? '<tr><td colspan="6">No sales recorded yet.</td></tr>' : sales.map(s => `
@@ -378,7 +392,12 @@ router.get('/', (req, res) => {
         <h3>Player Discount Rolls (Last 100)</h3>
         <table>
           <thead>
-            <tr><th>Week Start</th><th>User ID</th><th>d20 Result</th><th>Timestamp</th></tr>
+            <tr>
+              <th class="sortable">Week Start</th>
+              <th class="sortable">User ID</th>
+              <th class="sortable">d20 Result</th>
+              <th class="sortable">Timestamp</th>
+            </tr>
           </thead>
           <tbody>
             ${rolls.length === 0 ? '<tr><td colspan="4">No rolls recorded yet.</td></tr>' : rolls.map(r => `
@@ -421,6 +440,31 @@ router.get('/', (req, res) => {
         .tag { padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; background: #4e5058; }
         .tag.green { background: #23a55a; color: #fff; }
         .tag.red { background: #f23f43; color: #fff; }
+        th.sortable { 
+          cursor: pointer; 
+          user-select: none; 
+          position: relative; 
+          transition: background-color 0.15s ease;
+        }
+        th.sortable:hover { 
+          background: #2b2d31; 
+          color: #fff; 
+        }
+        th.sortable::after { 
+          content: ' ⇅'; 
+          opacity: 0.35; 
+          font-size: 11px; 
+        }
+        th.sort-asc::after { 
+          content: ' ▲'; 
+          opacity: 1; 
+          color: #5865f2; 
+        }
+        th.sort-desc::after { 
+          content: ' ▼'; 
+          opacity: 1; 
+          color: #5865f2; 
+        }
       </style>
     </head>
     <body>
@@ -436,6 +480,64 @@ router.get('/', (req, res) => {
         </div>
         ${contentHtml}
       </div>
+      <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          document.querySelectorAll('th.sortable').forEach(header => {
+            header.addEventListener('click', () => {
+              const table = header.closest('table');
+              const tbody = table.querySelector('tbody');
+              const rows = Array.from(tbody.querySelectorAll('tr'));
+              const index = Array.from(header.parentNode.children).indexOf(header);
+              const currentAsc = header.classList.contains('sort-asc');
+              const isAscending = !currentAsc;
+
+              // Reset klas na pozostałych nagłówkach w obrębie tabeli
+              header.parentNode.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+              });
+              header.classList.add(isAscending ? 'sort-asc' : 'sort-desc');
+
+              // Funkcja normalizująca komórki pod kątem liczb, walut i dat
+              const parseCellValue = (text) => {
+                const raw = text.trim();
+                if (raw === '∞') return Infinity;
+
+                // Wyodrębnienie pierwszej liczby (np. "12 gp", "Lvl 3", "d20 = 17", "1 – 3")
+                const matchNumber = raw.match(/-?\d+(\.\d+)?/);
+                if (matchNumber && !isNaN(matchNumber[0])) {
+                  // Jeśli to nie jest data w formacie ISO (YYYY-MM-DD)
+                  if (!raw.match(/^\d{4}-\d{2}-\d{2}/)) {
+                    return parseFloat(matchNumber[0]);
+                  }
+                }
+
+                // Sprawdzenie czy to data ISO
+                const parsedDate = Date.parse(raw);
+                if (!isNaN(parsedDate) && raw.length > 7 && (raw.includes('-') || raw.includes(':'))) {
+                  return parsedDate;
+                }
+
+                return raw.toLowerCase();
+              };
+
+              rows.sort((rowA, rowB) => {
+                const cellA = rowA.children[index] ? rowA.children[index].innerText : '';
+                const cellB = rowB.children[index] ? rowB.children[index].innerText : '';
+
+                const valA = parseCellValue(cellA);
+                const valB = parseCellValue(cellB);
+
+                if (valA < valB) return isAscending ? -1 : 1;
+                if (valA > valB) return isAscending ? 1 : -1;
+                return 0;
+              });
+
+              // Ponowne wstawienie posortowanych wierszy do DOM
+              rows.forEach(row => tbody.appendChild(row));
+            });
+          });
+        });
+      </script>
     </body>
     </html>
   `);
