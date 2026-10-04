@@ -319,8 +319,8 @@ router.post('/players/delete', (req, res) => {
 
 router.post('/characters/add', (req, res) => {
   try {
-    const { player_id, name, class_name, level, status } = req.body;
-    db.addCharacter({ player_id, name, class_name, level, status });
+    const { player_id, name, race, class_name, subclass, xp, status } = req.body;
+    db.addCharacter({ player_id, name, race, class_name, subclass, xp, status });
     res.redirect('/admin?tab=players&status=char_added');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
@@ -329,8 +329,8 @@ router.post('/characters/add', (req, res) => {
 
 router.post('/characters/update', (req, res) => {
   try {
-    const { id, player_id, name, class_name, level, status } = req.body;
-    db.updateCharacter({ id, player_id, name, class_name, level, status });
+    const { id, player_id, name, race, class_name, subclass, xp, status } = req.body;
+    db.updateCharacter({ id, player_id, name, race, class_name, subclass, xp, status });
     res.redirect('/admin?tab=players&status=char_updated');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
@@ -344,6 +344,42 @@ router.post('/characters/delete', (req, res) => {
     res.redirect('/admin?tab=players&status=char_deleted');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// POST: Przypisanie 1 punktu DM do wybranej postaci
+router.post('/players/assign-dm-point', (req, res) => {
+  try {
+    const { player_id, character_id } = req.body;
+    db.assignDmPointToCharacter(parseInt(player_id, 10), parseInt(character_id, 10));
+    res.redirect('/admin?tab=players&status=dm_point_assigned');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// POST: Zapisanie ukończonej przygody i przyznanie XP / punktu DM
+router.post('/adventures/add', (req, res) => {
+  try {
+    const { title, description, xp_awarded, dm_player_id, character_ids } = req.body;
+    
+    // Checkboxy HTML zwracają string (jeden wybór) lub tablicę (wiele wyborów)
+    let assignedCharIds = [];
+    if (character_ids) {
+      assignedCharIds = Array.isArray(character_ids) ? character_ids.map(Number) : [parseInt(character_ids, 10)];
+    }
+
+    db.recordAdventure({
+      title,
+      description,
+      xp_awarded,
+      dm_player_id: dm_player_id ? parseInt(dm_player_id, 10) : null,
+      character_ids: assignedCharIds
+    });
+
+    res.redirect('/admin?tab=adventures&status=adventure_recorded');
+  } catch (err) {
+    res.redirect(`/admin?tab=adventures&err=${encodeURIComponent(err.message)}`);
   }
 });
 
@@ -389,7 +425,12 @@ router.get('/', (req, res) => {
     statusBanner = '<div class="alert green">✅ Character updated!</div>';
   } else if (status === 'char_deleted') {
     statusBanner = '<div class="alert red">🗑️ Character removed.</div>';
+  } else if (status === 'dm_point_assigned') {
+    statusBanner = '<div class="alert green">✨ Przypisano 1 punkt DM! Postać otrzymała 1 XP i przeliczono jej poziom.</div>';
+  } else if (status === 'adventure_recorded') {
+    statusBanner = '<div class="alert green">⚔️ Przygoda zapisana! Przyznano XP uczestnikom i punkt DM dla prowadzącego.</div>';
   }
+  
   
 
   let contentHtml = '';
@@ -775,6 +816,106 @@ router.get('/', (req, res) => {
     `;
   }
 
+      else if (currentTab === 'adventures') {
+        const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
+        const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
+        const playerRows = db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [];
+        const activeCharacters = playerRows.filter(r => r.character_id && r.character_status === 'alive');
+
+        contentHtml = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div class="card" style="margin-bottom: 0;">
+              <h3>Zarejestruj ukończoną przygodę</h3>
+              <p style="font-size: 13px; color: #949ba4; margin-top: -5px; margin-bottom: 14px;">
+                Rozliczenie przygody przyznaje punkty XP zaznaczonym postaciom oraz +1 punkt DM dla prowadzącego.
+              </p>
+
+              <form method="POST" action="/admin/adventures/add">
+                <div style="margin-bottom: 10px;">
+                  <label>Tytuł przygody:</label><br>
+                  <input type="text" name="title" placeholder="np. Poszukiwacze Zaginionego Artefaktu" required style="width: 100%; margin-top: 4px;">
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                  <div>
+                    <label>Mistrz Gry (DM):</label><br>
+                    <select name="dm_player_id" style="width: 100%; margin-top: 4px;">
+                      <option value="">-- Bez punktu DM --</option>
+                      ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Przyznane XP:</label><br>
+                    <input type="number" name="xp_awarded" min="1" value="1" required style="width: 100%; margin-top: 4px;">
+                  </div>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                  <label>Podsumowanie / Notatki:</label><br>
+                  <textarea name="description" rows="2" placeholder="Krótki opis wydarzeń na sesji..." style="width: 100%; margin-top: 4px;"></textarea>
+                </div>
+
+                <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+                  <label style="font-weight: bold; color: #d4af37; font-size: 13px;">Uczestniczące postacie:</label>
+                  <div style="max-height: 160px; overflow-y: auto; margin-top: 8px;">
+                    ${activeCharacters.length === 0 ? '<p style="color: #949ba4; font-size: 12px;">Brak dostępnych żywych postaci.</p>' : activeCharacters.map(c => `
+                      <div style="margin-bottom: 6px;">
+                        <label style="font-size: 13px; cursor: pointer;">
+                          <input type="checkbox" name="character_ids" value="${c.character_id}">
+                          <strong>${escapeHtml(c.character_name)}</strong> (Poz.${c.character_level} ${escapeHtml(c.character_class)} —${escapeHtml(c.discord_tag)})
+                        </label>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-green" style="width: 100%; padding: 10px;">⚔️ Zapisz przygodę i przyznaj nagrody</button>
+              </form>
+            </div>
+
+            <div class="card" style="margin-bottom: 0;">
+              <h3>Zasady zdobywania poziomów i punktów</h3>
+              <div style="font-size: 13px; line-height: 1.6; color: #dbdee1;">
+                <p><strong>• Poziom startowy:</strong> Każda nowa postać zaczyna od <strong>3. poziomu</strong> (0 XP).</p>
+                <p><strong>• Progi awansu:</strong></p>
+                <ul style="padding-left: 20px; margin-top: 4px;">
+                  <li><strong>Awans 3 &rarr; 4 poziom:</strong> Wymaga <strong>3 punktów XP</strong>.</li>
+                  <li><strong>Awans 4 &rarr; 5 poziom:</strong> Wymaga <strong>4 punktów XP</strong> (łącznie 7 XP).</li>
+                  <li><strong>Każdy kolejny poziom (5+):</strong> Wymaga kolejnych <strong>4 punktów XP</strong>.</li>
+                </ul>
+                <p><strong>• Punkty Mistrza Gry:</strong> Poprowadzenie sesji dodaje +1 punkt do puli DM danego gracza, który może go w zakładce <em>Players</em> przypisać do dowolnej swojej postaci jako +1 XP.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Historia rozegranych przygód (${allAdventures.length})</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th class="sortable">Data</th>
+                  <th class="sortable">Tytuł</th>
+                  <th class="sortable">Prowadzący DM</th>
+                  <th class="sortable">Przyznane XP</th>
+                  <th>Notatki</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allAdventures.length === 0 ? '<tr><td colspan="5">Brak zapisanych przygód.</td></tr>' : allAdventures.map(adv => `
+                  <tr>
+                    <td data-sort="${adv.created_at}">${adv.created_at}</td>
+                    <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong></td>
+                    <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>Brak</em>'}</td>
+                    <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
+                    <td>${escapeHtml(adv.description || '—')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
   // ── ZAKŁADKA: RESTOCK ENGINE ──
   else if (currentTab === 'restock') {
     const cfg = db.getRestockConfig();
@@ -1045,12 +1186,17 @@ router.get('/', (req, res) => {
           <h3>Add Character to Player</h3>
           ${allPlayers.length === 0 ? '<p style="color: #949ba4;">Register at least one player on the left before adding characters.</p>' : `
             <form method="POST" action="/admin/characters/add">
-              <div style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; margin-bottom: 10px;">
-                <div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
                   <label>Assign to Player:</label><br>
-                  <select name="player_id" style="width: 100%; margin-top: 4px;" required>
-                    ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)}</option>`).join('')}
-                  </select>
+                 <select name="player_id" style="width: 100%; margin-top: 4px;" required>
+                  ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)} (${p.dm_points || 0} pkt DM)</option>`).join('')}
+                </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div>
+                  <label>Race:</label><br>
+                  <input type="text" name="race" placeholder="e.g. Hill Dwarf" required style="width: 100%; margin-top: 4px;">
                 </div>
                 <div>
                   <label>Character Name:</label><br>
@@ -1060,8 +1206,18 @@ router.get('/', (req, res) => {
                   <label>Class:</label><br>
                   <input type="text" name="class_name" placeholder="e.g. Fighter" required style="width: 100%; margin-top: 4px;">
                 </div>
+                <div>
+                <label>Subclass:</label><br>
+                <input type="text" name="subclass" placeholder="e.g. Master of Battle (optional)" style="width: 100%; margin-top: 4px;">
+                </div>
               </div>
+
+
               <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+                <div>
+                  <label>Starting XP (0 = 3rd level):</label><br>
+                  <input type="number" name="xp" min="0" value="0" required style="width: 100%; margin-top: 4px;">
+                </div>
                 <div>
                   <label>Starting Level (1–20):</label><br>
                   <input type="number" name="level" min="1" max="20" value="1" required style="width: 100%; margin-top: 4px;">
@@ -1241,9 +1397,10 @@ router.get('/', (req, res) => {
           <a href="/admin?tab=items" class="tab-btn ${currentTab === 'items' ? 'active' : ''}">Shop Items</a>
           <a href="/admin?tab=catalog" class="tab-btn ${currentTab === 'catalog' ? 'active' : ''}">Master Catalog</a>
           <a href="/admin?tab=restock" class="tab-btn ${currentTab === 'restock' ? 'active' : ''}">Restock Engine</a>
-          <a href="/admin?tab=players" class="tab-btn ${currentTab === 'players' ? 'active' : ''}">Players</a>
           <a href="/admin?tab=sales" class="tab-btn ${currentTab === 'sales' ? 'active' : ''}">Sales Ledger</a>
           <a href="/admin?tab=rolls" class="tab-btn ${currentTab === 'rolls' ? 'active' : ''}">Rolls History</a>
+          <a href="/admin?tab=players" class="tab-btn ${currentTab === 'players' ? 'active' : ''}">Players</a>
+          <a href="/admin?tab=adventures" class="tab-btn ${currentTab === 'adventures' ? 'active' : ''}">Adventures</a>
         </div>
         ${contentHtml}
       </div>

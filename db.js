@@ -99,6 +99,54 @@ db.exec(`
   );
 `);
 
+// 6. Tabela przygód
+db.exec(`
+  CREATE TABLE IF NOT EXISTS adventures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    xp_awarded INTEGER NOT NULL DEFAULT 1 CHECK (xp_awarded >= 1),
+    dm_player_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dm_player_id) REFERENCES players(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS adventure_rewards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    adventure_id INTEGER NOT NULL,
+    character_id INTEGER NOT NULL,
+    xp INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (adventure_id) REFERENCES adventures(id) ON DELETE CASCADE,
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+  );
+`);
+
+// 6.1. Bezpieczna migracja kolumn w tabeli players
+const playerCols = db.prepare("PRAGMA table_info(players)").all().map(c => c.name);
+if (!playerCols.includes('dm_points')) {
+  db.exec("ALTER TABLE players ADD COLUMN dm_points INTEGER NOT NULL DEFAULT 0;");
+}
+
+// 6.2. Bezpieczna migracja kolumn w tabeli characters
+const charCols = db.prepare("PRAGMA table_info(characters)").all().map(c => c.name);
+if (!charCols.includes('race')) {
+  db.exec("ALTER TABLE characters ADD COLUMN race TEXT NOT NULL DEFAULT 'Unknown';");
+}
+if (!charCols.includes('subclass')) {
+  db.exec("ALTER TABLE characters ADD COLUMN subclass TEXT NOT NULL DEFAULT '';");
+}
+if (!charCols.includes('xp')) {
+  db.exec("ALTER TABLE characters ADD COLUMN xp INTEGER NOT NULL DEFAULT 0;");
+}
+
+// Funkcja pomocnicza: Obliczanie poziomu na podstawie punktów przygód
+function calculateLevelFromXp(xp) {
+  const points = Math.max(0, parseInt(xp, 10) || 0);
+  if (points < 3) return 3;
+  return Math.min(20, 4 + Math.floor((points - 3) / 4));
+}
+
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
@@ -133,6 +181,110 @@ const queries = {
 };
 
 module.exports = {
+  calculateLevelFromXp,
+
+  // Postacie z rasą, podklasą i automatycznym poziomem
+  addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
+    const pId = parseInt(player_id, 10);
+    const trimmedName = (name || '').trim();
+    const trimmedRace = (race || '').trim();
+    const trimmedClass = (class_name || '').trim();
+    const trimmedSubclass = (subclass || '').trim();
+    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
+    const calculatedLevel = calculateLevelFromXp(parsedXp);
+
+    if (isNaN(pId)) throw new Error('Wybierz prawidłowego gracza.');
+    if (!trimmedName) throw new Error('Nazwa postaci jest wymagana.');
+    if (!trimmedRace) throw new Error('Rasa postaci jest wymagana.');
+    if (!trimmedClass) throw new Error('Klasa postaci jest wymagana.');
+
+    return db.prepare(`
+      INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, calculatedLevel, parsedXp, status);
+  },
+
+  updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, status }) => {
+    const cId = parseInt(id, 10);
+    const pId = parseInt(player_id, 10);
+    const trimmedName = (name || '').trim();
+    const trimmedRace = (race || '').trim();
+    const trimmedClass = (class_name || '').trim();
+    const trimmedSubclass = (subclass || '').trim();
+    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
+    const calculatedLevel = calculateLevelFromXp(parsedXp);
+
+    return db.prepare(`
+      UPDATE characters
+      SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
+      WHERE id = ?
+    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, calculatedLevel, parsedXp, status, cId);
+  },
+
+  // Przypisanie 1 punktu DM do wybranej postaci
+  assignDmPointToCharacter: (playerId, characterId) => {
+    const run = db.transaction(() => {
+      const player = db.prepare('SELECT dm_points FROM players WHERE id = ?').get(playerId);
+      if (!player || player.dm_points < 1) {
+        throw new Error('Gracz nie posiada punktów DM do wykorzystania.');
+      }
+      const char = db.prepare('SELECT id, xp FROM characters WHERE id = ? AND player_id = ?').get(characterId, playerId);
+      if (!char) {
+        throw new Error('Wybrana postać nie należy do tego gracza.');
+      }
+
+      const newXp = char.xp + 1;
+      const newLevel = calculateLevelFromXp(newXp);
+
+      db.prepare('UPDATE players SET dm_points = dm_points - 1 WHERE id = ?').run(playerId);
+      db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(newXp, newLevel, characterId);
+    });
+    return run();
+  },
+
+  // Obsługa przygód
+  getAllAdventures: () => db.prepare(`
+    SELECT a.*, p.discord_tag AS dm_name 
+    FROM adventures a
+    LEFT JOIN players p ON a.dm_player_id = p.id
+    ORDER BY a.created_at DESC
+  `).all(),
+
+  recordAdventure: ({ title, description, xp_awarded, dm_player_id, character_ids }) => {
+    const run = db.transaction(() => {
+      const xp = Math.max(1, parseInt(xp_awarded, 10) || 1);
+      const insertAdv = db.prepare(`
+        INSERT INTO adventures (title, description, xp_awarded, dm_player_id)
+        VALUES (?, ?, ?, ?)
+      `).run(title, description, xp, dm_player_id || null);
+
+      const adventureId = insertAdv.lastInsertRowid;
+
+      // Przyznanie XP uczestnikom
+      if (Array.isArray(character_ids)) {
+        for (const charId of character_ids) {
+          db.prepare(`
+            INSERT INTO adventure_rewards (adventure_id, character_id, xp)
+            VALUES (?, ?, ?)
+          `).run(adventureId, charId, xp);
+
+          const char = db.prepare('SELECT xp FROM characters WHERE id = ?').get(charId);
+          if (char) {
+            const nextXp = char.xp + xp;
+            const nextLevel = calculateLevelFromXp(nextXp);
+            db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(nextXp, nextLevel, charId);
+          }
+        }
+      }
+
+      // Przyznanie 1 punktu DM dla prowadzącego
+      if (dm_player_id) {
+        db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(dm_player_id);
+      }
+    });
+    return run();
+  },
+  
   //Bezpośredni dostęp do bazy dla skryptów (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),
@@ -489,4 +641,5 @@ module.exports = {
   db,
   prepare: (sql) => db.prepare(sql),
   transaction: (fn) => db.transaction(fn)
+
 };
