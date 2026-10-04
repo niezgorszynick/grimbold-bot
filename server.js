@@ -5,6 +5,7 @@ const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
 const { formatCp } = require('./currency');
 const { restockShop } = require('./restock');
+const { DND_SPECIES, DND_CLASSES_AND_SUBCLASSES } = require('./dndData');
 
 // Middleware parsowania formularzy i JSON
 router.use(express.urlencoded({ extended: true }));
@@ -1122,6 +1123,17 @@ router.get('/', (req, res) => {
 
     const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
     const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
+    const speciesDatalistHtml = `
+      <datalist id="speciesList">
+        ${DND_SPECIES.map(s => `<option value="${escapeHtml(s)}">`).join('')}
+      </datalist>
+      <datalist id="classesList">
+        ${Object.keys(DND_CLASSES_AND_SUBCLASSES).map(c => `<option value="${escapeHtml(c)}">`).join('')}
+      </datalist>
+      <datalist id="subclassesList"></datalist>
+    `;
+
+    const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES);
 
     let charFormHtml = '';
     if (charToEdit) {
@@ -1134,7 +1146,7 @@ router.get('/', (req, res) => {
           <form method="POST" action="/admin/characters/update">
             <input type="hidden" name="id" value="${charToEdit.id}">
             
-            <!-- Row 1: Player, Name, Race, Class, Subclass -->
+            <!-- Row 1: Player, Name, Species, Class, Subclass -->
             <div style="display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
               <div>
                 <label>Player (Discord User):</label><br>
@@ -1147,8 +1159,8 @@ router.get('/', (req, res) => {
                 <input type="text" name="name" value="${escapeHtml(charToEdit.name)}" required style="width: 100%; margin-top: 4px;">
               </div>
               <div>
-                <label>Race:</label><br>
-                <input type="text" name="race" value="${escapeHtml(charToEdit.race)}" required style="width: 100%; margin-top: 4px;">
+                <label style="white-space: nowrap;">Species (2024):</label><br>
+                <input type="text" name="race" list="speciesList" placeholder="e.g. Dwarf, Elf, Goliath..." required style="width: 100%; margin-top: 4px;" autocomplete="off">
               </div>
               <div>
                 <label>Class:</label><br>
