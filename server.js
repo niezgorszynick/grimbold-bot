@@ -79,6 +79,47 @@ router.post('/items/update', (req, res) => {
   res.redirect('/admin?tab=items');
 });
 
+// ─── ENDPOINTY DLA CATALOG ──────────────────────────────────────────────────
+
+router.post('/catalog/update', (req, res) => {
+  try {
+    const { id, name, category, tier, base_price_gp, description, min_level, min_stock, max_stock } = req.body;
+    
+    // Konwersja GP wprowadzonego przez DM na CP (1 gp = 100 cp)
+    const priceGp = parseFloat(base_price_gp);
+    if (isNaN(priceGp) || priceGp < 0) {
+      throw new Error('Price in GP must be a valid number >= 0.');
+    }
+    const base_price_cp = Math.max(0, Math.round(priceGp * 100));
+
+    db.updateCatalogItem({
+      id,
+      name,
+      category,
+      tier,
+      base_price_cp,
+      description,
+      min_level,
+      min_stock,
+      max_stock
+    });
+
+    res.redirect('/admin?tab=catalog');
+  } catch (err) {
+    res.status(400).send(`Error updating catalog item: ${escapeHtml(err.message)} <br><a href="/admin?tab=catalog">Back to Catalog</a>`);
+  }
+});
+
+router.post('/catalog/delete', (req, res) => {
+  try {
+    const { id } = req.body;
+    db.deleteCatalogItem(id);
+    res.redirect('/admin?tab=catalog');
+  } catch (err) {
+    res.status(400).send(`Error deleting catalog item: ${escapeHtml(err.message)} <br><a href="/admin?tab=catalog">Back to Catalog</a>`);
+  }
+});
+
 // ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {
@@ -202,22 +243,100 @@ router.get('/', (req, res) => {
 
   // ── ZAKŁADKA: CATALOG ──
   else if (currentTab === 'catalog') {
+    const editId = req.query.edit_catalog ? parseInt(req.query.edit_catalog, 10) : null;
+    const itemToEdit = editId ? db.getCatalogItemById(editId) : null;
+
+    let editFormHtml = '';
+    if (itemToEdit) {
+      const priceGp = (itemToEdit.base_price_cp / 100).toFixed(2).replace(/\.00$/, '');
+      editFormHtml = `
+        <div class="card" style="border: 1px solid #5865f2;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Edit Item: ${escapeHtml(itemToEdit.name)} (ID: ${itemToEdit.id})</h3>
+            <a href="/admin?tab=catalog" class="btn btn-small">Cancel</a>
+          </div>
+          <form method="POST" action="/admin/catalog/update">
+            <input type="hidden" name="id" value="${itemToEdit.id}">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <label>Name:</label><br>
+                <input type="text" name="name" value="${escapeHtml(itemToEdit.name)}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Category:</label><br>
+                <input type="text" name="category" value="${escapeHtml(itemToEdit.category)}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Tier:</label><br>
+                <select name="tier" style="width: 100%;">
+                  ${['staple', 'common', 'rare', 'magic', 'service'].map(t => 
+                    `<option value="${t}" ${itemToEdit.tier === t ? 'selected' : ''}>${t}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div>
+                <label>Base Price (GP):</label><br>
+                <input type="number" step="0.01" name="base_price_gp" min="0" value="${priceGp}" required style="width: 100%;">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <label>Min Party Level:</label><br>
+                <input type="number" name="min_level" min="1" max="20" value="${itemToEdit.min_level}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Min Weekly Stock:</label><br>
+                <input type="number" name="min_stock" min="0" value="${itemToEdit.min_stock}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Max Weekly Stock:</label><br>
+                <input type="number" name="max_stock" min="0" value="${itemToEdit.max_stock}" required style="width: 100%;">
+              </div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label>Description:</label><br>
+              <textarea name="description" rows="3" required style="width: 100%;">${escapeHtml(itemToEdit.description)}</textarea>
+            </div>
+            <button type="submit" class="btn btn-green">Save Changes</button>
+          </form>
+        </div>
+      `;
+    }
+
     contentHtml = `
+      ${editFormHtml}
       <div class="card">
         <h3>Master Catalog (${catalogItems.length} items)</h3>
         <table>
           <thead>
-            <tr><th>Name</th><th>Category</th><th>Tier</th><th>Base Price</th><th>Min Lvl</th><th>Stock Range</th></tr>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Category</th>
+              <th>Tier</th>
+              <th>Base Price</th>
+              <th>Min Lvl</th>
+              <th>Stock Range</th>
+              <th>Actions</th>
+            </tr>
           </thead>
           <tbody>
             ${catalogItems.map(c => `
               <tr>
+                <td>${c.id}</td>
                 <td><strong>${escapeHtml(c.name)}</strong></td>
                 <td>${escapeHtml(c.category)}</td>
                 <td><span class="tag">${c.tier}</span></td>
                 <td>${Math.round(c.base_price_cp / 100)} gp (${c.base_price_cp} cp)</td>
                 <td>Lvl ${c.min_level}</td>
                 <td>${c.min_stock} –${c.max_stock}</td>
+                <td>
+                  <a href="/admin?tab=catalog&edit_catalog=${c.id}" class="btn btn-small">Edit</a>
+                  <form method="POST" action="/admin/catalog/delete" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete &quot;${escapeHtml(c.name)}&quot; from the catalog?');">
+                    <input type="hidden" name="id" value="${c.id}">
+                    <button type="submit" class="btn btn-small btn-red">Delete</button>
+                  </form>
+                </td>
               </tr>
             `).join('')}
           </tbody>

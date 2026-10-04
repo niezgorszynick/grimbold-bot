@@ -130,6 +130,56 @@ module.exports = {
   getAllItemsForAdmin: () => queries.getAllItemsAdmin.all(),
   findItemByName: (name) => queries.getItemByName.get(name),
 
+  // Metody zarządzania tabelą catalog
+  getCatalogItemById: (id) => {
+    return db.prepare('SELECT * FROM catalog WHERE id = ?').get(id);
+  },
+
+  updateCatalogItem: ({ id, name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
+    const trimmedName = (name || '').trim();
+    const trimmedCat = (category || '').trim();
+    const trimmedDesc = (description || '').trim();
+    const validTiers = ['staple', 'common', 'rare', 'magic', 'service'];
+
+    if (!trimmedName) throw new Error('Catalog item name is required.');
+    if (!trimmedCat) throw new Error('Category is required.');
+    if (!validTiers.includes(tier)) throw new Error(`Invalid tier: ${tier}`);
+    if (isNaN(base_price_cp) || base_price_cp < 0) throw new Error('Base price (cp) must be >= 0.');
+    if (isNaN(min_level) || min_level < 1) throw new Error('Min level must be >= 1.');
+    if (isNaN(min_stock) || min_stock < 0) throw new Error('Min stock must be >= 0.');
+    if (isNaN(max_stock) || max_stock < min_stock) throw new Error('Max stock must be >= min stock.');
+    if (!trimmedDesc) throw new Error('Description is required.');
+
+    const stmt = db.prepare(`
+      UPDATE catalog
+      SET name = ?,
+          category = ?,
+          tier = ?,
+          base_price_cp = ?,
+          description = ?,
+          min_level = ?,
+          min_stock = ?,
+          max_stock = ?
+      WHERE id = ?
+    `);
+
+    return stmt.run(
+      trimmedName,
+      trimmedCat,
+      tier,
+      parseInt(base_price_cp, 10),
+      trimmedDesc,
+      parseInt(min_level, 10),
+      parseInt(min_stock, 10),
+      parseInt(max_stock, 10),
+      parseInt(id, 10)
+    );
+  },
+
+  deleteCatalogItem: (id) => {
+    return db.prepare('DELETE FROM catalog WHERE id = ?').run(parseInt(id, 10));
+  },
+
   addItem: ({ name, category, price, stock, description, is_active = 1 }) => {
     const trimmedName = (name || '').trim();
     const trimmedCategory = (category || '').trim();
