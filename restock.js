@@ -1,5 +1,6 @@
 // restock.js — weekly store restock and price fluctuation
-const db = require('./db');
+const dbModule = require('./db');
+const db = dbModule.db || dbModule;
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;

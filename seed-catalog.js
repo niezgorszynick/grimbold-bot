@@ -1,7 +1,8 @@
 // seed-catalog.js — zasilenie katalogu wzorcowego z pliku CSV
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
+const dbModule = require('./db');
+const db = dbModule.db || dbModule;
 const { parsePriceToCp } = require('./currency');
 
 function determineTierAndLevel(name, category, priceCp) {

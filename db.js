@@ -104,6 +104,11 @@ const queries = {
 };
 
 module.exports = {
+  //Bezpośredni dostęp do bazy dla skryptów (seed, restock, maintenance)
+  db,
+  prepare: (sql) => db.prepare(sql),
+  transaction: (fn) => db.transaction(fn),
+
   //getPartyLevel - w przyszłości ma dostosować katalog przedmiotów do poziomu party
   getPartyLevel: () => {
     const row = db.prepare("SELECT value FROM config WHERE key = 'party_level'").get();
