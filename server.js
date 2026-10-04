@@ -1123,33 +1123,55 @@ router.get('/', (req, res) => {
 
     const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
     const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
+    const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
+    const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
+
+    const addSpeciesOptions = DND_SPECIES.map(s =>
+      `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`
+    );
+    const addClassOptions = [
+      '<option value="" selected disabled>-- Choose Class --</option>',
+      ...classNames.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
+    ];
+    const addSubclassOptions = ['<option value="">-- None / Base --</option>'];
+
+    let editSpeciesOptions = [];
+    let editClassOptions = [];
+    let editSubclassOptions = [];
+
+    if (charToEdit) {
+      const normalizedRace = (charToEdit.race || '').toLowerCase();
+      const normalizedClass = (charToEdit.class || '').toLowerCase();
+      const normalizedSubclass = (charToEdit.subclass || '').toLowerCase();
+      editSpeciesOptions = DND_SPECIES.map(s =>
+        `<option value="${escapeHtml(s)}" ${s.toLowerCase() === normalizedRace ? 'selected' : ''}>${escapeHtml(s)}</option>`
+      );
+      if (charToEdit.race && !DND_SPECIES.some(s => s.toLowerCase() === normalizedRace)) {
+        editSpeciesOptions.unshift(`<option value="${escapeHtml(charToEdit.race)}" selected>${escapeHtml(charToEdit.race)}</option>`);
+      }
+
+      editClassOptions = classNames.map(c =>
+        `<option value="${escapeHtml(c)}" ${c.toLowerCase() === normalizedClass ? 'selected' : ''}>${escapeHtml(c)}</option>`
+      );
+      if (charToEdit.class && !classNames.some(c => c.toLowerCase() === normalizedClass)) {
+        editClassOptions.unshift(`<option value="${escapeHtml(charToEdit.class)}" selected>${escapeHtml(charToEdit.class)}</option>`);
+      }
+
+      const matchedClass = classNames.find(c => c.toLowerCase() === normalizedClass);
+      const availableSubs = matchedClass ? DND_CLASSES_AND_SUBCLASSES[matchedClass] : [];
+      editSubclassOptions = [
+        `<option value="" ${charToEdit.subclass ? '' : 'selected'}>-- None / Base --</option>`,
+        ...availableSubs.map(sub =>
+          `<option value="${escapeHtml(sub)}" ${sub.toLowerCase() === normalizedSubclass ? 'selected' : ''}>${escapeHtml(sub)}</option>`
+        )
+      ];
+      if (charToEdit.subclass && !availableSubs.some(sub => sub.toLowerCase() === normalizedSubclass)) {
+        editSubclassOptions.splice(1, 0, `<option value="${escapeHtml(charToEdit.subclass)}" selected>${escapeHtml(charToEdit.subclass)}</option>`);
+      }
+    }
 
     let charFormHtml = '';
     if (charToEdit) {
-      const speciesOptions = DND_SPECIES.map(s =>
-        `<option value="${escapeHtml(s)}" ${s === charToEdit.race ? 'selected' : ''}>${escapeHtml(s)}</option>`
-      );
-      if (charToEdit.race && !DND_SPECIES.includes(charToEdit.race)) {
-        speciesOptions.unshift(`<option value="${escapeHtml(charToEdit.race)}" selected>${escapeHtml(charToEdit.race)}</option>`);
-      }
-
-      const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
-      const classOptions = classNames.map(c =>
-        `<option value="${escapeHtml(c)}" ${c === charToEdit.class ? 'selected' : ''}>${escapeHtml(c)}</option>`
-      );
-      if (charToEdit.class && !classNames.includes(charToEdit.class)) {
-        classOptions.unshift(`<option value="${escapeHtml(charToEdit.class)}" selected>${escapeHtml(charToEdit.class)}</option>`);
-      }
-
-      const subclasses = DND_CLASSES_AND_SUBCLASSES[charToEdit.class] || [];
-      const subclassOptions = [`<option value="" ${charToEdit.subclass ? '' : 'selected'}>-- No Subclass --</option>`, ...subclasses.map(s =>
-        `<option value="${escapeHtml(s)}" ${s === charToEdit.subclass ? 'selected' : ''}>${escapeHtml(s)}</option>`
-      )];
-      if (charToEdit.subclass && !subclasses.includes(charToEdit.subclass)) {
-        subclassOptions.splice(1, 0, `<option value="${escapeHtml(charToEdit.subclass)}" selected>${escapeHtml(charToEdit.subclass)}</option>`);
-      }
-
-      const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
       charFormHtml = `
         <div class="card" style="border: 1px solid #5865f2; margin-bottom: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1177,23 +1199,23 @@ router.get('/', (req, res) => {
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 12px;">
               <div>
                 <label style="white-space: nowrap;">Species (2024):</label><br>
-                <input type="text" placeholder="Filter species..." oninput="filterDropdown('speciesFilter', 'speciesSelect')" id="speciesFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
-                <select name="race" id="speciesSelect" required style="width: 100%; margin-top: 4px;" size="4">
-                  ${speciesOptions.join('')}
+                <input type="text" placeholder="Filter species..." oninput="filterDropdown('editSpeciesFilter', 'editSpeciesSelect')" id="editSpeciesFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                <select name="race" id="editSpeciesSelect" required style="width: 100%; margin-top: 4px;" size="4">
+                  ${editSpeciesOptions.join('')}
                 </select>
               </div>
               <div>
                 <label style="white-space: nowrap;">Class (2024):</label><br>
-                <input type="text" placeholder="Filter classes..." oninput="filterDropdown('classFilter', 'classSelect')" id="classFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
-                <select name="class_name" id="classSelect" onchange="onClassChange(this.value)" required style="width: 100%; margin-top: 4px;" size="4">
-                  ${classOptions.join('')}
+                <input type="text" placeholder="Filter classes..." oninput="filterDropdown('editClassFilter', 'editClassSelect', 'editSubclassSelect', 'editSubclassFilter')" id="editClassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                <select name="class_name" id="editClassSelect" onchange="onClassChange(this.value, 'editSubclassSelect', 'editSubclassFilter')" required style="width: 100%; margin-top: 4px;" size="4">
+                  ${editClassOptions.join('')}
                 </select>
               </div>
               <div>
                 <label style="white-space: nowrap;">Subclass (2024):</label><br>
-                <input type="text" placeholder="Filter subclasses..." oninput="filterDropdown('subclassFilter', 'subclassSelect')" id="subclassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
-                <select name="subclass" id="subclassSelect" style="width: 100%; margin-top: 4px;" size="4">
-                  ${subclassOptions.join('')}
+                <input type="text" placeholder="Filter subclasses..." oninput="filterDropdown('editSubclassFilter', 'editSubclassSelect')" id="editSubclassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                <select name="subclass" id="editSubclassSelect" style="width: 100%; margin-top: 4px;" size="4">
+                  ${editSubclassOptions.join('')}
                 </select>
               </div>
             </div>
@@ -1234,43 +1256,6 @@ router.get('/', (req, res) => {
         </div>
 
         <script>
-          const classTree = ${dndClassesJson};
-
-          function filterDropdown(filterId, selectId) {
-            const filter = document.getElementById(filterId);
-            const select = document.getElementById(selectId);
-            const filterText = filter.value.trim().toLowerCase();
-            const options = select.querySelectorAll('option');
-            let firstVisible = null;
-
-            options.forEach(option => {
-              const match = option.text.toLowerCase().includes(filterText);
-              option.style.display = match ? '' : 'none';
-              if (match && !firstVisible) firstVisible = option;
-            });
-
-            if (firstVisible && filterText.length > 0) {
-              select.value = firstVisible.value;
-              if (selectId === 'classSelect') onClassChange(firstVisible.value);
-            }
-          }
-
-          function onClassChange(className) {
-            const subclassSelect = document.getElementById('subclassSelect');
-            const subclassFilter = document.getElementById('subclassFilter');
-            if (subclassFilter) subclassFilter.value = '';
-            subclassSelect.innerHTML = '<option value="">-- None / Base --</option>';
-
-            if (className && classTree[className]) {
-              classTree[className].forEach(subclass => {
-                const option = document.createElement('option');
-                option.value = subclass;
-                option.textContent = subclass;
-                subclassSelect.appendChild(option);
-              });
-            }
-          }
-
           function toggleLevelInput(cb) {
             const input = document.getElementById('editCharLevel');
             if (!cb.checked) {
@@ -1328,19 +1313,28 @@ router.get('/', (req, res) => {
                 </div>
               </div>
 
-              <!-- Row 2: Race, Class, Subclass -->
+              <!-- Row 2: Species, Class, Subclass with Live Search Dropdowns -->
               <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 12px;">
                 <div>
-                  <label style="white-space: nowrap;">Race:</label><br>
-                  <input type="text" name="race" placeholder="e.g. Hill Dwarf" required style="width: 100%; margin-top: 4px;">
+                  <label style="white-space: nowrap;">Species (2024):</label><br>
+                  <input type="text" placeholder="Filter species..." oninput="filterDropdown('addSpeciesFilter', 'addSpeciesSelect')" id="addSpeciesFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                  <select name="race" id="addSpeciesSelect" required style="width: 100%; margin-top: 4px;" size="4">
+                    ${addSpeciesOptions.join('')}
+                  </select>
                 </div>
                 <div>
-                  <label style="white-space: nowrap;">Class:</label><br>
-                  <input type="text" name="class_name" placeholder="e.g. Fighter" required style="width: 100%; margin-top: 4px;">
+                  <label style="white-space: nowrap;">Class (2024):</label><br>
+                  <input type="text" placeholder="Filter classes..." oninput="filterDropdown('addClassFilter', 'addClassSelect', 'addSubclassSelect', 'addSubclassFilter')" id="addClassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                  <select name="class_name" id="addClassSelect" onchange="onClassChange(this.value, 'addSubclassSelect', 'addSubclassFilter')" required style="width: 100%; margin-top: 4px;" size="4">
+                    ${addClassOptions.join('')}
+                  </select>
                 </div>
                 <div>
-                  <label style="white-space: nowrap;">Subclass:</label><br>
-                  <input type="text" name="subclass" placeholder="e.g. Battle Master" style="width: 100%; margin-top: 4px;">
+                  <label style="white-space: nowrap;">Subclass (2024):</label><br>
+                  <input type="text" placeholder="Filter subclasses..." oninput="filterDropdown('addSubclassFilter', 'addSubclassSelect')" id="addSubclassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                  <select name="subclass" id="addSubclassSelect" style="width: 100%; margin-top: 4px;" size="4">
+                    ${addSubclassOptions.join('')}
+                  </select>
                 </div>
               </div>
 
@@ -1427,6 +1421,56 @@ router.get('/', (req, res) => {
           </tbody>
         </table>
       </div>
+
+      <script>
+        const classTree = ${dndClassesJson};
+
+        function filterDropdown(filterInputId, selectId) {
+          const filterEl = document.getElementById(filterInputId);
+          const selectEl = document.getElementById(selectId);
+          if (!filterEl || !selectEl) return;
+
+          const filterText = filterEl.value.trim().toLowerCase();
+          const options = selectEl.querySelectorAll('option');
+          let firstMatch = null;
+
+          options.forEach(option => {
+            const isMatch = option.text.toLowerCase().includes(filterText);
+            option.style.display = isMatch ? '' : 'none';
+            if (isMatch && !firstMatch) firstMatch = option;
+          });
+
+          if (firstMatch && filterText.length > 0) {
+            selectEl.value = firstMatch.value;
+            if (selectId.includes('ClassSelect')) {
+              const isEdit = selectId.startsWith('edit');
+              onClassChange(
+                firstMatch.value,
+                isEdit ? 'editSubclassSelect' : 'addSubclassSelect',
+                isEdit ? 'editSubclassFilter' : 'addSubclassFilter'
+              );
+            }
+          }
+        }
+
+        function onClassChange(className, subSelectId, subFilterId) {
+          const subSelect = document.getElementById(subSelectId);
+          const subFilter = document.getElementById(subFilterId);
+          if (subFilter) subFilter.value = '';
+          if (!subSelect) return;
+
+          subSelect.innerHTML = '<option value="">-- None / Base --</option>';
+
+          if (className && classTree[className]) {
+            classTree[className].forEach(subclass => {
+              const option = document.createElement('option');
+              option.value = subclass;
+              option.textContent = subclass;
+              subSelect.appendChild(option);
+            });
+          }
+        }
+      </script>
     `;
   }
 
