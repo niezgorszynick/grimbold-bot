@@ -330,41 +330,23 @@ router.get('/', (req, res) => {
     })));
 
     contentHtml = `
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-        <!-- Campagin & Restock -->
-        <div class="card" style="margin-bottom: 0;">
-          <h3>Campaign Level & Shelf Restock</h3>
-          <form method="POST" action="/admin/party-level" style="display:flex; align-items:center; gap: 10px; margin-bottom: 16px;">
-            <label>Party Level:</label>
-            <input type="number" name="party_level" min="1" max="20" value="${partyLevel}" required style="width: 70px;">
-            <button type="submit" class="btn">Update Level</button>
-          </form>
-
-          <form method="POST" action="/admin/restock" onsubmit="return confirm('Trigger a full store restock? Current stock will be cleared and rolled anew, and Discord will be notified.');">
-            <button type="submit" class="btn btn-gold" style="width: 100%; font-weight: bold; padding: 10px;">
-              🔄 Trigger Manual Restock & Announce
-            </button>
-          </form>
-        </div>
-
-        <!-- Custom Grimbold Message -->
-        <div class="card" style="margin-bottom: 0;">
-          <h3>Send Custom Message from Grimbold</h3>
-          <form method="POST" action="/admin/message">
-            <div style="margin-bottom: 8px;">
-              <input type="text" name="title" placeholder="Notice Title (Optional, e.g. Special Deal Today!)" style="width: 100%;">
-            </div>
-            <div style="margin-bottom: 8px;">
-              <textarea name="message" rows="3" placeholder="Speak as Grimbold... e.g. 'Pack your bags, travelers, prices drop at dawn!'" required style="width: 100%;"></textarea>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <label style="font-size: 13px; color: #949ba4;">
-                <input type="checkbox" name="as_embed" value="1" checked> Format as Grimbold's Gold Parchment Embed
-              </label>
-              <button type="submit" class="btn btn-green">📢 Send to Discord</button>
-            </div>
-          </form>
-        </div>
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>Send Custom Message from Grimbold</h3>
+        <form method="POST" action="/admin/message">
+          <div style="margin-bottom: 8px;">
+            <input type="text" name="title" placeholder="Notice Title (Optional, e.g. Special Deal Today!)" style="width: 100%;">
+          </div>
+          <div style="margin-bottom: 8px;">
+            <textarea name="message" rows="3" placeholder="Speak as Grimbold... e.g. 'Pack your bags, travelers, prices drop at dawn!'" required style="width: 100%;"></textarea>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label style="font-size: 13px; color: #949ba4;">
+              <input type="checkbox" name="as_embed" value="1" checked> Format as Grimbold's Gold Parchment Embed
+            </label>
+            <button type="submit" class="btn btn-green">📢 Send to Discord</button>
+          </div>
+        </form>
+      </div>
       </div>
 
       <div class="card">
