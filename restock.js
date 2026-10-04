@@ -1,6 +1,7 @@
 // restock.js — weekly store restock and price fluctuation
 const dbModule = require('./db');
-const db = dbModule.db || dbModule;
+// Instancja bazy SQLite z better-sqlite3:
+const sqlite = dbModule.db || dbModule;
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -18,8 +19,15 @@ function pickRandom(array, count) {
 }
 
 function restockShop() {
-  const partyLevel = db.getPartyLevel();
-  const pool = db.getCatalogItemsByLevel(partyLevel);
+  // 1. Pobieramy party level
+  const partyLevel = typeof dbModule.getPartyLevel === 'function'
+    ? dbModule.getPartyLevel()
+    : 3;
+
+  // 2. Pobieramy przedmioty z katalogu dla danego poziomu
+  const pool = typeof dbModule.getCatalogItemsByLevel === 'function'
+    ? dbModule.getCatalogItemsByLevel(partyLevel)
+    : sqlite.prepare('SELECT * FROM catalog WHERE min_level <= ?').all(partyLevel);
 
   const staples = pool.filter(i => i.tier === 'staple');
   const commons = pool.filter(i => i.tier === 'common');
@@ -28,7 +36,7 @@ function restockShop() {
 
   const selectedStaples = staples;
   const selectedCommons = pickRandom(commons, 10);
-  const selectedRares = pickRandom(rares, 2); // Dokładnie 2 rare
+  const selectedRares = pickRandom(rares, 2);   // Dokładnie 2 rare
   const selectedMagics = pickRandom(magics, 1); // Dokładnie 1 magic
 
   const newWeeklySelection = [
@@ -38,21 +46,22 @@ function restockShop() {
     ...selectedMagics
   ];
 
-  const updateStore = db.transaction(() => {
-    // Czyścimy obecną ladę
-    db.prepare('DELETE FROM items').run();
+  // 3. Atomowe czyszczenie i zatowarowanie items
+  const updateStore = sqlite.transaction(() => {
+    sqlite.prepare('DELETE FROM items').run();
 
-    const insertItem = db.prepare(`
+    const insertItem = sqlite.prepare(`
       INSERT INTO items (name, category, price, stock, description, is_active)
       VALUES (?, ?, ?, ?, ?, 1)
     `);
 
     for (const item of newWeeklySelection) {
       const stock = randomInt(item.min_stock, item.max_stock);
-      // Staple mają stałą cenę, pozostałe podlegają wahaniom rynkowym
-      const priceCp = item.tier === 'staple' ? item.base_price_cp : calculateFluctuatedPriceCp(item.base_price_cp);
+      const priceCp = item.tier === 'staple'
+        ? item.base_price_cp
+        : calculateFluctuatedPriceCp(item.base_price_cp);
 
-      // Konwersja na GP do dotychczasowej kolumny price
+      // Konwersja z cp na gp dla kolumny price w items (min. 1 gp)
       const priceGp = Math.max(1, Math.round(priceCp / 100));
 
       insertItem.run(
