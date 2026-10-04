@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('./db');
+const { formatCp } = require('./currency');
 
 // Basic Auth Middleware
 router.use((req, res, next) => {
@@ -207,12 +208,12 @@ router.get('/', (req, res) => {
           <tbody>
             ${activeItems.map(item => `
               <tr>
-                <td>${item.id}</td>
-                <td><strong>${escapeHtml(item.name)}</strong></td>
-                <td>${escapeHtml(item.category)}</td>
-                <td>${item.price} gp</td>
-                <td>${item.stock === null ? '∞' : item.stock}</td>
-                <td>${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
+                <td data-sort="${item.id}">${item.id}</td>
+                <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
+                <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
+                <td data-sort="${item.price_cp}">${formatCp(item.price_cp)}</td>
+                <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
+                <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
                 <td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
@@ -331,13 +332,13 @@ router.get('/', (req, res) => {
           <tbody>
             ${catalogItems.map(c => `
               <tr>
-                <td>${c.id}</td>
-                <td><strong>${escapeHtml(c.name)}</strong></td>
-                <td>${escapeHtml(c.category)}</td>
-                <td><span class="tag">${c.tier}</span></td>
-                <td>${Math.round(c.base_price_cp / 100)} gp (${c.base_price_cp} cp)</td>
-                <td>Lvl ${c.min_level}</td>
-                <td>${c.min_stock} – ${c.max_stock}</td>
+                <td data-sort="${c.id}">${c.id}</td>
+                <td data-sort="${escapeHtml(c.name)}"><strong>${escapeHtml(c.name)}</strong></td>
+                <td data-sort="${escapeHtml(c.category)}">${escapeHtml(c.category)}</td>
+                <td data-sort="${c.tier}"><span class="tag">${c.tier}</span></td>
+                <td data-sort="${c.base_price_cp}">${Math.round(c.base_price_cp / 100)} gp (${c.base_price_cp} cp)</td>
+                <td data-sort="${c.min_level}">Lvl ${c.min_level}</td>
+                <td data-sort="${c.min_stock}">${c.min_stock} – ${c.max_stock}</td>
                 <td>
                   <a href="/admin?tab=catalog&edit_catalog=${c.id}" class="btn btn-small">Edit</a>
                   <form method="POST" action="/admin/catalog/delete" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete &quot;${escapeHtml(c.name)}&quot; from the catalog?');">
@@ -489,51 +490,37 @@ router.get('/', (req, res) => {
               const tbody = table.querySelector('tbody');
               const rows = Array.from(tbody.querySelectorAll('tr'));
               const index = Array.from(header.parentNode.children).indexOf(header);
-              const currentAsc = header.classList.contains('sort-asc');
-              const isAscending = !currentAsc;
+              const isAscending = !header.classList.contains('sort-asc');
 
-              // Reset klas na pozostałych nagłówkach w obrębie tabeli
+              // Reset klas w nagłówkach
               header.parentNode.querySelectorAll('th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc');
               });
               header.classList.add(isAscending ? 'sort-asc' : 'sort-desc');
 
-              // Funkcja normalizująca komórki pod kątem liczb, walut i dat
-              const parseCellValue = (text) => {
-                const raw = text.trim();
-                if (raw === '∞') return Infinity;
-
-                // Wyodrębnienie pierwszej liczby (np. "12 gp", "Lvl 3", "d20 = 17", "1 – 3")
-                const matchNumber = raw.match(/-?\d+(\.\d+)?/);
-                if (matchNumber && !isNaN(matchNumber[0])) {
-                  // Jeśli to nie jest data w formacie ISO (YYYY-MM-DD)
-                  if (!raw.match(/^\d{4}-\d{2}-\d{2}/)) {
-                    return parseFloat(matchNumber[0]);
-                  }
-                }
-
-                // Sprawdzenie czy to data ISO
-                const parsedDate = Date.parse(raw);
-                if (!isNaN(parsedDate) && raw.length > 7 && (raw.includes('-') || raw.includes(':'))) {
-                  return parsedDate;
-                }
-
-                return raw.toLowerCase();
-              };
-
               rows.sort((rowA, rowB) => {
-                const cellA = rowA.children[index] ? rowA.children[index].innerText : '';
-                const cellB = rowB.children[index] ? rowB.children[index].innerText : '';
+                const cellA = rowA.children[index];
+                const cellB = rowB.children[index];
+                if (!cellA || !cellB) return 0;
 
-                const valA = parseCellValue(cellA);
-                const valB = parseCellValue(cellB);
+                // Pobranie wartości z data-sort lub z tekstu
+                const rawA = cellA.hasAttribute('data-sort') ? cellA.getAttribute('data-sort') : cellA.innerText.trim();
+                const rawB = cellB.hasAttribute('data-sort') ? cellB.getAttribute('data-sort') : cellB.innerText.trim();
 
-                if (valA < valB) return isAscending ? -1 : 1;
-                if (valA > valB) return isAscending ? 1 : -1;
-                return 0;
+                // Sprawdzenie czy wartości są numeryczne
+                const numA = Number(rawA);
+                const numB = Number(rawB);
+
+                if (!isNaN(numA) && !isNaN(numB)) {
+                  return isAscending ? numA - numB : numB - numA;
+                }
+
+                // Porównanie tekstowe
+                return isAscending 
+                  ? rawA.localeCompare(rawB, undefined, { numeric: true, sensitivity: 'base' })
+                  : rawB.localeCompare(rawA, undefined, { numeric: true, sensitivity: 'base' });
               });
 
-              // Ponowne wstawienie posortowanych wierszy do DOM
               rows.forEach(row => tbody.appendChild(row));
             });
           });

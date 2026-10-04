@@ -93,15 +93,16 @@ async function restockShop() {
         ? item.base_price_cp
         : calculateFluctuatedPriceCp(item.base_price_cp);
 
-      const priceGp = Math.max(1, Math.round(priceCp / 100));
+      const priceGp = (priceCp / 100).toFixed(2);
 
       insertItem.run(
         item.name,
         item.category,
-        priceGp,
+        Math.max(0, Math.round(priceCp / 100)), // gp
         stock,
-        item.description
-      );
+        item.description,
+        priceCp // nowa kolumna price_cp
+        );
     }
   });
 

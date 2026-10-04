@@ -31,6 +31,7 @@ db.exec(`
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+  ALTER TABLE items ADD COLUMN price_cp INTEGER NOT NULL DEFAULT 100;
 `);
 
 // 3. Tabela historii sprzedaży (odpowiednik arkusza Sales)
