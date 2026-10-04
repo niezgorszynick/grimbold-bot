@@ -321,9 +321,10 @@ router.get('/', (req, res) => {
               <th class="sortable">ID</th>
               <th class="sortable">Name</th>
               <th class="sortable">Category</th>
-              <th class="sortable">Price</th>
-              <th class="sortable">Stock</th>
-              <th class="sortable">Status</th>
+              <th class="sortable">Tier</th>
+              <th class="sortable">Base Price</th>
+              <th class="sortable">Min Lvl</th>
+              <th class="sortable">Stock Range</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -336,7 +337,7 @@ router.get('/', (req, res) => {
                 <td><span class="tag">${c.tier}</span></td>
                 <td>${Math.round(c.base_price_cp / 100)} gp (${c.base_price_cp} cp)</td>
                 <td>Lvl ${c.min_level}</td>
-                <td>${c.min_stock} –${c.max_stock}</td>
+                <td>${c.min_stock} – ${c.max_stock}</td>
                 <td>
                   <a href="/admin?tab=catalog&edit_catalog=${c.id}" class="btn btn-small">Edit</a>
                   <form method="POST" action="/admin/catalog/delete" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete &quot;${escapeHtml(c.name)}&quot; from the catalog?');">
