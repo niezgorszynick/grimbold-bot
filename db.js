@@ -80,7 +80,7 @@ db.exec(`
 
 // 5. Stwórz tabele dla graczy i ich postaci
 db.exec(`
-CREATE TABLE IF NOT EXISTS players (
+  CREATE TABLE IF NOT EXISTS players (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     discord_id TEXT NOT NULL UNIQUE,
     discord_tag TEXT NOT NULL,
@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS players (
     status TEXT NOT NULL DEFAULT 'alive' CHECK (status IN ('alive', 'dead')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
- `);
+  );
+`);
 
 const queries = {
   // Rolls
