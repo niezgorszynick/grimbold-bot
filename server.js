@@ -208,13 +208,13 @@ router.get('/', (req, res) => {
           <tbody>
             ${activeItems.map(item => `
               <tr>
-                <td data-sort="${item.id}">${item.id}</td>
-                <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
-                <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
-                <td data-sort="${item.price_cp}">${formatCp(item.price_cp)}</td>
-                <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
-                <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-                <td>
+               <td data-sort="${item.id}">${item.id}</td>
+               <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
+               <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
+               <td data-sort="${item.price}">${formatCp(item.price)}</td>
+               <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
+               <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
+               <td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
                     <input type="hidden" name="action" value="toggle">

@@ -1,18 +1,18 @@
-// currency.js — D&D 5e Currency Conversion & Formatting
-// 1 gp = 10 sp = 100 cp
-
+// currency.js — obsługa przeliczania i formatowania walut D&D 5e
 function parsePriceToCp(raw) {
-  if (!raw) return 100; // domyślnie 1 gp (100 cp)
+  if (!raw && raw !== 0) return 100;
   const clean = String(raw).replace(/GP/i, '').replace(/,/g, '').trim();
   const val = parseFloat(clean);
-  if (isNaN(val) || val <= 0) return 100;
+  if (isNaN(val) || val < 0) return 100;
   return Math.max(1, Math.round(val * 100));
 }
 
 function formatCp(totalCp) {
-  if (!totalCp || totalCp <= 0) return '0 gp';
-  const gp = Math.floor(totalCp / 100);
-  const remSp = totalCp % 100;
+  const cpVal = parseInt(totalCp, 10);
+  if (isNaN(cpVal) || cpVal <= 0) return '0 cp';
+
+  const gp = Math.floor(cpVal / 100);
+  const remSp = cpVal % 100;
   const sp = Math.floor(remSp / 10);
   const cp = remSp % 10;
 
@@ -20,7 +20,8 @@ function formatCp(totalCp) {
   if (gp > 0) parts.push(`${gp} gp`);
   if (sp > 0) parts.push(`${sp} sp`);
   if (cp > 0) parts.push(`${cp} cp`);
-  return parts.join(', ');
+
+  return parts.length > 0 ? parts.join(', ') : '0 cp';
 }
 
 module.exports = { parsePriceToCp, formatCp };
