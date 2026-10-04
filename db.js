@@ -57,11 +57,19 @@ db.exec(`
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     category TEXT NOT NULL,
     tier TEXT NOT NULL CHECK (tier IN ('staple', 'common', 'rare', 'magic', 'service')),
-    base_price INTEGER NOT NULL CHECK (base_price >= 0),
+    base_price_cp INTEGER NOT NULL CHECK (base_price_cp >= 0),
     description TEXT NOT NULL,
-    min_stock INTEGER DEFAULT 1,
-    max_stock INTEGER DEFAULT 1
+    min_level INTEGER NOT NULL DEFAULT 1,
+    min_stock INTEGER NOT NULL DEFAULT 1,
+    max_stock INTEGER NOT NULL DEFAULT 3
   );
+
+  CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  INSERT OR IGNORE INTO config (key, value) VALUES ('party_level', '3');
 `);
 
 const queries = {
@@ -96,6 +104,18 @@ const queries = {
 };
 
 module.exports = {
+  //getPartyLevel - w przyszłości ma dostosować katalog przedmiotów do poziomu party
+  getPartyLevel: () => {
+    const row = db.prepare("SELECT value FROM config WHERE key = 'party_level'").get();
+    return row ? parseInt(row.value, 10) : 1;
+  },
+  setPartyLevel: (level) => {
+    return db.prepare("INSERT INTO config (key, value) VALUES ('party_level', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(level));
+  },
+  getCatalogItemsByLevel: (maxLevel) => {
+    return db.prepare("SELECT * FROM catalog WHERE min_level <= ?").all(maxLevel);
+  },
+  
   // Rolls
   hasRolledThisWeek: (userId, weekStart) => queries.getRoll.get(userId, weekStart),
   saveRoll: (userId, weekStart, rollValue) => queries.saveRoll.run(userId, weekStart, rollValue),
