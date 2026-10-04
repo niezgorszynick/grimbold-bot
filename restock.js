@@ -9,6 +9,7 @@ function randomInt(min, max) {
 }
 
 function calculateFluctuatedPriceCp(basePriceCp) {
+  // Wahanie rynkowe od 0.85 do 1.15
   const factor = 0.85 + Math.random() * 0.30;
   return Math.max(1, Math.round(basePriceCp * factor));
 }
@@ -62,6 +63,11 @@ async function restockShop() {
     ? dbModule.getCatalogItemsByLevel(partyLevel)
     : sqlite.prepare('SELECT * FROM catalog WHERE min_level <= ?').all(partyLevel);
 
+  if (!pool || pool.length === 0) {
+    console.error('❌ No items found in catalog for party level:', partyLevel);
+    return;
+  }
+
   const staples = pool.filter(i => i.tier === 'staple');
   const commons = pool.filter(i => i.tier === 'common');
   const rares = pool.filter(i => i.tier === 'rare');
@@ -69,8 +75,8 @@ async function restockShop() {
 
   const selectedStaples = staples;
   const selectedCommons = pickRandom(commons, 10);
-  const selectedRares = pickRandom(rares, 2);   // Dokładnie 2 rare
-  const selectedMagics = pickRandom(magics, 1); // Dokładnie 1 magic
+  const selectedRares = pickRandom(rares, 2);   // Dokładnie 2 przedmioty rare
+  const selectedMagics = pickRandom(magics, 1); // Dokładnie 1 przedmiot magiczny
 
   const newWeeklySelection = [
     ...selectedStaples,
@@ -80,8 +86,10 @@ async function restockShop() {
   ];
 
   const updateStore = sqlite.transaction(() => {
+    // Czyszczenie bieżącej oferty
     sqlite.prepare('DELETE FROM items').run();
 
+    // Kolumna price przechowuje dokładną cenę w miedziakach (cp)
     const insertItem = sqlite.prepare(`
       INSERT INTO items (name, category, price, stock, description, is_active)
       VALUES (?, ?, ?, ?, ?, 1)
@@ -89,20 +97,19 @@ async function restockShop() {
 
     for (const item of newWeeklySelection) {
       const stock = randomInt(item.min_stock, item.max_stock);
-      const priceCp = item.tier === 'staple'
+      
+      // Staple zachowują stałą cenę bazową, reszta podlega wahaniom
+      const finalPriceCp = item.tier === 'staple'
         ? item.base_price_cp
         : calculateFluctuatedPriceCp(item.base_price_cp);
-
-      const priceGp = (priceCp / 100).toFixed(2);
 
       insertItem.run(
         item.name,
         item.category,
-        Math.max(0, Math.round(priceCp / 100)), // gp
+        finalPriceCp,
         stock,
-        item.description,
-        priceCp // nowa kolumna price_cp
-        );
+        item.description
+      );
     }
   });
 

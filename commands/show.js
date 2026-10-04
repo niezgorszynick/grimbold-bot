@@ -1,4 +1,5 @@
 // commands/show.js — displays active shop items grouped by category without descriptions
+const { formatCp } = require('../currency');
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../db');
 const { getUserRoll, getDiscount, applyModifier } = require('../rollTracker');
@@ -63,15 +64,15 @@ module.exports = {
           let stockTag = '';
           if (isSoldOut) stockTag = ' **(Sold Out)**';
           else if (item.stock !== null) stockTag = ` (${item.stock} left)`;
-
+          
           let priceStr = '';
           if (isSoldOut) {
             priceStr = ' — *sold out*';
           } else if (modifier && modifier.percent !== 0 && finalPrice !== item.price) {
-            priceStr = ` — ~~${item.price} gp~~ → **${finalPrice} gp**`;
+            priceStr = ` — ~~${formatCp(item.price)}~~ → **${formatCp(finalPrice)}**`;
           } else {
-            priceStr = ` — **${item.price} gp**`;
-          }
+            priceStr = ` — **${formatCp(item.price)}**`;
+}
 
           const entry = `• **${item.name}**${stockTag}${priceStr}`;
 

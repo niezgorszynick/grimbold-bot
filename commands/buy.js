@@ -1,6 +1,7 @@
 // commands/buy.js — /buy <item> [quantity]
 // Purchases an item from the shop, validates stock, applies roll modifier, and writes to ledger.
 
+const { formatCp } = require('../currency');
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../db');
 const { getUserRoll, getDiscount, applyModifier } = require('../rollTracker');
@@ -112,7 +113,7 @@ module.exports = {
         .setDescription(
           `*"Pleasure doing business with you, ${interaction.user}."*\n\n` +
           `**Item:** ${item.name}${qtyStr}\n` +
-          `**Total:** **${totalPaid} gp**${unitStr}${discountNote}\n\n` +
+          `**Total:** **${formatCp(totalPaid)}**${unitStr}${discountNote}\n\n` +
           `*${item.description}*`
         )
         .setFooter({ text: "Grimbold's Emporium • All sales final • No refunds" })
