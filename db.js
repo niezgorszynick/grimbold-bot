@@ -637,11 +637,12 @@ module.exports = {
     SELECT 
       r.id,
       r.user_id,
-      COALESCE(r.username, s.buyer_tag, r.user_id) AS display_name,
+      COALESCE(p.discord_tag, r.username, s.buyer_tag, r.user_id) AS display_name,
       r.week_start,
       r.roll_value,
       r.created_at
     FROM rolls r
+    LEFT JOIN players p ON p.discord_id = r.user_id
     LEFT JOIN (
       SELECT buyer_id, buyer_tag 
       FROM sales 
