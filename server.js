@@ -1318,21 +1318,21 @@ router.get('/', (req, res) => {
                 <div>
                   <label style="white-space: nowrap;">Species (2024):</label><br>
                   <input type="text" placeholder="Filter species..." oninput="filterDropdown('addSpeciesFilter', 'addSpeciesSelect')" id="addSpeciesFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
-                  <select name="race" id="addSpeciesSelect" required style="width: 100%; margin-top: 4px;" size="4">
+                  <select name="race" id="addSpeciesSelect" required style="width: 100%; margin-top: 4px;" size="8">
                     ${addSpeciesOptions.join('')}
                   </select>
                 </div>
                 <div>
                   <label style="white-space: nowrap;">Class (2024):</label><br>
                   <input type="text" placeholder="Filter classes..." oninput="filterDropdown('addClassFilter', 'addClassSelect', 'addSubclassSelect', 'addSubclassFilter')" id="addClassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
-                  <select name="class_name" id="addClassSelect" onchange="onClassChange(this.value, 'addSubclassSelect', 'addSubclassFilter')" required style="width: 100%; margin-top: 4px;" size="4">
+                  <select name="class_name" id="addClassSelect" onchange="onClassChange(this.value, 'addSubclassSelect', 'addSubclassFilter')" required style="width: 100%; margin-top: 4px;" size="8">
                     ${addClassOptions.join('')}
                   </select>
                 </div>
                 <div>
                   <label style="white-space: nowrap;">Subclass (2024):</label><br>
                   <input type="text" placeholder="Filter subclasses..." oninput="filterDropdown('addSubclassFilter', 'addSubclassSelect')" id="addSubclassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
-                  <select name="subclass" id="addSubclassSelect" style="width: 100%; margin-top: 4px;" size="4">
+                  <select name="subclass" id="addSubclassSelect" style="width: 100%; margin-top: 4px;" size="8">
                     ${addSubclassOptions.join('')}
                   </select>
                 </div>
