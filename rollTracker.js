@@ -33,9 +33,9 @@ function getUserRoll(userId) {
   return row ? row.roll_value : null;
 }
 
-function setUserRoll(userId, rollResult) {
+function setUserRoll(userId, username, rollResult) {
   const week = getWeekKey();
-  db.saveRoll(userId, week, rollResult);
+  db.saveRoll(userId, username, week, rollResult);
 }
 
 module.exports = {

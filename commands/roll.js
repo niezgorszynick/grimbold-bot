@@ -46,7 +46,8 @@ module.exports = {
 
       // fresh roll
       const roll = Math.floor(Math.random() * 20) + 1;
-      setUserRoll(interaction.user.id, roll);
+      const userTag = interaction.user.tag || interaction.user.username;
+      setUserRoll(interaction.user.id, userTag, roll);
       const modifier = getDiscount(roll);
 
       const isNat20 = roll === 20;

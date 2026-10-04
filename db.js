@@ -19,6 +19,12 @@ db.exec(`
   );
 `);
 
+// Bezpieczne dodanie kolumny username do rolls, jeśli jeszcze nie istnieje
+const rollsColumns = db.prepare("PRAGMA table_info(rolls)").all();
+if (!rollsColumns.some(col => col.name === 'username')) {
+  db.exec("ALTER TABLE rolls ADD COLUMN username TEXT;");
+}
+
 // 2. Tabela przedmiotów
 db.exec(`
   CREATE TABLE IF NOT EXISTS items (
@@ -75,10 +81,12 @@ db.exec(`
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
-  saveRoll: db.prepare(`
-    INSERT INTO rolls (user_id, week_start, roll_value)
-    VALUES (?, ?, ?)
-    ON CONFLICT(user_id, week_start) DO UPDATE SET roll_value = excluded.roll_value
+ saveRoll: db.prepare(`
+    INSERT INTO rolls (user_id, username, week_start, roll_value)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, week_start) DO UPDATE SET 
+      roll_value = excluded.roll_value,
+      username = excluded.username
   `),
 
   // Items
@@ -172,7 +180,7 @@ module.exports = {
   
   // Rolls
   hasRolledThisWeek: (userId, weekStart) => queries.getRoll.get(userId, weekStart),
-  saveRoll: (userId, weekStart, rollValue) => queries.saveRoll.run(userId, weekStart, rollValue),
+  saveRoll: (userId, username, weekStart, rollValue) => queries.saveRoll.run(userId, username, weekStart, rollValue),
 
   // Items
   getAllActiveItems: () => queries.getAllItems.all(),
@@ -312,7 +320,23 @@ module.exports = {
 
   getAllCatalogItems: () => db.prepare('SELECT * FROM catalog ORDER BY name ASC').all(),
   getAllSales: () => db.prepare('SELECT * FROM sales ORDER BY created_at DESC LIMIT 100').all(),
-  getAllRolls: () => db.prepare('SELECT * FROM rolls ORDER BY week_start DESC, created_at DESC LIMIT 100').all(),
+  getAllRolls: () => db.prepare(`
+    SELECT 
+      r.id,
+      r.user_id,
+      COALESCE(r.username, s.buyer_tag, r.user_id) AS display_name,
+      r.week_start,
+      r.roll_value,
+      r.created_at
+    FROM rolls r
+    LEFT JOIN (
+      SELECT buyer_id, buyer_tag 
+      FROM sales 
+      GROUP BY buyer_id
+    ) s ON r.user_id = s.buyer_id
+    ORDER BY r.week_start DESC, r.created_at DESC 
+    LIMIT 100
+  `).all(),
 
   // Eksport instancji bazy dla zewnętrznych skryptów
   db,
