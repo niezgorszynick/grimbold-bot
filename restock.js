@@ -55,9 +55,25 @@ async function sendDiscordAnnouncement() {
 }
 
 async function restockShop() {
-  const partyLevel = typeof dbModule.getPartyLevel === 'function'
-    ? dbModule.getPartyLevel()
-    : 3;
+  const cfg = typeof dbModule.getRestockConfig === 'function'
+    ? dbModule.getRestockConfig()
+    : {
+        party_level: 3,
+        commons_count: 10,
+        cantrips_count: 2,
+        lvl1_count: 2,
+        rares_count: 2,
+        magics_count: 1,
+        fluctuation_min: 0.85,
+        fluctuation_max: 1.15
+      };
+
+  const partyLevel = cfg.party_level;
+
+  function calculateFluctuatedPriceCp(basePriceCp) {
+    const factor = cfg.fluctuation_min + Math.random() * (cfg.fluctuation_max - cfg.fluctuation_min);
+    return Math.max(1, Math.round(basePriceCp * factor));
+  }
 
   const pool = typeof dbModule.getCatalogItemsByLevel === 'function'
     ? dbModule.getCatalogItemsByLevel(partyLevel)
@@ -68,31 +84,30 @@ async function restockShop() {
     return;
   }
 
-  // 1. Podział przedmiotów ze względu na tiery i zwoje
-  const staples = pool.filter(i => i.tier === 'staple');
-  const rares = pool.filter(i => i.tier === 'rare');
-  const magics = pool.filter(i => i.tier === 'magic');
-
-  // Dedykowana pula zwojów (kategoria Spell Scroll lub nazwa zaczynająca się od Spell Scroll)
+  // Podział na pule
   const cantripScrolls = pool.filter(i => 
     i.category === 'Spell Scroll' && i.name.startsWith('Spell Scroll (Cantrip:')
   );
   const level1Scrolls = pool.filter(i => 
     i.category === 'Spell Scroll' && i.name.startsWith('Spell Scroll (Level 1:')
   );
-
-  // Pula zwykłych przedmiotów common (z wyłączeniem zwojów, aby nie wypierały ekwipunku)
   const generalCommons = pool.filter(i => 
-    i.tier === 'common' && i.category !== 'Spell Scroll' && !i.name.startsWith('Spell Scroll')
+    i.tier === 'common' && 
+    i.category !== 'Spell Scroll' && 
+    i.category !== 'Scroll' && 
+    !i.name.toLowerCase().includes('scroll')
   );
+  const rares = pool.filter(i => i.tier === 'rare' && !i.name.toLowerCase().includes('scroll'));
+  const magics = pool.filter(i => i.tier === 'magic' && !i.name.toLowerCase().includes('scroll'));
+  const staples = pool.filter(i => i.tier === 'staple');
 
-  // 2. Wybór asortymentu na bieżący tydzień:
+  // Losowanie według dynamicznej konfiguracji
   const selectedStaples = staples;
-  const selectedCommons = pickRandom(generalCommons, 12); // 12 zwykłych przedmiotów
-  const selectedCantrips = pickRandom(cantripScrolls, 3);  // Zawsze 3 losowe cantripy
-  const selectedLevel1 = pickRandom(level1Scrolls, 2);     // Zawsze 2 losowe zaklęcia 1. kręgu
-  const selectedRares = pickRandom(rares, 2);              // 2 rzadkie przedmioty
-  const selectedMagics = pickRandom(magics, 1);            // 1 przedmiot magiczny
+  const selectedCommons = pickRandom(generalCommons, cfg.commons_count);
+  const selectedCantrips = pickRandom(cantripScrolls, cfg.cantrips_count);
+  const selectedLevel1 = pickRandom(level1Scrolls, cfg.lvl1_count);
+  const selectedRares = pickRandom(rares, cfg.rares_count);
+  const selectedMagics = pickRandom(magics, cfg.magics_count);
 
   const newWeeklySelection = [
     ...selectedStaples,
@@ -103,10 +118,9 @@ async function restockShop() {
     ...selectedMagics
   ];
 
-  // 3. Atomowa aktualizacja lady sklepowej w transakcji SQLite
+  // Atomowy zapis do items (bez zmian)
   const updateStore = sqlite.transaction(() => {
     sqlite.prepare('DELETE FROM items').run();
-
     const insertItem = sqlite.prepare(`
       INSERT INTO items (name, category, price, stock, description, is_active)
       VALUES (?, ?, ?, ?, ?, 1)
@@ -114,32 +128,16 @@ async function restockShop() {
 
     for (const item of newWeeklySelection) {
       const stock = randomInt(item.min_stock, item.max_stock);
-      
-      // Staple mają stałą cenę bazową, reszta asortymentu podlega wahaniom
       const finalPriceCp = item.tier === 'staple'
         ? item.base_price_cp
         : calculateFluctuatedPriceCp(item.base_price_cp);
 
-      insertItem.run(
-        item.name,
-        item.category,
-        finalPriceCp,
-        stock,
-        item.description
-      );
+      insertItem.run(item.name, item.category, finalPriceCp, stock, item.description);
     }
   });
 
   updateStore();
-
-  console.log(`🛒 Restock completed! Added ${newWeeklySelection.length} items to shop (Party Level: ${partyLevel}):`);
-  console.log(`   - Staples: ${selectedStaples.length}`);
-  console.log(`   - Common goods: ${selectedCommons.length}`);
-  console.log(`   - Guaranteed Cantrip scrolls: ${selectedCantrips.length}`);
-  console.log(`   - Guaranteed Level 1 scrolls: ${selectedLevel1.length}`);
-  console.log(`   - Rares: ${selectedRares.length}`);
-  console.log(`   - Magic: ${selectedMagics.length}`);
-
+  console.log(`🛒 Restock completed with custom config (Level: ${partyLevel})!`);
   await sendDiscordAnnouncement();
 }
 

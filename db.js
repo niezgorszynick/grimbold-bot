@@ -267,6 +267,40 @@ module.exports = {
       db.prepare('DELETE FROM catalog WHERE id = ?').run(parseInt(id, 10));
     }
   }),
+  
+// ─── RESTOCK ENGINE CONFIG ───────────────────────────────────────────────
+  getRestockConfig: () => {
+    const rows = db.prepare("SELECT key, value FROM config WHERE key LIKE 'restock_%' OR key LIKE 'fluctuation_%' OR key = 'party_level'").all();
+    const configMap = {};
+    for (const r of rows) {
+      configMap[r.key] = r.value;
+    }
+    return {
+      party_level: parseInt(configMap['party_level'], 10) || 3,
+      commons_count: parseInt(configMap['restock_commons_count'], 10) || 10,
+      cantrips_count: parseInt(configMap['restock_cantrips_count'], 10) || 2,
+      lvl1_count: parseInt(configMap['restock_lvl1_count'], 10) || 2,
+      rares_count: parseInt(configMap['restock_rares_count'], 10) || 2,
+      magics_count: parseInt(configMap['restock_magics_count'], 10) || 1,
+      fluctuation_min: parseFloat(configMap['fluctuation_min']) || 0.85,
+      fluctuation_max: parseFloat(configMap['fluctuation_max']) || 1.15
+    };
+  },
+
+  setRestockConfig: ({ party_level, commons_count, cantrips_count, lvl1_count, rares_count, magics_count, fluctuation_min, fluctuation_max }) => {
+    const upsert = db.prepare("INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    const runAll = db.transaction(() => {
+      upsert.run('party_level', String(party_level));
+      upsert.run('restock_commons_count', String(commons_count));
+      upsert.run('restock_cantrips_count', String(cantrips_count));
+      upsert.run('restock_lvl1_count', String(lvl1_count));
+      upsert.run('restock_rares_count', String(rares_count));
+      upsert.run('restock_magics_count', String(magics_count));
+      upsert.run('fluctuation_min', String(fluctuation_min));
+      upsert.run('fluctuation_max', String(fluctuation_max));
+    });
+    runAll();
+  },
 
   // ─── ZARZĄDZANIE ASORTYMENTEM SKLEPU (ITEMS) ──────────────────────────────
 
