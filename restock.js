@@ -1,6 +1,7 @@
-// restock.js — weekly store restock and price fluctuation
+// restock.js — weekly store restock, price fluctuation and announcement on existing channel
+require('dotenv').config();
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const dbModule = require('./db');
-// Instancja bazy SQLite z better-sqlite3:
 const sqlite = dbModule.db || dbModule;
 
 function randomInt(min, max) {
@@ -8,7 +9,6 @@ function randomInt(min, max) {
 }
 
 function calculateFluctuatedPriceCp(basePriceCp) {
-  // Wahanie od 0.85 do 1.15
   const factor = 0.85 + Math.random() * 0.30;
   return Math.max(1, Math.round(basePriceCp * factor));
 }
@@ -18,13 +18,46 @@ function pickRandom(array, count) {
   return shuffled.slice(0, count);
 }
 
-function restockShop() {
-  // 1. Pobieramy party level
+async function sendDiscordAnnouncement() {
+  const channelId = process.env.ANNOUNCEMENT_CHANNEL_ID;
+  if (!process.env.DISCORD_TOKEN || !channelId) {
+    console.log('Skipping announcement: Missing DISCORD_TOKEN or ANNOUNCEMENT_CHANNEL_ID.');
+    return;
+  }
+
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+  try {
+    await client.login(process.env.DISCORD_TOKEN);
+    const channel = await client.channels.fetch(channelId);
+
+    if (channel && channel.isTextBased()) {
+      const embed = new EmbedBuilder()
+        .setTitle("📦 Grimbold's Shelves Have Been Restocked!")
+        .setColor(0xD4AF37)
+        .setDescription(
+          `*The heavy oak door swings open with a creak, letting in the cool morning air.*\n\n` +
+          `"Fresh shipment arrived from the trade roads! The shelves are stocked, and the ledger has been wiped clean for the week.\n\n` +
+          `Step up, roll your dice with **/roll** to haggle your weekly rates, and inspect the wares with **/show** before someone else grabs them!"`
+        )
+        .setFooter({ text: "Grimbold the Shopkeeper • Weekly Restock" })
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+      console.log('✅ Weekly restock announcement sent to existing channel.');
+    }
+  } catch (error) {
+    console.error('❌ Failed to send announcement:', error);
+  } finally {
+    client.destroy();
+  }
+}
+
+async function restockShop() {
   const partyLevel = typeof dbModule.getPartyLevel === 'function'
     ? dbModule.getPartyLevel()
     : 3;
 
-  // 2. Pobieramy przedmioty z katalogu dla danego poziomu
   const pool = typeof dbModule.getCatalogItemsByLevel === 'function'
     ? dbModule.getCatalogItemsByLevel(partyLevel)
     : sqlite.prepare('SELECT * FROM catalog WHERE min_level <= ?').all(partyLevel);
@@ -46,7 +79,6 @@ function restockShop() {
     ...selectedMagics
   ];
 
-  // 3. Atomowe czyszczenie i zatowarowanie items
   const updateStore = sqlite.transaction(() => {
     sqlite.prepare('DELETE FROM items').run();
 
@@ -61,7 +93,6 @@ function restockShop() {
         ? item.base_price_cp
         : calculateFluctuatedPriceCp(item.base_price_cp);
 
-      // Konwersja z cp na gp dla kolumny price w items (min. 1 gp)
       const priceGp = Math.max(1, Math.round(priceCp / 100));
 
       insertItem.run(
@@ -75,7 +106,9 @@ function restockShop() {
   });
 
   updateStore();
-  console.log(`🛒 Restock zakończony sukcesem! Wystawiono ${newWeeklySelection.length} pozycji (Party Level: ${partyLevel}).`);
+  console.log(`🛒 Restock completed! Added ${newWeeklySelection.length} items to shop (Party Level: ${partyLevel}).`);
+
+  await sendDiscordAnnouncement();
 }
 
 module.exports = { restockShop };

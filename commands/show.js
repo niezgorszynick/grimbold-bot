@@ -1,4 +1,4 @@
-// commands/show.js — displays all active items grouped by category with player discounts
+// commands/show.js — displays active shop items grouped by category without descriptions
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../db');
 const { getUserRoll, getDiscount, applyModifier } = require('../rollTracker');
@@ -50,7 +50,7 @@ module.exports = {
         categories[cat].push(item);
       }
 
-      // Add fields with 1024-character safety chunking
+      // Add fields without descriptions to ensure compact, error-free embeds
       for (const [catName, catItems] of Object.entries(categories)) {
         let currentChunk = [];
         let currentLength = 0;
@@ -73,13 +73,12 @@ module.exports = {
             priceStr = ` — **${item.price} gp**`;
           }
 
-          const entry = `**${item.name}**${stockTag}${priceStr}\n*${item.description}*`;
+          const entry = `• **${item.name}**${stockTag}${priceStr}`;
 
-          // Discord limit is 1024 chars per field value. Keep safety margin at 950.
-          if (currentLength + entry.length + 2 > 950 && currentChunk.length > 0) {
+          if (currentLength + entry.length + 1 > 900 && currentChunk.length > 0) {
             embed.addFields({
               name: part === 1 ? catName : `${catName} (cont.)`,
-              value: currentChunk.join('\n\n'),
+              value: currentChunk.join('\n'),
               inline: false,
             });
             currentChunk = [entry];
@@ -87,14 +86,14 @@ module.exports = {
             part++;
           } else {
             currentChunk.push(entry);
-            currentLength += entry.length + 2;
+            currentLength += entry.length + 1;
           }
         }
 
         if (currentChunk.length > 0) {
           embed.addFields({
             name: part === 1 ? catName : `${catName} (cont.)`,
-            value: currentChunk.join('\n\n'),
+            value: currentChunk.join('\n'),
             inline: false,
           });
         }
