@@ -538,10 +538,14 @@ module.exports = {
         p.id AS player_id,
         p.discord_id,
         p.discord_tag,
+        p.dm_points,
         c.id AS character_id,
         c.name AS character_name,
+        c.race AS character_race,
         c.class AS character_class,
+        c.subclass AS character_subclass,
         c.level AS character_level,
+        c.xp AS character_xp,
         c.status AS character_status
       FROM players p
       LEFT JOIN characters c ON p.id = c.player_id
@@ -598,25 +602,28 @@ module.exports = {
     `).run(pId, trimmedName, trimmedClass, pLevel, status);
   },
 
-  updateCharacter: ({ id, player_id, name, class_name, level, status }) => {
+  updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status }) => {
     const cId = parseInt(id, 10);
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
+    const trimmedRace = (race || '').trim();
     const trimmedClass = (class_name || '').trim();
-    const pLevel = parseInt(level, 10);
+    const trimmedSubclass = (subclass || '').trim();
+    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
 
-    if (isNaN(cId)) throw new Error('Invalid character ID.');
-    if (isNaN(pId)) throw new Error('Valid player must be selected.');
-    if (!trimmedName) throw new Error('Character name is required.');
-    if (!trimmedClass) throw new Error('Character class is required.');
-    if (isNaN(pLevel) || pLevel < 1 || pLevel > 20) throw new Error('Level must be between 1 and 20.');
-    if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
+    let finalLevel = calculateLevelFromXp(parsedXp);
+    if (override_level === '1' || override_level === 1 || override_level === true) {
+      const manualLvl = parseInt(level, 10);
+      if (!isNaN(manualLvl) && manualLvl >= 1 && manualLvl <= 20) {
+        finalLevel = manualLvl;
+      }
+    }
 
     return db.prepare(`
       UPDATE characters
-      SET player_id = ?, name = ?, class = ?, level = ?, status = ?
+      SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
       WHERE id = ?
-    `).run(pId, trimmedName, trimmedClass, pLevel, status, cId);
+    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, finalLevel, parsedXp, status, cId);
   },
 
   deleteCharacter: (id) => {
