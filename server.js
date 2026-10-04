@@ -1,12 +1,16 @@
-// server.js — Express DM Admin Panel with Context Tabs
+// server.js — Express DM Admin Panel with Context Tabs, Restock & Custom Announcements
 const express = require('express');
 const router = express.Router();
+const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
 const { formatCp } = require('./currency');
+const { restockShop } = require('./restock');
 
-// Basic Auth Middleware
+// Middleware parsowania formularzy i JSON
 router.use(express.urlencoded({ extended: true }));
 router.use(express.json());
+
+// Basic Auth Middleware
 router.use((req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -42,18 +46,69 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// ─── POST ENDPOINTS ──────────────────────────────────────────────────────────
+// ─── POST ENDPOINTS: OPERATIONS & DISCORD ───────────────────────────────────
 
-// Zmiana Party Level
+// Ręczne wywołanie restocku z panelu
+router.post('/restock', async (req, res) => {
+  try {
+    await restockShop();
+    res.redirect('/admin?tab=items&status=restocked');
+  } catch (err) {
+    console.error('Manual restock failed:', err);
+    res.status(500).send(`Restock failed: ${escapeHtml(err.message)} <br><a href="/admin?tab=items">Back</a>`);
+  }
+});
+
+// Wysłanie customowej wiadomości na kanał Discord
+router.post('/message', async (req, res) => {
+  try {
+    const { title, message, as_embed } = req.body;
+    const channelId = process.env.ANNOUNCEMENT_CHANNEL_ID;
+    const token = process.env.DISCORD_TOKEN;
+
+    if (!token || !channelId) {
+      throw new Error('Missing DISCORD_TOKEN or ANNOUNCEMENT_CHANNEL_ID in .env configuration.');
+    }
+
+    const trimmedMsg = (message || '').trim();
+    if (!trimmedMsg) {
+      throw new Error('Message body cannot be empty.');
+    }
+
+    const rest = new REST({ version: '10' }).setToken(token);
+
+    let payload = {};
+    if (as_embed === '1') {
+      const embed = new EmbedBuilder()
+        .setTitle(title ? title.trim() : "📜 Grimbold's Notice")
+        .setColor(0xD4AF37)
+        .setDescription(trimmedMsg)
+        .setFooter({ text: "Grimbold the Shopkeeper" })
+        .setTimestamp();
+
+      payload = { embeds: [embed.toJSON()] };
+    } else {
+      payload = { content: trimmedMsg };
+    }
+
+    await rest.post(Routes.channelMessages(channelId), { body: payload });
+    res.redirect('/admin?status=message_sent');
+  } catch (err) {
+    console.error('Failed to send Discord message:', err);
+    res.status(400).send(`Failed to send message: ${escapeHtml(err.message)} <br><a href="/admin">Back</a>`);
+  }
+});
+
+// ─── POST ENDPOINTS: PARTY LEVEL & ITEMS ────────────────────────────────────
+
 router.post('/party-level', (req, res) => {
   const level = parseInt(req.body.party_level, 10);
   if (!isNaN(level) && level >= 1 && level <= 20) {
     db.setPartyLevel(level);
   }
-  res.redirect('/admin?tab=items');
+  res.redirect('/admin?tab=items&status=level_updated');
 });
 
-// Dodawanie przedmiotu do items (ręczne lub z katalogu)
 router.post('/items/add', (req, res) => {
   try {
     const { name, category, price, stock, description } = req.body;
@@ -65,13 +120,12 @@ router.post('/items/add', (req, res) => {
       description,
       is_active: 1
     });
-    res.redirect('/admin?tab=items');
+    res.redirect('/admin?tab=items&status=item_added');
   } catch (err) {
-    res.status(400).send(`Error adding item: ${err.message} <br><a href="/admin?tab=items">Back</a>`);
+    res.status(400).send(`Error adding item: ${escapeHtml(err.message)} <br><a href="/admin?tab=items">Back</a>`);
   }
 });
 
-// Aktualizacja stocku / ceny / aktywacji / usunięcia
 router.post('/items/update', (req, res) => {
   const { id, action, value } = req.body;
   const itemId = parseInt(id, 10);
@@ -82,13 +136,11 @@ router.post('/items/update', (req, res) => {
   res.redirect('/admin?tab=items');
 });
 
-// ─── ENDPOINTY DLA CATALOG ──────────────────────────────────────────────────
+// ─── POST ENDPOINTS: CATALOG ────────────────────────────────────────────────
 
 router.post('/catalog/update', (req, res) => {
   try {
     const { id, name, category, tier, base_price_gp, description, min_level, min_stock, max_stock } = req.body;
-    
-    // Konwersja GP wprowadzonego przez DM na CP (1 gp = 100 cp)
     const priceGp = parseFloat(base_price_gp);
     if (isNaN(priceGp) || priceGp < 0) {
       throw new Error('Price in GP must be a valid number >= 0.');
@@ -107,7 +159,7 @@ router.post('/catalog/update', (req, res) => {
       max_stock
     });
 
-    res.redirect('/admin?tab=catalog');
+    res.redirect('/admin?tab=catalog&status=catalog_updated');
   } catch (err) {
     res.status(400).send(`Error updating catalog item: ${escapeHtml(err.message)} <br><a href="/admin?tab=catalog">Back to Catalog</a>`);
   }
@@ -117,7 +169,7 @@ router.post('/catalog/delete', (req, res) => {
   try {
     const { id } = req.body;
     db.deleteCatalogItem(id);
-    res.redirect('/admin?tab=catalog');
+    res.redirect('/admin?tab=catalog&status=catalog_deleted');
   } catch (err) {
     res.status(400).send(`Error deleting catalog item: ${escapeHtml(err.message)} <br><a href="/admin?tab=catalog">Back to Catalog</a>`);
   }
@@ -127,11 +179,27 @@ router.post('/catalog/delete', (req, res) => {
 
 router.get('/', (req, res) => {
   const currentTab = req.query.tab || 'items';
+  const status = req.query.status;
   const partyLevel = db.getPartyLevel();
   const catalogItems = db.getAllCatalogItems ? db.getAllCatalogItems() : [];
   const activeItems = db.getAllItemsForAdmin ? db.getAllItemsForAdmin() : [];
   const sales = db.getAllSales ? db.getAllSales() : [];
   const rolls = db.getAllRolls ? db.getAllRolls() : [];
+
+  let statusBanner = '';
+  if (status === 'restocked') {
+    statusBanner = '<div class="alert green">✅ Store restocked successfully and announcement sent to Discord!</div>';
+  } else if (status === 'message_sent') {
+    statusBanner = '<div class="alert green">✅ Custom message from Grimbold has been sent to the Discord channel!</div>';
+  } else if (status === 'level_updated') {
+    statusBanner = '<div class="alert green">✅ Party level updated successfully!</div>';
+  } else if (status === 'item_added') {
+    statusBanner = '<div class="alert green">✅ Item added to shop shelves!</div>';
+  } else if (status === 'catalog_updated') {
+    statusBanner = '<div class="alert green">✅ Catalog item updated!</div>';
+  } else if (status === 'catalog_deleted') {
+    statusBanner = '<div class="alert red">🗑️ Catalog item permanently deleted.</div>';
+  }
 
   let contentHtml = '';
 
@@ -140,18 +208,46 @@ router.get('/', (req, res) => {
     const catalogJson = JSON.stringify(catalogItems.map(c => ({
       name: c.name,
       category: c.category,
-      price: Math.max(1, Math.round(c.base_price_cp / 100)),
+      price: c.base_price_cp,
       description: c.description
     })));
 
     contentHtml = `
-      <div class="card">
-        <h3>Campaign & Party Level</h3>
-        <form method="POST" action="/admin/party-level" style="display:flex; align-items:center; gap: 10px;">
-          <label>Current Party Level:</label>
-          <input type="number" name="party_level" min="1" max="20" value="${partyLevel}" required style="width: 70px;">
-          <button type="submit" class="btn">Update Level</button>
-        </form>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <!-- Campagin & Restock -->
+        <div class="card" style="margin-bottom: 0;">
+          <h3>Campaign Level & Shelf Restock</h3>
+          <form method="POST" action="/admin/party-level" style="display:flex; align-items:center; gap: 10px; margin-bottom: 16px;">
+            <label>Party Level:</label>
+            <input type="number" name="party_level" min="1" max="20" value="${partyLevel}" required style="width: 70px;">
+            <button type="submit" class="btn">Update Level</button>
+          </form>
+
+          <form method="POST" action="/admin/restock" onsubmit="return confirm('Trigger a full store restock? Current stock will be cleared and rolled anew, and Discord will be notified.');">
+            <button type="submit" class="btn btn-gold" style="width: 100%; font-weight: bold; padding: 10px;">
+              🔄 Trigger Manual Restock & Announce
+            </button>
+          </form>
+        </div>
+
+        <!-- Custom Grimbold Message -->
+        <div class="card" style="margin-bottom: 0;">
+          <h3>Send Custom Message from Grimbold</h3>
+          <form method="POST" action="/admin/message">
+            <div style="margin-bottom: 8px;">
+              <input type="text" name="title" placeholder="Notice Title (Optional, e.g. Special Deal Today!)" style="width: 100%;">
+            </div>
+            <div style="margin-bottom: 8px;">
+              <textarea name="message" rows="3" placeholder="Speak as Grimbold... e.g. 'Pack your bags, travelers, prices drop at dawn!'" required style="width: 100%;"></textarea>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label style="font-size: 13px; color: #949ba4;">
+                <input type="checkbox" name="as_embed" value="1" checked> Format as Grimbold's Gold Parchment Embed
+              </label>
+              <button type="submit" class="btn btn-green">📢 Send to Discord</button>
+            </div>
+          </form>
+        </div>
       </div>
 
       <div class="card">
@@ -160,7 +256,7 @@ router.get('/', (req, res) => {
           <label><strong>Quick-Fill from Catalog:</strong></label><br>
           <select id="catalogSelect" onchange="autofillCatalog()" style="width: 100%; max-width: 450px; padding: 6px; margin-top: 4px;">
             <option value="">-- Choose item from Master Catalog --</option>
-            ${catalogItems.map((c, idx) => `<option value="${idx}">${escapeHtml(c.name)} (${c.tier} -${Math.round(c.base_price_cp / 100)} gp)</option>`).join('')}
+            ${catalogItems.map((c, idx) => `<option value="${idx}">${escapeHtml(c.name)} (${c.tier} -${formatCp(c.base_price_cp)})</option>`).join('')}
           </select>
         </div>
 
@@ -175,7 +271,7 @@ router.get('/', (req, res) => {
               <input type="text" id="itemCat" name="category" required style="width: 100%;">
             </div>
             <div>
-              <label>Price (GP):</label><br>
+              <label>Price (in Copper Pieces - CP):</label><br>
               <input type="number" id="itemPrice" name="price" min="0" required style="width: 100%;">
             </div>
             <div>
@@ -205,18 +301,16 @@ router.get('/', (req, res) => {
               <th>Actions</th>
             </tr>
           </thead>
-            </tr>
-          </thead>
           <tbody>
             ${activeItems.map(item => `
               <tr>
-               <td data-sort="${item.id}">${item.id}</td>
-               <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
-               <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
-               <td data-sort="${item.price}">${formatCp(item.price)}</td>
-               <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
-               <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-               <td>
+                <td data-sort="${item.id}">${item.id}</td>
+                <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
+                <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
+                <td data-sort="${item.price}">${formatCp(item.price)}</td>
+                <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
+                <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
+                <td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
                     <input type="hidden" name="action" value="toggle">
@@ -226,7 +320,7 @@ router.get('/', (req, res) => {
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
                     <input type="hidden" name="action" value="delete">
-                    <button class="btn btn-small btn-red" onclick="return confirm('Delete item?')">Delete</button>
+                    <button class="btn btn-small btn-red" onclick="return confirm('Delete item from shop?')">Delete</button>
                   </form>
                 </td>
               </tr>
@@ -338,9 +432,9 @@ router.get('/', (req, res) => {
                 <td data-sort="${escapeHtml(c.name)}"><strong>${escapeHtml(c.name)}</strong></td>
                 <td data-sort="${escapeHtml(c.category)}">${escapeHtml(c.category)}</td>
                 <td data-sort="${c.tier}"><span class="tag">${c.tier}</span></td>
-                <td data-sort="${c.base_price_cp}">${Math.round(c.base_price_cp / 100)} gp (${c.base_price_cp} cp)</td>
+                <td data-sort="${c.base_price_cp}">${formatCp(c.base_price_cp)}</td>
                 <td data-sort="${c.min_level}">Lvl ${c.min_level}</td>
-                <td data-sort="${c.min_stock}">${c.min_stock} – ${c.max_stock}</td>
+                <td data-sort="${c.min_stock}">${c.min_stock} –${c.max_stock}</td>
                 <td>
                   <a href="/admin?tab=catalog&edit_catalog=${c.id}" class="btn btn-small">Edit</a>
                   <form method="POST" action="/admin/catalog/delete" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete &quot;${escapeHtml(c.name)}&quot; from the catalog?');">
@@ -375,12 +469,12 @@ router.get('/', (req, res) => {
           <tbody>
             ${sales.length === 0 ? '<tr><td colspan="6">No sales recorded yet.</td></tr>' : sales.map(s => `
               <tr>
-                <td>${s.created_at}</td>
-                <td>${escapeHtml(s.buyer_tag)}</td>
-                <td><strong>${escapeHtml(s.item_name)}</strong></td>
-                <td>${s.quantity}</td>
-                <td>${s.final_price} gp</td>
-                <td>${s.total_paid} gp</td>
+                <td data-sort="${s.created_at}">${s.created_at}</td>
+                <td data-sort="${escapeHtml(s.buyer_tag)}">${escapeHtml(s.buyer_tag)}</td>
+                <td data-sort="${escapeHtml(s.item_name)}"><strong>${escapeHtml(s.item_name)}</strong></td>
+                <td data-sort="${s.quantity}">${s.quantity}</td>
+                <td data-sort="${s.final_price}">${formatCp(s.final_price)}</td>
+                <td data-sort="${s.total_paid}">${formatCp(s.total_paid)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -406,10 +500,10 @@ router.get('/', (req, res) => {
           <tbody>
             ${rolls.length === 0 ? '<tr><td colspan="4">No rolls recorded yet.</td></tr>' : rolls.map(r => `
               <tr>
-                <td>${r.week_start}</td>
-                <td>${escapeHtml(r.user_id)}</td>
-                <td><strong>d20 = ${r.roll_value}</strong></td>
-                <td>${r.created_at}</td>
+                <td data-sort="${r.week_start}">${r.week_start}</td>
+                <td data-sort="${escapeHtml(r.user_id)}">${escapeHtml(r.user_id)}</td>
+                <td data-sort="${r.roll_value}"><strong>d20 = ${r.roll_value}</strong></td>
+                <td data-sort="${r.created_at}">${r.created_at}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -426,8 +520,9 @@ router.get('/', (req, res) => {
       <meta charset="utf-8">
       <title>Grimbold Admin Panel</title>
       <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1e1f22; color: #dbdee1; margin: 0; padding: 20px; }
-        .container { max-width: 1100px; margin: 0 auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1e1f22; color: #dbdee1; margin: 0; padding: 20px; box-sizing: border-box; }
+        *, *:before, *:after { box-sizing: inherit; }
+        .container { max-width: 1150px; margin: 0 auto; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #2b2d31; padding-bottom: 10px; }
         .tab-btn { padding: 8px 16px; background: #2b2d31; color: #dbdee1; text-decoration: none; border-radius: 4px; font-weight: bold; }
@@ -436,39 +531,23 @@ router.get('/', (req, res) => {
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
         th, td { text-align: left; padding: 10px; border-bottom: 1px solid #35373c; }
         th { background: #1e1f22; color: #949ba4; }
-        input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color: #fff; padding: 8px; border-radius: 4px; }
-        .btn { background: #5865f2; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; }
+        th.sortable { cursor: pointer; user-select: none; position: relative; transition: background-color 0.15s ease; }
+        th.sortable:hover { background: #2b2d31; color: #fff; }
+        th.sortable::after { content: ' ⇅'; opacity: 0.35; font-size: 11px; }
+        th.sort-asc::after { content: ' ▲'; opacity: 1; color: #5865f2; }
+        th.sort-desc::after { content: ' ▼'; opacity: 1; color: #5865f2; }
+        input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color: #fff; padding: 8px; border-radius: 4px; font-family: inherit; }
+        .btn { background: #5865f2; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
         .btn-green { background: #23a55a; }
         .btn-red { background: #f23f43; }
-        .btn-small { padding: 4px 8px; font-size: 12px; }
+        .btn-gold { background: #d4af37; color: #1e1f22; }
+        .btn-small { padding: 4px 8px; font-size: 12px; text-decoration: none; display: inline-block; }
         .tag { padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; background: #4e5058; }
         .tag.green { background: #23a55a; color: #fff; }
         .tag.red { background: #f23f43; color: #fff; }
-        th.sortable { 
-          cursor: pointer; 
-          user-select: none; 
-          position: relative; 
-          transition: background-color 0.15s ease;
-        }
-        th.sortable:hover { 
-          background: #2b2d31; 
-          color: #fff; 
-        }
-        th.sortable::after { 
-          content: ' ⇅'; 
-          opacity: 0.35; 
-          font-size: 11px; 
-        }
-        th.sort-asc::after { 
-          content: ' ▲'; 
-          opacity: 1; 
-          color: #5865f2; 
-        }
-        th.sort-desc::after { 
-          content: ' ▼'; 
-          opacity: 1; 
-          color: #5865f2; 
-        }
+        .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
+        .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
+        .alert.red { background: rgba(242, 63, 67, 0.2); border: 1px solid #f23f43; color: #f23f43; }
       </style>
     </head>
     <body>
@@ -476,6 +555,7 @@ router.get('/', (req, res) => {
         <div class="header">
           <h2>Grimbold's Emporium — Dungeon Master Hub</h2>
         </div>
+        ${statusBanner}
         <div class="tabs">
           <a href="/admin?tab=items" class="tab-btn ${currentTab === 'items' ? 'active' : ''}">Shop Items</a>
           <a href="/admin?tab=catalog" class="tab-btn ${currentTab === 'catalog' ? 'active' : ''}">Master Catalog</a>
@@ -484,6 +564,7 @@ router.get('/', (req, res) => {
         </div>
         ${contentHtml}
       </div>
+
       <script>
         document.addEventListener('DOMContentLoaded', () => {
           document.querySelectorAll('th.sortable').forEach(header => {
@@ -494,7 +575,6 @@ router.get('/', (req, res) => {
               const index = Array.from(header.parentNode.children).indexOf(header);
               const isAscending = !header.classList.contains('sort-asc');
 
-              // Reset klas w nagłówkach
               header.parentNode.querySelectorAll('th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc');
               });
@@ -505,11 +585,9 @@ router.get('/', (req, res) => {
                 const cellB = rowB.children[index];
                 if (!cellA || !cellB) return 0;
 
-                // Pobranie wartości z data-sort lub z tekstu
                 const rawA = cellA.hasAttribute('data-sort') ? cellA.getAttribute('data-sort') : cellA.innerText.trim();
                 const rawB = cellB.hasAttribute('data-sort') ? cellB.getAttribute('data-sort') : cellB.innerText.trim();
 
-                // Sprawdzenie czy wartości są numeryczne
                 const numA = Number(rawA);
                 const numB = Number(rawB);
 
@@ -517,7 +595,6 @@ router.get('/', (req, res) => {
                   return isAscending ? numA - numB : numB - numA;
                 }
 
-                // Porównanie tekstowe
                 return isAscending 
                   ? rawA.localeCompare(rawB, undefined, { numeric: true, sensitivity: 'base' })
                   : rawB.localeCompare(rawA, undefined, { numeric: true, sensitivity: 'base' });
