@@ -5,6 +5,8 @@ const db = require('./db');
 const { formatCp } = require('./currency');
 
 // Basic Auth Middleware
+router.use(express.urlencoded({ extended: true }));
+router.use(express.json());
 router.use((req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {

@@ -7,6 +7,7 @@ const adminRouter = require('./server');
 
 // Body parsing
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // DM Panel route
 app.use('/admin', adminRouter);
