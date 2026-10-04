@@ -174,5 +174,8 @@ module.exports = {
   setStock: (id, newStock) => queries.updateStock.run(newStock, id),
   setPrice: (id, newPrice) => queries.updatePrice.run(newPrice, id),
   setActive: (id, isActive) => queries.toggleActive.run(isActive ? 1 : 0, id),
-  deleteItem: (id) => queries.deleteItem.run(id)
+  deleteItem: (id) => queries.deleteItem.run(id),
+  getAllCatalogItems: () => db.prepare("SELECT * FROM catalog ORDER BY name ASC").all(),
+  getAllSales: () => db.prepare("SELECT * FROM sales ORDER BY created_at DESC LIMIT 100").all(),
+  getAllRolls: () => db.prepare("SELECT * FROM rolls ORDER BY week_start DESC, created_at DESC LIMIT 100").all()
 };

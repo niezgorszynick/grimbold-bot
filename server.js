@@ -1,280 +1,325 @@
-// server.js — DM Admin Panel for Grimbold's Emporium
+// server.js — Express DM Admin Panel with Context Tabs
 const express = require('express');
+const router = express.Router();
 const db = require('./db');
 
-const router = express.Router();
-
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'grimbold123';
-
-function requireAuth(req, res, next) {
+// Basic Auth Middleware
+router.use((req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold DM Panel"');
+    res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold Admin Panel"');
     return res.status(401).send('Authentication required.');
   }
 
   const [scheme, credentials] = authHeader.split(' ');
   if (scheme !== 'Basic' || !credentials) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold DM Panel"');
-    return res.status(401).send('Invalid auth format.');
+    res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold Admin Panel"');
+    return res.status(401).send('Bad authentication format.');
   }
 
-  const [user, pass] = Buffer.from(credentials, 'base64').toString().split(':');
-  if (user === ADMIN_USER && pass === ADMIN_PASS) {
+  const decoded = Buffer.from(credentials, 'base64').toString('utf8');
+  const [username, password] = decoded.split(':');
+
+  if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
     return next();
   }
 
-  res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold DM Panel"');
+  res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold Admin Panel"');
   return res.status(401).send('Invalid credentials.');
-}
-
-function renderAdminHtml() {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Grimbold's Emporium — DM Panel</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1e1f22; color: #dbdee1; margin: 0; padding: 24px; }
-    h1, h2 { color: #f2f3f5; }
-    .card { background: #2b2d31; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #35373c; }
-    th { background: #1e1f22; color: #949ba4; font-size: 13px; text-transform: uppercase; }
-    input, select, textarea { background: #383a40; border: 1px solid #4e5058; color: #fff; padding: 8px 12px; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box; }
-    input[type="checkbox"] { width: auto; }
-    button { background: #5865f2; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-    button:hover { background: #4752c4; }
-    .btn-danger { background: #da373c; }
-    .btn-danger:hover { background: #a1282c; }
-    .btn-sm { padding: 4px 8px; font-size: 12px; }
-    .form-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-    .msg { padding: 10px; border-radius: 4px; margin-bottom: 12px; display: none; }
-    .msg-success { background: #23a55a; color: #fff; }
-    .msg-error { background: #da373c; color: #fff; }
-    .badge { padding: 3px 7px; border-radius: 4px; font-size: 11px; }
-    .badge-active { background: #23a55a; color: #fff; }
-    .badge-hidden { background: #80848e; color: #fff; }
-  </style>
-</head>
-<body>
-  <h1>🧙‍♂️ Grimbold's Emporium — DM Admin Panel</h1>
-  <div id="statusMsg" class="msg"></div>
-
-  <div class="card">
-    <h2>➕ Add New Item to Catalog</h2>
-    <form id="addForm">
-      <div class="form-grid">
-        <div>
-          <label>Item Name *</label>
-          <input type="text" id="name" required placeholder="e.g. Mithral Splint">
-        </div>
-        <div>
-          <label>Category *</label>
-          <select id="category" required>
-            <option value="Adventuring Gear">Adventuring Gear</option>
-            <option value="Armor">Armor</option>
-            <option value="Weapons">Weapons</option>
-            <option value="Tools">Tools</option>
-            <option value="Potion">Potion</option>
-            <option value="General">General</option>
-          </select>
-        </div>
-        <div>
-          <label>Price in Gold (gp) *</label>
-          <input type="number" id="price" min="0" required placeholder="e.g. 50">
-        </div>
-        <div>
-          <label>Stock</label>
-          <input type="number" id="stock" min="0" placeholder="e.g. 3">
-          <label style="font-size: 12px; margin-top: 4px; display: block;">
-            <input type="checkbox" id="unlimitedStock"> Unlimited (∞)
-          </label>
-        </div>
-      </div>
-      <div style="margin-bottom: 12px;">
-        <label>Description *</label>
-        <textarea id="description" rows="2" required placeholder="Full mechanical rules, damage or properties..."></textarea>
-      </div>
-      <button type="submit">Add to Inventory</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <h2>📦 Current Shop Inventory (SQLite)</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Category</th>
-          <th>Name</th>
-          <th>Price (gp)</th>
-          <th>Stock</th>
-          <th>Description</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="itemsBody">
-        <tr><td colspan="7">Loading inventory...</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <script>
-    const unlimitedCheckbox = document.getElementById('unlimitedStock');
-    const stockInput = document.getElementById('stock');
-    unlimitedCheckbox.addEventListener('change', () => {
-      stockInput.disabled = unlimitedCheckbox.checked;
-      if (unlimitedCheckbox.checked) stockInput.value = '';
-    });
-
-    function showMsg(text, isError = false) {
-      const msg = document.getElementById('statusMsg');
-      msg.textContent = text;
-      msg.className = 'msg ' + (isError ? 'msg-error' : 'msg-success');
-      msg.style.display = 'block';
-      setTimeout(() => { msg.style.display = 'none'; }, 4000);
-    }
-
-    async function loadItems() {
-      const res = await fetch('/admin/api/items');
-      const items = await res.json();
-      const tbody = document.getElementById('itemsBody');
-      tbody.innerHTML = '';
-
-      items.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = \`
-          <td><span class="badge \${item.is_active ? 'badge-active' : 'badge-hidden'}">\${item.is_active ? 'Active' : 'Hidden'}</span></td>
-          <td>\${item.category}</td>
-          <td><strong>\${item.name}</strong></td>
-          <td><input type="number" min="0" value="\${item.price}" style="width: 80px;" onchange="updatePrice(\${item.id}, this.value)"></td>
-          <td>
-            <input type="text" value="\${item.stock === null ? '∞' : item.stock}" style="width: 60px;" onchange="updateStock(\${item.id}, this.value)">
-          </td>
-          <td style="max-width: 320px; font-size: 13px; color: #949ba4;">\${item.description}</td>
-          <td>
-            <button class="btn-sm" onclick="toggleActive(\${item.id}, \${item.is_active ? 0 : 1})">\${item.is_active ? 'Hide' : 'Show'}</button>
-            <button class="btn-sm btn-danger" onclick="deleteItem(\${item.id})">Delete</button>
-          </td>
-        \`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    document.getElementById('addForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('name').value.trim();
-      const category = document.getElementById('category').value;
-      const price = parseInt(document.getElementById('price').value, 10);
-      const isUnlimited = document.getElementById('unlimitedStock').checked;
-      const stock = isUnlimited ? null : parseInt(document.getElementById('stock').value, 10);
-      const description = document.getElementById('description').value.trim();
-
-      if (!name || !category || isNaN(price) || !description || (!isUnlimited && isNaN(stock))) {
-        return showMsg('Error: All required fields must be filled out properly!', true);
-      }
-
-      const res = await fetch('/admin/api/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, category, price, stock, description })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        showMsg('Item added successfully!');
-        document.getElementById('addForm').reset();
-        stockInput.disabled = false;
-        loadItems();
-      } else {
-        showMsg('Error: ' + (data.error || 'Failed to add item'), true);
-      }
-    });
-
-    async function updatePrice(id, newPrice) {
-      const price = parseInt(newPrice, 10);
-      if (isNaN(price) || price < 0) return alert('Invalid price');
-      await fetch('/admin/api/items/' + id + '/price', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ price })
-      });
-      loadItems();
-    }
-
-    async function updateStock(id, newStock) {
-      let stock = newStock.trim() === '∞' || newStock.trim() === '' ? null : parseInt(newStock, 10);
-      if (stock !== null && (isNaN(stock) || stock < 0)) return alert('Invalid stock');
-      await fetch('/admin/api/items/' + id + '/stock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stock })
-      });
-      loadItems();
-    }
-
-    async function toggleActive(id, isActive) {
-      await fetch('/admin/api/items/' + id + '/active', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: isActive })
-      });
-      loadItems();
-    }
-
-    async function deleteItem(id) {
-      if (!confirm('Are you sure you want to delete this item from the database?')) return;
-      await fetch('/admin/api/items/' + id, { method: 'DELETE' });
-      loadItems();
-    }
-
-    loadItems();
-  </script>
-</body>
-</html>`;
-}
-
-router.use(requireAuth);
-
-router.get('/', (req, res) => {
-  res.send(renderAdminHtml());
 });
 
-router.get('/api/items', (req, res) => {
-  const items = db.getAllItemsForAdmin();
-  res.json(items);
+// Helper: Escape HTML
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ─── POST ENDPOINTS ──────────────────────────────────────────────────────────
+
+// Zmiana Party Level
+router.post('/party-level', (req, res) => {
+  const level = parseInt(req.body.party_level, 10);
+  if (!isNaN(level) && level >= 1 && level <= 20) {
+    db.setPartyLevel(level);
+  }
+  res.redirect('/admin?tab=items');
 });
 
-router.post('/api/items', (req, res) => {
+// Dodawanie przedmiotu do items (ręczne lub z katalogu)
+router.post('/items/add', (req, res) => {
   try {
-    db.addItem(req.body);
-    res.json({ success: true });
+    const { name, category, price, stock, description } = req.body;
+    db.addItem({
+      name,
+      category,
+      price: parseInt(price, 10),
+      stock: stock === '' ? null : parseInt(stock, 10),
+      description,
+      is_active: 1
+    });
+    res.redirect('/admin?tab=items');
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).send(`Error adding item: ${err.message} <br><a href="/admin?tab=items">Back</a>`);
   }
 });
 
-router.post('/api/items/:id/price', (req, res) => {
-  db.setPrice(req.params.id, req.body.price);
-  res.json({ success: true });
+// Aktualizacja stocku / ceny / aktywacji / usunięcia
+router.post('/items/update', (req, res) => {
+  const { id, action, value } = req.body;
+  const itemId = parseInt(id, 10);
+  if (action === 'stock') db.setStock(itemId, value === '' ? null : parseInt(value, 10));
+  if (action === 'price') db.setPrice(itemId, parseInt(value, 10));
+  if (action === 'toggle') db.setActive(itemId, parseInt(value, 10));
+  if (action === 'delete') db.deleteItem(itemId);
+  res.redirect('/admin?tab=items');
 });
 
-router.post('/api/items/:id/stock', (req, res) => {
-  db.setStock(req.params.id, req.body.stock);
-  res.json({ success: true });
-});
+// ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
 
-router.post('/api/items/:id/active', (req, res) => {
-  db.setActive(req.params.id, req.body.is_active);
-  res.json({ success: true });
-});
+router.get('/', (req, res) => {
+  const currentTab = req.query.tab || 'items';
+  const partyLevel = db.getPartyLevel();
+  const catalogItems = db.getAllCatalogItems ? db.getAllCatalogItems() : [];
+  const activeItems = db.getAllItemsForAdmin ? db.getAllItemsForAdmin() : [];
+  const sales = db.getAllSales ? db.getAllSales() : [];
+  const rolls = db.getAllRolls ? db.getAllRolls() : [];
 
-router.delete('/api/items/:id', (req, res) => {
-  db.deleteItem(req.params.id);
-  res.json({ success: true });
+  let contentHtml = '';
+
+  // ── ZAKŁADKA: ITEMS ──
+  if (currentTab === 'items') {
+    const catalogJson = JSON.stringify(catalogItems.map(c => ({
+      name: c.name,
+      category: c.category,
+      price: Math.max(1, Math.round(c.base_price_cp / 100)),
+      description: c.description
+    })));
+
+    contentHtml = `
+      <div class="card">
+        <h3>Campaign & Party Level</h3>
+        <form method="POST" action="/admin/party-level" style="display:flex; align-items:center; gap: 10px;">
+          <label>Current Party Level:</label>
+          <input type="number" name="party_level" min="1" max="20" value="${partyLevel}" required style="width: 70px;">
+          <button type="submit" class="btn">Update Level</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Add Item to Shop Shelf</h3>
+        <div style="margin-bottom: 12px;">
+          <label><strong>Quick-Fill from Catalog:</strong></label><br>
+          <select id="catalogSelect" onchange="autofillCatalog()" style="width: 100%; max-width: 450px; padding: 6px; margin-top: 4px;">
+            <option value="">-- Choose item from Master Catalog --</option>
+            ${catalogItems.map((c, idx) => `<option value="${idx}">${escapeHtml(c.name)} (${c.tier} -${Math.round(c.base_price_cp / 100)} gp)</option>`).join('')}
+          </select>
+        </div>
+
+        <form method="POST" action="/admin/items/add">
+          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label>Name:</label><br>
+              <input type="text" id="itemName" name="name" required style="width: 100%;">
+            </div>
+            <div>
+              <label>Category:</label><br>
+              <input type="text" id="itemCat" name="category" required style="width: 100%;">
+            </div>
+            <div>
+              <label>Price (GP):</label><br>
+              <input type="number" id="itemPrice" name="price" min="0" required style="width: 100%;">
+            </div>
+            <div>
+              <label>Stock (blank = ∞):</label><br>
+              <input type="number" id="itemStock" name="stock" min="0" style="width: 100%;">
+            </div>
+          </div>
+          <div>
+            <label>Description:</label><br>
+            <textarea id="itemDesc" name="description" rows="2" required style="width: 100%;"></textarea>
+          </div>
+          <button type="submit" class="btn btn-green" style="margin-top: 10px;">Put on Shelf</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Current Store Inventory (${activeItems.length})</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${activeItems.map(item => `
+              <tr>
+                <td>${item.id}</td>
+                <td><strong>${escapeHtml(item.name)}</strong></td>
+                <td>${escapeHtml(item.category)}</td>
+                <td>${item.price} gp</td>
+                <td>${item.stock === null ? '∞' : item.stock}</td>
+                <td>${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
+                <td>
+                  <form method="POST" action="/admin/items/update" style="display:inline;">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <input type="hidden" name="action" value="toggle">
+                    <input type="hidden" name="value" value="${item.is_active ? 0 : 1}">
+                    <button class="btn btn-small">${item.is_active ? 'Hide' : 'Show'}</button>
+                  </form>
+                  <form method="POST" action="/admin/items/update" style="display:inline;">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <input type="hidden" name="action" value="delete">
+                    <button class="btn btn-small btn-red" onclick="return confirm('Delete item?')">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <script>
+        const catalogData = ${catalogJson};
+        function autofillCatalog() {
+          const idx = document.getElementById('catalogSelect').value;
+          if (idx === '') return;
+          const item = catalogData[idx];
+          if (!item) return;
+          document.getElementById('itemName').value = item.name;
+          document.getElementById('itemCat').value = item.category;
+          document.getElementById('itemPrice').value = item.price;
+          document.getElementById('itemDesc').value = item.description;
+          document.getElementById('itemStock').value = 1;
+        }
+      </script>
+    `;
+  }
+
+  // ── ZAKŁADKA: CATALOG ──
+  else if (currentTab === 'catalog') {
+    contentHtml = `
+      <div class="card">
+        <h3>Master Catalog (${catalogItems.length} items)</h3>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Category</th><th>Tier</th><th>Base Price</th><th>Min Lvl</th><th>Stock Range</th></tr>
+          </thead>
+          <tbody>
+            ${catalogItems.map(c => `
+              <tr>
+                <td><strong>${escapeHtml(c.name)}</strong></td>
+                <td>${escapeHtml(c.category)}</td>
+                <td><span class="tag">${c.tier}</span></td>
+                <td>${Math.round(c.base_price_cp / 100)} gp (${c.base_price_cp} cp)</td>
+                <td>Lvl ${c.min_level}</td>
+                <td>${c.min_stock} –${c.max_stock}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // ── ZAKŁADKA: SALES ──
+  else if (currentTab === 'sales') {
+    contentHtml = `
+      <div class="card">
+        <h3>Transaction Ledger (Last 100 Sales)</h3>
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Buyer</th><th>Item</th><th>Qty</th><th>Final Price</th><th>Total Paid</th></tr>
+          </thead>
+          <tbody>
+            ${sales.length === 0 ? '<tr><td colspan="6">No sales recorded yet.</td></tr>' : sales.map(s => `
+              <tr>
+                <td>${s.created_at}</td>
+                <td>${escapeHtml(s.buyer_tag)}</td>
+                <td><strong>${escapeHtml(s.item_name)}</strong></td>
+                <td>${s.quantity}</td>
+                <td>${s.final_price} gp</td>
+                <td>${s.total_paid} gp</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // ── ZAKŁADKA: ROLLS ──
+  else if (currentTab === 'rolls') {
+    contentHtml = `
+      <div class="card">
+        <h3>Player Discount Rolls (Last 100)</h3>
+        <table>
+          <thead>
+            <tr><th>Week Start</th><th>User ID</th><th>d20 Result</th><th>Timestamp</th></tr>
+          </thead>
+          <tbody>
+            ${rolls.length === 0 ? '<tr><td colspan="4">No rolls recorded yet.</td></tr>' : rolls.map(r => `
+              <tr>
+                <td>${r.week_start}</td>
+                <td>${escapeHtml(r.user_id)}</td>
+                <td><strong>d20 = ${r.roll_value}</strong></td>
+                <td>${r.created_at}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Główny layout HTML
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Grimbold Admin Panel</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1e1f22; color: #dbdee1; margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #2b2d31; padding-bottom: 10px; }
+        .tab-btn { padding: 8px 16px; background: #2b2d31; color: #dbdee1; text-decoration: none; border-radius: 4px; font-weight: bold; }
+        .tab-btn.active { background: #5865f2; color: #fff; }
+        .card { background: #2b2d31; padding: 18px; border-radius: 8px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #35373c; }
+        th { background: #1e1f22; color: #949ba4; }
+        input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color: #fff; padding: 8px; border-radius: 4px; }
+        .btn { background: #5865f2; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; }
+        .btn-green { background: #23a55a; }
+        .btn-red { background: #f23f43; }
+        .btn-small { padding: 4px 8px; font-size: 12px; }
+        .tag { padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; background: #4e5058; }
+        .tag.green { background: #23a55a; color: #fff; }
+        .tag.red { background: #f23f43; color: #fff; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>Grimbold's Emporium — Dungeon Master Hub</h2>
+        </div>
+        <div class="tabs">
+          <a href="/admin?tab=items" class="tab-btn ${currentTab === 'items' ? 'active' : ''}">Shop Items</a>
+          <a href="/admin?tab=catalog" class="tab-btn ${currentTab === 'catalog' ? 'active' : ''}">Master Catalog</a>
+          <a href="/admin?tab=sales" class="tab-btn ${currentTab === 'sales' ? 'active' : ''}">Sales Ledger</a>
+          <a href="/admin?tab=rolls" class="tab-btn ${currentTab === 'rolls' ? 'active' : ''}">Rolls History</a>
+        </div>
+        ${contentHtml}
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 module.exports = router;
