@@ -329,8 +329,8 @@ router.post('/characters/add', (req, res) => {
 
 router.post('/characters/update', (req, res) => {
   try {
-    const { id, player_id, name, race, class_name, subclass, xp, status } = req.body;
-    db.updateCharacter({ id, player_id, name, race, class_name, subclass, xp, status });
+    const { id, player_id, name, race, class_name, subclass, xp, level, override_level, status } = req.body;
+    db.updateCharacter({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status });
     res.redirect('/admin?tab=players&status=char_updated');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
@@ -816,105 +816,110 @@ router.get('/', (req, res) => {
     `;
   }
 
-      else if (currentTab === 'adventures') {
-        const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
-        const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
-        const playerRows = db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [];
-        const activeCharacters = playerRows.filter(r => r.character_id && r.character_status === 'alive');
+      // ── TAB: ADVENTURES ──
+  else if (currentTab === 'adventures') {
+    const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
+    const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
+    const playerRows = db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [];
+    const activeCharacters = playerRows.filter(r => r.character_id && r.character_status === 'alive');
 
-        contentHtml = `
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="card" style="margin-bottom: 0;">
-              <h3>Zarejestruj ukończoną przygodę</h3>
-              <p style="font-size: 13px; color: #949ba4; margin-top: -5px; margin-bottom: 14px;">
-                Rozliczenie przygody przyznaje punkty XP zaznaczonym postaciom oraz +1 punkt DM dla prowadzącego.
-              </p>
+    contentHtml = `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        
+        <!-- Adventure Record Form -->
+        <div class="card" style="margin-bottom: 0;">
+          <h3>Record Completed Adventure</h3>
+          <p style="font-size: 13px; color: #949ba4; margin-top: -5px; margin-bottom: 14px;">
+            Finalizing an adventure awards XP to all selected characters and grants +1 DM Point to the host.
+          </p>
 
-              <form method="POST" action="/admin/adventures/add">
-                <div style="margin-bottom: 10px;">
-                  <label>Tytuł przygody:</label><br>
-                  <input type="text" name="title" placeholder="np. Poszukiwacze Zaginionego Artefaktu" required style="width: 100%; margin-top: 4px;">
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                  <div>
-                    <label>Mistrz Gry (DM):</label><br>
-                    <select name="dm_player_id" style="width: 100%; margin-top: 4px;">
-                      <option value="">-- Bez punktu DM --</option>
-                      ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)}</option>`).join('')}
-                    </select>
-                  </div>
-                  <div>
-                    <label>Przyznane XP:</label><br>
-                    <input type="number" name="xp_awarded" min="1" value="1" required style="width: 100%; margin-top: 4px;">
-                  </div>
-                </div>
-
-                <div style="margin-bottom: 10px;">
-                  <label>Podsumowanie / Notatki:</label><br>
-                  <textarea name="description" rows="2" placeholder="Krótki opis wydarzeń na sesji..." style="width: 100%; margin-top: 4px;"></textarea>
-                </div>
-
-                <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
-                  <label style="font-weight: bold; color: #d4af37; font-size: 13px;">Uczestniczące postacie:</label>
-                  <div style="max-height: 160px; overflow-y: auto; margin-top: 8px;">
-                    ${activeCharacters.length === 0 ? '<p style="color: #949ba4; font-size: 12px;">Brak dostępnych żywych postaci.</p>' : activeCharacters.map(c => `
-                      <div style="margin-bottom: 6px;">
-                        <label style="font-size: 13px; cursor: pointer;">
-                          <input type="checkbox" name="character_ids" value="${c.character_id}">
-                          <strong>${escapeHtml(c.character_name)}</strong> (Poz.${c.character_level} ${escapeHtml(c.character_class)} —${escapeHtml(c.discord_tag)})
-                        </label>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-
-                <button type="submit" class="btn btn-green" style="width: 100%; padding: 10px;">⚔️ Zapisz przygodę i przyznaj nagrody</button>
-              </form>
+          <form method="POST" action="/admin/adventures/add">
+            <div style="margin-bottom: 10px;">
+              <label>Adventure Title:</label><br>
+              <input type="text" name="title" placeholder="e.g. Seekers of the Lost Tomb - Part 1" required style="width: 100%; margin-top: 4px;">
             </div>
-
-            <div class="card" style="margin-bottom: 0;">
-              <h3>Zasady zdobywania poziomów i punktów</h3>
-              <div style="font-size: 13px; line-height: 1.6; color: #dbdee1;">
-                <p><strong>• Poziom startowy:</strong> Każda nowa postać zaczyna od <strong>3. poziomu</strong> (0 XP).</p>
-                <p><strong>• Progi awansu:</strong></p>
-                <ul style="padding-left: 20px; margin-top: 4px;">
-                  <li><strong>Awans 3 &rarr; 4 poziom:</strong> Wymaga <strong>3 punktów XP</strong>.</li>
-                  <li><strong>Awans 4 &rarr; 5 poziom:</strong> Wymaga <strong>4 punktów XP</strong> (łącznie 7 XP).</li>
-                  <li><strong>Każdy kolejny poziom (5+):</strong> Wymaga kolejnych <strong>4 punktów XP</strong>.</li>
-                </ul>
-                <p><strong>• Punkty Mistrza Gry:</strong> Poprowadzenie sesji dodaje +1 punkt do puli DM danego gracza, który może go w zakładce <em>Players</em> przypisać do dowolnej swojej postaci jako +1 XP.</p>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <label>Dungeon Master (Host):</label><br>
+                <select name="dm_player_id" style="width: 100%; margin-top: 4px;">
+                  <option value="">-- No DM Point awarded --</option>
+                  ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label>Adventure XP Points:</label><br>
+                <input type="number" name="xp_awarded" min="1" value="1" required style="width: 100%; margin-top: 4px;">
               </div>
             </div>
-          </div>
 
-          <div class="card">
-            <h3>Historia rozegranych przygód (${allAdventures.length})</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th class="sortable">Data</th>
-                  <th class="sortable">Tytuł</th>
-                  <th class="sortable">Prowadzący DM</th>
-                  <th class="sortable">Przyznane XP</th>
-                  <th>Notatki</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${allAdventures.length === 0 ? '<tr><td colspan="5">Brak zapisanych przygód.</td></tr>' : allAdventures.map(adv => `
-                  <tr>
-                    <td data-sort="${adv.created_at}">${adv.created_at}</td>
-                    <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong></td>
-                    <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>Brak</em>'}</td>
-                    <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
-                    <td>${escapeHtml(adv.description || '—')}</td>
-                  </tr>
+            <div style="margin-bottom: 10px;">
+              <label>Session Summary / Notes:</label><br>
+              <textarea name="description" rows="2" placeholder="Brief chronicle of the adventure..." style="width: 100%; margin-top: 4px;"></textarea>
+            </div>
+
+            <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+              <label style="font-weight: bold; color: #d4af37; font-size: 13px;">Participating Characters:</label>
+              <div style="max-height: 160px; overflow-y: auto; margin-top: 8px;">
+                ${activeCharacters.length === 0 ? '<p style="color: #949ba4; font-size: 12px;">No active characters available.</p>' : activeCharacters.map(c => `
+                  <div style="margin-bottom: 6px;">
+                    <label style="font-size: 13px; cursor: pointer;">
+                      <input type="checkbox" name="character_ids" value="${c.character_id}">
+                      <strong>${escapeHtml(c.character_name)}</strong> (Lvl${c.character_level} ${escapeHtml(c.character_class)} —${escapeHtml(c.discord_tag)})
+                    </label>
+                  </div>
                 `).join('')}
-              </tbody>
-            </table>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-green" style="width: 100%; padding: 10px;">⚔️ Finalize Adventure & Award Rewards</button>
+          </form>
+        </div>
+
+        <!-- Leveling Rules Card -->
+        <div class="card" style="margin-bottom: 0;">
+          <h3>Campaign Leveling & Milestone Rules</h3>
+          <div style="font-size: 13px; line-height: 1.6; color: #dbdee1;">
+            <p><strong>• Starting Baseline:</strong> Every newly registered adventurer starts at <strong>Level 3</strong> (0 Adventure XP).</p>
+            <p><strong>• Milestone Thresholds:</strong></p>
+            <ul style="padding-left: 20px; margin-top: 4px;">
+              <li><strong>Level 3 &rarr; Level 4:</strong> Requires <strong>3 Completed Adventures</strong> (3 XP).</li>
+              <li><strong>Level 4 &rarr; Level 5:</strong> Requires <strong>4 Completed Adventures</strong> (7 total XP).</li>
+              <li><strong>Level 5+ Progression:</strong> Requires <strong>4 Completed Adventures</strong> per subsequent level.</li>
+            </ul>
+            <p><strong>• Dungeon Master Bonus:</strong> Hosting an adventure automatically awards +1 DM Adventure Point into the DM's bank, assignable to any of their own characters in the <em>Players</em> tab as +1 XP.</p>
           </div>
-        `;
-      }
+        </div>
+      </div>
+
+      <!-- Adventures History Table -->
+      <div class="card">
+        <h3>Completed Adventures History (${allAdventures.length})</h3>
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable">Date</th>
+              <th class="sortable">Title</th>
+              <th class="sortable">Dungeon Master</th>
+              <th class="sortable">XP Granted</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allAdventures.length === 0 ? '<tr><td colspan="5">No completed adventures recorded yet.</td></tr>' : allAdventures.map(adv => `
+              <tr>
+                <td data-sort="${adv.created_at}">${adv.created_at}</td>
+                <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong></td>
+                <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>None</em>'}</td>
+                <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
+                <td>${escapeHtml(adv.description || '—')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
 
   // ── ZAKŁADKA: RESTOCK ENGINE ──
   else if (currentTab === 'restock') {
@@ -1128,52 +1133,100 @@ router.get('/', (req, res) => {
           </div>
           <form method="POST" action="/admin/characters/update">
             <input type="hidden" name="id" value="${charToEdit.id}">
+            
+            <!-- Row 1: Player, Name, Race, Class, Subclass -->
             <div style="display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
               <div>
                 <label>Player (Discord User):</label><br>
-                <select name="player_id" style="width: 100%;" required>
+                <select name="player_id" style="width: 100%; margin-top: 4px;" required>
                   ${allPlayers.map(p => `<option value="${p.id}" ${p.id === charToEdit.player_id ? 'selected' : ''}>${escapeHtml(p.discord_tag)}</option>`).join('')}
                 </select>
               </div>
               <div>
                 <label>Character Name:</label><br>
-                <input type="text" name="name" value="${escapeHtml(charToEdit.name)}" required style="width: 100%;">
+                <input type="text" name="name" value="${escapeHtml(charToEdit.name)}" required style="width: 100%; margin-top: 4px;">
+              </div>
+              <div>
+                <label>Race:</label><br>
+                <input type="text" name="race" value="${escapeHtml(charToEdit.race)}" required style="width: 100%; margin-top: 4px;">
               </div>
               <div>
                 <label>Class:</label><br>
-                <input type="text" name="class_name" value="${escapeHtml(charToEdit.class)}" required style="width: 100%;">
+                <input type="text" name="class_name" value="${escapeHtml(charToEdit.class)}" required style="width: 100%; margin-top: 4px;">
               </div>
               <div>
-                <label>Level (1–20):</label><br>
-                <input type="number" name="level" min="1" max="20" value="${charToEdit.level}" required style="width: 100%;">
-              </div>
-              <div>
-                <label>Status:</label><br>
-                <select name="status" style="width: 100%;" required>
-                  <option value="alive" ${charToEdit.status === 'alive' ? 'selected' : ''}>Alive</option>
-                  <option value="dead" ${charToEdit.status === 'dead' ? 'selected' : ''}>Dead</option>
-                </select>
+                <label>Subclass:</label><br>
+                <input type="text" name="subclass" value="${escapeHtml(charToEdit.subclass || '')}" placeholder="Optional" style="width: 100%; margin-top: 4px;">
               </div>
             </div>
+
+            <!-- Row 2: Manual XP Override, Level Override Option & Status -->
+            <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+              <h4 style="margin: 0 0 8px 0; color: #d4af37; font-size: 13px;">Progression & Level Override:</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; align-items: flex-end;">
+                <div>
+                  <label style="font-size: 12px;">Adventure XP (Override):</label><br>
+                  <input type="number" name="xp" min="0" value="${charToEdit.xp}" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Level (1–20):</label><br>
+                  <input type="number" id="editCharLevel" name="level" min="1" max="20" value="${charToEdit.level}" style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label style="font-size: 12px; cursor: pointer;">
+                    <input type="checkbox" id="overrideLvlCheck" name="override_level" value="1" onchange="toggleLevelInput(this)">
+                    <strong>Override auto level calculation</strong>
+                  </label>
+                  <div style="font-size: 11px; color: #949ba4; margin-top: 4px;">
+                    Unchecked = auto-calculates level from XP ($0$–$2 = 3$, $3 = 4$, $+4$ per level).
+                  </div>
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Status:</label><br>
+                  <select name="status" style="width: 100%; margin-top: 4px;" required>
+                    <option value="alive" ${charToEdit.status === 'alive' ? 'selected' : ''}>Alive</option>
+                    <option value="dead" ${charToEdit.status === 'dead' ? 'selected' : ''}>Dead</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <button type="submit" class="btn btn-green">Save Character Changes</button>
           </form>
         </div>
+
+        <script>
+          function toggleLevelInput(cb) {
+            const input = document.getElementById('editCharLevel');
+            if (!cb.checked) {
+              input.style.opacity = '0.6';
+            } else {
+              input.style.opacity = '1';
+            }
+          }
+          document.addEventListener('DOMContentLoaded', () => {
+            const cb = document.getElementById('overrideLvlCheck');
+            if (cb) toggleLevelInput(cb);
+          });
+        </script>
       `;
     }
 
-    contentHtml = `
+   contentHtml = `
       ${charFormHtml}
 
+      <!-- Top Forms Grid: 1fr (Player Registration) to 2fr (Character Creation) -->
       <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px;">
-        <!-- Register Player -->
+        
+        <!-- Left Card: Register Player -->
         <div class="card" style="margin-bottom: 0;">
           <h3>Register Player</h3>
           <form method="POST" action="/admin/players/add">
-            <div style="margin-bottom: 10px;">
+            <div style="margin-bottom: 12px;">
               <label>Discord Username / Tag:</label><br>
               <input type="text" name="discord_tag" placeholder="e.g. Liam#1234 or liam_rpg" required style="width: 100%; margin-top: 4px;">
             </div>
-            <div style="margin-bottom: 14px;">
+            <div style="margin-bottom: 16px;">
               <label>Discord User ID:</label><br>
               <input type="text" name="discord_id" placeholder="e.g. 289123456789012345" required style="width: 100%; margin-top: 4px;">
             </div>
@@ -1181,56 +1234,60 @@ router.get('/', (req, res) => {
           </form>
         </div>
 
-        <!-- Create Character -->
+        <!-- Right Card: Add Character to Player -->
         <div class="card" style="margin-bottom: 0;">
           <h3>Add Character to Player</h3>
           ${allPlayers.length === 0 ? '<p style="color: #949ba4;">Register at least one player on the left before adding characters.</p>' : `
             <form method="POST" action="/admin/characters/add">
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-              <div>
-                  <label>Assign to Player:</label><br>
-                 <select name="player_id" style="width: 100%; margin-top: 4px;" required>
-                  ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)} (${p.dm_points || 0} pkt DM)</option>`).join('')}
-                </select>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <!-- Row 1: Player & Character Name -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
                 <div>
-                  <label>Race:</label><br>
-                  <input type="text" name="race" placeholder="e.g. Hill Dwarf" required style="width: 100%; margin-top: 4px;">
+                  <label style="white-space: nowrap;">Assign to Player:</label><br>
+                  <select name="player_id" style="width: 100%; margin-top: 4px;" required>
+                    ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)} (${p.dm_points || 0} DM pts)</option>`).join('')}
+                  </select>
                 </div>
                 <div>
-                  <label>Character Name:</label><br>
+                  <label style="white-space: nowrap;">Character Name:</label><br>
                   <input type="text" name="name" placeholder="e.g. Thorin Oakenshield" required style="width: 100%; margin-top: 4px;">
-                </div>
-                <div>
-                  <label>Class:</label><br>
-                  <input type="text" name="class_name" placeholder="e.g. Fighter" required style="width: 100%; margin-top: 4px;">
-                </div>
-                <div>
-                <label>Subclass:</label><br>
-                <input type="text" name="subclass" placeholder="e.g. Master of Battle (optional)" style="width: 100%; margin-top: 4px;">
                 </div>
               </div>
 
-
-              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+              <!-- Row 2: Race, Class, Subclass -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 12px;">
                 <div>
-                  <label>Starting XP (0 = 3rd level):</label><br>
+                  <label style="white-space: nowrap;">Race:</label><br>
+                  <input type="text" name="race" placeholder="e.g. Hill Dwarf" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label style="white-space: nowrap;">Class:</label><br>
+                  <input type="text" name="class_name" placeholder="e.g. Fighter" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label style="white-space: nowrap;">Subclass:</label><br>
+                  <input type="text" name="subclass" placeholder="e.g. Battle Master" style="width: 100%; margin-top: 4px;">
+                </div>
+              </div>
+
+              <!-- Row 3: XP, Level (Locked), Status, Submit Button -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 14px; align-items: flex-end;">
+                <div>
+                  <label style="white-space: nowrap; font-size: 12px;">Starting XP (0 = Lvl 3):</label><br>
                   <input type="number" name="xp" min="0" value="0" required style="width: 100%; margin-top: 4px;">
                 </div>
                 <div>
-                  <label>Starting Level (1–20):</label><br>
-                  <input type="number" name="level" min="1" max="20" value="1" required style="width: 100%; margin-top: 4px;">
+                  <label style="white-space: nowrap; font-size: 12px;">Starting Level:</label><br>
+                  <input type="text" value="Starts at Lvl 3" disabled style="width: 100%; margin-top: 4px; opacity: 0.7;">
                 </div>
                 <div>
-                  <label>Status:</label><br>
+                  <label style="white-space: nowrap; font-size: 12px;">Status:</label><br>
                   <select name="status" style="width: 100%; margin-top: 4px;" required>
                     <option value="alive" selected>Alive</option>
                     <option value="dead">Dead</option>
                   </select>
                 </div>
-                <div style="display: flex; align-items: flex-end;">
-                  <button type="submit" class="btn btn-green" style="width: 100%; padding: 8px;">Create Character</button>
+                <div>
+                  <button type="submit" class="btn btn-green" style="white-space: nowrap; padding: 9px 18px;">Create Character</button>
                 </div>
               </div>
             </form>
@@ -1238,31 +1295,37 @@ router.get('/', (req, res) => {
         </div>
       </div>
 
-      <!-- Tabela Postaci i Graczy -->
-      <div class="card">
+      <!-- Character Roster Table: Full-width container matching top grid -->
+      <div class="card" style="width: 100%;">
         <h3>Campaign Characters & Roster (${playerRows.filter(r => r.character_id).length} characters)</h3>
-        <table>
+        <table style="width: 100%;">
           <thead>
             <tr>
               <th class="sortable">Player (Discord)</th>
               <th class="sortable">Discord ID</th>
               <th class="sortable">Character</th>
+              <th class="sortable">Race</th>
               <th class="sortable">Class</th>
               <th class="sortable">Level</th>
+              <th class="sortable">XP</th>
               <th class="sortable">Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${playerRows.length === 0 ? '<tr><td colspan="7">No players or characters registered yet.</td></tr>' : playerRows.map(row => `
+            ${playerRows.length === 0 ? '<tr><td colspan="9">No players or characters registered yet.</td></tr>' : playerRows.map(row => `
               <tr>
                 <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
                 <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
                 <td data-sort="${escapeHtml(row.character_name || '')}">
                   ${row.character_name ? `<strong>${escapeHtml(row.character_name)}</strong>` : '<em style="color: #949ba4;">(No character)</em>'}
                 </td>
-                <td data-sort="${escapeHtml(row.character_class || '')}">${row.character_class ? escapeHtml(row.character_class) : '—'}</td>
-                <td data-sort="${row.character_level || 0}">${row.character_level ? `Lvl ${row.character_level}` : '—'}</td>
+                <td data-sort="${escapeHtml(row.character_race || '')}">${row.character_race ? escapeHtml(row.character_race) : '—'}</td>
+                <td data-sort="${escapeHtml(row.character_class || '')}">
+                  ${row.character_class ? `${escapeHtml(row.character_class)}${row.character_subclass ? ` (${escapeHtml(row.character_subclass)})` : ''}` : '—'}
+                </td>
+                <td data-sort="${row.character_level || 0}">Lvl ${row.character_level || 3}</td>
+                <td data-sort="${row.character_xp || 0}">${row.character_xp !== null && row.character_xp !== undefined ? `${row.character_xp} XP` : '—'}</td>
                 <td data-sort="${row.character_status || ''}">
                   ${row.character_status === 'alive' 
                     ? '<span class="tag green">Alive</span>' 
@@ -1270,7 +1333,7 @@ router.get('/', (req, res) => {
                       ? '<span class="tag red">Dead</span>' 
                       : '—'}
                 </td>
-                <td>
+                <td style="white-space: nowrap;">
                   ${row.character_id ? `
                     <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
                     <form method="POST" action="/admin/characters/delete" style="display:inline;" onsubmit="return confirm('Delete character &quot;${escapeHtml(row.character_name)}&quot;?');">

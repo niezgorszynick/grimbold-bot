@@ -204,7 +204,7 @@ module.exports = {
     `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, calculatedLevel, parsedXp, status);
   },
 
-  updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, status }) => {
+  updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status }) => {
     const cId = parseInt(id, 10);
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
@@ -212,13 +212,21 @@ module.exports = {
     const trimmedClass = (class_name || '').trim();
     const trimmedSubclass = (subclass || '').trim();
     const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
-    const calculatedLevel = calculateLevelFromXp(parsedXp);
+
+    // If override_level is selected and provided, use manual level; otherwise auto-calculate from XP
+    let finalLevel = calculateLevelFromXp(parsedXp);
+    if (override_level === '1' || override_level === 1 || override_level === true) {
+      const manualLvl = parseInt(level, 10);
+      if (!isNaN(manualLvl) && manualLvl >= 1 && manualLvl <= 20) {
+        finalLevel = manualLvl;
+      }
+    }
 
     return db.prepare(`
       UPDATE characters
       SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
       WHERE id = ?
-    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, calculatedLevel, parsedXp, status, cId);
+    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, finalLevel, parsedXp, status, cId);
   },
 
   // Przypisanie 1 punktu DM do wybranej postaci
