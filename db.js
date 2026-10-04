@@ -1,4 +1,5 @@
 // db.js — SQLite layer using better-sqlite3
+const { validateCharacterOptions } = require('./dndData');
 const Database = require('better-sqlite3');
 const path = require('path');
 
@@ -187,33 +188,31 @@ module.exports = {
   addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
-    const trimmedRace = (race || '').trim();
-    const trimmedClass = (class_name || '').trim();
-    const trimmedSubclass = (subclass || '').trim();
+    if (isNaN(pId)) throw new Error('Valid player must be selected.');
+    if (!trimmedName) throw new Error('Character name is required.');
+
+    const { canonicalSpecies, canonicalClass, canonicalSubclass } = validateCharacterOptions(race, class_name, subclass);
+
     const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
     const calculatedLevel = calculateLevelFromXp(parsedXp);
-
-    if (isNaN(pId)) throw new Error('Wybierz prawidłowego gracza.');
-    if (!trimmedName) throw new Error('Nazwa postaci jest wymagana.');
-    if (!trimmedRace) throw new Error('Rasa postaci jest wymagana.');
-    if (!trimmedClass) throw new Error('Klasa postaci jest wymagana.');
 
     return db.prepare(`
       INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, calculatedLevel, parsedXp, status);
+    `).run(pId, trimmedName, canonicalSpecies, canonicalClass, canonicalSubclass, calculatedLevel, parsedXp, status);
   },
 
   updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status }) => {
     const cId = parseInt(id, 10);
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
-    const trimmedRace = (race || '').trim();
-    const trimmedClass = (class_name || '').trim();
-    const trimmedSubclass = (subclass || '').trim();
-    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
+    if (isNaN(cId)) throw new Error('Invalid character ID.');
+    if (isNaN(pId)) throw new Error('Valid player must be selected.');
+    if (!trimmedName) throw new Error('Character name is required.');
 
-    // If override_level is selected and provided, use manual level; otherwise auto-calculate from XP
+    const { canonicalSpecies, canonicalClass, canonicalSubclass } = validateCharacterOptions(race, class_name, subclass);
+
+    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
     let finalLevel = calculateLevelFromXp(parsedXp);
     if (override_level === '1' || override_level === 1 || override_level === true) {
       const manualLvl = parseInt(level, 10);
@@ -226,7 +225,7 @@ module.exports = {
       UPDATE characters
       SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
       WHERE id = ?
-    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, finalLevel, parsedXp, status, cId);
+    `).run(pId, trimmedName, canonicalSpecies, canonicalClass, canonicalSubclass, finalLevel, parsedXp, status, cId);
   },
 
   // Przypisanie 1 punktu DM do wybranej postaci

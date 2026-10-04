@@ -1123,20 +1123,33 @@ router.get('/', (req, res) => {
 
     const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
     const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
-    const speciesDatalistHtml = `
-      <datalist id="speciesList">
-        ${DND_SPECIES.map(s => `<option value="${escapeHtml(s)}">`).join('')}
-      </datalist>
-      <datalist id="classesList">
-        ${Object.keys(DND_CLASSES_AND_SUBCLASSES).map(c => `<option value="${escapeHtml(c)}">`).join('')}
-      </datalist>
-      <datalist id="subclassesList"></datalist>
-    `;
-
-    const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES);
 
     let charFormHtml = '';
     if (charToEdit) {
+      const speciesOptions = DND_SPECIES.map(s =>
+        `<option value="${escapeHtml(s)}" ${s === charToEdit.race ? 'selected' : ''}>${escapeHtml(s)}</option>`
+      );
+      if (charToEdit.race && !DND_SPECIES.includes(charToEdit.race)) {
+        speciesOptions.unshift(`<option value="${escapeHtml(charToEdit.race)}" selected>${escapeHtml(charToEdit.race)}</option>`);
+      }
+
+      const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
+      const classOptions = classNames.map(c =>
+        `<option value="${escapeHtml(c)}" ${c === charToEdit.class ? 'selected' : ''}>${escapeHtml(c)}</option>`
+      );
+      if (charToEdit.class && !classNames.includes(charToEdit.class)) {
+        classOptions.unshift(`<option value="${escapeHtml(charToEdit.class)}" selected>${escapeHtml(charToEdit.class)}</option>`);
+      }
+
+      const subclasses = DND_CLASSES_AND_SUBCLASSES[charToEdit.class] || [];
+      const subclassOptions = [`<option value="" ${charToEdit.subclass ? '' : 'selected'}>-- No Subclass --</option>`, ...subclasses.map(s =>
+        `<option value="${escapeHtml(s)}" ${s === charToEdit.subclass ? 'selected' : ''}>${escapeHtml(s)}</option>`
+      )];
+      if (charToEdit.subclass && !subclasses.includes(charToEdit.subclass)) {
+        subclassOptions.splice(1, 0, `<option value="${escapeHtml(charToEdit.subclass)}" selected>${escapeHtml(charToEdit.subclass)}</option>`);
+      }
+
+      const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
       charFormHtml = `
         <div class="card" style="border: 1px solid #5865f2; margin-bottom: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1146,8 +1159,8 @@ router.get('/', (req, res) => {
           <form method="POST" action="/admin/characters/update">
             <input type="hidden" name="id" value="${charToEdit.id}">
             
-            <!-- Row 1: Player, Name, Species, Class, Subclass -->
-            <div style="display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+            <!-- Row 1: Player & Character Name -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; margin-top: 10px;">
               <div>
                 <label>Player (Discord User):</label><br>
                 <select name="player_id" style="width: 100%; margin-top: 4px;" required>
@@ -1158,21 +1171,34 @@ router.get('/', (req, res) => {
                 <label>Character Name:</label><br>
                 <input type="text" name="name" value="${escapeHtml(charToEdit.name)}" required style="width: 100%; margin-top: 4px;">
               </div>
+            </div>
+
+            <!-- Row 2: Species, Class, Subclass with Live Search Dropdowns -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 12px;">
               <div>
                 <label style="white-space: nowrap;">Species (2024):</label><br>
-                <input type="text" name="race" list="speciesList" placeholder="e.g. Dwarf, Elf, Goliath..." required style="width: 100%; margin-top: 4px;" autocomplete="off">
+                <input type="text" placeholder="Filter species..." oninput="filterDropdown('speciesFilter', 'speciesSelect')" id="speciesFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                <select name="race" id="speciesSelect" required style="width: 100%; margin-top: 4px;" size="4">
+                  ${speciesOptions.join('')}
+                </select>
               </div>
               <div>
-                <label>Class:</label><br>
-                <input type="text" name="class_name" value="${escapeHtml(charToEdit.class)}" required style="width: 100%; margin-top: 4px;">
+                <label style="white-space: nowrap;">Class (2024):</label><br>
+                <input type="text" placeholder="Filter classes..." oninput="filterDropdown('classFilter', 'classSelect')" id="classFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                <select name="class_name" id="classSelect" onchange="onClassChange(this.value)" required style="width: 100%; margin-top: 4px;" size="4">
+                  ${classOptions.join('')}
+                </select>
               </div>
               <div>
-                <label>Subclass:</label><br>
-                <input type="text" name="subclass" value="${escapeHtml(charToEdit.subclass || '')}" placeholder="Optional" style="width: 100%; margin-top: 4px;">
+                <label style="white-space: nowrap;">Subclass (2024):</label><br>
+                <input type="text" placeholder="Filter subclasses..." oninput="filterDropdown('subclassFilter', 'subclassSelect')" id="subclassFilter" style="width: 100%; margin-top: 4px; padding: 4px 8px; font-size: 12px;" autocomplete="off">
+                <select name="subclass" id="subclassSelect" style="width: 100%; margin-top: 4px;" size="4">
+                  ${subclassOptions.join('')}
+                </select>
               </div>
             </div>
 
-            <!-- Row 2: Manual XP Override, Level Override Option & Status -->
+            <!-- Row 3: Manual XP Override, Level Override Option & Status -->
             <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
               <h4 style="margin: 0 0 8px 0; color: #d4af37; font-size: 13px;">Progression & Level Override:</h4>
               <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; align-items: flex-end;">
@@ -1208,6 +1234,43 @@ router.get('/', (req, res) => {
         </div>
 
         <script>
+          const classTree = ${dndClassesJson};
+
+          function filterDropdown(filterId, selectId) {
+            const filter = document.getElementById(filterId);
+            const select = document.getElementById(selectId);
+            const filterText = filter.value.trim().toLowerCase();
+            const options = select.querySelectorAll('option');
+            let firstVisible = null;
+
+            options.forEach(option => {
+              const match = option.text.toLowerCase().includes(filterText);
+              option.style.display = match ? '' : 'none';
+              if (match && !firstVisible) firstVisible = option;
+            });
+
+            if (firstVisible && filterText.length > 0) {
+              select.value = firstVisible.value;
+              if (selectId === 'classSelect') onClassChange(firstVisible.value);
+            }
+          }
+
+          function onClassChange(className) {
+            const subclassSelect = document.getElementById('subclassSelect');
+            const subclassFilter = document.getElementById('subclassFilter');
+            if (subclassFilter) subclassFilter.value = '';
+            subclassSelect.innerHTML = '<option value="">-- None / Base --</option>';
+
+            if (className && classTree[className]) {
+              classTree[className].forEach(subclass => {
+                const option = document.createElement('option');
+                option.value = subclass;
+                option.textContent = subclass;
+                subclassSelect.appendChild(option);
+              });
+            }
+          }
+
           function toggleLevelInput(cb) {
             const input = document.getElementById('editCharLevel');
             if (!cb.checked) {
