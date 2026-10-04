@@ -78,6 +78,26 @@ db.exec(`
   INSERT OR IGNORE INTO config (key, value) VALUES ('party_level', '3');
 `);
 
+// 5. Stwórz tabele dla graczy i ich postaci
+db.exec(`
+CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_id TEXT NOT NULL UNIQUE,
+    discord_tag TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS characters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    class TEXT NOT NULL,
+    level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1 AND level <= 20),
+    status TEXT NOT NULL DEFAULT 'alive' CHECK (status IN ('alive', 'dead')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+ `);
+
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
@@ -349,6 +369,98 @@ module.exports = {
   setPrice: (id, newPrice) => queries.updatePrice.run(newPrice, id),
   setActive: (id, isActive) => queries.toggleActive.run(isActive ? 1 : 0, id),
   deleteItem: (id) => queries.deleteItem.run(id),
+
+  // ─── PLAYERS & CHARACTERS ────────────────────────────────────────────────
+  getAllPlayersWithCharacters: () => {
+    return db.prepare(`
+      SELECT 
+        p.id AS player_id,
+        p.discord_id,
+        p.discord_tag,
+        c.id AS character_id,
+        c.name AS character_name,
+        c.class AS character_class,
+        c.level AS character_level,
+        c.status AS character_status
+      FROM players p
+      LEFT JOIN characters c ON p.id = c.player_id
+      ORDER BY p.discord_tag ASC, c.name ASC
+    `).all();
+  },
+
+  getAllPlayers: () => db.prepare('SELECT * FROM players ORDER BY discord_tag ASC').all(),
+  
+  getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
+
+  addPlayer: ({ discord_id, discord_tag }) => {
+    const trimmedId = (discord_id || '').trim();
+    const trimmedTag = (discord_tag || '').trim();
+    if (!trimmedId) throw new Error('Discord ID is required.');
+    if (!trimmedTag) throw new Error('Discord Tag/Username is required.');
+
+    const existing = db.prepare('SELECT id FROM players WHERE discord_id = ?').get(trimmedId);
+    if (existing) throw new Error(`Player with Discord ID "${trimmedId}" already exists.`);
+
+    return db.prepare('INSERT INTO players (discord_id, discord_tag) VALUES (?, ?)').run(trimmedId, trimmedTag);
+  },
+
+  updatePlayer: ({ id, discord_id, discord_tag }) => {
+    const trimmedId = (discord_id || '').trim();
+    const trimmedTag = (discord_tag || '').trim();
+    if (!trimmedId || !trimmedTag) throw new Error('Both Discord ID and Tag are required.');
+
+    const existing = db.prepare('SELECT id FROM players WHERE discord_id = ? AND id != ?').get(trimmedId, id);
+    if (existing) throw new Error(`Another player already uses Discord ID "${trimmedId}".`);
+
+    return db.prepare('UPDATE players SET discord_id = ?, discord_tag = ? WHERE id = ?').run(trimmedId, trimmedTag, id);
+  },
+
+  deletePlayer: (id) => {
+    return db.prepare('DELETE FROM players WHERE id = ?').run(id);
+  },
+
+  addCharacter: ({ player_id, name, class_name, level, status = 'alive' }) => {
+    const pId = parseInt(player_id, 10);
+    const trimmedName = (name || '').trim();
+    const trimmedClass = (class_name || '').trim();
+    const pLevel = parseInt(level, 10);
+
+    if (isNaN(pId)) throw new Error('Valid player must be selected.');
+    if (!trimmedName) throw new Error('Character name is required.');
+    if (!trimmedClass) throw new Error('Character class is required.');
+    if (isNaN(pLevel) || pLevel < 1 || pLevel > 20) throw new Error('Level must be between 1 and 20.');
+    if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
+
+    return db.prepare(`
+      INSERT INTO characters (player_id, name, class, level, status)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(pId, trimmedName, trimmedClass, pLevel, status);
+  },
+
+  updateCharacter: ({ id, player_id, name, class_name, level, status }) => {
+    const cId = parseInt(id, 10);
+    const pId = parseInt(player_id, 10);
+    const trimmedName = (name || '').trim();
+    const trimmedClass = (class_name || '').trim();
+    const pLevel = parseInt(level, 10);
+
+    if (isNaN(cId)) throw new Error('Invalid character ID.');
+    if (isNaN(pId)) throw new Error('Valid player must be selected.');
+    if (!trimmedName) throw new Error('Character name is required.');
+    if (!trimmedClass) throw new Error('Character class is required.');
+    if (isNaN(pLevel) || pLevel < 1 || pLevel > 20) throw new Error('Level must be between 1 and 20.');
+    if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
+
+    return db.prepare(`
+      UPDATE characters
+      SET player_id = ?, name = ?, class = ?, level = ?, status = ?
+      WHERE id = ?
+    `).run(pId, trimmedName, trimmedClass, pLevel, status, cId);
+  },
+
+  deleteCharacter: (id) => {
+    return db.prepare('DELETE FROM characters WHERE id = ?').run(id);
+  },
 
   // ─── POBIERANIE DANYCH DO PANELU DM ───────────────────────────────────────
 

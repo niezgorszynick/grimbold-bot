@@ -285,6 +285,68 @@ router.post('/catalog/delete', (req, res) => {
   }
 });
 
+// ─── POST ENDPOINTS: PLAYERS & CHARACTERS ──────────────────────────────────
+
+router.post('/players/add', (req, res) => {
+  try {
+    const { discord_id, discord_tag } = req.body;
+    db.addPlayer({ discord_id, discord_tag });
+    res.redirect('/admin?tab=players&status=player_added');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/players/update', (req, res) => {
+  try {
+    const { id, discord_id, discord_tag } = req.body;
+    db.updatePlayer({ id: parseInt(id, 10), discord_id, discord_tag });
+    res.redirect('/admin?tab=players&status=player_updated');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/players/delete', (req, res) => {
+  try {
+    const { id } = req.body;
+    db.deletePlayer(parseInt(id, 10));
+    res.redirect('/admin?tab=players&status=player_deleted');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/characters/add', (req, res) => {
+  try {
+    const { player_id, name, class_name, level, status } = req.body;
+    db.addCharacter({ player_id, name, class_name, level, status });
+    res.redirect('/admin?tab=players&status=char_added');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/characters/update', (req, res) => {
+  try {
+    const { id, player_id, name, class_name, level, status } = req.body;
+    db.updateCharacter({ id, player_id, name, class_name, level, status });
+    res.redirect('/admin?tab=players&status=char_updated');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/characters/delete', (req, res) => {
+  try {
+    const { id } = req.body;
+    db.deleteCharacter(parseInt(id, 10));
+    res.redirect('/admin?tab=players&status=char_deleted');
+  } catch (err) {
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 // ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {
@@ -315,6 +377,18 @@ router.get('/', (req, res) => {
     statusBanner = '<div class="alert green">✅ Catalog item updated!</div>';
   } else if (status === 'catalog_deleted') {
     statusBanner = '<div class="alert red">🗑️ Catalog item permanently deleted.</div>';
+  } else if (status === 'player_added') {
+    statusBanner = '<div class="alert green">✅ Player successfully registered!</div>';
+  } else if (status === 'player_updated') {
+    statusBanner = '<div class="alert green">✅ Player info updated!</div>';
+  } else if (status === 'player_deleted') {
+    statusBanner = '<div class="alert red">🗑️ Player and associated characters deleted.</div>';
+  } else if (status === 'char_added') {
+    statusBanner = '<div class="alert green">✅ Character created successfully!</div>';
+  } else if (status === 'char_updated') {
+    statusBanner = '<div class="alert green">✅ Character updated!</div>';
+  } else if (status === 'char_deleted') {
+    statusBanner = '<div class="alert red">🗑️ Character removed.</div>';
   }
   
 
@@ -895,6 +969,173 @@ router.get('/', (req, res) => {
     `;
   }
 
+  // ── ZAKŁADKA: PLAYERS & CHARACTERS ──
+  else if (currentTab === 'players') {
+    const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
+    const playerRows = db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [];
+
+    const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
+    const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
+
+    let charFormHtml = '';
+    if (charToEdit) {
+      charFormHtml = `
+        <div class="card" style="border: 1px solid #5865f2; margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Edit Character: ${escapeHtml(charToEdit.name)}</h3>
+            <a href="/admin?tab=players" class="btn btn-small">Cancel</a>
+          </div>
+          <form method="POST" action="/admin/characters/update">
+            <input type="hidden" name="id" value="${charToEdit.id}">
+            <div style="display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+              <div>
+                <label>Player (Discord User):</label><br>
+                <select name="player_id" style="width: 100%;" required>
+                  ${allPlayers.map(p => `<option value="${p.id}" ${p.id === charToEdit.player_id ? 'selected' : ''}>${escapeHtml(p.discord_tag)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label>Character Name:</label><br>
+                <input type="text" name="name" value="${escapeHtml(charToEdit.name)}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Class:</label><br>
+                <input type="text" name="class_name" value="${escapeHtml(charToEdit.class)}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Level (1–20):</label><br>
+                <input type="number" name="level" min="1" max="20" value="${charToEdit.level}" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Status:</label><br>
+                <select name="status" style="width: 100%;" required>
+                  <option value="alive" ${charToEdit.status === 'alive' ? 'selected' : ''}>Alive</option>
+                  <option value="dead" ${charToEdit.status === 'dead' ? 'selected' : ''}>Dead</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-green">Save Character Changes</button>
+          </form>
+        </div>
+      `;
+    }
+
+    contentHtml = `
+      ${charFormHtml}
+
+      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px;">
+        <!-- Register Player -->
+        <div class="card" style="margin-bottom: 0;">
+          <h3>Register Player</h3>
+          <form method="POST" action="/admin/players/add">
+            <div style="margin-bottom: 10px;">
+              <label>Discord Username / Tag:</label><br>
+              <input type="text" name="discord_tag" placeholder="e.g. Liam#1234 or liam_rpg" required style="width: 100%; margin-top: 4px;">
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label>Discord User ID:</label><br>
+              <input type="text" name="discord_id" placeholder="e.g. 289123456789012345" required style="width: 100%; margin-top: 4px;">
+            </div>
+            <button type="submit" class="btn btn-green">Add Player</button>
+          </form>
+        </div>
+
+        <!-- Create Character -->
+        <div class="card" style="margin-bottom: 0;">
+          <h3>Add Character to Player</h3>
+          ${allPlayers.length === 0 ? '<p style="color: #949ba4;">Register at least one player on the left before adding characters.</p>' : `
+            <form method="POST" action="/admin/characters/add">
+              <div style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div>
+                  <label>Assign to Player:</label><br>
+                  <select name="player_id" style="width: 100%; margin-top: 4px;" required>
+                    ${allPlayers.map(p => `<option value="${p.id}">${escapeHtml(p.discord_tag)}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label>Character Name:</label><br>
+                  <input type="text" name="name" placeholder="e.g. Thorin Oakenshield" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label>Class:</label><br>
+                  <input type="text" name="class_name" placeholder="e.g. Fighter" required style="width: 100%; margin-top: 4px;">
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+                <div>
+                  <label>Starting Level (1–20):</label><br>
+                  <input type="number" name="level" min="1" max="20" value="1" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label>Status:</label><br>
+                  <select name="status" style="width: 100%; margin-top: 4px;" required>
+                    <option value="alive" selected>Alive</option>
+                    <option value="dead">Dead</option>
+                  </select>
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                  <button type="submit" class="btn btn-green" style="width: 100%; padding: 8px;">Create Character</button>
+                </div>
+              </div>
+            </form>
+          `}
+        </div>
+      </div>
+
+      <!-- Tabela Postaci i Graczy -->
+      <div class="card">
+        <h3>Campaign Characters & Roster (${playerRows.filter(r => r.character_id).length} characters)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable">Player (Discord)</th>
+              <th class="sortable">Discord ID</th>
+              <th class="sortable">Character</th>
+              <th class="sortable">Class</th>
+              <th class="sortable">Level</th>
+              <th class="sortable">Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${playerRows.length === 0 ? '<tr><td colspan="7">No players or characters registered yet.</td></tr>' : playerRows.map(row => `
+              <tr>
+                <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
+                <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
+                <td data-sort="${escapeHtml(row.character_name || '')}">
+                  ${row.character_name ? `<strong>${escapeHtml(row.character_name)}</strong>` : '<em style="color: #949ba4;">(No character)</em>'}
+                </td>
+                <td data-sort="${escapeHtml(row.character_class || '')}">${row.character_class ? escapeHtml(row.character_class) : '—'}</td>
+                <td data-sort="${row.character_level || 0}">${row.character_level ? `Lvl ${row.character_level}` : '—'}</td>
+                <td data-sort="${row.character_status || ''}">
+                  ${row.character_status === 'alive' 
+                    ? '<span class="tag green">Alive</span>' 
+                    : row.character_status === 'dead' 
+                      ? '<span class="tag red">Dead</span>' 
+                      : '—'}
+                </td>
+                <td>
+                  ${row.character_id ? `
+                    <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
+                    <form method="POST" action="/admin/characters/delete" style="display:inline;" onsubmit="return confirm('Delete character &quot;${escapeHtml(row.character_name)}&quot;?');">
+                      <input type="hidden" name="id" value="${row.character_id}">
+                      <button type="submit" class="btn btn-small btn-red">Delete Char</button>
+                    </form>
+                  ` : `
+                    <form method="POST" action="/admin/players/delete" style="display:inline;" onsubmit="return confirm('Remove player &quot;${escapeHtml(row.discord_tag)}&quot;?');">
+                      <input type="hidden" name="id" value="${row.player_id}">
+                      <button type="submit" class="btn btn-small btn-red">Delete Player</button>
+                    </form>
+                  `}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   // Główny layout HTML
   res.send(`
     <!DOCTYPE html>
@@ -1000,6 +1241,7 @@ router.get('/', (req, res) => {
           <a href="/admin?tab=items" class="tab-btn ${currentTab === 'items' ? 'active' : ''}">Shop Items</a>
           <a href="/admin?tab=catalog" class="tab-btn ${currentTab === 'catalog' ? 'active' : ''}">Master Catalog</a>
           <a href="/admin?tab=restock" class="tab-btn ${currentTab === 'restock' ? 'active' : ''}">Restock Engine</a>
+          <a href="/admin?tab=players" class="tab-btn ${currentTab === 'players' ? 'active' : ''}">Players</a>
           <a href="/admin?tab=sales" class="tab-btn ${currentTab === 'sales' ? 'active' : ''}">Sales Ledger</a>
           <a href="/admin?tab=rolls" class="tab-btn ${currentTab === 'rolls' ? 'active' : ''}">Rolls History</a>
         </div>
