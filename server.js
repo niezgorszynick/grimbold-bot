@@ -478,9 +478,16 @@ router.get('/', (req, res) => {
               </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-              <div>
-                <label>Min Party Level (1-20):</label><br>
+            <div>
+                <label>
+                  Min Party Level (1–20):
+                  <span class="tooltip">?
+                    <span class="tooltip-text">
+                      <strong>Restock Level Gate:</strong><br>
+                      Items only appear in Grimbold's pool when the current Party Level is greater than or equal to this value. High-level items remain locked until the party progresses.
+                    </span>
+                  </span>
+                </label><br>
                 <input type="number" name="min_level" min="1" max="20" value="${itemToEdit.min_level}" required style="width: 100%;">
               </div>
               <div>
@@ -516,7 +523,20 @@ router.get('/', (req, res) => {
                 <input type="text" name="category" placeholder="e.g. Ring / Adventuring Gear" required style="width: 100%;">
               </div>
               <div>
-                <label>Tier:</label><br>
+                <label>
+                  Tier:
+                  <span class="tooltip">?
+                    <span class="tooltip-text">
+                      <strong>Item Tier & Weekly Stock Rules:</strong><br>
+                      • <strong>staple:</strong> Always on shelf, fixed price (no fluctuation).<br>
+                      • <strong>common:</strong> 10 random items rolled weekly.<br>
+                      • <strong>Spell Scroll:</strong> Guaranteed 2 cantrips & 2 lvl 1 spells.<br>
+                      • <strong>rare:</strong> Exactly 2 random items rolled weekly.<br>
+                      • <strong>magic:</strong> Exactly 1 magic item rolled weekly.<br>
+                      • <strong>service:</strong> Lodging, transport, non-physical goods.
+                    </span>
+                  </span>
+                </label><br>
                 <select name="tier" style="width: 100%;" required>
                   <option value="staple">staple</option>
                   <option value="common" selected>common</option>
@@ -555,15 +575,47 @@ router.get('/', (req, res) => {
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
               <div>
-                <label>Min Party Level (1–20):</label><br>
+                <label>
+                  Min Party Level (1–20):
+                  <span class="tooltip">?
+                    <span class="tooltip-text">
+                      <strong>Restock Level Gate:</strong><br>
+                      Items only appear in Grimbold's pool when the current Party Level is greater than or equal to this value. High-level items remain locked until the party progresses.
+                    </span>
+                  </span>
+                </label><br>
                 <input type="number" name="min_level" min="1" max="20" value="1" required style="width: 100%;">
               </div>
               <div>
-                <label>Min Weekly Stock:</label><br>
+                <label>
+                  Min Weekly Stock:
+                  <span class="tooltip">?
+                    <span class="tooltip-text">
+                      <strong>Weekly Stock Rules:</strong><br>
+                      • <strong>staple:</strong> Always available, fixed stock.<br>
+                      • <strong>common:</strong> 10 random items rolled weekly.<br>
+                      • <strong>rare:</strong> Exactly 2 random items rolled weekly.<br>
+                      • <strong>magic:</strong> Exactly 1 magic item rolled weekly.<br>
+                      • <strong>service:</strong> Lodging, transport, non-physical goods.
+                    </span>
+                  </span>
+                </label><br>
                 <input type="number" name="min_stock" min="0" value="1" required style="width: 100%;">
               </div>
               <div>
-                <label>Max Weekly Stock:</label><br>
+                <label>
+                  Max Weekly Stock:
+                  <span class="tooltip">?
+                    <span class="tooltip-text">
+                      <strong>Weekly Stock Rules:</strong><br>
+                      • <strong>staple:</strong> Always available, fixed stock.<br>
+                      • <strong>common:</strong> 10 random items rolled weekly.<br>
+                      • <strong>rare:</strong> Exactly 2 random items rolled weekly.<br>
+                      • <strong>magic:</strong> Exactly 1 magic item rolled weekly.<br>
+                      • <strong>service:</strong> Lodging, transport, non-physical goods.
+                    </span>
+                  </span>
+                </label><br>
                 <input type="number" name="max_stock" min="0" value="1" required style="width: 100%;">
               </div>
             </div>
@@ -690,6 +742,63 @@ router.get('/', (req, res) => {
       <meta charset="utf-8">
       <title>Grimbold Admin Panel</title>
       <style>
+        /* Tooltip helper icon & popup */
+        .tooltip {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 16px;
+          height: 16px;
+          background: #4e5058;
+          color: #dbdee1;
+          border-radius: 50%;
+          font-size: 11px;
+          font-weight: bold;
+          cursor: help;
+          margin-left: 6px;
+          vertical-align: middle;
+        }
+        .tooltip:hover {
+          background: #5865f2;
+          color: #ffffff;
+        }
+        .tooltip .tooltip-text {
+          visibility: hidden;
+          opacity: 0;
+          width: 280px;
+          background-color: #111214;
+          color: #dbdee1;
+          text-align: left;
+          border-radius: 6px;
+          padding: 10px 12px;
+          position: absolute;
+          z-index: 100;
+          bottom: 125%;
+          left: 50%;
+          transform: translateX(-50%);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+          border: 1px solid #3b3e45;
+          font-size: 12px;
+          line-height: 1.4;
+          font-weight: normal;
+          transition: opacity 0.2s ease, visibility 0.2s ease;
+          pointer-events: none;
+        }
+        .tooltip .tooltip-text::after {
+          content: "";
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          margin-left: -5px;
+          border-width: 5px;
+          border-style: solid;
+          border-color: #111214 transparent transparent transparent;
+        }
+        .tooltip:hover .tooltip-text {
+          visibility: visible;
+          opacity: 1;
+        }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1e1f22; color: #dbdee1; margin: 0; padding: 20px; box-sizing: border-box; }
         *, *:before, *:after { box-sizing: inherit; }
         .container { max-width: 1150px; margin: 0 auto; }
