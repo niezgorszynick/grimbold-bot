@@ -46,6 +46,19 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function decomposeCp(totalCp) {
+  let rem = Math.max(0, parseInt(totalCp, 10) || 0);
+  const pp = Math.floor(rem / 1000);
+  rem %= 1000;
+  const gp = Math.floor(rem / 100);
+  rem %= 100;
+  const ep = Math.floor(rem / 50);
+  rem %= 50;
+  const sp = Math.floor(rem / 10);
+  const cp = rem % 10;
+  return { pp, gp, ep, sp, cp };
+}
+
 // ─── POST ENDPOINTS: OPERATIONS & DISCORD ───────────────────────────────────
 
 // Ręczne wywołanie restocku z panelu
@@ -138,21 +151,71 @@ router.post('/items/update', (req, res) => {
 
 // ─── POST ENDPOINTS: CATALOG ────────────────────────────────────────────────
 
+// POST /admin/catalog/add — dodawanie nowego przedmiotu z walutami D&D
+router.post('/catalog/add', (req, res) => {
+  try {
+    const { name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock } = req.body;
+
+    const valPp = parseInt(pp, 10) || 0;
+    const valGp = parseInt(gp, 10) || 0;
+    const valEp = parseInt(ep, 10) || 0;
+    const valSp = parseInt(sp, 10) || 0;
+    const valCp = parseInt(cp, 10) || 0;
+
+    if (valPp < 0 || valGp < 0 || valEp < 0 || valSp < 0 || valCp < 0) {
+      throw new Error('Currency values cannot be negative.');
+    }
+
+    const totalCp = (valPp * 1000) + (valGp * 100) + (valEp * 50) + (valSp * 10) + valCp;
+
+    if (totalCp < 1) {
+      throw new Error('Total base price must be at least 1 copper piece (1 cp).');
+    }
+
+    db.addCatalogItem({
+      name,
+      category,
+      tier,
+      base_price_cp: totalCp,
+      description,
+      min_level,
+      min_stock,
+      max_stock
+    });
+
+    res.redirect('/admin?tab=catalog&status=catalog_added');
+  } catch (err) {
+    res.redirect(`/admin?tab=catalog&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// POST /admin/catalog/update — aktualizacja przedmiotu z walutami D&D
 router.post('/catalog/update', (req, res) => {
   try {
-    const { id, name, category, tier, base_price_gp, description, min_level, min_stock, max_stock } = req.body;
-    const priceGp = parseFloat(base_price_gp);
-    if (isNaN(priceGp) || priceGp < 0) {
-      throw new Error('Price in GP must be a valid number >= 0.');
+    const { id, name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock } = req.body;
+
+    const valPp = parseInt(pp, 10) || 0;
+    const valGp = parseInt(gp, 10) || 0;
+    const valEp = parseInt(ep, 10) || 0;
+    const valSp = parseInt(sp, 10) || 0;
+    const valCp = parseInt(cp, 10) || 0;
+
+    if (valPp < 0 || valGp < 0 || valEp < 0 || valSp < 0 || valCp < 0) {
+      throw new Error('Currency values cannot be negative.');
     }
-    const base_price_cp = Math.max(0, Math.round(priceGp * 100));
+
+    const totalCp = (valPp * 1000) + (valGp * 100) + (valEp * 50) + (valSp * 10) + valCp;
+
+    if (totalCp < 1) {
+      throw new Error('Total base price must be at least 1 copper piece (1 cp).');
+    }
 
     db.updateCatalogItem({
       id,
       name,
       category,
       tier,
-      base_price_cp,
+      base_price_cp: totalCp,
       description,
       min_level,
       min_stock,
@@ -161,7 +224,7 @@ router.post('/catalog/update', (req, res) => {
 
     res.redirect('/admin?tab=catalog&status=catalog_updated');
   } catch (err) {
-    res.status(400).send(`Error updating catalog item: ${escapeHtml(err.message)} <br><a href="/admin?tab=catalog">Back to Catalog</a>`);
+    res.redirect(`/admin?tab=catalog&err=${encodeURIComponent(err.message)}`);
   }
 });
 
@@ -187,6 +250,12 @@ router.get('/', (req, res) => {
   const rolls = db.getAllRolls ? db.getAllRolls() : [];
 
   let statusBanner = '';
+  const errorMsg = req.query.err;
+  if (errorMsg) {
+    statusBanner = `<div class="alert red">⚠️ Validation Error: ${escapeHtml(errorMsg)}</div>`;
+  } else if (status === 'catalog_added') {
+    statusBanner = '<div class="alert green">✅ New item successfully added to Master Catalog!</div>';
+  }
   if (status === 'restocked') {
     statusBanner = '<div class="alert green">✅ Store restocked successfully and announcement sent to Discord!</div>';
   } else if (status === 'message_sent') {
@@ -346,15 +415,16 @@ router.get('/', (req, res) => {
     `;
   }
 
-  // ── ZAKŁADKA: CATALOG ──
+// ── ZAKŁADKA: CATALOG ──
   else if (currentTab === 'catalog') {
     const editId = req.query.edit_catalog ? parseInt(req.query.edit_catalog, 10) : null;
     const itemToEdit = editId ? db.getCatalogItemById(editId) : null;
 
-    let editFormHtml = '';
+    let formSectionHtml = '';
+
     if (itemToEdit) {
-      const priceGp = (itemToEdit.base_price_cp / 100).toFixed(2).replace(/\.00$/, '');
-      editFormHtml = `
+      const priceDenoms = decomposeCp(itemToEdit.base_price_cp);
+      formSectionHtml = `
         <div class="card" style="border: 1px solid #5865f2;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <h3>Edit Item: ${escapeHtml(itemToEdit.name)} (ID: ${itemToEdit.id})</h3>
@@ -362,7 +432,8 @@ router.get('/', (req, res) => {
           </div>
           <form method="POST" action="/admin/catalog/update">
             <input type="hidden" name="id" value="${itemToEdit.id}">
-            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
               <div>
                 <label>Name:</label><br>
                 <input type="text" name="name" value="${escapeHtml(itemToEdit.name)}" required style="width: 100%;">
@@ -379,14 +450,37 @@ router.get('/', (req, res) => {
                   ).join('')}
                 </select>
               </div>
-              <div>
-                <label>Base Price (GP):</label><br>
-                <input type="number" step="0.01" name="base_price_gp" min="0" value="${priceGp}" required style="width: 100%;">
+            </div>
+
+            <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+              <label style="font-weight: bold; color: #d4af37;">Base Price Breakdown (Min. total 1 cp):</label>
+              <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 6px;">
+                <div>
+                  <label style="font-size: 12px;">Platinum (PP):</label>
+                  <input type="number" name="pp" min="0" value="${priceDenoms.pp}" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Gold (GP):</label>
+                  <input type="number" name="gp" min="0" value="${priceDenoms.gp}" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Electrum (EP):</label>
+                  <input type="number" name="ep" min="0" value="${priceDenoms.ep}" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Silver (SP):</label>
+                  <input type="number" name="sp" min="0" value="${priceDenoms.sp}" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Copper (CP):</label>
+                  <input type="number" name="cp" min="0" value="${priceDenoms.cp}" style="width: 100%;">
+                </div>
               </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
               <div>
-                <label>Min Party Level:</label><br>
+                <label>Min Party Level (1-20):</label><br>
                 <input type="number" name="min_level" min="1" max="20" value="${itemToEdit.min_level}" required style="width: 100%;">
               </div>
               <div>
@@ -398,7 +492,8 @@ router.get('/', (req, res) => {
                 <input type="number" name="max_stock" min="0" value="${itemToEdit.max_stock}" required style="width: 100%;">
               </div>
             </div>
-            <div style="margin-bottom: 10px;">
+
+            <div style="margin-bottom: 12px;">
               <label>Description:</label><br>
               <textarea name="description" rows="3" required style="width: 100%;">${escapeHtml(itemToEdit.description)}</textarea>
             </div>
@@ -406,10 +501,85 @@ router.get('/', (req, res) => {
           </form>
         </div>
       `;
+    } else {
+      formSectionHtml = `
+        <div class="card">
+          <h3>Add New Item to Master Catalog</h3>
+          <form method="POST" action="/admin/catalog/add">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+              <div>
+                <label>Name:</label><br>
+                <input type="text" name="name" placeholder="e.g. Ring of Warmth" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Category:</label><br>
+                <input type="text" name="category" placeholder="e.g. Ring / Adventuring Gear" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Tier:</label><br>
+                <select name="tier" style="width: 100%;" required>
+                  <option value="staple">staple</option>
+                  <option value="common" selected>common</option>
+                  <option value="rare">rare</option>
+                  <option value="magic">magic</option>
+                  <option value="service">service</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+              <label style="font-weight: bold; color: #d4af37;">Base Price Breakdown (Min. total 1 cp):</label>
+              <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 6px;">
+                <div>
+                  <label style="font-size: 12px;">Platinum (PP):</label>
+                  <input type="number" name="pp" min="0" value="0" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Gold (GP):</label>
+                  <input type="number" name="gp" min="0" value="0" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Electrum (EP):</label>
+                  <input type="number" name="ep" min="0" value="0" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Silver (SP):</label>
+                  <input type="number" name="sp" min="0" value="0" style="width: 100%;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Copper (CP):</label>
+                  <input type="number" name="cp" min="0" value="0" style="width: 100%;">
+                </div>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+              <div>
+                <label>Min Party Level (1–20):</label><br>
+                <input type="number" name="min_level" min="1" max="20" value="1" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Min Weekly Stock:</label><br>
+                <input type="number" name="min_stock" min="0" value="1" required style="width: 100%;">
+              </div>
+              <div>
+                <label>Max Weekly Stock:</label><br>
+                <input type="number" name="max_stock" min="0" value="1" required style="width: 100%;">
+              </div>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label>Description:</label><br>
+              <textarea name="description" rows="2" placeholder="Full English lore / mechanical description..." required style="width: 100%;"></textarea>
+            </div>
+            <button type="submit" class="btn btn-green">Add to Catalog</button>
+          </form>
+        </div>
+      `;
     }
 
     contentHtml = `
-      ${editFormHtml}
+      ${formSectionHtml}
       <div class="card">
         <h3>Master Catalog (${catalogItems.length} items)</h3>
         <table>

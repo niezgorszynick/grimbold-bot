@@ -109,6 +109,55 @@ module.exports = {
   prepare: (sql) => db.prepare(sql),
   transaction: (fn) => db.transaction(fn),
 
+  addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
+      const trimmedName = (name || '').trim();
+      const trimmedCat = (category || '').trim();
+      const trimmedDesc = (description || '').trim();
+      const validTiers = ['staple', 'common', 'rare', 'magic', 'service'];
+
+      if (!trimmedName) throw new Error('Item name is required.');
+      if (!trimmedCat) throw new Error('Category is required.');
+      if (!validTiers.includes(tier)) throw new Error(`Invalid tier selected: ${tier}`);
+      
+      const parsedPriceCp = parseInt(base_price_cp, 10);
+      if (isNaN(parsedPriceCp) || parsedPriceCp < 0) throw new Error('Base price (in CP) must be a non-negative integer.');
+
+      const parsedMinLevel = parseInt(min_level, 10);
+      if (isNaN(parsedMinLevel) || parsedMinLevel < 1 || parsedMinLevel > 20) {
+        throw new Error('Minimum party level must be between 1 and 20.');
+      }
+
+      const parsedMinStock = parseInt(min_stock, 10);
+      const parsedMaxStock = parseInt(max_stock, 10);
+      if (isNaN(parsedMinStock) || parsedMinStock < 0) throw new Error('Minimum stock must be a non-negative number.');
+      if (isNaN(parsedMaxStock) || parsedMaxStock < parsedMinStock) {
+        throw new Error('Maximum stock must be greater than or equal to minimum stock.');
+      }
+      if (!trimmedDesc) throw new Error('Description is required.');
+
+      // Sprawdzenie unikalności nazwy
+      const existing = db.prepare('SELECT id FROM catalog WHERE name = ? COLLATE NOCASE').get(trimmedName);
+      if (existing) {
+        throw new Error(`An item named "${trimmedName}" already exists in the Master Catalog (ID: ${existing.id}).`);
+      }
+
+      const stmt = db.prepare(`
+        INSERT INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      return stmt.run(
+        trimmedName,
+        trimmedCat,
+        tier,
+        parsedPriceCp,
+        trimmedDesc,
+        parsedMinLevel,
+        parsedMinStock,
+        parsedMaxStock
+      );
+    },
+
   //getPartyLevel - w przyszłości ma dostosować katalog przedmiotów do poziomu party
   getPartyLevel: () => {
     const row = db.prepare("SELECT value FROM config WHERE key = 'party_level'").get();
