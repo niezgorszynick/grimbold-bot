@@ -50,6 +50,20 @@ db.exec(`
   );
 `);
 
+// 4. Stwórz catalog przedmiotów
+db.exec(`
+  CREATE TABLE IF NOT EXISTS catalog (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    category TEXT NOT NULL,
+    tier TEXT NOT NULL CHECK (tier IN ('staple', 'common', 'rare', 'magic', 'service')),
+    base_price INTEGER NOT NULL CHECK (base_price >= 0),
+    description TEXT NOT NULL,
+    min_stock INTEGER DEFAULT 1,
+    max_stock INTEGER DEFAULT 1
+  );
+`);
+
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
