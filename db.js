@@ -160,6 +160,15 @@ if (!charCols.includes('subclass')) {
 if (!charCols.includes('xp')) {
   db.exec("ALTER TABLE characters ADD COLUMN xp INTEGER NOT NULL DEFAULT 0;");
 }
+if (!charCols.includes('death_adventure_id')) {
+  db.exec('ALTER TABLE characters ADD COLUMN death_adventure_id INTEGER REFERENCES adventures(id) ON DELETE SET NULL;');
+}
+if (!charCols.includes('death_dm_player_id')) {
+  db.exec('ALTER TABLE characters ADD COLUMN death_dm_player_id INTEGER REFERENCES players(id) ON DELETE SET NULL;');
+}
+if (!charCols.includes('death_notes')) {
+  db.exec('ALTER TABLE characters ADD COLUMN death_notes TEXT;');
+}
 
 // Backfill the multiclass table from the legacy character columns.
 const existingChars = db.prepare(
@@ -353,6 +362,59 @@ function updateCharacterProgression(characterId, xp) {
   const level = calculateLevelFromXp(xp);
   db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(xp, level, characterId);
   reconcileCharacterClassLevels(characterId, level, character.class, character.subclass);
+}
+
+function getCharacterAnalytics() {
+  const characters = db.prepare(`
+    SELECT c.*,
+           p.discord_tag AS player_tag,
+           dm.discord_tag AS death_dm_name,
+           a.title AS death_adv_title
+    FROM characters c
+    LEFT JOIN players p ON c.player_id = p.id
+    LEFT JOIN players dm ON c.death_dm_player_id = dm.id
+    LEFT JOIN adventures a ON c.death_adventure_id = a.id
+    ORDER BY c.name ASC
+  `).all();
+  const primaryClasses = new Map(
+    db.prepare(`
+      SELECT character_id, class_name
+      FROM character_classes
+      WHERE is_primary = 1
+    `).all().map(row => [row.character_id, row.class_name])
+  );
+
+  const speciesCount = {};
+  const classCount = {};
+  const statusCount = { Alive: 0, Dead: 0 };
+  const levelCount = {};
+  let totalXp = 0;
+
+  for (const character of characters) {
+    const status = character.status === 'dead' ? 'Dead' : 'Alive';
+    const species = character.race || 'Unknown';
+    const charClass = primaryClasses.get(character.id) || character.class || 'Unassigned';
+    const level = character.level || 3;
+    statusCount[status] += 1;
+    speciesCount[species] = (speciesCount[species] || 0) + 1;
+    classCount[charClass] = (classCount[charClass] || 0) + 1;
+    const levelKey = `Lvl ${level}`;
+    levelCount[levelKey] = (levelCount[levelKey] || 0) + 1;
+    totalXp += character.xp || 0;
+  }
+
+  return {
+    total: characters.length,
+    totalXp,
+    averageLevel: characters.length
+      ? Number((characters.reduce((sum, character) => sum + (character.level || 3), 0) / characters.length).toFixed(1))
+      : 0,
+    speciesCount,
+    classCount,
+    statusCount,
+    levelCount,
+    graveyard: characters.filter(character => character.status === 'dead')
+  };
 }
 
 const queries = {
@@ -879,6 +941,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   
   getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
   getCharacterClasses: (id) => getCharacterClassRows(Number(id)),
+  getCharacterAnalytics,
 
   addPlayer: ({ discord_id, discord_tag }) => {
     const trimmedId = (discord_id || '').trim();
@@ -996,7 +1059,10 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     override_level,
     status,
     adventure_ids,
-    class_allocations
+    class_allocations,
+    death_adventure_id,
+    death_dm_player_id,
+    death_notes
   }) => {
     const run = db.transaction(() => {
       const charId = Number(id);
@@ -1013,6 +1079,23 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
 
       const { canonicalSpecies, canonicalClass, canonicalSubclass } =
         validateCharacterOptions(race, class_name, subclass);
+      const deathAdventureId = status === 'dead' && death_adventure_id
+        ? Number(death_adventure_id)
+        : null;
+      const deathDmPlayerId = status === 'dead' && death_dm_player_id
+        ? Number(death_dm_player_id)
+        : null;
+      const deathNotes = status === 'dead' ? (death_notes || '').trim() : null;
+      if (deathAdventureId !== null) {
+        if (!Number.isSafeInteger(deathAdventureId) || !db.prepare('SELECT 1 FROM adventures WHERE id = ?').get(deathAdventureId)) {
+          throw new Error('Selected death adventure was not found.');
+        }
+      }
+      if (deathDmPlayerId !== null) {
+        if (!Number.isSafeInteger(deathDmPlayerId) || !db.prepare('SELECT 1 FROM players WHERE id = ?').get(deathDmPlayerId)) {
+          throw new Error('Selected death DM was not found.');
+        }
+      }
       const parsedXp = parseInt(xp, 10);
       if (!Number.isSafeInteger(parsedXp) || parsedXp < 0) {
         throw new Error('Adventure XP must be a non-negative whole number.');
@@ -1076,7 +1159,8 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
 
       const result = db.prepare(`
         UPDATE characters
-        SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
+        SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?,
+            death_adventure_id = ?, death_dm_player_id = ?, death_notes = ?
         WHERE id = ?
       `).run(
         pId,
@@ -1087,6 +1171,9 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         finalLevel,
         finalXp,
         status,
+        deathAdventureId,
+        deathDmPlayerId,
+        deathNotes,
         charId
       );
 

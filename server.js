@@ -342,7 +342,10 @@ router.post('/characters/update', (req, res) => {
       override_level,
       status,
       adventure_ids,
-      class_allocations
+      class_allocations,
+      death_adventure_id,
+      death_dm_player_id,
+      death_notes
     } = req.body;
     const selectedAdventureIds = adventure_ids
       ? (Array.isArray(adventure_ids) ? adventure_ids : [adventure_ids]).map(Number)
@@ -367,7 +370,10 @@ router.post('/characters/update', (req, res) => {
       override_level,
       status,
       adventure_ids: selectedAdventureIds,
-      class_allocations: selectedClassAllocations
+      class_allocations: selectedClassAllocations,
+      death_adventure_id,
+      death_dm_player_id,
+      death_notes
     });
     res.redirect('/admin?tab=players&status=char_updated');
   } catch (err) {
@@ -1191,6 +1197,166 @@ router.get('/', (req, res) => {
     `;
   }
 
+  // ── ZAKŁADKA: ANALYTICS ──
+  else if (currentTab === 'analytics') {
+    const analytics = db.getCharacterAnalytics();
+    const analyticsJson = JSON.stringify(analytics).replace(/</g, '\\u003c');
+    const levelEntries = Object.entries(analytics.levelCount)
+      .sort((left, right) => Number(left[0].replace(/\D/g, '')) - Number(right[0].replace(/\D/g, '')));
+    const classEntries = Object.entries(analytics.classCount)
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+
+    contentHtml = `
+      <div class="analytics-grid">
+        <section class="card analytics-card">
+          <div class="analytics-card-header">
+            <strong>Roster Composition</strong>
+            <div class="metric-toggle" role="group" aria-label="Roster chart metric">
+              <input type="radio" name="metricRadio" id="metricSpecies" value="species" checked>
+              <label for="metricSpecies">Species</label>
+              <input type="radio" name="metricRadio" id="metricClasses" value="classes">
+              <label for="metricClasses">Classes</label>
+              <input type="radio" name="metricRadio" id="metricStatus" value="status">
+              <label for="metricStatus">Status</label>
+            </div>
+          </div>
+          <div class="analytics-chart-wrap">
+            <canvas id="rosterPieChart" aria-label="Roster composition pie chart" role="img"></canvas>
+          </div>
+        </section>
+
+        <section class="card analytics-card">
+          <div class="analytics-card-header">
+            <strong>Roster Breakdown</strong>
+            <span class="muted small">Total Adventurers: ${analytics.total}</span>
+          </div>
+          <div class="analytics-breakdown">
+            <div>
+              <h4>Level Distribution</h4>
+              <ul class="analytics-list">
+                ${levelEntries.length ? levelEntries.map(([level, count]) => `
+                  <li><span>${escapeHtml(level)}</span><span class="analytics-badge">${count}</span></li>
+                `).join('') : '<li class="muted">No characters yet.</li>'}
+              </ul>
+            </div>
+            <div>
+              <h4>Class Popularity</h4>
+              <div class="analytics-class-list">
+                <ul class="analytics-list">
+                  ${classEntries.length ? classEntries.map(([className, count]) => `
+                    <li><span>${escapeHtml(className)}</span><span class="analytics-badge primary">${count}</span></li>
+                  `).join('') : '<li class="muted">No characters yet.</li>'}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card analytics-graveyard">
+        <div class="analytics-card-header">
+          <strong>Hall of the Fallen (Graveyard)</strong>
+          <span class="analytics-badge fallen">${analytics.graveyard.length} Fallen</span>
+        </div>
+        <div class="analytics-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable">Character</th>
+                <th class="sortable">Player</th>
+                <th class="sortable">Class &amp; Level</th>
+                <th class="sortable">Fateful Adventure</th>
+                <th class="sortable">Presiding DM</th>
+                <th>Demise Circumstances</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${analytics.graveyard.length === 0 ? `
+                <tr><td colspan="6" class="analytics-empty">No heroes have fallen yet. The realm remains fortunate.</td></tr>
+              ` : analytics.graveyard.map(character => `
+                <tr>
+                  <td><strong>${escapeHtml(character.name)}</strong></td>
+                  <td class="muted">${escapeHtml(character.player_tag || 'Unknown')}</td>
+                  <td><span class="analytics-badge">${escapeHtml(character.class || 'Class')} (Lvl ${character.level || 3})</span></td>
+                  <td>${character.death_adv_title ? `<span class="gold">#${character.death_adventure_id} ${escapeHtml(character.death_adv_title)}</span>` : '<span class="muted">Off-screen / Unknown</span>'}</td>
+                  <td class="muted">${escapeHtml(character.death_dm_name || '—')}</td>
+                  <td class="muted italic">${escapeHtml(character.death_notes || '—')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          const statusSelect = document.getElementById('char-status-select');
+          const deathBox = document.getElementById('cause-of-death-box');
+          if (statusSelect && deathBox) {
+            statusSelect.addEventListener('change', () => {
+              deathBox.style.display = statusSelect.value.toLowerCase() === 'dead' ? 'block' : 'none';
+            });
+          }
+
+          const canvas = document.getElementById('rosterPieChart');
+          if (!canvas) return;
+
+          const dataPayload = ${analyticsJson};
+          const palette = [
+            '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
+            '#ec4899', '#6366f1', '#14b8a6', '#f97316', '#a855f7'
+          ];
+
+          function buildDataset(metric) {
+            let source = {};
+            if (metric === 'species') source = dataPayload.speciesCount;
+            if (metric === 'classes') source = dataPayload.classCount;
+            if (metric === 'status') source = dataPayload.statusCount;
+
+            const labels = Object.keys(source);
+            const values = Object.values(source);
+
+            return {
+              labels,
+              datasets: [{
+                data: values,
+                backgroundColor: labels.map((_, index) => palette[index % palette.length]),
+                borderColor: '#1e293b',
+                borderWidth: 2
+              }]
+            };
+          }
+
+          if (!window.Chart) {
+            console.error('Chart.js failed to load; character analytics chart is unavailable.');
+            return;
+          }
+          const pieChart = new Chart(canvas, {
+            type: 'pie',
+            data: buildDataset('species'),
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'right',
+                  labels: { color: '#cbd5e1', font: { size: 11 } }
+                }
+              }
+            }
+          });
+
+          document.querySelectorAll('input[name="metricRadio"]').forEach(radio => {
+            radio.addEventListener('change', event => {
+              pieChart.data = buildDataset(event.target.value);
+              pieChart.update();
+            });
+          });
+        });
+      </script>
+    `;
+  }
+
   // ── ZAKŁADKA: SALES ──
   else if (currentTab === 'sales') {
     contentHtml = `
@@ -1406,10 +1572,34 @@ router.get('/', (req, res) => {
                 </div>
                 <div>
                   <label style="font-size: 12px;">Status:</label><br>
-                  <select name="status" style="width: 100%; margin-top: 4px;" required>
+                  <select name="status" id="char-status-select" style="width: 100%; margin-top: 4px;" required>
                     <option value="alive" ${charToEdit.status === 'alive' ? 'selected' : ''}>Alive</option>
                     <option value="dead" ${charToEdit.status === 'dead' ? 'selected' : ''}>Dead</option>
                   </select>
+                </div>
+              </div>
+            </div>
+
+            <div id="cause-of-death-box" style="display: ${charToEdit.status === 'dead' ? 'block' : 'none'}; background: #232428; border: 1px solid #f23f43; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+              <h4 style="margin: 0 0 8px 0; color: #f23f43; font-size: 13px;">Cause of Death / Demise Chronicle</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label for="death-adventure">Fateful Adventure:</label>
+                  <select id="death-adventure" name="death_adventure_id" style="width: 100%; margin-top: 4px;">
+                    <option value="">Unknown / not recorded</option>
+                    ${availableAdventures.map(adventure => `<option value="${adventure.id}" ${Number(charToEdit.death_adventure_id) === Number(adventure.id) ? 'selected' : ''}>${escapeHtml(adventure.title)} (#${adventure.id})</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label for="death-dm">Dungeon Master (Host):</label>
+                  <select id="death-dm" name="death_dm_player_id" style="width: 100%; margin-top: 4px;">
+                    <option value="">Unknown / not recorded</option>
+                    ${allPlayers.map(player => `<option value="${player.id}" ${Number(charToEdit.death_dm_player_id) === Number(player.id) ? 'selected' : ''}>${escapeHtml(player.discord_tag)}</option>`).join('')}
+                  </select>
+                </div>
+                <div style="grid-column: 1 / -1;">
+                  <label for="death-notes">Death Circumstances / Last Words:</label>
+                  <textarea id="death-notes" name="death_notes" rows="2" maxlength="2000" placeholder="e.g. Slain by an ancient red dragon in the fiery caverns..." style="width: 100%; margin-top: 4px;">${escapeHtml(charToEdit.death_notes || '')}</textarea>
                 </div>
               </div>
             </div>
@@ -1479,6 +1669,14 @@ router.get('/', (req, res) => {
           document.addEventListener('DOMContentLoaded', () => {
             const cb = document.getElementById('overrideLvlCheck');
             if (cb) toggleLevelInput(cb);
+
+            const characterStatus = document.getElementById('char-status-select');
+            const deathDetails = document.getElementById('cause-of-death-box');
+            if (characterStatus && deathDetails) {
+              characterStatus.addEventListener('change', () => {
+                deathDetails.style.display = characterStatus.value === 'dead' ? 'block' : 'none';
+              });
+            }
 
             const searchInput = document.getElementById('adventure-search');
             const adventureItems = document.querySelectorAll('.adventure-item');
@@ -1848,6 +2046,7 @@ router.get('/', (req, res) => {
     <head>
       <meta charset="utf-8">
       <title>Grimbold Admin Panel</title>
+      ${currentTab === 'analytics' ? '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>' : ''}
       <style>
         /* Tooltip helper icon & popup */
         .tooltip {
@@ -1939,8 +2138,41 @@ router.get('/', (req, res) => {
         .party-badge button { color: #fff; background: transparent; border: 0; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
         .adventure-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 20px; }
         .adventure-table-wrap { overflow-x: auto; }
+        .analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .analytics-card { min-width: 0; margin-bottom: 0; }
+        .analytics-card-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid #3b3e45; }
+        .analytics-chart-wrap { position: relative; width: 100%; max-width: 520px; height: 300px; margin: 12px auto 0; }
+        .analytics-chart-wrap canvas { max-height: 280px; max-width: 100%; }
+        .metric-toggle { display: inline-flex; gap: 4px; }
+        .metric-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+        .metric-toggle label { border: 1px solid #d4af37; color: #d4af37; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+        .metric-toggle label:first-of-type { border-radius: 4px 0 0 4px; }
+        .metric-toggle label:last-of-type { border-radius: 0 4px 4px 0; }
+        .metric-toggle input:checked + label { background: #d4af37; color: #1e1f22; }
+        .metric-toggle input:focus-visible + label { outline: 2px solid #fff; outline-offset: 2px; }
+        .analytics-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding-top: 14px; }
+        .analytics-breakdown h4 { color: #d4af37; font-size: 12px; text-transform: uppercase; margin: 0 0 8px; }
+        .analytics-list { list-style: none; padding: 0; margin: 0; }
+        .analytics-list li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-bottom: 1px solid #3b3e45; font-size: 13px; }
+        .analytics-class-list { max-height: 210px; overflow-y: auto; }
+        .analytics-badge { display: inline-block; border-radius: 4px; background: #4e5058; color: #fff; padding: 3px 7px; font-size: 12px; white-space: nowrap; }
+        .analytics-badge.primary { background: #5865f2; }
+        .analytics-badge.fallen { background: #f23f43; }
+        .analytics-graveyard { padding: 0; overflow: hidden; }
+        .analytics-graveyard > .analytics-card-header { padding: 14px 18px; background: #232428; color: #f23f43; }
+        .analytics-table-wrap { overflow-x: auto; }
+        .analytics-table-wrap table { margin: 0; }
+        .analytics-empty { text-align: center; color: #949ba4; font-style: italic; padding: 24px; }
+        .muted { color: #949ba4; }
+        .small { font-size: 12px; }
+        .gold { color: #d4af37; }
+        .italic { font-style: italic; }
         @media (max-width: 760px) {
           .adventure-layout { grid-template-columns: minmax(0, 1fr); }
+          .analytics-grid { grid-template-columns: minmax(0, 1fr); }
+        }
+        @media (max-width: 480px) {
+          .analytics-breakdown { grid-template-columns: minmax(0, 1fr); }
         }
         .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
         .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
@@ -1961,6 +2193,7 @@ router.get('/', (req, res) => {
           <a href="/admin?tab=rolls" class="tab-btn ${currentTab === 'rolls' ? 'active' : ''}">Rolls History</a>
           <a href="/admin?tab=players" class="tab-btn ${currentTab === 'players' ? 'active' : ''}">Players</a>
           <a href="/admin?tab=adventures" class="tab-btn ${currentTab === 'adventures' ? 'active' : ''}">Adventures</a>
+          <a href="/admin?tab=analytics" class="tab-btn ${currentTab === 'analytics' ? 'active' : ''}">Analytics</a>
         </div>
         ${contentHtml}
       </div>
