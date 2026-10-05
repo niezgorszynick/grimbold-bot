@@ -19,3 +19,5 @@ pnpm-debug.log*
 data.sqlite
 data.sqlite-wal
 data.sqlite-shm
+logs/
+*.log
