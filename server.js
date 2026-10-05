@@ -567,6 +567,7 @@ router.get('/', (req, res) => {
             `).join('')}
           </tbody>
         </table>
+        </div>
       </div>
 
       <script>
@@ -910,7 +911,7 @@ router.get('/', (req, res) => {
     const adventureFormAction = editingAdventure ? '/admin/adventures/edit' : '/admin/adventures/add';
 
     contentHtml = `
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+      <div class="adventure-layout">
         
             <!-- Adventure Record Form -->
             <div class="card" style="margin-bottom: 0;">
@@ -957,22 +958,21 @@ router.get('/', (req, res) => {
                 </div>
 
                 <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
-                    <label style="display: flex; justify-content: space-between; font-weight: bold; color: #d4af37; font-size: 13px;">
-                      <span>Participating Characters</span>
-                      <span id="selected-count" style="color: #949ba4; font-weight: normal;">Selected: 0</span>
-                    </label>
-                    <input type="text" id="character-search" placeholder="Filter by player or character name..." style="width: 100%; margin-top: 8px;">
-                    <div id="characters-container" style="max-height: 240px; overflow-y: auto; margin-top: 8px; padding: 8px; border: 1px solid #3b3e45; border-radius: 4px;">
-                      ${characterGroupsHtml || '<p style="color: #949ba4; font-size: 12px;">No active characters available.</p>'}
-                    </div>
-                    <div id="selected-badges-container" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;">
-                      <span style="color: #949ba4; font-size: 12px;">Party:</span>
-                    </div>
+                  <label style="display: flex; justify-content: space-between; font-weight: bold; color: #d4af37; font-size: 13px;">
+                    <span>Participating Characters</span>
+                    <span id="selected-count" style="color: #949ba4; font-weight: normal;">Selected: 0</span>
+                  </label>
+                  <input type="text" id="character-search" placeholder="Filter by player or character name..." style="width: 100%; margin-top: 8px;">
+                  <div id="characters-container" style="max-height: 240px; overflow-y: auto; margin-top: 8px; padding: 8px; border: 1px solid #3b3e45; border-radius: 4px;">
+                    ${characterGroupsHtml || '<p style="color: #949ba4; font-size: 12px;">No active characters available.</p>'}
+                  </div>
+                  <div id="selected-badges-container" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;">
+                    <span style="color: #949ba4; font-size: 12px;">Party:</span>
                   </div>
                 </div>
 
-                <button type="submit" class="btn btn-green" style="width: 100%; padding: 10px;">${editingAdventure ? 'Save Adventure Changes' : '⚔️ Finalize Adventure & Award Rewards'}</button>
-                ${editingAdventure ? '<a href="/admin?tab=adventures" class="btn" style="display: block; text-align: center; margin-top: 8px;">Cancel Edit</a>' : ''}
+                <button type="submit" class="btn btn-green" style="padding: 10px 16px;">${editingAdventure ? 'Save Adventure Changes' : '⚔️ Finalize Adventure & Award Rewards'}</button>
+                ${editingAdventure ? '<a href="/admin?tab=adventures" class="btn" style="display: inline-block; margin-top: 8px;">Cancel Edit</a>' : ''}
               </form>
         </div>
 
@@ -995,6 +995,7 @@ router.get('/', (req, res) => {
       <!-- Adventures History Table -->
       <div class="card">
         <h3>Completed Adventures History (${allAdventures.length})</h3>
+        <div class="adventure-table-wrap">
         <table>
           <thead>
             <tr>
@@ -1671,6 +1672,11 @@ router.get('/', (req, res) => {
         .char-item label { font-size: 13px; cursor: pointer; }
         .party-badge { display: inline-flex; align-items: center; gap: 6px; background: #5865f2; color: #fff; border-radius: 4px; padding: 3px 7px; font-size: 12px; }
         .party-badge button { color: #fff; background: transparent; border: 0; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+        .adventure-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .adventure-table-wrap { overflow-x: auto; }
+        @media (max-width: 760px) {
+          .adventure-layout { grid-template-columns: minmax(0, 1fr); }
+        }
         .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
         .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
         .alert.red { background: rgba(242, 63, 67, 0.2); border: 1px solid #f23f43; color: #f23f43; }
