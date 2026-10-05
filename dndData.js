@@ -16,6 +16,14 @@ const DND_SPECIES = [
 
 // Official 2024 Classes & Subclasses (4 per class in 2024 PHB)
 const DND_CLASSES_AND_SUBCLASSES = {
+  'Artificer': [
+    'Alchemist',
+    'Armorer',
+    'Artillerist',
+    'Battle Smith',
+    'Cartographer',
+    'Reanimator'
+  ],
   'Barbarian': [
     'Path of the Berserker',
     'Path of the Wild Heart',
