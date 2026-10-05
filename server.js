@@ -330,8 +330,23 @@ router.post('/characters/add', (req, res) => {
 
 router.post('/characters/update', (req, res) => {
   try {
-    const { id, player_id, name, race, class_name, subclass, xp, level, override_level, status } = req.body;
-    db.updateCharacter({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status });
+    const { id, player_id, name, race, class_name, subclass, xp, level, override_level, status, adventure_ids } = req.body;
+    const selectedAdventureIds = adventure_ids
+      ? (Array.isArray(adventure_ids) ? adventure_ids : [adventure_ids]).map(Number)
+      : [];
+    db.updateCharacterWithAdventures({
+      id,
+      player_id,
+      name,
+      race,
+      class_name,
+      subclass,
+      xp,
+      level,
+      override_level,
+      status,
+      adventure_ids: selectedAdventureIds
+    });
     res.redirect('/admin?tab=players&status=char_updated');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
@@ -1225,6 +1240,12 @@ router.get('/', (req, res) => {
 
     const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
     const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
+    const characterAdventureIds = charToEdit
+      ? db.getCharacterAdventureIds(charToEdit.id)
+      : [];
+    const availableAdventures = charToEdit && db.getAllAdventures
+      ? db.getAllAdventures()
+      : [];
     const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
     const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
 
@@ -1353,6 +1374,33 @@ router.get('/', (req, res) => {
               </div>
             </div>
 
+            <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+              <label style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: #d4af37; font-size: 13px;">
+                <span>Completed Adventures Log</span>
+                <span id="selected-adventures-count" style="color: #949ba4; font-weight: normal;">Adventures: ${characterAdventureIds.length}</span>
+              </label>
+              ${availableAdventures.length === 0 ? '<p style="margin: 8px 0 0; color: #949ba4; font-size: 12px;">No completed adventures available.</p>' : `
+                <input type="text" id="adventure-search" placeholder="Filter by title, DM, or session ID..." style="width: 100%; margin-top: 8px;">
+                <div id="adventures-list-container" style="max-height: 220px; overflow-y: auto; margin-top: 8px; padding: 8px; border: 1px solid #3b3e45; border-radius: 4px;">
+                  ${availableAdventures.map(adventure => `
+                    <div class="adventure-item" data-title="${escapeHtml(adventure.title.toLowerCase())}" data-dm="${escapeHtml((adventure.dm_name || '').toLowerCase())}" data-id="${adventure.id}" style="padding: 8px; border: 1px solid #3b3e45; border-radius: 4px; margin-bottom: 6px;">
+                      <label for="character_adventure_${adventure.id}" style="display: block; font-size: 13px; cursor: pointer;">
+                        <input class="adventure-checkbox" type="checkbox" name="adventure_ids" value="${adventure.id}" id="character_adventure_${adventure.id}" ${characterAdventureIds.includes(adventure.id) ? 'checked' : ''}>
+                        <strong>${escapeHtml(adventure.title)}</strong>
+                        <span style="display: block; color: #949ba4; font-size: 11px; margin-left: 22px;">
+                          Session #${adventure.id} · DM: ${escapeHtml(adventure.dm_name || 'Unknown')} · +${adventure.xp_awarded} XP
+                        </span>
+                      </label>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+              <div id="selected-adventure-badges" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;">
+                <span style="color: #949ba4; font-size: 12px;">Selected:</span>
+              </div>
+              <small style="display: block; color: #949ba4; margin-top: 6px;">Selected adventures are linked to this character, and their XP rewards are synchronized when you save.</small>
+            </div>
+
             <button type="submit" class="btn btn-green">Save Character Changes</button>
           </form>
         </div>
@@ -1369,6 +1417,68 @@ router.get('/', (req, res) => {
           document.addEventListener('DOMContentLoaded', () => {
             const cb = document.getElementById('overrideLvlCheck');
             if (cb) toggleLevelInput(cb);
+
+            const searchInput = document.getElementById('adventure-search');
+            const adventureItems = document.querySelectorAll('.adventure-item');
+            const adventureCheckboxes = document.querySelectorAll('.adventure-checkbox');
+            const adventureCount = document.getElementById('selected-adventures-count');
+            const selectedBadges = document.getElementById('selected-adventure-badges');
+
+            if (searchInput) {
+              searchInput.addEventListener('input', () => {
+                const query = searchInput.value.toLowerCase().trim();
+                adventureItems.forEach(item => {
+                  const matches = item.dataset.title.includes(query) ||
+                    item.dataset.dm.includes(query) ||
+                    item.dataset.id.includes(query);
+                  item.style.display = matches ? '' : 'none';
+                });
+              });
+            }
+
+            function updateSelectedAdventures() {
+              const selected = document.querySelectorAll('.adventure-checkbox:checked');
+              if (adventureCount) adventureCount.textContent = 'Adventures: ' + selected.length;
+              if (!selectedBadges) return;
+
+              selectedBadges.replaceChildren();
+              const label = document.createElement('span');
+              label.style.cssText = 'color: #949ba4; font-size: 12px;';
+              label.textContent = 'Selected:';
+              selectedBadges.appendChild(label);
+
+              if (selected.length === 0) {
+                const empty = document.createElement('span');
+                empty.style.cssText = 'color: #949ba4; font-size: 12px; font-style: italic;';
+                empty.textContent = 'None';
+                selectedBadges.appendChild(empty);
+                return;
+              }
+
+              selected.forEach(checkbox => {
+                const item = checkbox.closest('.adventure-item');
+                const title = item.querySelector('strong').textContent;
+                const badge = document.createElement('span');
+                badge.className = 'party-badge';
+                badge.appendChild(document.createTextNode(title));
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.setAttribute('aria-label', 'Remove ' + title);
+                removeButton.textContent = '×';
+                removeButton.addEventListener('click', () => {
+                  checkbox.checked = false;
+                  updateSelectedAdventures();
+                });
+                badge.appendChild(removeButton);
+                selectedBadges.appendChild(badge);
+              });
+            }
+
+            adventureCheckboxes.forEach(checkbox => {
+              checkbox.addEventListener('change', updateSelectedAdventures);
+            });
+            updateSelectedAdventures();
           });
         </script>
       `;

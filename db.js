@@ -751,6 +751,108 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, finalLevel, parsedXp, status, cId);
   },
 
+  getCharacterAdventureIds: (characterId) => {
+    const rows = db.prepare('SELECT adventure_id FROM adventure_rewards WHERE character_id = ?')
+      .all(Number(characterId));
+    return rows.map(row => row.adventure_id);
+  },
+
+  updateCharacterWithAdventures: ({
+    id,
+    player_id,
+    name,
+    race,
+    class_name,
+    subclass,
+    xp,
+    level,
+    override_level,
+    status,
+    adventure_ids
+  }) => {
+    const run = db.transaction(() => {
+      const charId = Number(id);
+      const char = db.prepare('SELECT id FROM characters WHERE id = ?').get(charId);
+      if (!Number.isSafeInteger(charId) || !char) {
+        throw new Error(`Character #${id} not found.`);
+      }
+
+      const pId = parseInt(player_id, 10);
+      const trimmedName = (name || '').trim();
+      if (!Number.isInteger(pId)) throw new Error('Valid player must be selected.');
+      if (!trimmedName) throw new Error('Character name is required.');
+      if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
+
+      const { canonicalSpecies, canonicalClass, canonicalSubclass } =
+        validateCharacterOptions(race, class_name, subclass);
+      const parsedXp = parseInt(xp, 10);
+      if (!Number.isSafeInteger(parsedXp) || parsedXp < 0) {
+        throw new Error('Adventure XP must be a non-negative whole number.');
+      }
+
+      const targetAdvIds = Array.from(new Set((adventure_ids || []).map(Number)));
+      if (targetAdvIds.some(adventureId => !Number.isSafeInteger(adventureId) || adventureId <= 0)) {
+        throw new Error('Invalid adventure selection.');
+      }
+      const currentRewards = db.prepare(
+        'SELECT adventure_id, xp FROM adventure_rewards WHERE character_id = ?'
+      ).all(charId);
+      const currentAdvIds = new Set(currentRewards.map(reward => reward.adventure_id));
+      const targetAdvIdSet = new Set(targetAdvIds);
+      const toRemove = currentRewards.filter(reward => !targetAdvIdSet.has(reward.adventure_id));
+      const toAdd = targetAdvIds.filter(adventureId => !currentAdvIds.has(adventureId));
+
+      let adventureXpDelta = 0;
+      const deleteReward = db.prepare(
+        'DELETE FROM adventure_rewards WHERE adventure_id = ? AND character_id = ?'
+      );
+      for (const reward of toRemove) {
+        adventureXpDelta -= reward.xp;
+        deleteReward.run(reward.adventure_id, charId);
+      }
+
+      const getAdventure = db.prepare('SELECT xp_awarded FROM adventures WHERE id = ?');
+      const insertReward = db.prepare(
+        'INSERT INTO adventure_rewards (adventure_id, character_id, xp) VALUES (?, ?, ?)'
+      );
+      for (const adventureId of toAdd) {
+        const adventure = getAdventure.get(adventureId);
+        if (!adventure) {
+          throw new Error(`Adventure #${adventureId} not found.`);
+        }
+        adventureXpDelta += adventure.xp_awarded;
+        insertReward.run(adventureId, charId, adventure.xp_awarded);
+      }
+
+      const finalXp = Math.max(0, parsedXp + adventureXpDelta);
+      let finalLevel = calculateLevelFromXp(finalXp);
+      if (override_level === '1' || override_level === 1 || override_level === true) {
+        const manualLevel = parseInt(level, 10);
+        if (Number.isInteger(manualLevel) && manualLevel >= 1 && manualLevel <= 20) {
+          finalLevel = manualLevel;
+        }
+      }
+
+      return db.prepare(`
+        UPDATE characters
+        SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
+        WHERE id = ?
+      `).run(
+        pId,
+        trimmedName,
+        canonicalSpecies,
+        canonicalClass,
+        canonicalSubclass,
+        finalLevel,
+        finalXp,
+        status,
+        charId
+      );
+    });
+
+    return run();
+  },
+
   deleteCharacter: (id) => {
     return db.prepare('DELETE FROM characters WHERE id = ?').run(id);
   },
