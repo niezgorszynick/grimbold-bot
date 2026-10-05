@@ -330,10 +330,31 @@ router.post('/characters/add', (req, res) => {
 
 router.post('/characters/update', (req, res) => {
   try {
-    const { id, player_id, name, race, class_name, subclass, xp, level, override_level, status, adventure_ids } = req.body;
+    const {
+      id,
+      player_id,
+      name,
+      race,
+      class_name,
+      subclass,
+      xp,
+      level,
+      override_level,
+      status,
+      adventure_ids,
+      class_allocations
+    } = req.body;
     const selectedAdventureIds = adventure_ids
       ? (Array.isArray(adventure_ids) ? adventure_ids : [adventure_ids]).map(Number)
       : [];
+    let selectedClassAllocations;
+    if (class_allocations !== undefined) {
+      try {
+        selectedClassAllocations = JSON.parse(class_allocations);
+      } catch {
+        throw new Error('Invalid class allocation data.');
+      }
+    }
     db.updateCharacterWithAdventures({
       id,
       player_id,
@@ -345,7 +366,8 @@ router.post('/characters/update', (req, res) => {
       level,
       override_level,
       status,
-      adventure_ids: selectedAdventureIds
+      adventure_ids: selectedAdventureIds,
+      class_allocations: selectedClassAllocations
     });
     res.redirect('/admin?tab=players&status=char_updated');
   } catch (err) {
@@ -1240,6 +1262,8 @@ router.get('/', (req, res) => {
 
     const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
     const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
+    const characterClasses = charToEdit ? db.getCharacterClasses(charToEdit.id) : [];
+    const secondaryCharacterClasses = characterClasses.filter(classRow => classRow.is_primary !== 1);
     const characterAdventureIds = charToEdit
       ? db.getCharacterAdventureIds(charToEdit.id)
       : [];
@@ -1248,6 +1272,22 @@ router.get('/', (req, res) => {
       : [];
     const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
     const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
+    const classNamesJson = JSON.stringify(classNames).replace(/</g, '\\u003c');
+    const secondaryClassAllocationRows = secondaryCharacterClasses.map(classRow => {
+      const options = [...classNames];
+      if (!options.some(className => className.toLowerCase() === classRow.class_name.toLowerCase())) {
+        options.unshift(classRow.class_name);
+      }
+      return `
+        <div class="class-allocation-row" data-subclass="${escapeHtml(classRow.subclass_name || '')}" style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+          <select class="class-allocation-name" aria-label="Multiclass name" style="flex: 2;">
+            ${options.map(className => `<option value="${escapeHtml(className)}" ${className.toLowerCase() === classRow.class_name.toLowerCase() ? 'selected' : ''}>${escapeHtml(className)}</option>`).join('')}
+          </select>
+          <input class="class-allocation-level" type="number" min="1" max="20" value="${classRow.class_level}" aria-label="Class levels" style="width: 90px;">
+          <button class="remove-class-allocation btn btn-small" type="button">Remove</button>
+        </div>
+      `;
+    }).join('');
 
     const addSpeciesOptions = DND_SPECIES.map(s =>
       `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`
@@ -1375,6 +1415,27 @@ router.get('/', (req, res) => {
             </div>
 
             <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+              <label style="font-weight: bold; color: #d4af37; font-size: 13px;">
+                <input type="checkbox" id="edit-class-allocations">
+                Redistribute multiclass levels
+              </label>
+              <p style="color: #949ba4; font-size: 12px; margin: 6px 0;">
+                Leave unchecked to assign level-ups automatically to the primary class. When enabled, set secondary class levels; the primary class receives the remaining XP-derived levels.
+              </p>
+              <div id="secondary-class-allocations">
+                ${secondaryClassAllocationRows || '<p id="no-secondary-classes" style="color: #949ba4; font-size: 12px;">No secondary classes.</p>'}
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 10px;">
+                <select id="add-secondary-class" aria-label="Choose a secondary class" style="flex: 1;">
+                  <option value="">-- Add secondary class --</option>
+                  ${classNames.map(className => `<option value="${escapeHtml(className)}">${escapeHtml(className)}</option>`).join('')}
+                </select>
+                <button id="add-secondary-class-button" class="btn btn-small" type="button">Add Class</button>
+              </div>
+              <input id="class-allocations-json" type="hidden" name="class_allocations" disabled>
+            </div>
+
+            <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
               <label style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: #d4af37; font-size: 13px;">
                 <span>Completed Adventures Log</span>
                 <span id="selected-adventures-count" style="color: #949ba4; font-weight: normal;">Adventures: ${characterAdventureIds.length}</span>
@@ -1406,6 +1467,7 @@ router.get('/', (req, res) => {
         </div>
 
         <script>
+          const multiclassNames = ${classNamesJson};
           function toggleLevelInput(cb) {
             const input = document.getElementById('editCharLevel');
             if (!cb.checked) {
@@ -1423,6 +1485,99 @@ router.get('/', (req, res) => {
             const adventureCheckboxes = document.querySelectorAll('.adventure-checkbox');
             const adventureCount = document.getElementById('selected-adventures-count');
             const selectedBadges = document.getElementById('selected-adventure-badges');
+            const allocationToggle = document.getElementById('edit-class-allocations');
+            const allocationContainer = document.getElementById('secondary-class-allocations');
+            const allocationJson = document.getElementById('class-allocations-json');
+            const addClassSelect = document.getElementById('add-secondary-class');
+            const addClassButton = document.getElementById('add-secondary-class-button');
+            const characterForm = document.querySelector('form[action="/admin/characters/update"]');
+
+            function updateAllocationMode() {
+              const enabled = allocationToggle.checked;
+              allocationJson.disabled = !enabled;
+              allocationContainer.querySelectorAll('select, input, button').forEach(control => {
+                control.disabled = !enabled;
+              });
+              addClassSelect.disabled = !enabled;
+              addClassButton.disabled = !enabled;
+            }
+
+            function addClassAllocation(className, level = 1) {
+              const emptyMessage = document.getElementById('no-secondary-classes');
+              if (emptyMessage) emptyMessage.remove();
+
+              const row = document.createElement('div');
+              row.className = 'class-allocation-row';
+              row.dataset.subclass = '';
+              row.style.cssText = 'display: flex; gap: 8px; align-items: center; margin-top: 8px;';
+
+              const classSelect = document.createElement('select');
+              classSelect.className = 'class-allocation-name';
+              classSelect.setAttribute('aria-label', 'Multiclass name');
+              classSelect.style.flex = '2';
+              multiclassNames.forEach(name => classSelect.add(new Option(name, name)));
+              classSelect.value = className;
+              classSelect.addEventListener('change', () => { row.dataset.subclass = ''; });
+
+              const levelInput = document.createElement('input');
+              levelInput.className = 'class-allocation-level';
+              levelInput.type = 'number';
+              levelInput.min = '1';
+              levelInput.max = '20';
+              levelInput.value = level;
+              levelInput.setAttribute('aria-label', 'Class levels');
+              levelInput.style.width = '90px';
+
+              const removeButton = document.createElement('button');
+              removeButton.className = 'remove-class-allocation btn btn-small';
+              removeButton.type = 'button';
+              removeButton.textContent = 'Remove';
+
+              row.append(classSelect, levelInput, removeButton);
+              allocationContainer.appendChild(row);
+              updateAllocationMode();
+            }
+
+            allocationContainer.addEventListener('change', event => {
+              if (event.target.matches('.class-allocation-name')) {
+                event.target.closest('.class-allocation-row').dataset.subclass = '';
+              }
+            });
+            allocationContainer.addEventListener('click', event => {
+              if (event.target.matches('.remove-class-allocation')) {
+                event.target.closest('.class-allocation-row').remove();
+                if (!allocationContainer.querySelector('.class-allocation-row')) {
+                  const emptyMessage = document.createElement('p');
+                  emptyMessage.id = 'no-secondary-classes';
+                  emptyMessage.style.cssText = 'color: #949ba4; font-size: 12px;';
+                  emptyMessage.textContent = 'No secondary classes.';
+                  allocationContainer.appendChild(emptyMessage);
+                }
+              }
+            });
+            allocationToggle.addEventListener('change', updateAllocationMode);
+            addClassButton.addEventListener('click', () => {
+              const className = addClassSelect.value;
+              if (!className) return;
+              if ([...allocationContainer.querySelectorAll('.class-allocation-name')]
+                .some(select => select.value.toLowerCase() === className.toLowerCase())) {
+                return;
+              }
+              addClassAllocation(className);
+              addClassSelect.value = '';
+            });
+            characterForm.addEventListener('submit', () => {
+              if (allocationToggle.checked) {
+                allocationJson.value = JSON.stringify(
+                  [...allocationContainer.querySelectorAll('.class-allocation-row')].map(row => ({
+                    class_name: row.querySelector('.class-allocation-name').value,
+                    subclass_name: row.dataset.subclass || null,
+                    level: row.querySelector('.class-allocation-level').value
+                  }))
+                );
+              }
+            });
+            updateAllocationMode();
 
             if (searchInput) {
               searchInput.addEventListener('input', () => {

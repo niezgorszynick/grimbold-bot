@@ -98,6 +98,38 @@ const DND_CLASSES_AND_SUBCLASSES = {
   ]
 };
 
+const MULTICLASS_REQUIREMENTS = {
+  Artificer: { abilities: ['intelligence'], minScore: 13 },
+  Barbarian: { abilities: ['strength'], minScore: 13 },
+  Bard: { abilities: ['charisma'], minScore: 13 },
+  Cleric: { abilities: ['wisdom'], minScore: 13 },
+  Druid: { abilities: ['wisdom'], minScore: 13 },
+  Fighter: { abilities: ['strength', 'dexterity'], logic: 'OR', minScore: 13 },
+  Monk: { abilities: ['dexterity', 'wisdom'], logic: 'AND', minScore: 13 },
+  Paladin: { abilities: ['strength', 'charisma'], logic: 'AND', minScore: 13 },
+  Ranger: { abilities: ['dexterity', 'wisdom'], logic: 'AND', minScore: 13 },
+  Rogue: { abilities: ['dexterity'], minScore: 13 },
+  Sorcerer: { abilities: ['charisma'], minScore: 13 },
+  Warlock: { abilities: ['charisma'], minScore: 13 },
+  Wizard: { abilities: ['intelligence'], minScore: 13 }
+};
+
+const MULTICLASS_PROFICIENCIES = {
+  Artificer: { lightArmor: true, mediumArmor: true, shields: true },
+  Barbarian: { shields: true, martialWeapons: true },
+  Bard: { lightArmor: true, oneSkillOfChoice: true },
+  Cleric: { lightArmor: true, mediumArmor: true, shields: true },
+  Druid: { lightArmor: true, mediumArmor: true, shields: true },
+  Fighter: { lightArmor: true, mediumArmor: true, shields: true, martialWeapons: true },
+  Monk: { simpleWeapons: true, martialWeaponsLight: true },
+  Paladin: { lightArmor: true, mediumArmor: true, shields: true, martialWeapons: true },
+  Ranger: { lightArmor: true, mediumArmor: true, shields: true, martialWeapons: true, oneSkillFromList: true },
+  Rogue: { lightArmor: true, oneSkillFromList: true, thievesTools: true },
+  Sorcerer: {},
+  Warlock: { lightArmor: true, simpleWeapons: true },
+  Wizard: {}
+};
+
 function normalizeName(input) {
   return (input || '').trim().toLowerCase();
 }
@@ -135,5 +167,7 @@ function validateCharacterOptions(species, className, subclass) {
 module.exports = {
   DND_SPECIES,
   DND_CLASSES_AND_SUBCLASSES,
+  MULTICLASS_REQUIREMENTS,
+  MULTICLASS_PROFICIENCIES,
   validateCharacterOptions
 };

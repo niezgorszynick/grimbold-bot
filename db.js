@@ -100,6 +100,20 @@ db.exec(`
   );
 `);
 
+// 5.1. Tabela klas postaci (multiclassing)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS character_classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    class_name TEXT NOT NULL,
+    subclass_name TEXT DEFAULT NULL,
+    class_level INTEGER NOT NULL CHECK (class_level >= 1),
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(character_id, class_name)
+  );
+`);
+
 // 6. Tabela przygód
 db.exec(`
   CREATE TABLE IF NOT EXISTS adventures (
@@ -147,11 +161,198 @@ if (!charCols.includes('xp')) {
   db.exec("ALTER TABLE characters ADD COLUMN xp INTEGER NOT NULL DEFAULT 0;");
 }
 
+// Backfill the multiclass table from the legacy character columns.
+const existingChars = db.prepare(
+  'SELECT id, class AS character_class, subclass, level FROM characters'
+).all();
+const insertClass = db.prepare(`
+  INSERT OR IGNORE INTO character_classes (character_id, class_name, subclass_name, class_level, is_primary)
+  VALUES (?, ?, ?, ?, 1)
+`);
+const migrateCharacterClasses = db.transaction(() => {
+  for (const char of existingChars) {
+    if (char.character_class) {
+      insertClass.run(
+        char.id,
+        char.character_class,
+        char.subclass || null,
+        Math.max(1, char.level)
+      );
+    }
+  }
+});
+migrateCharacterClasses();
+
 // Funkcja pomocnicza: Obliczanie poziomu na podstawie punktów przygód
 function calculateLevelFromXp(xp) {
   const points = Math.max(0, parseInt(xp, 10) || 0);
   if (points < 3) return 3;
   return Math.min(20, 4 + Math.floor((points - 3) / 4));
+}
+
+function getCharacterClassRows(characterId) {
+  return db.prepare(`
+    SELECT id, character_id, class_name, subclass_name, class_level, is_primary
+    FROM character_classes
+    WHERE character_id = ?
+    ORDER BY is_primary DESC, id ASC
+  `).all(characterId);
+}
+
+function validateCharacterLevels(characterId, classAllocations, xp = null) {
+  const character = db.prepare('SELECT xp FROM characters WHERE id = ?').get(characterId);
+  if (!character) throw new Error(`Character #${characterId} not found.`);
+  if (!Array.isArray(classAllocations) || classAllocations.length === 0) {
+    throw new Error('At least one class allocation is required.');
+  }
+
+  const seenClasses = new Set();
+  let primaryCount = 0;
+  const allocations = classAllocations.map(item => {
+    if (!item || typeof item !== 'object') {
+      throw new Error('Each class allocation must be an object.');
+    }
+    if (typeof item.class_name !== 'string') {
+      throw new Error('Each class allocation must include a class name.');
+    }
+    const className = item.class_name.trim();
+    const subclassName = typeof item.subclass_name === 'string' ? item.subclass_name.trim() : '';
+    const level = Number(item.level);
+    const isPrimary = item.is_primary === true || item.is_primary === 1 || item.is_primary === '1';
+    if (!Number.isInteger(level) || level < 1) {
+      throw new Error('Each class level must be a positive whole number.');
+    }
+    const { canonicalClass, canonicalSubclass } =
+      validateCharacterOptions('Human', className, subclassName);
+    const normalizedName = canonicalClass.toLowerCase();
+    if (seenClasses.has(normalizedName)) {
+      throw new Error(`Class "${canonicalClass}" appears more than once in the allocations.`);
+    }
+    seenClasses.add(normalizedName);
+    if (isPrimary) primaryCount += 1;
+    return {
+      class_name: canonicalClass,
+      subclass_name: canonicalSubclass || null,
+      level,
+      is_primary: isPrimary ? 1 : 0
+    };
+  });
+
+  if (primaryCount !== 1) {
+    throw new Error('Exactly one class must be marked as primary.');
+  }
+
+  const xpValue = xp === null ? character.xp : xp;
+  const maxAllowedLevel = calculateLevelFromXp(xpValue);
+  const totalAllocated = allocations.reduce((sum, item) => sum + item.level, 0);
+  if (totalAllocated !== maxAllowedLevel) {
+    throw new Error(
+      `Total class levels (${totalAllocated}) must equal character level (${maxAllowedLevel}) based on XP (${xpValue}).`
+    );
+  }
+  return allocations;
+}
+
+function replaceCharacterClasses(characterId, classAllocations, xp) {
+  const allocations = validateCharacterLevels(characterId, classAllocations, xp);
+  const deleteClasses = db.prepare('DELETE FROM character_classes WHERE character_id = ?');
+  const insertClass = db.prepare(`
+    INSERT INTO character_classes
+      (character_id, class_name, subclass_name, class_level, is_primary)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  deleteClasses.run(characterId);
+  for (const allocation of allocations) {
+    insertClass.run(
+      characterId,
+      allocation.class_name,
+      allocation.subclass_name,
+      allocation.level,
+      allocation.is_primary
+    );
+  }
+  return allocations;
+}
+
+function reconcileCharacterClassLevels(characterId, targetLevel, className, subclassName) {
+  let classes = getCharacterClassRows(characterId);
+  let primary = classes.find(item => item.is_primary === 1);
+  if (!primary) {
+    const matchingClass = classes.find(item => item.class_name.toLowerCase() === className.toLowerCase());
+    if (matchingClass) {
+      db.prepare('UPDATE character_classes SET is_primary = 0 WHERE character_id = ?').run(characterId);
+      db.prepare('UPDATE character_classes SET is_primary = 1 WHERE id = ?').run(matchingClass.id);
+      primary = matchingClass;
+    } else {
+      const inserted = db.prepare(`
+        INSERT INTO character_classes
+          (character_id, class_name, subclass_name, class_level, is_primary)
+        VALUES (?, ?, ?, 1, 1)
+      `).run(characterId, className, subclassName || null);
+      primary = {
+        id: inserted.lastInsertRowid,
+        class_name: className,
+        class_level: 1
+      };
+    }
+  }
+
+  if (primary.class_name.toLowerCase() !== className.toLowerCase()) {
+    const nextPrimary = classes.find(item => item.class_name.toLowerCase() === className.toLowerCase());
+    if (nextPrimary) {
+      db.prepare('UPDATE character_classes SET is_primary = 0 WHERE character_id = ?').run(characterId);
+      db.prepare(
+        'UPDATE character_classes SET is_primary = 1, subclass_name = ? WHERE id = ?'
+      ).run(subclassName || null, nextPrimary.id);
+      primary = nextPrimary;
+    } else {
+      db.prepare(`
+        UPDATE character_classes SET class_name = ?, subclass_name = ? WHERE id = ?
+      `).run(className, subclassName || null, primary.id);
+      primary = { ...primary, class_name: className, subclass_name: subclassName || null };
+    }
+  } else {
+    db.prepare('UPDATE character_classes SET subclass_name = ? WHERE id = ?')
+      .run(subclassName || null, primary.id);
+  }
+
+  classes = getCharacterClassRows(characterId);
+  primary = classes.find(item => item.is_primary === 1);
+  let remaining = targetLevel - classes.reduce((sum, item) => sum + item.class_level, 0);
+  if (remaining > 0) {
+    db.prepare('UPDATE character_classes SET class_level = class_level + ? WHERE id = ?')
+      .run(remaining, primary.id);
+    return;
+  }
+
+  if (remaining < 0) {
+    let levelsToRemove = -remaining;
+    const reduceClass = db.prepare(
+      'UPDATE character_classes SET class_level = class_level - ? WHERE id = ?'
+    );
+    for (const item of [primary, ...classes.filter(row => row.id !== primary.id).reverse()]) {
+      const removable = item.class_level - 1;
+      const reduction = Math.min(removable, levelsToRemove);
+      if (reduction > 0) {
+        reduceClass.run(reduction, item.id);
+        levelsToRemove -= reduction;
+      }
+      if (levelsToRemove === 0) break;
+    }
+    if (levelsToRemove > 0) {
+      throw new Error(
+        `Character level ${targetLevel} is too low for the ${classes.length} allocated classes. Reallocate or remove classes before reducing XP.`
+      );
+    }
+  }
+}
+
+function updateCharacterProgression(characterId, xp) {
+  const character = db.prepare('SELECT class, subclass FROM characters WHERE id = ?').get(characterId);
+  if (!character) return;
+  const level = calculateLevelFromXp(xp);
+  db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(xp, level, characterId);
+  reconcileCharacterClassLevels(characterId, level, character.class, character.subclass);
 }
 
 const queries = {
@@ -189,6 +390,7 @@ const queries = {
 
 module.exports = {
   calculateLevelFromXp,
+  validateCharacterLevels,
 
   // Postacie z rasą, podklasą i automatycznym poziomem
   addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
@@ -271,14 +473,13 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     const toAdd = targetCharIds.filter(id => !oldCharIds.includes(id));
 
     const getCharStmt = db.prepare('SELECT xp FROM characters WHERE id = ?');
-    const updateCharStmt = db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?');
 
     // 3. Postacie usunięte z sesji: cofnięcie starego XP i rekalkulacja poziomu
     for (const charId of toRemove) {
       const char = getCharStmt.get(charId);
       if (char) {
         const nextXp = Math.max(0, char.xp - oldXp);
-        updateCharStmt.run(nextXp, calculateLevelFromXp(nextXp), charId);
+        updateCharacterProgression(charId, nextXp);
       }
       db.prepare('DELETE FROM adventure_rewards WHERE adventure_id = ? AND character_id = ?').run(advId, charId);
     }
@@ -289,7 +490,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         const char = getCharStmt.get(charId);
         if (char) {
           const nextXp = Math.max(0, char.xp + diffXp);
-          updateCharStmt.run(nextXp, calculateLevelFromXp(nextXp), charId);
+          updateCharacterProgression(charId, nextXp);
           db.prepare('UPDATE adventure_rewards SET xp = ? WHERE adventure_id = ? AND character_id = ?').run(newXp, advId, charId);
         }
       }
@@ -300,7 +501,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       const char = getCharStmt.get(charId);
       if (char) {
         const nextXp = char.xp + newXp;
-        updateCharStmt.run(nextXp, calculateLevelFromXp(nextXp), charId);
+        updateCharacterProgression(charId, nextXp);
         db.prepare('INSERT INTO adventure_rewards (adventure_id, character_id, xp) VALUES (?, ?, ?)').run(advId, charId, newXp);
       }
     }
@@ -312,7 +513,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         const prevChar = getCharStmt.get(oldDmCharId);
         if (prevChar) {
           const revXp = Math.max(0, prevChar.xp - 1);
-          updateCharStmt.run(revXp, calculateLevelFromXp(revXp), oldDmCharId);
+          updateCharacterProgression(oldDmCharId, revXp);
         }
       } else if (oldDmPlayerId) {
         db.prepare('UPDATE players SET dm_points = MAX(0, dm_points - 1) WHERE id = ?').run(oldDmPlayerId);
@@ -323,7 +524,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         const nextChar = getCharStmt.get(newDmCharId);
         if (nextChar) {
           const elevatedXp = nextChar.xp + 1;
-          updateCharStmt.run(elevatedXp, calculateLevelFromXp(elevatedXp), newDmCharId);
+          updateCharacterProgression(newDmCharId, elevatedXp);
         }
       } else if (newDmPlayerId) {
         db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(newDmPlayerId);
@@ -354,10 +555,8 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       }
 
       const newXp = char.xp + 1;
-      const newLevel = calculateLevelFromXp(newXp);
-
       db.prepare('UPDATE players SET dm_points = dm_points - 1 WHERE id = ?').run(playerId);
-      db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(newXp, newLevel, characterId);
+      updateCharacterProgression(characterId, newXp);
     });
     return run();
   },
@@ -395,8 +594,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
           const char = db.prepare('SELECT xp FROM characters WHERE id = ?').get(charId);
           if (char) {
             const nextXp = char.xp + xp;
-            const nextLevel = calculateLevelFromXp(nextXp);
-            db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(nextXp, nextLevel, charId);
+            updateCharacterProgression(charId, nextXp);
           }
         }
       }
@@ -406,8 +604,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         const dmChar = db.prepare('SELECT xp FROM characters WHERE id = ?').get(targetDmCharId);
         if (dmChar) {
           const nextXp = dmChar.xp + 1;
-          const nextLevel = calculateLevelFromXp(nextXp);
-          db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(nextXp, nextLevel, targetDmCharId);
+          updateCharacterProgression(targetDmCharId, nextXp);
         }
       } else if (targetDmPlayerId) {
         db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(targetDmPlayerId);
@@ -681,6 +878,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   getAllPlayers: () => db.prepare('SELECT * FROM players ORDER BY discord_tag ASC').all(),
   
   getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
+  getCharacterClasses: (id) => getCharacterClassRows(Number(id)),
 
   addPlayer: ({ discord_id, discord_tag }) => {
     const trimmedId = (discord_id || '').trim();
@@ -709,22 +907,40 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     return db.prepare('DELETE FROM players WHERE id = ?').run(id);
   },
 
-  addCharacter: ({ player_id, name, class_name, level, status = 'alive' }) => {
+  addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
-    const trimmedClass = (class_name || '').trim();
-    const pLevel = parseInt(level, 10);
+    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
 
     if (isNaN(pId)) throw new Error('Valid player must be selected.');
     if (!trimmedName) throw new Error('Character name is required.');
-    if (!trimmedClass) throw new Error('Character class is required.');
-    if (isNaN(pLevel) || pLevel < 1 || pLevel > 20) throw new Error('Level must be between 1 and 20.');
     if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
+    const { canonicalSpecies, canonicalClass, canonicalSubclass } =
+      validateCharacterOptions(race, class_name, subclass);
+    const pLevel = calculateLevelFromXp(parsedXp);
 
-    return db.prepare(`
-      INSERT INTO characters (player_id, name, class, level, status)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(pId, trimmedName, trimmedClass, pLevel, status);
+    const run = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        pId,
+        trimmedName,
+        canonicalSpecies,
+        canonicalClass,
+        canonicalSubclass,
+        pLevel,
+        parsedXp,
+        status
+      );
+      db.prepare(`
+        INSERT INTO character_classes
+          (character_id, class_name, subclass_name, class_level, is_primary)
+        VALUES (?, ?, ?, ?, 1)
+      `).run(result.lastInsertRowid, canonicalClass, canonicalSubclass || null, pLevel);
+      return result;
+    });
+    return run();
   },
 
   updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status }) => {
@@ -744,11 +960,22 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       }
     }
 
-    return db.prepare(`
-      UPDATE characters
-      SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
-      WHERE id = ?
-    `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, finalLevel, parsedXp, status, cId);
+    const run = db.transaction(() => {
+      const result = db.prepare(`
+        UPDATE characters
+        SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
+        WHERE id = ?
+      `).run(pId, trimmedName, trimmedRace, trimmedClass, trimmedSubclass, finalLevel, parsedXp, status, cId);
+      if (result.changes) {
+        const existingClasses = getCharacterClassRows(cId);
+        if (existingClasses.length > 1 && finalLevel !== calculateLevelFromXp(parsedXp)) {
+          throw new Error('Manual level overrides must match the XP-derived level for multiclass characters.');
+        }
+        reconcileCharacterClassLevels(cId, finalLevel, trimmedClass, trimmedSubclass);
+      }
+      return result;
+    });
+    return run();
   },
 
   getCharacterAdventureIds: (characterId) => {
@@ -768,7 +995,8 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     level,
     override_level,
     status,
-    adventure_ids
+    adventure_ids,
+    class_allocations
   }) => {
     const run = db.transaction(() => {
       const charId = Number(id);
@@ -833,7 +1061,20 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         }
       }
 
-      return db.prepare(`
+      const currentClasses = getCharacterClassRows(charId);
+      const hasClassAllocations = class_allocations !== undefined && (
+        currentClasses.length > 1 ||
+        !Array.isArray(class_allocations) ||
+        class_allocations.length > 0
+      );
+      if (
+        finalLevel !== calculateLevelFromXp(finalXp) &&
+        (currentClasses.length > 1 || hasClassAllocations)
+      ) {
+        throw new Error('Manual level overrides must match the XP-derived level for multiclass characters.');
+      }
+
+      const result = db.prepare(`
         UPDATE characters
         SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
         WHERE id = ?
@@ -848,6 +1089,52 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         status,
         charId
       );
+
+      if (hasClassAllocations) {
+        if (!Array.isArray(class_allocations)) {
+          throw new Error('Class allocations must be provided as a list.');
+        }
+        const includesPrimary = class_allocations.some(
+          item => item && (item.is_primary === true || item.is_primary === 1 || item.is_primary === '1')
+        );
+        let allocations = class_allocations;
+        if (!includesPrimary) {
+          const secondaryAllocations = class_allocations.filter(item =>
+            !item ||
+            typeof item.class_name !== 'string' ||
+            item.class_name.trim().toLowerCase() !== canonicalClass.toLowerCase()
+          );
+          const secondaryLevels = secondaryAllocations.reduce((sum, item) => {
+            const classLevel = Number(item && item.level);
+            if (!Number.isInteger(classLevel) || classLevel < 1) {
+              throw new Error('Each class level must be a positive whole number.');
+            }
+            return sum + classLevel;
+          }, 0);
+          const primaryLevel = calculateLevelFromXp(finalXp) - secondaryLevels;
+          if (primaryLevel < 1) {
+            throw new Error('Secondary class levels must leave at least one level for the primary class.');
+          }
+          allocations = [
+            {
+              class_name: canonicalClass,
+              subclass_name: canonicalSubclass,
+              level: primaryLevel,
+              is_primary: true
+            },
+            ...secondaryAllocations.map(item => ({ ...item, is_primary: false }))
+          ];
+        }
+        const normalizedAllocations = validateCharacterLevels(charId, allocations, finalXp);
+        const primaryAllocation = normalizedAllocations.find(item => item.is_primary === 1);
+        if (primaryAllocation.class_name !== canonicalClass) {
+          throw new Error('The primary class allocation must match the selected character class.');
+        }
+        replaceCharacterClasses(charId, normalizedAllocations, finalXp);
+      } else {
+        reconcileCharacterClassLevels(charId, finalLevel, canonicalClass, canonicalSubclass);
+      }
+      return result;
     });
 
     return run();
