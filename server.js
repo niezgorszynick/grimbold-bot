@@ -863,7 +863,7 @@ router.get('/', (req, res) => {
 
     const allCharacters = db.getAllCharacters
       ? db.getAllCharacters()
-      : db.prepare('SELECT c.*, p.discord_tag FROM characters c LEFT JOIN players p ON c.player_id = p.id ORDER BY c.name ASC').all();
+      : db.prepare('SELECT c.*, p.discord_tag, p.dm_points FROM characters c LEFT JOIN players p ON c.player_id = p.id ORDER BY c.name ASC').all();
     const playerRows = db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [];
     const activeCharacters = playerRows.filter(r => r.character_id && r.character_status === 'alive');
     const adventureCharacters = editingAdventure
@@ -874,9 +874,39 @@ router.get('/', (req, res) => {
           character_name: c.name,
           character_level: c.level,
           character_class: c.class,
-          discord_tag: c.discord_tag
+          discord_tag: c.discord_tag,
+          player_id: c.player_id
         }))
       : activeCharacters;
+    const playersById = new Map(allPlayers.map(player => [player.id, player]));
+    const charactersByPlayer = new Map();
+    adventureCharacters.forEach(character => {
+      if (!charactersByPlayer.has(character.player_id)) {
+        charactersByPlayer.set(character.player_id, []);
+      }
+      charactersByPlayer.get(character.player_id).push(character);
+    });
+    const characterGroupsHtml = Array.from(charactersByPlayer.entries()).map(([playerId, characters]) => {
+      const player = playersById.get(playerId);
+      const playerName = player ? player.discord_tag : (characters[0].discord_tag || 'Unknown');
+      return `
+        <div class="player-group" data-player="${escapeHtml(playerName.toLowerCase())}">
+          <div class="player-group-title">
+            ${escapeHtml(playerName)} <span style="color: #949ba4; font-family: monospace;">(${player ? player.dm_points || 0 : 0} DM pts)</span>
+          </div>
+          <div class="character-grid">
+            ${characters.map(c => `
+              <div class="char-item" data-name="${escapeHtml(c.character_name.toLowerCase())}" data-player="${escapeHtml(playerName.toLowerCase())}">
+                <label>
+                  <input class="char-checkbox" type="checkbox" name="character_ids" value="${c.character_id}" id="adventure_char_${c.character_id}" ${editingParticipantIds.includes(c.character_id) ? 'checked' : ''}>
+                  <strong>${escapeHtml(c.character_name)}</strong> <span style="color: #949ba4;">(Lvl ${c.character_level} ${escapeHtml(c.character_class)})</span>
+                </label>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
     const adventureFormAction = editingAdventure ? '/admin/adventures/edit' : '/admin/adventures/add';
 
     contentHtml = `
@@ -927,16 +957,17 @@ router.get('/', (req, res) => {
                 </div>
 
                 <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
-                  <label style="font-weight: bold; color: #d4af37; font-size: 13px;">Participating Characters:</label>
-                  <div style="max-height: 160px; overflow-y: auto; margin-top: 8px;">
-                    ${adventureCharacters.length === 0 ? '<p style="color: #949ba4; font-size: 12px;">No active characters available.</p>' : adventureCharacters.map(c => `
-                      <div style="margin-bottom: 6px;">
-                        <label style="font-size: 13px; cursor: pointer;">
-                          <input type="checkbox" name="character_ids" value="${c.character_id}" ${editingParticipantIds.includes(c.character_id) ? 'checked' : ''}>
-                          <strong>${escapeHtml(c.character_name)}</strong> (Lvl${c.character_level} ${escapeHtml(c.character_class)} —${escapeHtml(c.discord_tag || '')})
-                        </label>
-                      </div>
-                    `).join('')}
+                    <label style="display: flex; justify-content: space-between; font-weight: bold; color: #d4af37; font-size: 13px;">
+                      <span>Participating Characters</span>
+                      <span id="selected-count" style="color: #949ba4; font-weight: normal;">Selected: 0</span>
+                    </label>
+                    <input type="text" id="character-search" placeholder="Filter by player or character name..." style="width: 100%; margin-top: 8px;">
+                    <div id="characters-container" style="max-height: 240px; overflow-y: auto; margin-top: 8px; padding: 8px; border: 1px solid #3b3e45; border-radius: 4px;">
+                      ${characterGroupsHtml || '<p style="color: #949ba4; font-size: 12px;">No active characters available.</p>'}
+                    </div>
+                    <div id="selected-badges-container" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;">
+                      <span style="color: #949ba4; font-size: 12px;">Party:</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1634,6 +1665,12 @@ router.get('/', (req, res) => {
         .tag { padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; background: #4e5058; }
         .tag.green { background: #23a55a; color: #fff; }
         .tag.red { background: #f23f43; color: #fff; }
+        .player-group { margin-bottom: 10px; }
+        .player-group-title { color: #d4af37; font-size: 12px; font-weight: bold; border-bottom: 1px solid #3b3e45; padding-bottom: 4px; margin-bottom: 6px; }
+        .character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
+        .char-item label { font-size: 13px; cursor: pointer; }
+        .party-badge { display: inline-flex; align-items: center; gap: 6px; background: #5865f2; color: #fff; border-radius: 4px; padding: 3px 7px; font-size: 12px; }
+        .party-badge button { color: #fff; background: transparent; border: 0; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
         .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
         .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
         .alert.red { background: rgba(242, 63, 67, 0.2); border: 1px solid #f23f43; color: #f23f43; }
@@ -1659,6 +1696,71 @@ router.get('/', (req, res) => {
 
       <script>
         document.addEventListener('DOMContentLoaded', () => {
+          const searchInput = document.getElementById('character-search');
+          const groups = document.querySelectorAll('.player-group');
+          const badgesContainer = document.getElementById('selected-badges-container');
+          const countDisplay = document.getElementById('selected-count');
+          const characterCheckboxes = document.querySelectorAll('.char-checkbox');
+
+          if (searchInput) {
+            searchInput.addEventListener('input', () => {
+              const query = searchInput.value.toLowerCase().trim();
+              groups.forEach(group => {
+                let hasVisibleCharacter = false;
+                group.querySelectorAll('.char-item').forEach(item => {
+                  const matches = item.dataset.name.includes(query) || item.dataset.player.includes(query);
+                  item.style.display = matches ? '' : 'none';
+                  if (matches) hasVisibleCharacter = true;
+                });
+                group.style.display = hasVisibleCharacter ? '' : 'none';
+              });
+            });
+          }
+
+          function updateSelectedBadges() {
+            const checked = document.querySelectorAll('.char-checkbox:checked');
+            if (countDisplay) countDisplay.textContent = 'Selected: ' + checked.length;
+            if (!badgesContainer) return;
+
+            badgesContainer.replaceChildren();
+            const partyLabel = document.createElement('span');
+            partyLabel.style.cssText = 'color: #949ba4; font-size: 12px;';
+            partyLabel.textContent = 'Party:';
+            badgesContainer.appendChild(partyLabel);
+
+            if (checked.length === 0) {
+              const noneLabel = document.createElement('span');
+              noneLabel.style.cssText = 'color: #949ba4; font-size: 12px; font-style: italic;';
+              noneLabel.textContent = 'None';
+              badgesContainer.appendChild(noneLabel);
+              return;
+            }
+
+            checked.forEach(checkbox => {
+              const item = checkbox.closest('.char-item');
+              const name = item.querySelector('strong').textContent;
+              const badge = document.createElement('span');
+              badge.className = 'party-badge';
+              badge.appendChild(document.createTextNode(name));
+
+              const removeButton = document.createElement('button');
+              removeButton.type = 'button';
+              removeButton.setAttribute('aria-label', 'Remove ' + name);
+              removeButton.textContent = '×';
+              removeButton.addEventListener('click', () => {
+                checkbox.checked = false;
+                updateSelectedBadges();
+              });
+              badge.appendChild(removeButton);
+              badgesContainer.appendChild(badge);
+            });
+          }
+
+          characterCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateSelectedBadges);
+          });
+          updateSelectedBadges();
+
           document.querySelectorAll('th.sortable').forEach(header => {
             header.addEventListener('click', () => {
               const table = header.closest('table');
