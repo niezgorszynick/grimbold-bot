@@ -123,6 +123,12 @@ db.exec(`
   );
 `);
 
+try {
+  db.exec(`ALTER TABLE adventures ADD COLUMN dm_character_id INTEGER REFERENCES characters(id)`);
+} catch (e) {
+  // Kolumna już istnieje
+}
+
 // 6.1. Bezpieczna migracja kolumn w tabeli players
 const playerCols = db.prepare("PRAGMA table_info(players)").all().map(c => c.name);
 if (!playerCols.includes('dm_points')) {
@@ -228,6 +234,113 @@ module.exports = {
     `).run(pId, trimmedName, canonicalSpecies, canonicalClass, canonicalSubclass, finalLevel, parsedXp, status, cId);
   },
 
+getAdventureById: (id) => {
+  return db.prepare('SELECT * FROM adventures WHERE id = ?').get(Number(id));
+},
+
+getAdventureParticipantIds: (adventureId) => {
+  const rows = db.prepare('SELECT character_id FROM adventure_rewards WHERE adventure_id = ?').all(Number(adventureId));
+  return rows.map(r => r.character_id);
+},
+
+updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, dm_character_id, character_ids }) => {
+  const run = db.transaction(() => {
+    const advId = Number(adventure_id);
+    const newXp = Math.max(1, parseInt(xp_awarded, 10) || 1);
+    const newDmPlayerId = dm_player_id ? Number(dm_player_id) : null;
+    const newDmCharId = dm_character_id ? Number(dm_character_id) : null;
+    const targetCharIds = Array.from(new Set((character_ids || []).map(Number)));
+
+    // 1. Pobierz obecny stan przygody
+    const oldAdv = db.prepare('SELECT * FROM adventures WHERE id = ?').get(advId);
+    if (!oldAdv) {
+      throw new Error(`Adventure #${advId} not found.`);
+    }
+
+    const oldXp = oldAdv.xp_awarded || 0;
+    const diffXp = newXp - oldXp;
+    const oldDmCharId = oldAdv.dm_character_id ? Number(oldAdv.dm_character_id) : null;
+    const oldDmPlayerId = oldAdv.dm_player_id ? Number(oldAdv.dm_player_id) : null;
+
+    // 2. Porównanie listy uczestników
+    const currentRewards = db.prepare('SELECT character_id FROM adventure_rewards WHERE adventure_id = ?').all(advId);
+    const oldCharIds = currentRewards.map(r => r.character_id);
+
+    const toRemove = oldCharIds.filter(id => !targetCharIds.includes(id));
+    const toKeep = oldCharIds.filter(id => targetCharIds.includes(id));
+    const toAdd = targetCharIds.filter(id => !oldCharIds.includes(id));
+
+    const getCharStmt = db.prepare('SELECT xp FROM characters WHERE id = ?');
+    const updateCharStmt = db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?');
+
+    // 3. Postacie usunięte z sesji: cofnięcie starego XP i rekalkulacja poziomu
+    for (const charId of toRemove) {
+      const char = getCharStmt.get(charId);
+      if (char) {
+        const nextXp = Math.max(0, char.xp - oldXp);
+        updateCharStmt.run(nextXp, calculateLevelFromXp(nextXp), charId);
+      }
+      db.prepare('DELETE FROM adventure_rewards WHERE adventure_id = ? AND character_id = ?').run(advId, charId);
+    }
+
+    // 4. Postacie zachowane: korekta o różnicę XP
+    if (diffXp !== 0) {
+      for (const charId of toKeep) {
+        const char = getCharStmt.get(charId);
+        if (char) {
+          const nextXp = Math.max(0, char.xp + diffXp);
+          updateCharStmt.run(nextXp, calculateLevelFromXp(nextXp), charId);
+          db.prepare('UPDATE adventure_rewards SET xp = ? WHERE adventure_id = ? AND character_id = ?').run(newXp, advId, charId);
+        }
+      }
+    }
+
+    // 5. Postacie nowo dodane: przyznanie newXp
+    for (const charId of toAdd) {
+      const char = getCharStmt.get(charId);
+      if (char) {
+        const nextXp = char.xp + newXp;
+        updateCharStmt.run(nextXp, calculateLevelFromXp(nextXp), charId);
+        db.prepare('INSERT INTO adventure_rewards (adventure_id, character_id, xp) VALUES (?, ?, ?)').run(advId, charId, newXp);
+      }
+    }
+
+    // 6. Rozliczenie bonusu DM (+1 XP dla postaci vs dm_points gracza)
+    if (oldDmCharId !== newDmCharId || oldDmPlayerId !== newDmPlayerId) {
+      // Cofnięcie starej nagrody DM
+      if (oldDmCharId) {
+        const prevChar = getCharStmt.get(oldDmCharId);
+        if (prevChar) {
+          const revXp = Math.max(0, prevChar.xp - 1);
+          updateCharStmt.run(revXp, calculateLevelFromXp(revXp), oldDmCharId);
+        }
+      } else if (oldDmPlayerId) {
+        db.prepare('UPDATE players SET dm_points = MAX(0, dm_points - 1) WHERE id = ?').run(oldDmPlayerId);
+      }
+
+      // Przyznanie nowej nagrody DM
+      if (newDmCharId) {
+        const nextChar = getCharStmt.get(newDmCharId);
+        if (nextChar) {
+          const elevatedXp = nextChar.xp + 1;
+          updateCharStmt.run(elevatedXp, calculateLevelFromXp(elevatedXp), newDmCharId);
+        }
+      } else if (newDmPlayerId) {
+        db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(newDmPlayerId);
+      }
+    }
+
+    // 7. Aktualizacja danych przygody
+    db.prepare(`
+      UPDATE adventures 
+      SET title = ?, description = ?, xp_awarded = ?, dm_player_id = ?, dm_character_id = ?
+      WHERE id = ?
+    `).run(title, description || '', newXp, newDmPlayerId, newDmCharId, advId);
+  });
+
+  return run();
+},
+
   // Przypisanie 1 punktu DM do wybranej postaci
   assignDmPointToCharacter: (playerId, characterId) => {
     const run = db.transaction(() => {
@@ -256,14 +369,18 @@ module.exports = {
     LEFT JOIN players p ON a.dm_player_id = p.id
     ORDER BY a.created_at DESC
   `).all(),
+  
 
-  recordAdventure: ({ title, description, xp_awarded, dm_player_id, character_ids }) => {
+  recordAdventure: ({ title, description, xp_awarded, dm_player_id, dm_character_id, character_ids }) => {
     const run = db.transaction(() => {
       const xp = Math.max(1, parseInt(xp_awarded, 10) || 1);
+      const targetDmCharId = dm_character_id ? Number(dm_character_id) : null;
+      const targetDmPlayerId = dm_player_id ? Number(dm_player_id) : null;
+
       const insertAdv = db.prepare(`
-        INSERT INTO adventures (title, description, xp_awarded, dm_player_id)
-        VALUES (?, ?, ?, ?)
-      `).run(title, description, xp, dm_player_id || null);
+        INSERT INTO adventures (title, description, xp_awarded, dm_player_id, dm_character_id)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(title, description, xp, targetDmPlayerId, targetDmCharId);
 
       const adventureId = insertAdv.lastInsertRowid;
 
@@ -284,10 +401,19 @@ module.exports = {
         }
       }
 
-      // Przyznanie 1 punktu DM dla prowadzącego
-      if (dm_player_id) {
-        db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(dm_player_id);
+      // Obsługa bonusu DM: bezpośrednio na postać lub do banku gracza
+      if (targetDmCharId) {
+        const dmChar = db.prepare('SELECT xp FROM characters WHERE id = ?').get(targetDmCharId);
+        if (dmChar) {
+          const nextXp = dmChar.xp + 1;
+          const nextLevel = calculateLevelFromXp(nextXp);
+          db.prepare('UPDATE characters SET xp = ?, level = ? WHERE id = ?').run(nextXp, nextLevel, targetDmCharId);
+        }
+      } else if (targetDmPlayerId) {
+        db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(targetDmPlayerId);
       }
+
+      return adventureId;
     });
     return run();
   },
