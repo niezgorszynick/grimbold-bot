@@ -52,7 +52,7 @@ A modular Discord bot ecosystem designed for D&D 5e campaigns. The project combi
 
 ### Phase 4: Full Ecosystem Integration & Player Market
 - [ ] Link `/buy` directly with character sheets (deducting gold pouch and updating inventory).
-- [ ] Implement an in-game Auction House (`/auction create` with Discord bidding buttons).
+- [ ] Implement an Auctions page where players can submit magic items and bid against or outbid each other; items with no bids sell for at least 50% of vendor value.
 
 ---
 

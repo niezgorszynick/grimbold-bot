@@ -485,7 +485,7 @@ router.get('/', (req, res) => {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
-  const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics'];
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics', 'auctions'];
   const tabLabels = {
     items: 'Shop Items',
     catalog: 'Master Catalog',
@@ -494,7 +494,8 @@ router.get('/', (req, res) => {
     rolls: 'Rolls History',
     players: 'Players',
     adventures: 'Adventures',
-    analytics: 'Analytics'
+    analytics: 'Analytics',
+    auctions: 'Auctions'
   };
   const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
   let currentTab = req.query.tab || 'items';
@@ -1509,6 +1510,17 @@ router.get('/', (req, res) => {
           </tbody>
         </table>
       </div>
+    `;
+  }
+
+  // ── TAB: AUCTIONS ──
+  else if (currentTab === 'auctions') {
+    contentHtml = `
+      <section class="card">
+        <h3>Auctions</h3>
+        <p>Players will be able to submit magic items for auction, then bid against and outbid one another. If an item receives no bids, it will be sold for at least 50% of its vendor value.</p>
+        <span class="analytics-badge">Coming soon · Next on the roadmap</span>
+      </section>
     `;
   }
 
