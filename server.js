@@ -11,30 +11,35 @@ const { DND_SPECIES, DND_CLASSES_AND_SUBCLASSES } = require('./dndData');
 router.use(express.urlencoded({ extended: true }));
 router.use(express.json());
 
-// Basic Auth Middleware
-router.use((req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold Admin Panel"');
-    return res.status(401).send('Authentication required.');
+function requireAuth(req, res, next) {
+  if (!req.session || !req.session.user) return res.redirect('/login');
+  if (req.session.user.id === 0 && req.session.user.role === 'admin') return next();
+
+  const player = db.prepare(`
+    SELECT id, discord_tag, role, password_hash
+    FROM players
+    WHERE id = ?
+  `).get(req.session.user.id);
+  if (!player || !player.password_hash) {
+    req.session = null;
+    return res.redirect('/login');
   }
 
-  const [scheme, credentials] = authHeader.split(' ');
-  if (scheme !== 'Basic' || !credentials) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold Admin Panel"');
-    return res.status(401).send('Bad authentication format.');
-  }
+  req.session.user = {
+    id: player.id,
+    discord_tag: player.discord_tag,
+    role: player.role || 'player'
+  };
+  return next();
+}
 
-  const decoded = Buffer.from(credentials, 'base64').toString('utf8');
-  const [username, password] = decoded.split(':');
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.user && req.session.user.role === 'admin') return next();
+  return res.status(403).send('Forbidden: Dungeon Master privileges required.');
+}
 
-  if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
-    return next();
-  }
-
-  res.setHeader('WWW-Authenticate', 'Basic realm="Grimbold Admin Panel"');
-  return res.status(401).send('Invalid credentials.');
-});
+router.use(requireAuth);
+router.use((req, res, next) => req.method === 'POST' ? requireAdmin(req, res, next) : next());
 
 // Helper: Escape HTML
 function escapeHtml(str) {
@@ -288,6 +293,22 @@ router.post('/catalog/delete', (req, res) => {
 
 // ─── POST ENDPOINTS: PLAYERS & CHARACTERS ──────────────────────────────────
 
+router.post(['/players/set-access', '/players/credentials'], (req, res) => {
+  try {
+    const { player_id, password, role = 'player' } = req.body;
+    if (typeof password !== 'string' || password.trim().length < 4) {
+      throw new Error('Password must be at least 4 characters.');
+    }
+    if (role !== 'player' && role !== 'admin') throw new Error('Invalid account role.');
+
+    db.setPlayerCredentials(player_id, password.trim(), role);
+    res.redirect('/admin?tab=players&status=credentials_updated');
+  } catch (err) {
+    console.error('Error updating player credentials:', err);
+    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 router.post('/players/add', (req, res) => {
   try {
     const { discord_id, discord_tag } = req.body;
@@ -454,11 +475,30 @@ router.post(['/adventures/update', '/adventures/edit'], (req, res) => {
 // ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {
-  const currentTab = req.query.tab || 'items';
+  const currentUser = req.session.user;
+  const isAdmin = currentUser.role === 'admin';
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics'];
+  const tabLabels = {
+    items: 'Shop Items',
+    catalog: 'Master Catalog',
+    restock: 'Restock Engine',
+    sales: 'Sales Ledger',
+    rolls: 'Rolls History',
+    players: 'Players',
+    adventures: 'Adventures',
+    analytics: 'Analytics'
+  };
+  const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
+  let currentTab = req.query.tab || 'items';
+  if (!isAdmin && !playerAllowedTabs.includes(currentTab)) {
+    currentTab = 'items';
+  }
   const status = req.query.status;
   const partyLevel = db.getPartyLevel();
-  const catalogItems = db.getAllCatalogItems ? db.getAllCatalogItems() : [];
-  const activeItems = db.getAllItemsForAdmin ? db.getAllItemsForAdmin() : [];
+  const catalogItems = isAdmin && db.getAllCatalogItems ? db.getAllCatalogItems() : [];
+  const activeItems = db.getAllItemsForAdmin
+    ? db.getAllItemsForAdmin().filter(item => isAdmin || item.is_active)
+    : [];
   const sales = db.getAllSales ? db.getAllSales() : [];
   const rolls = db.getAllRolls ? db.getAllRolls() : [];
 
@@ -487,6 +527,8 @@ router.get('/', (req, res) => {
     statusBanner = '<div class="alert green">✅ Player info updated!</div>';
   } else if (status === 'player_deleted') {
     statusBanner = '<div class="alert red">🗑️ Player and associated characters deleted.</div>';
+  } else if (status === 'credentials_updated') {
+    statusBanner = '<div class="alert green">✅ Player login credentials updated!</div>';
   } else if (status === 'char_added') {
     statusBanner = '<div class="alert green">✅ Character created successfully!</div>';
   } else if (status === 'char_updated') {
@@ -515,7 +557,7 @@ router.get('/', (req, res) => {
     })));
 
     contentHtml = `
-      <div class="card" style="margin-bottom: 20px;">
+      ${isAdmin ? `<div class="card" style="margin-bottom: 20px;">
         <h3>Send Custom Message from Grimbold</h3>
         <form method="POST" action="/admin/message">
           <div style="margin-bottom: 8px;">
@@ -531,9 +573,9 @@ router.get('/', (req, res) => {
             <button type="submit" class="btn btn-green">📢 Send to Discord</button>
           </div>
         </form>
-      </div>
+      </div>` : ''}
 
-      <div class="card">
+      ${isAdmin ? `<div class="card">
         <h3>Add Item to Shop Shelf</h3>
         <div style="margin-bottom: 12px;">
           <label><strong>Quick-Fill from Catalog:</strong></label><br>
@@ -568,7 +610,7 @@ router.get('/', (req, res) => {
           </div>
           <button type="submit" class="btn btn-green" style="margin-top: 10px;">Put on Shelf</button>
         </form>
-      </div>
+      </div>` : ''}
 
       <div class="card">
         <h3>Current Store Inventory (${activeItems.length})</h3>
@@ -581,7 +623,7 @@ router.get('/', (req, res) => {
               <th class="sortable">Price</th>
               <th class="sortable">Stock</th>
               <th class="sortable">Status</th>
-              <th>Actions</th>
+              ${isAdmin ? '<th>Actions</th>' : ''}
             </tr>
           </thead>
           <tbody>
@@ -593,7 +635,7 @@ router.get('/', (req, res) => {
                 <td data-sort="${item.price}">${formatCp(item.price)}</td>
                 <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
                 <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-                <td>
+                ${isAdmin ? `<td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
                     <input type="hidden" name="action" value="toggle">
@@ -605,7 +647,7 @@ router.get('/', (req, res) => {
                     <input type="hidden" name="action" value="delete">
                     <button class="btn btn-small btn-red" onclick="return confirm('Delete item from shop?')">Delete</button>
                   </form>
-                </td>
+                </td>` : ''}
               </tr>
             `).join('')}
           </tbody>
@@ -891,7 +933,7 @@ router.get('/', (req, res) => {
   else if (currentTab === 'adventures') {
     const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
     const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
-    const editAdvId = req.query.edit_adv ? Number(req.query.edit_adv) : null;
+    const editAdvId = isAdmin && req.query.edit_adv ? Number(req.query.edit_adv) : null;
     let editingAdventure = null;
     let editingParticipantIds = [];
 
@@ -954,8 +996,9 @@ router.get('/', (req, res) => {
     const adventureFormAction = editingAdventure ? '/admin/adventures/edit' : '/admin/adventures/add';
 
     contentHtml = `
-      <div class="adventure-layout">
+      <div class="adventure-layout" style="${isAdmin ? '' : 'grid-template-columns: minmax(0, 1fr);'}">
         
+        ${isAdmin ? `
             <!-- Adventure Record Form -->
             <div class="card" style="margin-bottom: 0;">
               <h3>${editingAdventure ? 'Edit Completed Adventure' : 'Record Completed Adventure'}</h3>
@@ -1018,6 +1061,7 @@ router.get('/', (req, res) => {
                 ${editingAdventure ? '<a href="/admin?tab=adventures" class="btn" style="display: inline-block; margin-top: 8px;">Cancel Edit</a>' : ''}
               </form>
         </div>
+        ` : ''}
 
         <!-- Leveling Rules Card -->
         <div class="card" style="margin-bottom: 0;">
@@ -1047,18 +1091,18 @@ router.get('/', (req, res) => {
               <th class="sortable">Dungeon Master</th>
               <th class="sortable">XP Granted</th>
               <th>Notes</th>
-              <th>Actions</th>
+              ${isAdmin ? '<th>Actions</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${allAdventures.length === 0 ? '<tr><td colspan="6">No completed adventures recorded yet.</td></tr>' : allAdventures.map(adv => `
+            ${allAdventures.length === 0 ? `<tr><td colspan="${isAdmin ? 6 : 5}">No completed adventures recorded yet.</td></tr>` : allAdventures.map(adv => `
               <tr>
                 <td data-sort="${adv.created_at}">${adv.created_at}</td>
                 <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong></td>
                 <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>None</em>'}</td>
                 <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
                 <td>${escapeHtml(adv.description || '—')}</td>
-                <td style="text-align: right;"><a class="btn btn-small btn-gold" href="/admin?tab=adventures&edit_adv=${adv.id}">Edit</a></td>
+                ${isAdmin ? `<td style="text-align: right;"><a class="btn btn-small btn-gold" href="/admin?tab=adventures&edit_adv=${adv.id}">Edit</a></td>` : ''}
               </tr>
             `).join('')}
           </tbody>
@@ -1493,10 +1537,12 @@ router.get('/', (req, res) => {
 
   // ── ZAKŁADKA: PLAYERS & CHARACTERS ──
   else if (currentTab === 'players') {
-    const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
-    const playerRows = db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [];
+    const allPlayers = (db.getAllPlayers ? db.getAllPlayers() : [])
+      .filter(player => isAdmin || player.id === currentUser.id);
+    const playerRows = (db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [])
+      .filter(row => isAdmin || row.player_id === currentUser.id);
 
-    const editCharId = req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
+    const editCharId = isAdmin && req.query.edit_char ? parseInt(req.query.edit_char, 10) : null;
     const charToEdit = editCharId ? db.getCharacterById(editCharId) : null;
     const characterClasses = charToEdit ? db.getCharacterClasses(charToEdit.id) : [];
     const secondaryCharacterClasses = characterClasses.filter(classRow => classRow.is_primary !== 1);
@@ -1911,7 +1957,7 @@ router.get('/', (req, res) => {
       ${charFormHtml}
 
       <!-- Top Forms Grid: 1fr (Player Registration) to 2fr (Character Creation) -->
-      <div style="display: ${charToEdit ? 'none' : 'grid'}; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px;">
+     ${isAdmin ? `<div style="display: ${charToEdit ? 'none' : 'grid'}; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px;">
         
         <!-- Left Card: Register Player -->
         <div class="card" style="margin-bottom: 0;">
@@ -1997,11 +2043,11 @@ router.get('/', (req, res) => {
             </form>
           `}
         </div>
-      </div>
+      </div>` : ''}
 
       <!-- Character Roster Table: Full-width container matching top grid -->
       <div class="card" style="width: 100%;">
-        <h3>Campaign Characters & Roster (${playerRows.filter(r => r.character_id).length} characters)</h3>
+        <h3>${isAdmin ? 'Campaign Characters & Roster' : 'My Characters'} (${playerRows.filter(r => r.character_id).length} characters)</h3>
         <table style="width: 100%;">
           <thead>
             <tr>
@@ -2013,12 +2059,12 @@ router.get('/', (req, res) => {
               <th class="sortable">Level</th>
               <th class="sortable">XP</th>
               <th class="sortable">Status</th>
-              <th>Actions</th>
+              ${isAdmin ? '<th>Account Access</th><th>Actions</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${playerRows.length === 0 ? '<tr><td colspan="9">No players or characters registered yet.</td></tr>' : playerRows.map(row => `
-              <tr>
+            ${playerRows.length === 0 ? `<tr><td colspan="${isAdmin ? 10 : 8}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map((row, index) => `
+              <tr class="${row.player_id === currentUser.id ? 'player-self' : ''}">
                 <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
                 <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
                 <td data-sort="${escapeHtml(row.character_name || '')}">
@@ -2037,6 +2083,19 @@ router.get('/', (req, res) => {
                       ? '<span class="tag red">Dead</span>' 
                       : '—'}
                 </td>
+                ${isAdmin ? `<td>
+                  ${index === 0 || playerRows[index - 1].player_id !== row.player_id ? `
+                    <form method="POST" action="/admin/players/set-access" class="player-credentials-form">
+                      <input type="hidden" name="player_id" value="${row.player_id}">
+                      <input type="password" name="password" placeholder="${row.has_password ? 'New Password' : 'Set Password'}" aria-label="Set password for ${escapeHtml(row.discord_tag)}" autocomplete="new-password" minlength="4" required>
+                      <select name="role" aria-label="Role for ${escapeHtml(row.discord_tag)}">
+                        <option value="player" ${row.role !== 'admin' ? 'selected' : ''}>Player</option>
+                        <option value="admin" ${row.role === 'admin' ? 'selected' : ''}>Admin (DM)</option>
+                      </select>
+                      <button type="submit" class="btn btn-small btn-gold">Save</button>
+                    </form>
+                  ` : ''}
+                </td>
                 <td style="white-space: nowrap;">
                   ${row.character_id ? `
                     <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
@@ -2050,7 +2109,7 @@ router.get('/', (req, res) => {
                       <button type="submit" class="btn btn-small btn-red">Delete Player</button>
                     </form>
                   `}
-                </td>
+                </td>` : ''}
               </tr>
             `).join('')}
           </tbody>
@@ -2217,6 +2276,9 @@ router.get('/', (req, res) => {
         .analytics-dice-stats { display: flex; flex-wrap: wrap; gap: 6px; }
         .analytics-badge.dice-success { background: #10b981; }
         .analytics-dice-chart-wrap { position: relative; width: 100%; height: 260px; margin-top: 14px; }
+        .player-self { background: rgba(245, 158, 11, 0.12); }
+        .player-credentials-form { display: flex; gap: 4px; min-width: 250px; }
+        .player-credentials-form input { min-width: 0; width: 110px; }
         .metric-toggle { display: inline-flex; gap: 4px; }
         .metric-toggle input { position: absolute; opacity: 0; pointer-events: none; }
         .metric-toggle label { border: 1px solid #d4af37; color: #d4af37; padding: 5px 9px; cursor: pointer; font-size: 12px; }
@@ -2257,17 +2319,14 @@ router.get('/', (req, res) => {
       <div class="container">
         <div class="header">
           <h2>Grimbold's Emporium — Dungeon Master Hub</h2>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="small">${escapeHtml(currentUser.discord_tag)} (${escapeHtml(currentUser.role)})</span>
+            <a href="/logout" class="btn btn-small">Logout</a>
+          </div>
         </div>
         ${statusBanner}
         <div class="tabs">
-          <a href="/admin?tab=items" class="tab-btn ${currentTab === 'items' ? 'active' : ''}">Shop Items</a>
-          <a href="/admin?tab=catalog" class="tab-btn ${currentTab === 'catalog' ? 'active' : ''}">Master Catalog</a>
-          <a href="/admin?tab=restock" class="tab-btn ${currentTab === 'restock' ? 'active' : ''}">Restock Engine</a>
-          <a href="/admin?tab=sales" class="tab-btn ${currentTab === 'sales' ? 'active' : ''}">Sales Ledger</a>
-          <a href="/admin?tab=rolls" class="tab-btn ${currentTab === 'rolls' ? 'active' : ''}">Rolls History</a>
-          <a href="/admin?tab=players" class="tab-btn ${currentTab === 'players' ? 'active' : ''}">Players</a>
-          <a href="/admin?tab=adventures" class="tab-btn ${currentTab === 'adventures' ? 'active' : ''}">Adventures</a>
-          <a href="/admin?tab=analytics" class="tab-btn ${currentTab === 'analytics' ? 'active' : ''}">Analytics</a>
+          ${visibleTabs.map(tab => `<a href="/admin?tab=${tab}" class="tab-btn ${currentTab === tab ? 'active' : ''}">${tabLabels[tab]}</a>`).join('')}
         </div>
         ${contentHtml}
       </div>

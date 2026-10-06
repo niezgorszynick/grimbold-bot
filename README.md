@@ -20,7 +20,7 @@ A modular Discord bot ecosystem designed for D&D 5e campaigns. The project combi
 - **Primary Bot (Grimbold):** Manages weekly d20 discount rolls, store inventory, sales logging, and in-character English RP dialogues.
 - **Backend & Database:** Node.js, Express web server, and local **SQLite** (`better-sqlite3`) running in **WAL mode** as the single source of truth.
 - **Hosting:** Ubuntu VPS managed via `pm2` with Express listening on port `10000`.
-- **Admin Interface:** HTTP Basic Auth-secured panel (`/admin`) for Dungeon Masters to manage catalogue items and inventory.
+- **Admin Interface:** Session-authenticated `/admin` panel with admin and player roles. Dungeon Masters can manage the campaign; players can view the shop, campaign adventures, analytics, rolls, and their own characters.
 
 ---
 
@@ -97,13 +97,29 @@ CREATE TABLE IF NOT EXISTS sales (
   total_paid INTEGER NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-🚀 Setup & Deployment1. Environment VariablesCopy .env.example to .env and fill in the required variables:BashDISCORD_TOKEN=your_bot_token
-CLIENT_ID=your_client_id
-GUILD_ID=your_guild_id
-PORT=10000
-ADMIN_PASSWORD=your_secure_password
-2. InstallationBashnpm install
-node deploy-commands.js
-3. Running with PM2Bashpm2 start index.js --name "grimbold-bot"
-pm2 save
-📜 Commands OverviewCommandDescription/rollRoll a weekly d20 check to determine your personal discount in Grimbold's shop./showDisplay the current shop inventory, categorized with chunked embeds./buy [item] [quantity]Purchase an item applying the active weekly discount.
+## 🚀 Setup & Deployment
+
+1. Copy `.env.example` to `.env` and configure the Discord credentials.
+2. Set `SESSION_SECRET` to a unique random value of at least 32 characters (for example, generate one with `openssl rand -hex 32`). The application refuses to start without it.
+3. Set a strong `ADMIN_PASSWORD` for the emergency `admin` login. Players log in with their `discord_tag`; admins can set account passwords and roles in the `/admin` Players tab. Passwords are stored as salted scrypt hashes.
+4. Install dependencies and register commands:
+
+   ```bash
+   npm install
+   node deploy-commands.js
+   ```
+
+5. Start with PM2:
+
+   ```bash
+   pm2 start index.js --name "grimbold-bot"
+   pm2 save
+   ```
+
+## 📜 Commands Overview
+
+| Command | Description |
+| --- | --- |
+| `/roll` | Roll a weekly d20 check to determine your personal discount in Grimbold's shop. |
+| `/show` | Display the current shop inventory, categorized with chunked embeds. |
+| `/buy [item] [quantity]` | Purchase an item applying the active weekly discount. |

@@ -1,4 +1,5 @@
 // db.js — SQLite layer using better-sqlite3
+const crypto = require('crypto');
 const { validateCharacterOptions } = require('./dndData');
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -98,6 +99,18 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
   );
+`);
+
+const playerColumns = db.prepare('PRAGMA table_info(players)').all();
+if (!playerColumns.some(column => column.name === 'password_hash')) {
+  db.exec('ALTER TABLE players ADD COLUMN password_hash TEXT;');
+}
+if (!playerColumns.some(column => column.name === 'role')) {
+  db.exec("ALTER TABLE players ADD COLUMN role TEXT NOT NULL DEFAULT 'player';");
+}
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_players_discord_tag
+  ON players (discord_tag COLLATE NOCASE);
 `);
 
 // 5.1. Tabela klas postaci (multiclassing)
@@ -415,6 +428,22 @@ function getCharacterAnalytics() {
     levelCount,
     graveyard: characters.filter(character => character.status === 'dead')
   };
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  return `${salt}:${derivedKey.toString('hex')}`;
+}
+
+function verifyPassword(password, storedHash) {
+  if (typeof storedHash !== 'string') return false;
+  const match = /^([a-f0-9]{32}):([a-f0-9]{128})$/i.exec(storedHash);
+  if (!match) return false;
+
+  const expectedKey = Buffer.from(match[2], 'hex');
+  const derivedKey = crypto.scryptSync(password, match[1], expectedKey.length);
+  return crypto.timingSafeEqual(expectedKey, derivedKey);
 }
 
 function getDiceAnalytics() {
@@ -951,6 +980,8 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         p.id AS player_id,
         p.discord_id,
         p.discord_tag,
+        p.role,
+        CASE WHEN p.password_hash IS NULL THEN 0 ELSE 1 END AS has_password,
         p.dm_points,
         c.id AS character_id,
         c.name AS character_name,
@@ -966,7 +997,49 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     `).all();
   },
 
-  getAllPlayers: () => db.prepare('SELECT * FROM players ORDER BY discord_tag ASC').all(),
+  getAllPlayers: () => db.prepare(`
+    SELECT id, discord_id, discord_tag, role, dm_points, created_at
+    FROM players
+    ORDER BY discord_tag ASC
+  `).all(),
+
+  authenticatePlayer: (loginTag, password) => {
+    if (typeof loginTag !== 'string' || typeof password !== 'string' ||
+        loginTag.length > 256 || password.length > 256) {
+      return null;
+    }
+
+    const player = db.prepare(`
+      SELECT id, discord_tag, role, password_hash
+      FROM players
+      WHERE discord_tag = ? COLLATE NOCASE
+    `).get(loginTag.trim());
+    if (!player || !player.password_hash || !verifyPassword(password, player.password_hash)) {
+      return null;
+    }
+
+    return {
+      id: player.id,
+      discord_tag: player.discord_tag,
+      role: player.role || 'player'
+    };
+  },
+
+  setPlayerCredentials: (playerId, plainPassword, role = 'player') => {
+    const id = Number(playerId);
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Valid player must be selected.');
+    if (typeof plainPassword !== 'string' || plainPassword.trim().length < 4 || plainPassword.length > 256) {
+      throw new Error('Password must be 4-256 characters.');
+    }
+    if (role !== 'player' && role !== 'admin') throw new Error('Invalid account role.');
+
+    const result = db.prepare(`
+      UPDATE players
+      SET password_hash = ?, role = ?
+      WHERE id = ?
+    `).run(hashPassword(plainPassword.trim()), role, id);
+    if (result.changes === 0) throw new Error('Player not found.');
+  },
   
   getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
   getCharacterClasses: (id) => getCharacterClassRows(Number(id)),
