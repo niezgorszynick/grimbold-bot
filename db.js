@@ -998,7 +998,8 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   },
 
   getAllPlayers: () => db.prepare(`
-    SELECT id, discord_id, discord_tag, role, dm_points, created_at
+    SELECT id, discord_id, discord_tag, role, dm_points, created_at,
+           CASE WHEN password_hash IS NULL THEN 0 ELSE 1 END AS has_password
     FROM players
     ORDER BY discord_tag ASC
   `).all(),

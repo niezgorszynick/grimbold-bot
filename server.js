@@ -1547,6 +1547,13 @@ router.get('/', (req, res) => {
   else if (currentTab === 'players') {
     const allPlayers = (db.getAllPlayers ? db.getAllPlayers() : [])
       .filter(player => isAdmin || player.id === currentUser.id);
+    const playerView = isRootAdmin && req.query.view === 'accounts' ? 'accounts' : 'roster';
+    const playersSubnavHtml = isRootAdmin ? `
+      <div class="player-subtabs" role="tablist" aria-label="Players sections">
+        <a href="/admin?tab=players&view=roster" class="${playerView === 'roster' ? 'active' : ''}" role="tab" aria-selected="${playerView === 'roster'}">Character Roster</a>
+        <a href="/admin?tab=players&view=accounts" class="${playerView === 'accounts' ? 'active' : ''}" role="tab" aria-selected="${playerView === 'accounts'}">Passwords &amp; Roles</a>
+      </div>
+    ` : '';
     const playerRows = (db.getAllPlayersWithCharacters ? db.getAllPlayersWithCharacters() : [])
       .filter(row => isAdmin || row.player_id === currentUser.id);
 
@@ -1961,7 +1968,7 @@ router.get('/', (req, res) => {
       `;
     }
 
-   contentHtml = `
+   const rosterHtml = `
       ${charFormHtml}
 
       <!-- Top Forms Grid: 1fr (Player Registration) to 2fr (Character Creation) -->
@@ -2067,12 +2074,11 @@ router.get('/', (req, res) => {
               <th class="sortable">Level</th>
               <th class="sortable">XP</th>
               <th class="sortable">Status</th>
-              ${isRootAdmin ? '<th>Account Access</th>' : ''}
               ${isAdmin ? '<th>Actions</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${playerRows.length === 0 ? `<tr><td colspan="${8 + (isAdmin ? 1 : 0) + (isRootAdmin ? 1 : 0)}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map((row, index) => `
+            ${playerRows.length === 0 ? `<tr><td colspan="${8 + (isAdmin ? 1 : 0)}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map(row => `
               <tr class="${row.player_id === currentUser.id ? 'player-self' : ''}">
                 <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
                 <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
@@ -2092,19 +2098,6 @@ router.get('/', (req, res) => {
                       ? '<span class="tag red">Dead</span>' 
                       : '—'}
                 </td>
-                ${isRootAdmin ? `<td>
-                  ${index === 0 || playerRows[index - 1].player_id !== row.player_id ? `
-                    <form method="POST" action="/admin/players/set-access" class="player-credentials-form">
-                      <input type="hidden" name="player_id" value="${row.player_id}">
-                      <input type="password" name="password" placeholder="${row.has_password ? 'New Password' : 'Set Password'}" aria-label="Set password for ${escapeHtml(row.discord_tag)}" autocomplete="new-password" minlength="4" required>
-                      <select name="role" aria-label="Role for ${escapeHtml(row.discord_tag)}">
-                        <option value="player" ${row.role !== 'admin' ? 'selected' : ''}>Player</option>
-                        <option value="admin" ${row.role === 'admin' ? 'selected' : ''}>Admin (DM)</option>
-                      </select>
-                      <button type="submit" class="btn btn-small btn-gold">Save</button>
-                    </form>
-                  ` : ''}
-                </td>` : ''}
                 ${isAdmin ? `<td style="white-space: nowrap;">
                   ${row.character_id ? `
                     <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
@@ -2175,6 +2168,47 @@ router.get('/', (req, res) => {
         }
       </script>
     `;
+
+    const accountAccessHtml = `
+      <section class="card">
+        <h3>Passwords &amp; Roles (${allPlayers.length} accounts)</h3>
+        <p class="muted">Set or reset a player's password and choose whether they can manage the campaign as a DM.</p>
+        <div class="analytics-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable">Player (Discord Tag)</th>
+                <th class="sortable">Discord ID</th>
+                <th class="sortable">Current Role</th>
+                <th>Account Access</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${allPlayers.length === 0 ? '<tr><td colspan="4" class="analytics-empty">No players registered yet.</td></tr>' : allPlayers.map(player => `
+                <tr>
+                  <td><strong>${escapeHtml(player.discord_tag)}</strong></td>
+                  <td><small class="muted">${escapeHtml(player.discord_id)}</small></td>
+                  <td><span class="analytics-badge ${player.role === 'admin' ? 'primary' : ''}">${player.role === 'admin' ? 'Admin (DM)' : 'Player'}</span></td>
+                  <td>
+                    <form method="POST" action="/admin/players/set-access" class="player-credentials-form">
+                      <input type="hidden" name="player_id" value="${player.id}">
+                      <input type="password" name="password" placeholder="${player.has_password ? 'New Password' : 'Set Password'}" aria-label="Set password for ${escapeHtml(player.discord_tag)}" autocomplete="new-password" minlength="4" required>
+                      <select name="role" aria-label="Role for ${escapeHtml(player.discord_tag)}">
+                        <option value="player" ${player.role !== 'admin' ? 'selected' : ''}>Player</option>
+                        <option value="admin" ${player.role === 'admin' ? 'selected' : ''}>Admin (DM)</option>
+                      </select>
+                      <button type="submit" class="btn btn-small btn-gold">Save</button>
+                    </form>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+
+    contentHtml = `${playersSubnavHtml}${playerView === 'accounts' ? accountAccessHtml : rosterHtml}`;
   }
 
   // Główny layout HTML
@@ -2286,8 +2320,12 @@ router.get('/', (req, res) => {
         .analytics-badge.dice-success { background: #10b981; }
         .analytics-dice-chart-wrap { position: relative; width: 100%; height: 260px; margin-top: 14px; }
         .player-self { background: rgba(245, 158, 11, 0.12); }
-        .player-credentials-form { display: flex; gap: 4px; min-width: 250px; }
-        .player-credentials-form input { min-width: 0; width: 110px; }
+        .player-subtabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #3b3e45; }
+        .player-subtabs a { padding: 8px 12px; color: #dbdee1; text-decoration: none; border-bottom: 2px solid transparent; }
+        .player-subtabs a.active { color: #d4af37; border-bottom-color: #d4af37; font-weight: bold; }
+        .player-credentials-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+        .player-credentials-form input { min-width: 160px; flex: 1 1 200px; }
+        .player-credentials-form select { min-width: 110px; }
         .metric-toggle { display: inline-flex; gap: 4px; }
         .metric-toggle input { position: absolute; opacity: 0; pointer-events: none; }
         .metric-toggle label { border: 1px solid #d4af37; color: #d4af37; padding: 5px 9px; cursor: pointer; font-size: 12px; }
