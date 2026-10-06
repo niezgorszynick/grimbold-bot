@@ -5,7 +5,7 @@ const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
 const { formatCp } = require('./currency');
 const { restockShop } = require('./restock');
-const { DND_SPECIES, DND_CLASSES_AND_SUBCLASSES } = require('./dndData');
+const { DND_SPECIES, DND_DATA, DND_CLASSES_AND_SUBCLASSES } = require('./dndData');
 
 // Middleware parsowania formularzy i JSON
 router.use(express.urlencoded({ extended: true }));
@@ -46,7 +46,15 @@ function requireRootAdmin(req, res, next) {
 }
 
 router.use(requireAuth);
-router.use((req, res, next) => req.method === 'POST' ? requireAdmin(req, res, next) : next());
+router.use((req, res, next) => {
+  const selfServiceCharacterRoute = [
+    '/characters/self-add',
+    '/characters/self-update'
+  ].includes(req.path);
+  return req.method === 'POST' && !selfServiceCharacterRoute
+    ? requireAdmin(req, res, next)
+    : next();
+});
 
 // Helper: Escape HTML
 function escapeHtml(str) {
@@ -356,6 +364,47 @@ router.post('/characters/add', (req, res) => {
   }
 });
 
+router.post('/characters/self-add', (req, res) => {
+  const playerId = req.session.user.id;
+  if (playerId <= 0) return res.status(403).send('A player account is required to create a character.');
+
+  try {
+    const { name, race, class_name, subclass } = req.body;
+    db.addCharacter({
+      player_id: playerId,
+      name,
+      race,
+      class_name,
+      subclass,
+      xp: 0,
+      status: 'alive'
+    });
+    res.redirect('/admin?tab=character-sheet&status=char_added');
+  } catch (err) {
+    res.redirect(`/admin?tab=character-sheet&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/characters/self-update', (req, res) => {
+  const playerId = req.session.user.id;
+  if (playerId <= 0) return res.status(403).send('A player account is required to edit a character.');
+
+  try {
+    const { name, race, class_name, subclass } = req.body;
+    db.updateCharacterDetailsForPlayer({
+      id: req.body.id,
+      player_id: playerId,
+      name,
+      race,
+      class_name,
+      subclass
+    });
+    res.redirect('/admin?tab=character-sheet&status=char_updated');
+  } catch (err) {
+    res.redirect(`/admin?tab=character-sheet&edit_char=${encodeURIComponent(req.body.id)}&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 router.post('/characters/update', (req, res) => {
   try {
     const {
@@ -485,7 +534,7 @@ router.get('/', (req, res) => {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
-  const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics', 'auctions'];
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics', 'auctions', 'character-sheet'];
   const tabLabels = {
     items: 'Shop Items',
     catalog: 'Master Catalog',
@@ -495,7 +544,8 @@ router.get('/', (req, res) => {
     players: 'Players',
     adventures: 'Adventures',
     analytics: 'Analytics',
-    auctions: 'Auctions'
+    auctions: 'Auctions',
+    'character-sheet': 'Character Sheet'
   };
   const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
   let currentTab = req.query.tab || 'items';
@@ -1524,6 +1574,166 @@ router.get('/', (req, res) => {
     `;
   }
 
+  // ── TAB: CHARACTER SHEET ──
+  else if (currentTab === 'character-sheet') {
+    const characters = db.getAllPlayersWithCharacters()
+      .filter(row => row.character_id && (isAdmin || row.player_id === currentUser.id));
+    const requestedEditId = Number.parseInt(req.query.edit_char, 10);
+    const characterToEdit = Number.isSafeInteger(requestedEditId)
+      ? db.getCharacterById(requestedEditId)
+      : null;
+    const canManageOwnCharacters = currentUser.id > 0;
+    const canEditRequestedCharacter = characterToEdit &&
+      canManageOwnCharacters && characterToEdit.player_id === currentUser.id;
+    const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
+    const sheetClassTreeJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
+    const sheetSpeciesJson = JSON.stringify(DND_DATA.species).replace(/</g, '\\u003c');
+    const renderCharacterForm = character => {
+      const isEdit = Boolean(character);
+      const prefix = isEdit ? 'sheet-edit' : 'sheet-add';
+      const selectedRace = character ? character.race : '';
+      const selectedClass = character ? character.class : '';
+      const selectedSubclass = character ? character.subclass : '';
+      const speciesOptions = `${isEdit ? '' : '<option value="" selected disabled>-- Choose Species --</option>'}${DND_SPECIES.map(species =>
+        `<option value="${escapeHtml(species)}" ${species === selectedRace ? 'selected' : ''}>${escapeHtml(species)}</option>`
+      ).join('')}`;
+      const classOptions = `${isEdit ? '' : '<option value="" selected disabled>-- Choose Class --</option>'}${classNames.map(className =>
+        `<option value="${escapeHtml(className)}" ${className === selectedClass ? 'selected' : ''}>${escapeHtml(className)}</option>`
+      ).join('')}`;
+      const subclassOptions = (DND_CLASSES_AND_SUBCLASSES[selectedClass] || []).map(subclass =>
+        `<option value="${escapeHtml(subclass)}" ${subclass === selectedSubclass ? 'selected' : ''}>${escapeHtml(subclass)}</option>`
+      ).join('');
+      return `
+        <form method="POST" action="/admin/characters/${isEdit ? 'self-update' : 'self-add'}" class="character-editor">
+          ${isEdit ? `<input type="hidden" name="id" value="${character.id}">` : ''}
+          <label>
+            Character Name
+            <input type="text" name="name" maxlength="100" value="${escapeHtml(character ? character.name : '')}" required>
+          </label>
+          <div class="character-editor-fields">
+            <label>
+              Species
+              <select id="${prefix}-species" name="race" required>${speciesOptions}</select>
+            </label>
+            <label>
+              Class
+              <select id="${prefix}-class" name="class_name" required>${classOptions}</select>
+            </label>
+            <label>
+              Subclass
+              <select id="${prefix}-subclass" name="subclass">
+                <option value="">-- None / Base --</option>
+                ${subclassOptions}
+              </select>
+            </label>
+          </div>
+          <div id="${prefix}-traits" class="species-traits" aria-live="polite"></div>
+          <button type="submit" class="btn btn-green">${isEdit ? 'Save Character' : 'Create Character'}</button>
+        </form>
+      `;
+    };
+    const editFormHtml = req.query.edit_char
+      ? canEditRequestedCharacter
+        ? `<section class="card"><div class="character-sheet-header"><h3>Edit Existing Character</h3><a href="/admin?tab=character-sheet" class="btn btn-small">Cancel</a></div>${renderCharacterForm(characterToEdit)}</section>`
+        : '<div class="alert red">Character not found or you do not have permission to edit it.</div>'
+      : '';
+    contentHtml = `
+      <section class="card">
+        <h3>${isAdmin ? 'Campaign Characters' : 'Your Characters'}</h3>
+        ${canManageOwnCharacters
+          ? `<p class="muted">${isAdmin ? 'All campaign characters are visible to you. You can also create and edit your own characters.' : 'Create a character or edit your existing character details below.'}</p>${req.query.edit_char ? '' : renderCharacterForm(null)}`
+          : '<p class="muted">All campaign characters are visible to DMs and admins.</p>'}
+      </section>
+      ${editFormHtml}
+      ${characters.length === 0
+        ? `<section class="card"><p class="muted">${isAdmin ? 'No characters have been created yet.' : 'You have not created any characters yet.'}</p></section>`
+        : `
+          <section class="character-sheet-grid" aria-label="Character sheets">
+            ${characters.map(character => {
+              const classRows = db.getCharacterClasses(character.character_id);
+              const classesHtml = classRows.length > 0
+                ? classRows.map(classRow => `
+                  <li>
+                    <strong>${escapeHtml(classRow.class_name)}</strong>${classRow.subclass_name ? ` <span class="muted">(${escapeHtml(classRow.subclass_name)})</span>` : ''}
+                    <span class="muted"> · Level ${classRow.class_level}</span>
+                  </li>
+                `).join('')
+                : `<li>${escapeHtml(character.character_class || 'Unknown')}</li>`;
+              const editButton = canManageOwnCharacters && character.player_id === currentUser.id
+                ? `<a href="/admin?tab=character-sheet&edit_char=${character.character_id}" class="btn btn-small">Edit Existing Character</a>`
+                : '';
+              return `
+                <article class="card character-sheet">
+                  <div class="character-sheet-header">
+                    <h3>${escapeHtml(character.character_name)}</h3>
+                    <span class="tag ${character.character_status === 'alive' ? 'green' : 'red'}">${character.character_status === 'alive' ? 'Alive' : 'Dead'}</span>
+                  </div>
+                  ${isAdmin ? `<p class="muted small">Player: ${escapeHtml(character.discord_tag)}</p>` : ''}
+                  <dl class="character-sheet-details">
+                    <div><dt>Race</dt><dd>${escapeHtml(character.character_race || 'Unknown')}</dd></div>
+                    <div><dt>Level</dt><dd>${character.character_level || 3}</dd></div>
+                    <div><dt>XP</dt><dd>${character.character_xp ?? 0}</dd></div>
+                  </dl>
+                  <h4>Classes</h4>
+                  <ul class="character-sheet-classes">${classesHtml}</ul>
+                  ${editButton ? `<div class="character-sheet-actions">${editButton}</div>` : ''}
+                </article>
+              `;
+            }).join('')}
+          </section>
+        `}
+      <script>
+        const sheetClassTree = ${sheetClassTreeJson};
+        const sheetSpecies = ${sheetSpeciesJson};
+
+        function initCharacterEditor(prefix) {
+          const speciesSelect = document.getElementById(prefix + '-species');
+          const classSelect = document.getElementById(prefix + '-class');
+          const subclassSelect = document.getElementById(prefix + '-subclass');
+          const traitsContainer = document.getElementById(prefix + '-traits');
+          if (!speciesSelect || !classSelect || !subclassSelect || !traitsContainer) return;
+
+          function updateTraits() {
+            const species = sheetSpecies[speciesSelect.value];
+            if (!species) {
+              traitsContainer.replaceChildren();
+              return;
+            }
+            const heading = document.createElement('strong');
+            heading.textContent = 'Species Traits';
+            const list = document.createElement('ul');
+            species.traits.forEach(trait => {
+              const item = document.createElement('li');
+              const name = document.createElement('strong');
+              name.textContent = trait.name;
+              item.append(name, document.createTextNode(' — ' + trait.description));
+              list.appendChild(item);
+            });
+            traitsContainer.replaceChildren(heading, list);
+          }
+
+          function updateSubclasses() {
+            const previousValue = subclassSelect.value;
+            subclassSelect.replaceChildren(new Option('-- None / Base --', ''));
+            (sheetClassTree[classSelect.value] || []).forEach(subclass => {
+              subclassSelect.add(new Option(subclass, subclass));
+            });
+            if ([...subclassSelect.options].some(option => option.value === previousValue)) {
+              subclassSelect.value = previousValue;
+            }
+          }
+
+          speciesSelect.addEventListener('change', updateTraits);
+          classSelect.addEventListener('change', updateSubclasses);
+          updateTraits();
+        }
+
+        initCharacterEditor('sheet-add');
+        initCharacterEditor('sheet-edit');
+      </script>
+    `;
+  }
+
   // ── ZAKŁADKA: ROLLS ──
   else if (currentTab === 'rolls') {
     contentHtml = `
@@ -1581,6 +1791,7 @@ router.get('/', (req, res) => {
       : [];
     const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
     const dndClassesJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
+    const dndSpeciesJson = JSON.stringify(DND_DATA.species).replace(/</g, '\\u003c');
     const classNamesJson = JSON.stringify(classNames).replace(/</g, '\\u003c');
     const secondaryClassAllocationRows = secondaryCharacterClasses.map(classRow => {
       const options = [...classNames];
@@ -1675,6 +1886,7 @@ router.get('/', (req, res) => {
                 <select name="race" id="editSpeciesSelect" required style="width: 100%; margin-top: 4px;" size="8">
                   ${editSpeciesOptions.join('')}
                 </select>
+                <div id="editSpeciesTraits" class="species-traits" aria-live="polite"></div>
               </div>
               <div>
                 <label style="white-space: nowrap;">Class (2024):</label><br>
@@ -2029,6 +2241,7 @@ router.get('/', (req, res) => {
                   <select name="race" id="addSpeciesSelect" required style="width: 100%; margin-top: 4px;" size="8">
                     ${addSpeciesOptions.join('')}
                   </select>
+                  <div id="addSpeciesTraits" class="species-traits" aria-live="polite"></div>
                 </div>
                 <div>
                   <label style="white-space: nowrap;">Class (2024):</label><br>
@@ -2132,6 +2345,43 @@ router.get('/', (req, res) => {
 
       <script>
         const classTree = ${dndClassesJson};
+        const speciesData = ${dndSpeciesJson};
+
+        function updateSpeciesTraits(selectId, displayId) {
+          const select = document.getElementById(selectId);
+          const display = document.getElementById(displayId);
+          if (!select || !display) return;
+
+          const species = speciesData[select.value];
+          if (!species) {
+            display.replaceChildren();
+            return;
+          }
+
+          const heading = document.createElement('strong');
+          heading.textContent = 'Traits';
+          const details = document.createElement('p');
+          details.className = 'muted small';
+          details.textContent = 'Size: ' + species.size + ' · Speed: ' + species.speed + ' ft.';
+          const list = document.createElement('ul');
+          species.traits.forEach(trait => {
+            const item = document.createElement('li');
+            const name = document.createElement('strong');
+            name.textContent = trait.name;
+            item.append(name, document.createTextNode(' — ' + trait.description));
+            list.appendChild(item);
+          });
+          display.replaceChildren(heading, details, list);
+        }
+
+        document.getElementById('addSpeciesSelect')?.addEventListener('change', () => {
+          updateSpeciesTraits('addSpeciesSelect', 'addSpeciesTraits');
+        });
+        document.getElementById('editSpeciesSelect')?.addEventListener('change', () => {
+          updateSpeciesTraits('editSpeciesSelect', 'editSpeciesTraits');
+        });
+        updateSpeciesTraits('addSpeciesSelect', 'addSpeciesTraits');
+        updateSpeciesTraits('editSpeciesSelect', 'editSpeciesTraits');
 
         function filterDropdown(filterInputId, selectId) {
           const filterEl = document.getElementById(filterInputId);
@@ -2150,6 +2400,13 @@ router.get('/', (req, res) => {
 
           if (firstMatch && filterText.length > 0) {
             selectEl.value = firstMatch.value;
+            if (selectId.includes('SpeciesSelect')) {
+              const isEdit = selectId.startsWith('edit');
+              updateSpeciesTraits(
+                selectId,
+                isEdit ? 'editSpeciesTraits' : 'addSpeciesTraits'
+              );
+            }
             if (selectId.includes('ClassSelect')) {
               const isEdit = selectId.startsWith('edit');
               onClassChange(
@@ -2332,6 +2589,26 @@ router.get('/', (req, res) => {
         .analytics-badge.dice-success { background: #10b981; }
         .analytics-dice-chart-wrap { position: relative; width: 100%; height: 260px; margin-top: 14px; }
         .player-self { background: rgba(245, 158, 11, 0.12); }
+        .character-sheet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+        .character-sheet { margin: 0; }
+        .character-sheet-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .character-sheet-header h3 { margin: 0; }
+        .character-sheet-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+        .character-sheet-details div { min-width: 0; }
+        .character-sheet-details dt { color: #949ba4; font-size: 12px; }
+        .character-sheet-details dd { margin: 4px 0 0; font-weight: bold; overflow-wrap: anywhere; }
+        .character-sheet h4 { margin: 12px 0 6px; color: #d4af37; }
+        .character-sheet-classes { margin: 0; padding-left: 20px; }
+        .character-sheet-classes li { padding: 3px 0; }
+        .character-editor { display: grid; gap: 12px; margin-top: 14px; }
+        .character-editor label { display: grid; gap: 5px; }
+        .character-editor input, .character-editor select { width: 100%; }
+        .character-editor-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .character-sheet-actions { margin-top: 14px; }
+        .species-traits { margin-top: 10px; padding: 10px; background: #232428; border-radius: 4px; font-size: 12px; }
+        .species-traits p { margin: 5px 0; }
+        .species-traits ul { margin: 6px 0 0; padding-left: 18px; }
+        .species-traits li { padding: 3px 0; }
         .player-subtabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #3b3e45; }
         .player-subtabs a { padding: 8px 12px; color: #dbdee1; text-decoration: none; border-bottom: 2px solid transparent; }
         .player-subtabs a.active { color: #d4af37; border-bottom-color: #d4af37; font-weight: bold; }
@@ -2365,6 +2642,7 @@ router.get('/', (req, res) => {
         @media (max-width: 760px) {
           .adventure-layout { grid-template-columns: minmax(0, 1fr); }
           .analytics-grid { grid-template-columns: minmax(0, 1fr); }
+          .character-editor-fields { grid-template-columns: minmax(0, 1fr); }
         }
         @media (max-width: 480px) {
           .analytics-breakdown { grid-template-columns: minmax(0, 1fr); }

@@ -1043,6 +1043,39 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   },
   
   getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
+  updateCharacterDetailsForPlayer: ({ id, player_id, name, race, class_name, subclass }) => {
+    const characterId = Number(id);
+    const playerId = Number(player_id);
+    const trimmedName = (name || '').trim();
+    if (!Number.isSafeInteger(characterId) || characterId <= 0) throw new Error('Invalid character ID.');
+    if (!Number.isSafeInteger(playerId) || playerId <= 0) throw new Error('Valid player must be selected.');
+    if (!trimmedName) throw new Error('Character name is required.');
+
+    const { canonicalSpecies, canonicalClass, canonicalSubclass } =
+      validateCharacterOptions(race, class_name, subclass);
+    return db.transaction(() => {
+      const character = db.prepare(
+        'SELECT level FROM characters WHERE id = ? AND player_id = ?'
+      ).get(characterId, playerId);
+      if (!character) throw new Error('Character not found.');
+
+      const result = db.prepare(`
+        UPDATE characters
+        SET name = ?, race = ?, class = ?, subclass = ?
+        WHERE id = ? AND player_id = ?
+      `).run(
+        trimmedName,
+        canonicalSpecies,
+        canonicalClass,
+        canonicalSubclass,
+        characterId,
+        playerId
+      );
+      if (result.changes !== 1) throw new Error('Character not found.');
+      reconcileCharacterClassLevels(characterId, character.level, canonicalClass, canonicalSubclass);
+      return result;
+    })();
+  },
   getCharacterClasses: (id) => getCharacterClassRows(Number(id)),
   getCharacterAnalytics,
   getDiceAnalytics,
