@@ -38,6 +38,13 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('Forbidden: Dungeon Master privileges required.');
 }
 
+function requireRootAdmin(req, res, next) {
+  if (req.session && req.session.user && req.session.user.id === 0 && req.session.user.role === 'admin') {
+    return next();
+  }
+  return res.status(403).send('Forbidden: Only the emergency admin can manage account passwords and roles.');
+}
+
 router.use(requireAuth);
 router.use((req, res, next) => req.method === 'POST' ? requireAdmin(req, res, next) : next());
 
@@ -293,7 +300,7 @@ router.post('/catalog/delete', (req, res) => {
 
 // ─── POST ENDPOINTS: PLAYERS & CHARACTERS ──────────────────────────────────
 
-router.post(['/players/set-access', '/players/credentials'], (req, res) => {
+router.post(['/players/set-access', '/players/credentials'], requireRootAdmin, (req, res) => {
   try {
     const { player_id, password, role = 'player' } = req.body;
     if (typeof password !== 'string' || password.trim().length < 4) {
@@ -477,6 +484,7 @@ router.post(['/adventures/update', '/adventures/edit'], (req, res) => {
 router.get('/', (req, res) => {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
+  const isRootAdmin = currentUser.id === 0 && isAdmin;
   const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics'];
   const tabLabels = {
     items: 'Shop Items',
@@ -2059,11 +2067,12 @@ router.get('/', (req, res) => {
               <th class="sortable">Level</th>
               <th class="sortable">XP</th>
               <th class="sortable">Status</th>
-              ${isAdmin ? '<th>Account Access</th><th>Actions</th>' : ''}
+              ${isRootAdmin ? '<th>Account Access</th>' : ''}
+              ${isAdmin ? '<th>Actions</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${playerRows.length === 0 ? `<tr><td colspan="${isAdmin ? 10 : 8}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map((row, index) => `
+            ${playerRows.length === 0 ? `<tr><td colspan="${8 + (isAdmin ? 1 : 0) + (isRootAdmin ? 1 : 0)}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map((row, index) => `
               <tr class="${row.player_id === currentUser.id ? 'player-self' : ''}">
                 <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
                 <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
@@ -2083,7 +2092,7 @@ router.get('/', (req, res) => {
                       ? '<span class="tag red">Dead</span>' 
                       : '—'}
                 </td>
-                ${isAdmin ? `<td>
+                ${isRootAdmin ? `<td>
                   ${index === 0 || playerRows[index - 1].player_id !== row.player_id ? `
                     <form method="POST" action="/admin/players/set-access" class="player-credentials-form">
                       <input type="hidden" name="player_id" value="${row.player_id}">
@@ -2095,8 +2104,8 @@ router.get('/', (req, res) => {
                       <button type="submit" class="btn btn-small btn-gold">Save</button>
                     </form>
                   ` : ''}
-                </td>
-                <td style="white-space: nowrap;">
+                </td>` : ''}
+                ${isAdmin ? `<td style="white-space: nowrap;">
                   ${row.character_id ? `
                     <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
                     <form method="POST" action="/admin/characters/delete" style="display:inline;" onsubmit="return confirm('Delete character &quot;${escapeHtml(row.character_name)}&quot;?');">

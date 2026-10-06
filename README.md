@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS sales (
 
 1. Copy `.env.example` to `.env` and configure the Discord credentials.
 2. Set `SESSION_SECRET` to a unique random value of at least 32 characters (for example, generate one with `openssl rand -hex 32`). The application refuses to start without it.
-3. Set a strong `ADMIN_PASSWORD` for the emergency `admin` login. Players log in with their `discord_tag`; admins can set account passwords and roles in the `/admin` Players tab. Passwords are stored as salted scrypt hashes.
+3. Set a strong `ADMIN_PASSWORD` for the emergency `admin` login. Players log in with their `discord_tag`; the emergency admin sets account passwords and roles in the `/admin` Players tab. DM accounts (`admin` role) can manage the campaign but cannot change account passwords or roles. Passwords are stored as salted scrypt hashes.
 4. Install dependencies and register commands:
 
    ```bash
