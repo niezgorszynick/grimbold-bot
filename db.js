@@ -417,6 +417,35 @@ function getCharacterAnalytics() {
   };
 }
 
+function getDiceAnalytics() {
+  const rollCounts = db.prepare(`
+    SELECT roll_value, COUNT(*) AS count
+    FROM rolls
+    WHERE roll_value BETWEEN 1 AND 20
+    GROUP BY roll_value
+  `).all();
+  const distribution = Object.fromEntries(
+    Array.from({ length: 20 }, (_, index) => [index + 1, 0])
+  );
+
+  let totalRolls = 0;
+  let totalSum = 0;
+
+  for (const { roll_value: value, count } of rollCounts) {
+    distribution[value] = count;
+    totalRolls += count;
+    totalSum += value * count;
+  }
+
+  return {
+    totalRolls,
+    averageRoll: totalRolls ? Number((totalSum / totalRolls).toFixed(2)) : 0,
+    nat20Count: distribution[20],
+    nat1Count: distribution[1],
+    distribution
+  };
+}
+
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
@@ -942,6 +971,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
   getCharacterClasses: (id) => getCharacterClassRows(Number(id)),
   getCharacterAnalytics,
+  getDiceAnalytics,
 
   addPlayer: ({ discord_id, discord_tag }) => {
     const trimmedId = (discord_id || '').trim();

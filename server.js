@@ -1201,6 +1201,8 @@ router.get('/', (req, res) => {
   else if (currentTab === 'analytics') {
     const analytics = db.getCharacterAnalytics();
     const analyticsJson = JSON.stringify(analytics).replace(/</g, '\\u003c');
+    const diceStats = db.getDiceAnalytics();
+    const diceStatsJson = JSON.stringify(diceStats.distribution).replace(/</g, '\\u003c');
     const levelEntries = Object.entries(analytics.levelCount)
       .sort((left, right) => Number(left[0].replace(/\D/g, '')) - Number(right[0].replace(/\D/g, '')));
     const classEntries = Object.entries(analytics.classCount)
@@ -1253,6 +1255,21 @@ router.get('/', (req, res) => {
         </section>
       </div>
 
+      <section class="card analytics-dice">
+        <div class="analytics-card-header">
+          <strong>d20 Dice Roll Distribution &amp; Fairness</strong>
+          <div class="analytics-dice-stats">
+            <span class="analytics-badge">Total Rolls: ${diceStats.totalRolls}</span>
+            <span class="analytics-badge primary">Avg Roll: ${diceStats.averageRoll} (Exp: 10.5)</span>
+            <span class="analytics-badge dice-success">Nat 20: ${diceStats.nat20Count}</span>
+            <span class="analytics-badge fallen">Nat 1: ${diceStats.nat1Count}</span>
+          </div>
+        </div>
+        <div class="analytics-dice-chart-wrap">
+          <canvas id="diceBarChart" aria-label="d20 roll distribution bar chart" role="img"></canvas>
+        </div>
+      </section>
+
       <section class="card analytics-graveyard">
         <div class="analytics-card-header">
           <strong>Hall of the Fallen (Graveyard)</strong>
@@ -1299,8 +1316,6 @@ router.get('/', (req, res) => {
           }
 
           const canvas = document.getElementById('rosterPieChart');
-          if (!canvas) return;
-
           const dataPayload = ${analyticsJson};
           const palette = [
             '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
@@ -1328,30 +1343,85 @@ router.get('/', (req, res) => {
           }
 
           if (!window.Chart) {
-            console.error('Chart.js failed to load; character analytics chart is unavailable.');
+            console.error('Chart.js failed to load; analytics charts are unavailable.');
             return;
           }
-          const pieChart = new Chart(canvas, {
-            type: 'pie',
-            data: buildDataset('species'),
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: {
-                  position: 'right',
-                  labels: { color: '#cbd5e1', font: { size: 11 } }
+
+          if (canvas) {
+            const pieChart = new Chart(canvas, {
+              type: 'pie',
+              data: buildDataset('species'),
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: 'right',
+                    labels: { color: '#cbd5e1', font: { size: 11 } }
+                  }
                 }
               }
-            }
-          });
-
-          document.querySelectorAll('input[name="metricRadio"]').forEach(radio => {
-            radio.addEventListener('change', event => {
-              pieChart.data = buildDataset(event.target.value);
-              pieChart.update();
             });
-          });
+
+            document.querySelectorAll('input[name="metricRadio"]').forEach(radio => {
+              radio.addEventListener('change', event => {
+                pieChart.data = buildDataset(event.target.value);
+                pieChart.update();
+              });
+            });
+          }
+
+          const diceCanvas = document.getElementById('diceBarChart');
+          if (diceCanvas) {
+            const diceData = ${diceStatsJson};
+            const labels = Object.keys(diceData);
+            const values = Object.values(diceData);
+            const backgroundColors = labels.map(num => {
+              if (num === '1') return '#ef4444';
+              if (num === '20') return '#10b981';
+              return '#3b82f6';
+            });
+
+            new Chart(diceCanvas, {
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Roll Count',
+                  data: values,
+                  backgroundColor: backgroundColors,
+                  borderRadius: 4,
+                  borderWidth: 0
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  x: {
+                    grid: { color: '#334155' },
+                    ticks: { color: '#94a3b8', font: { weight: 'bold' } },
+                    title: { display: true, text: 'd20 Face Value', color: '#cbd5e1' }
+                  },
+                  y: {
+                    grid: { color: '#334155' },
+                    ticks: { color: '#94a3b8', stepSize: 1 },
+                    beginAtZero: true,
+                    title: { display: true, text: 'Frequency', color: '#cbd5e1' }
+                  }
+                },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      title: items => 'Natural ' + items[0].label,
+                      label: context => 'Rolled ' + context.parsed.y + ' times'
+                    }
+                  }
+                }
+              }
+            });
+          }
         });
       </script>
     `;
@@ -2143,6 +2213,10 @@ router.get('/', (req, res) => {
         .analytics-card-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid #3b3e45; }
         .analytics-chart-wrap { position: relative; width: 100%; max-width: 520px; height: 300px; margin: 12px auto 0; }
         .analytics-chart-wrap canvas { max-height: 280px; max-width: 100%; }
+        .analytics-dice { margin-bottom: 20px; }
+        .analytics-dice-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+        .analytics-badge.dice-success { background: #10b981; }
+        .analytics-dice-chart-wrap { position: relative; width: 100%; height: 260px; margin-top: 14px; }
         .metric-toggle { display: inline-flex; gap: 4px; }
         .metric-toggle input { position: absolute; opacity: 0; pointer-events: none; }
         .metric-toggle label { border: 1px solid #d4af37; color: #d4af37; padding: 5px 9px; cursor: pointer; font-size: 12px; }
