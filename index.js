@@ -6,6 +6,7 @@ const cookieSession = require('cookie-session');
 const crypto = require('crypto');
 const app = express();
 const adminRouter = require('./server');
+const webShopApiRouter = require('./webShopApi');
 const db = require('./db');
 
 const sessionSecret = process.env.SESSION_SECRET;
@@ -98,6 +99,7 @@ app.get('/logout', (req, res) => {
 });
 
 // DM Panel route
+app.use('/api', webShopApiRouter);
 app.use('/admin', adminRouter);
 
 // Health check endpoint

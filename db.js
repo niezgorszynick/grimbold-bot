@@ -475,6 +475,112 @@ function getDiceAnalytics() {
   };
 }
 
+function getAliveCharactersByPlayerId(playerId) {
+  return db.prepare(`
+    SELECT
+      id,
+      name,
+      race AS species,
+      class AS character_class,
+      level,
+      NULL AS gold_gp
+    FROM characters
+    WHERE player_id = ? AND status = 'alive' COLLATE NOCASE
+    ORDER BY name ASC
+  `).all(playerId);
+}
+
+function getAliveCharactersForPlayer(playerId) {
+  return getAliveCharactersByPlayerId(playerId);
+}
+
+function getCharacterByIdAndPlayer(characterId, playerId) {
+  return db.prepare(`
+    SELECT *
+    FROM characters
+    WHERE id = ? AND player_id = ? AND status = 'alive' COLLATE NOCASE
+  `).get(characterId, playerId);
+}
+
+function processWebPurchase({
+  itemName,
+  quantity = 1,
+  buyerTag,
+  buyerDiscordId,
+  characterId,
+  playerId,
+  userTag,
+  userId
+}) {
+  const runTransaction = db.transaction(() => {
+    const character = getCharacterByIdAndPlayer(characterId, playerId);
+    if (!character) {
+      throw new Error("Character not found or doesn't belong to you.");
+    }
+
+    const item = db.prepare(`
+      SELECT *
+      FROM items
+      WHERE name = ? COLLATE NOCASE AND is_active = 1
+    `).get(itemName);
+    if (!item) {
+      throw new Error('Item is not available in the shop.');
+    }
+
+    const qty = parseInt(quantity, 10) || 1;
+    if (qty <= 0) {
+      throw new Error('Invalid quantity.');
+    }
+    if (item.stock !== null && item.stock < qty) {
+      throw new Error(`Insufficient stock. Only ${item.stock} left.`);
+    }
+
+    const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
+    const purchaseBuyerTag = buyerTag || userTag;
+    const purchaseBuyerId = buyerDiscordId || userId;
+    const roll = getUserRoll(purchaseBuyerId);
+    const modifier = roll === null ? null : getDiscount(roll);
+    const discountPercent = modifier ? modifier.percent : 0;
+    const basePrice = item.price;
+    const finalUnitPrice = modifier ? applyModifier(basePrice, modifier) : basePrice;
+    const totalPaid = finalUnitPrice * qty;
+
+    if (item.stock !== null) {
+      db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
+    }
+
+    db.prepare(`
+      INSERT INTO sales (
+        item_name, category, quantity, buyer_tag, buyer_id,
+        base_price, discount_percent, final_price, total_paid
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      item.name,
+      item.category,
+      qty,
+      purchaseBuyerTag,
+      purchaseBuyerId,
+      basePrice,
+      discountPercent,
+      finalUnitPrice,
+      totalPaid
+    );
+
+    return {
+      item,
+      character,
+      quantity: qty,
+      basePrice,
+      discountPercent,
+      finalUnitPrice,
+      totalPaid,
+      remainingStock: item.stock !== null ? item.stock - qty : null
+    };
+  });
+
+  return runTransaction();
+}
+
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
@@ -511,6 +617,10 @@ const queries = {
 module.exports = {
   calculateLevelFromXp,
   validateCharacterLevels,
+  getAliveCharactersByPlayerId,
+  getAliveCharactersForPlayer,
+  getCharacterByIdAndPlayer,
+  processWebPurchase,
 
   // Postacie z rasą, podklasą i automatycznym poziomem
   addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
