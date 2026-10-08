@@ -26,7 +26,7 @@ async function sendGrimboldShopEmbed({
 }) {
   const token = process.env.DISCORD_TOKEN;
   if (!token || !channelId) {
-    console.warn('[Grimbold] Missing DISCORD_TOKEN or ANNOUNCMENT_CHANNEL. Skipping Discord broadcast.');
+    console.warn('[Grimbold] Missing DISCORD_TOKEN or ANNOUNCEMENT_CHANNEL. Skipping Discord broadcast.');
     return;
   }
 
@@ -118,7 +118,9 @@ router.post('/shop/buy', async (req, res) => {
       playerId: player.id
     });
 
-    const channelId = process.env.ANNOUNCMENT_CHANNEL ||
+    const channelId = process.env.ANNOUNCEMENT_CHANNEL ||
+      process.env.ANNOUNCEMENT_CHANNEL_ID ||
+      process.env.ANNOUNCMENT_CHANNEL ||
       process.env.DISCORD_SHOP_CHANNEL_ID ||
       process.env.CHANNEL_ID;
     void sendGrimboldShopEmbed({
