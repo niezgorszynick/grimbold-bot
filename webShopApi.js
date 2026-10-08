@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./db');
+const { formatCp } = require('./currency');
 
 const router = express.Router();
 
@@ -21,8 +22,8 @@ async function sendGrimboldShopEmbed({
   quantity,
   buyerTag,
   discountPercent,
-  finalUnitPrice,
-  totalPaid
+  finalUnitPriceCp,
+  totalCostCp
 }) {
   const token = process.env.DISCORD_TOKEN;
   if (!token || !channelId) {
@@ -56,10 +57,10 @@ async function sendGrimboldShopEmbed({
       },
       {
         name: 'Total Paid',
-        value: `**${totalPaid} gp** (${finalUnitPrice} gp each)`,
+        value: `**${formatCp(totalCostCp)}** (${formatCp(finalUnitPriceCp)} each)`,
         inline: true
       },
-      { name: 'Gold Remaining', value: `${character.gold_gp} gp`, inline: true }
+      { name: 'Remaining Purse', value: formatCp(character.gold_cp), inline: true }
     ],
     footer: { text: "Grimbold's Emporium • Web Campaign Hub" },
     timestamp: new Date().toISOString()
@@ -115,7 +116,7 @@ router.post('/admin/character-gold', (req, res) => {
   } catch (error) {
     if (
       error.message === 'Invalid character ID.' ||
-      error.message === 'Gold amount must be a non-negative integer.'
+      error.message === 'Gold amount must be non-negative and have no more than two decimal places.'
     ) {
       return res.status(400).json({ error: error.message });
     }
@@ -169,11 +170,18 @@ router.post('/shop/buy', async (req, res) => {
       quantity: result.quantity,
       buyerTag: player.discord_tag,
       discountPercent: result.discountPercent,
-      finalUnitPrice: result.finalUnitPrice,
-      totalPaid: result.totalCost
+      finalUnitPriceCp: result.finalUnitPriceCp,
+      totalCostCp: result.totalCostCp
     });
 
-    return res.json({ success: true, transaction: result });
+    return res.json({
+      success: true,
+      transaction: {
+        ...result,
+        totalCostFormatted: formatCp(result.totalCostCp),
+        remainingPurseFormatted: formatCp(result.character.gold_cp)
+      }
+    });
   } catch (error) {
     const clientErrorMessages = [
       "Character not found or doesn't belong to you.",

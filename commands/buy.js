@@ -105,7 +105,7 @@ module.exports = {
             : ` (+${modifier.percent}% surcharge applied — rolled a 1)`;
 
       const qtyStr = quantity > 1 ? ` × ${quantity}` : '';
-      const unitStr = quantity > 1 ? ` (${finalPriceEa} gp each)` : '';
+      const unitStr = quantity > 1 ? ` (${formatCp(finalPriceEa)} each)` : '';
 
       const embed = new EmbedBuilder()
         .setTitle('Grimbold slides your purchase across the counter.')

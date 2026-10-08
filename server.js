@@ -697,7 +697,7 @@ router.get('/', (req, res) => {
                 <td data-sort="${item.price}">${formatCp(item.price)}</td>
                 <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
                 <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-                <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${item.price}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
+                <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
                 ${isAdmin ? `<td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
@@ -723,7 +723,7 @@ router.get('/', (req, res) => {
           <h3 id="shopPurchaseTitle">🪙 Purchase from Grimbold</h3>
           <p>
             Item: <strong id="shopPurchaseItem"></strong><br>
-            Base Price: <strong id="shopPurchasePrice"></strong> gp<br>
+            Base Price: <strong id="shopPurchasePrice"></strong><br>
             Available Stock: <strong id="shopPurchaseStock"></strong>
           </p>
           <label for="shopPurchaseCharacter">Choose a character</label>
@@ -780,7 +780,8 @@ router.get('/', (req, res) => {
             shopPurchaseCharacter.replaceChildren(new Option('Select a character', ''));
             for (const character of data.characters) {
               shopPurchaseCharacter.add(new Option(
-                character.name + ' (Lvl ' + character.level + ', ' + character.gold_gp + ' gp)',
+                character.name + ' (Lvl ' + character.level + ', ' +
+                  formatShopCopper(character.gold_cp) + ')',
                 character.id
               ));
             }
@@ -794,6 +795,20 @@ router.get('/', (req, res) => {
           } finally {
             shopPurchaseConfirm.disabled = shopPurchaseCharacter.options.length < 2;
           }
+        }
+
+        function formatShopCopper(totalCp) {
+          const amount = Number(totalCp);
+          if (!Number.isSafeInteger(amount) || amount <= 0) return '0 cp';
+          const gp = Math.floor(amount / 100);
+          const remainder = amount % 100;
+          const sp = Math.floor(remainder / 10);
+          const cp = remainder % 10;
+          return [
+            gp ? gp + ' gp' : '',
+            sp ? sp + ' sp' : '',
+            cp ? cp + ' cp' : ''
+          ].filter(Boolean).join(', ') || '0 cp';
         }
 
         document.querySelectorAll('.shop-buy-button').forEach(button => {
@@ -825,7 +840,9 @@ router.get('/', (req, res) => {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Purchase failed.');
             shopPurchaseFeedback.textContent =
-              'Purchase complete! ' + data.transaction.totalCost + ' gp paid. Refreshing inventory...';
+              'Purchase complete! ' + data.transaction.totalCostFormatted +
+              ' paid. Remaining purse: ' + data.transaction.remainingPurseFormatted +
+              '. Refreshing inventory...';
             window.setTimeout(() => window.location.reload(), 900);
           } catch (error) {
             shopPurchaseFeedback.textContent = error.message;
@@ -2430,7 +2447,7 @@ router.get('/', (req, res) => {
                 </td>
                 <td data-sort="${row.character_level || 0}">Lvl ${row.character_level || 3}</td>
                 <td data-sort="${row.character_xp || 0}">${row.character_xp !== null && row.character_xp !== undefined ? `${row.character_xp} XP` : '—'}</td>
-                <td data-sort="${row.character_gold_gp || 0}">${row.character_id ? `${row.character_gold_gp || 0} gp` : '—'}</td>
+                <td data-sort="${row.character_gold_gp || 0}">${row.character_id ? formatCp(Math.round((row.character_gold_gp || 0) * 100)) : '—'}</td>
                 <td data-sort="${row.character_status || ''}">
                   ${row.character_status === 'alive' 
                     ? '<span class="tag green">Alive</span>' 
@@ -2466,7 +2483,7 @@ router.get('/', (req, res) => {
             <p>Target Character: <strong id="goldModalCharName"></strong></p>
             <input type="hidden" id="goldModalCharId">
             <label for="goldModalInput">Gold Amount (gp)</label>
-            <input type="number" id="goldModalInput" min="0" step="1" style="width: 100%; margin: 8px 0 12px;">
+            <input type="number" id="goldModalInput" min="0" step="0.01" style="width: 100%; margin: 8px 0 12px;">
             <p id="goldModalFeedback" role="status" aria-live="polite"></p>
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
               <button type="button" id="goldModalCancel" class="btn">Cancel</button>
@@ -2501,8 +2518,12 @@ router.get('/', (req, res) => {
             const characterId = document.getElementById('goldModalCharId').value;
             const gold = document.getElementById('goldModalInput').value;
             const parsedGold = Number(gold);
-            if (gold === '' || !Number.isSafeInteger(parsedGold) || parsedGold < 0) {
-              goldModalFeedback.textContent = 'Gold must be a non-negative whole number.';
+            const goldInCopper = Math.round(parsedGold * 100);
+            if (gold === '' || !Number.isFinite(parsedGold) || parsedGold < 0 ||
+                !Number.isSafeInteger(goldInCopper) ||
+                Math.abs(parsedGold * 100 - goldInCopper) >
+                  Number.EPSILON * Math.max(1, Math.abs(parsedGold * 100))) {
+              goldModalFeedback.textContent = 'Gold must be non-negative and have no more than two decimal places.';
               return;
             }
 

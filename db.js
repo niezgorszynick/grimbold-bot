@@ -486,7 +486,8 @@ function getAliveCharactersByPlayerId(playerId) {
       race AS species,
       class AS character_class,
       level,
-      gold_gp
+      gold_gp,
+      CAST(ROUND(gold_gp * 100) AS INTEGER) AS gold_cp
     FROM characters
     WHERE player_id = ? AND status = 'alive' COLLATE NOCASE
     ORDER BY name ASC
@@ -508,11 +509,14 @@ function getCharacterByIdAndPlayer(characterId, playerId) {
 function updateCharacterGold(characterId, newGold) {
   const parsedCharacterId = Number(characterId);
   const parsedGold = Number(newGold);
+  const goldInCopper = Math.round(parsedGold * 100);
   if (!Number.isSafeInteger(parsedCharacterId) || parsedCharacterId <= 0) {
     throw new Error('Invalid character ID.');
   }
-  if (!Number.isSafeInteger(parsedGold) || parsedGold < 0) {
-    throw new Error('Gold amount must be a non-negative integer.');
+  if (!Number.isFinite(parsedGold) || parsedGold < 0 ||
+      !Number.isSafeInteger(goldInCopper) ||
+      Math.abs(parsedGold * 100 - goldInCopper) > Number.EPSILON * Math.max(1, Math.abs(parsedGold * 100))) {
+    throw new Error('Gold amount must be non-negative and have no more than two decimal places.');
   }
 
   const runTransaction = db.transaction(() => {
@@ -578,20 +582,24 @@ function processWebPurchase({
     const modifier = roll === null ? null : getDiscount(roll);
     const discountPercent = modifier ? modifier.percent : 0;
     const basePrice = item.price;
-    const finalUnitPrice = modifier ? applyModifier(basePrice, modifier) : basePrice;
-    const totalCost = finalUnitPrice * qty;
+    const finalUnitPriceCp = modifier ? applyModifier(basePrice, modifier) : basePrice;
+    const totalCostCp = finalUnitPriceCp * qty;
+    const characterGoldCp = Math.round(character.gold_gp * 100);
+    if (!Number.isSafeInteger(totalCostCp) || !Number.isSafeInteger(characterGoldCp)) {
+      throw new Error('Purchase amount is too large.');
+    }
 
-    if (character.gold_gp < totalCost) {
+    if (characterGoldCp < totalCostCp) {
       throw new Error(
-        `Insufficient funds. ${character.name} has ${character.gold_gp} gp, but the purchase costs ${totalCost} gp.`
+        `Insufficient funds. ${character.name} has ${character.gold_gp} gp, but the purchase costs ${totalCostCp} cp.`
       );
     }
 
     db.prepare(`
       UPDATE characters
-      SET gold_gp = gold_gp - ?
-      WHERE id = ? AND gold_gp >= ?
-    `).run(totalCost, character.id, totalCost);
+      SET gold_gp = ? / 100.0
+      WHERE id = ? AND CAST(ROUND(gold_gp * 100) AS INTEGER) >= ?
+    `).run(characterGoldCp - totalCostCp, character.id, totalCostCp);
 
     if (item.stock !== null) {
       db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
@@ -610,19 +618,27 @@ function processWebPurchase({
       purchaseBuyerId,
       basePrice,
       discountPercent,
-      finalUnitPrice,
-      totalCost
+      finalUnitPriceCp,
+      totalCostCp
     );
 
+    const remainingGoldCp = characterGoldCp - totalCostCp;
     return {
       item,
-      character: { ...character, gold_gp: character.gold_gp - totalCost },
+      character: {
+        ...character,
+        gold_gp: remainingGoldCp / 100,
+        gold_cp: remainingGoldCp
+      },
       quantity: qty,
       basePrice,
       discountPercent,
-      finalUnitPrice,
-      totalCost,
-      totalPaid: totalCost,
+      finalUnitPrice: finalUnitPriceCp / 100,
+      finalUnitPriceCp,
+      totalCost: totalCostCp / 100,
+      totalCostCp,
+      totalPaid: totalCostCp / 100,
+      totalPaidCp: totalCostCp,
       remainingStock: item.stock !== null ? item.stock - qty : null
     };
   });
