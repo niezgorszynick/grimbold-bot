@@ -4,6 +4,7 @@ const router = express.Router();
 const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
 const { formatCp } = require('./currency');
+const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
 const { restockShop } = require('./restock');
 const { DND_SPECIES, DND_DATA, DND_CLASSES_AND_SUBCLASSES } = require('./dndData');
 
@@ -560,6 +561,11 @@ router.get('/', (req, res) => {
   const activeItems = db.getAllItemsForAdmin
     ? db.getAllItemsForAdmin().filter(item => isAdmin || item.is_active)
     : [];
+  const shopPlayer = currentTab === 'items' && currentUser.id > 0
+    ? db.prepare('SELECT discord_id FROM players WHERE id = ?').get(currentUser.id)
+    : null;
+  const shopRoll = shopPlayer ? getUserRoll(shopPlayer.discord_id) : null;
+  const shopModifier = shopRoll === null ? null : getDiscount(shopRoll);
   const sales = db.getAllSales ? db.getAllSales() : [];
   const rolls = db.getAllRolls ? db.getAllRolls() : [];
 
@@ -675,6 +681,11 @@ router.get('/', (req, res) => {
 
       <div class="card">
         <h3>Current Store Inventory (${activeItems.length})</h3>
+        ${shopModifier && shopModifier.percent !== 0
+          ? `<p class="muted">Prices include your ${Math.abs(shopModifier.percent)}% weekly ${shopModifier.percent < 0 ? 'discount' : 'surcharge'}.</p>`
+          : shopRoll === null && shopPlayer
+            ? '<p class="muted">Roll with /roll to get your weekly personal price.</p>'
+            : ''}
         <table>
           <thead>
             <tr>
@@ -689,15 +700,24 @@ router.get('/', (req, res) => {
             </tr>
           </thead>
           <tbody>
-            ${activeItems.map(item => `
+            ${activeItems.map(item => {
+              const finalPrice = shopModifier ? applyModifier(item.price, shopModifier) : item.price;
+              const hasPriceChange = shopModifier && shopModifier.percent !== 0 && finalPrice !== item.price;
+              const priceDisplay = hasPriceChange
+                ? `<del>${formatCp(item.price)}</del> <strong>${formatCp(finalPrice)}</strong>`
+                : formatCp(item.price);
+              const modifierLabel = hasPriceChange
+                ? `${shopModifier.percent > 0 ? '+' : ''}${shopModifier.percent}%`
+                : 'None';
+              return `
               <tr>
                 <td data-sort="${item.id}">${item.id}</td>
                 <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
                 <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
-                <td data-sort="${item.price}">${formatCp(item.price)}</td>
+                <td data-sort="${finalPrice}">${priceDisplay}</td>
                 <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
                 <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-                <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
+                <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-final-price="${escapeHtml(formatCp(finalPrice))}" data-item-discount="${modifierLabel}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
                 ${isAdmin ? `<td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
@@ -712,7 +732,7 @@ router.get('/', (req, res) => {
                   </form>
                 </td>` : ''}
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
         </table>
         </div>
@@ -723,7 +743,8 @@ router.get('/', (req, res) => {
           <h3 id="shopPurchaseTitle">🪙 Purchase from Grimbold</h3>
           <p>
             Item: <strong id="shopPurchaseItem"></strong><br>
-            Base Price: <strong id="shopPurchasePrice"></strong><br>
+            Base Price: <strong id="shopPurchaseBasePrice"></strong><br>
+            Your Price: <strong id="shopPurchasePrice"></strong> each (<span id="shopPurchaseDiscount"></span>)<br>
             Available Stock: <strong id="shopPurchaseStock"></strong>
           </p>
           <label for="shopPurchaseCharacter">Choose a character</label>
@@ -760,10 +781,12 @@ router.get('/', (req, res) => {
         const shopPurchaseConfirm = document.getElementById('shopPurchaseConfirm');
         let selectedShopItemName = '';
 
-        async function openShopPurchaseModal(itemName, price, stock) {
+        async function openShopPurchaseModal(itemName, price, finalPrice, discount, stock) {
           selectedShopItemName = itemName;
           document.getElementById('shopPurchaseItem').textContent = itemName;
-          document.getElementById('shopPurchasePrice').textContent = price;
+          document.getElementById('shopPurchaseBasePrice').textContent = price;
+          document.getElementById('shopPurchasePrice').textContent = finalPrice;
+          document.getElementById('shopPurchaseDiscount').textContent = discount;
           document.getElementById('shopPurchaseStock').textContent =
             stock === '' ? 'Unlimited' : stock;
           document.getElementById('shopPurchaseQuantity').value = '1';
@@ -815,6 +838,8 @@ router.get('/', (req, res) => {
           button.addEventListener('click', () => openShopPurchaseModal(
             button.dataset.itemName,
             button.dataset.itemPrice,
+            button.dataset.itemFinalPrice,
+            button.dataset.itemDiscount,
             button.dataset.itemStock
           ));
         });
