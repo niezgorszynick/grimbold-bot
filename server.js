@@ -2500,7 +2500,8 @@ router.get('/', (req, res) => {
           goldModalSave.addEventListener('click', async () => {
             const characterId = document.getElementById('goldModalCharId').value;
             const gold = document.getElementById('goldModalInput').value;
-            if (!/^\d+$/.test(gold)) {
+            const parsedGold = Number(gold);
+            if (gold === '' || !Number.isSafeInteger(parsedGold) || parsedGold < 0) {
               goldModalFeedback.textContent = 'Gold must be a non-negative whole number.';
               return;
             }
@@ -2511,7 +2512,7 @@ router.get('/', (req, res) => {
               const response = await fetch('/api/admin/character-gold', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ characterId, gold })
+                body: JSON.stringify({ characterId, gold: parsedGold })
               });
               const data = await response.json();
               if (!response.ok) throw new Error(data.error || 'Could not update character gold.');
