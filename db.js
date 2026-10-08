@@ -505,6 +505,37 @@ function getCharacterByIdAndPlayer(characterId, playerId) {
   `).get(characterId, playerId);
 }
 
+function updateCharacterGold(characterId, newGold) {
+  const parsedCharacterId = Number(characterId);
+  const parsedGold = Number(newGold);
+  if (!Number.isSafeInteger(parsedCharacterId) || parsedCharacterId <= 0) {
+    throw new Error('Invalid character ID.');
+  }
+  if (!Number.isSafeInteger(parsedGold) || parsedGold < 0) {
+    throw new Error('Gold amount must be a non-negative integer.');
+  }
+
+  const runTransaction = db.transaction(() => {
+    const character = db.prepare(
+      'SELECT id, name, gold_gp FROM characters WHERE id = ?'
+    ).get(parsedCharacterId);
+    if (!character) {
+      throw new Error('Character not found.');
+    }
+
+    db.prepare('UPDATE characters SET gold_gp = ? WHERE id = ?')
+      .run(parsedGold, parsedCharacterId);
+    return {
+      id: character.id,
+      name: character.name,
+      oldGold: character.gold_gp,
+      newGold: parsedGold
+    };
+  });
+
+  return runTransaction();
+}
+
 function processWebPurchase({
   itemName,
   quantity = 1,
@@ -638,6 +669,7 @@ module.exports = {
   getAliveCharactersByPlayerId,
   getAliveCharactersForPlayer,
   getCharacterByIdAndPlayer,
+  updateCharacterGold,
   processWebPurchase,
 
   // Postacie z rasą, podklasą i automatycznym poziomem
@@ -1118,6 +1150,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         c.subclass AS character_subclass,
         c.level AS character_level,
         c.xp AS character_xp,
+        c.gold_gp AS character_gold_gp,
         c.status AS character_status
       FROM players p
       LEFT JOIN characters c ON p.id = c.player_id

@@ -2411,12 +2411,13 @@ router.get('/', (req, res) => {
               <th class="sortable">Class</th>
               <th class="sortable">Level</th>
               <th class="sortable">XP</th>
+              <th class="sortable">Purse</th>
               <th class="sortable">Status</th>
               ${isAdmin ? '<th>Actions</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${playerRows.length === 0 ? `<tr><td colspan="${8 + (isAdmin ? 1 : 0)}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map(row => `
+            ${playerRows.length === 0 ? `<tr><td colspan="${9 + (isAdmin ? 1 : 0)}">${isAdmin ? 'No players or characters registered yet.' : 'No characters are linked to your player account yet.'}</td></tr>` : playerRows.map(row => `
               <tr class="${row.player_id === currentUser.id ? 'player-self' : ''}">
                 <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
                 <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
@@ -2429,6 +2430,7 @@ router.get('/', (req, res) => {
                 </td>
                 <td data-sort="${row.character_level || 0}">Lvl ${row.character_level || 3}</td>
                 <td data-sort="${row.character_xp || 0}">${row.character_xp !== null && row.character_xp !== undefined ? `${row.character_xp} XP` : '—'}</td>
+                <td data-sort="${row.character_gold_gp || 0}">${row.character_id ? `${row.character_gold_gp || 0} gp` : '—'}</td>
                 <td data-sort="${row.character_status || ''}">
                   ${row.character_status === 'alive' 
                     ? '<span class="tag green">Alive</span>' 
@@ -2439,6 +2441,7 @@ router.get('/', (req, res) => {
                 ${isAdmin ? `<td style="white-space: nowrap;">
                   ${row.character_id ? `
                     <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
+                    <button type="button" class="btn btn-small btn-gold edit-character-gold" data-character-id="${row.character_id}" data-character-name="${escapeHtml(row.character_name)}" data-character-gold="${row.character_gold_gp || 0}">💰 Edit GP</button>
                     <form method="POST" action="/admin/characters/delete" style="display:inline;" onsubmit="return confirm('Delete character &quot;${escapeHtml(row.character_name)}&quot;?');">
                       <input type="hidden" name="id" value="${row.character_id}">
                       <button type="submit" class="btn btn-small btn-red">Delete Char</button>
@@ -2456,9 +2459,71 @@ router.get('/', (req, res) => {
         </table>
       </div>
 
+      ${isAdmin ? `
+        <div id="goldEditModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="goldEditTitle" hidden>
+          <div class="card shop-modal-card">
+            <h3 id="goldEditTitle">🪙 Edit Character Gold</h3>
+            <p>Target Character: <strong id="goldModalCharName"></strong></p>
+            <input type="hidden" id="goldModalCharId">
+            <label for="goldModalInput">Gold Amount (gp)</label>
+            <input type="number" id="goldModalInput" min="0" step="1" style="width: 100%; margin: 8px 0 12px;">
+            <p id="goldModalFeedback" role="status" aria-live="polite"></p>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+              <button type="button" id="goldModalCancel" class="btn">Cancel</button>
+              <button type="button" id="goldModalSave" class="btn btn-gold">Update Gold</button>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
       <script>
         const classTree = ${dndClassesJson};
         const speciesData = ${dndSpeciesJson};
+
+        const goldEditModal = document.getElementById('goldEditModal');
+        if (goldEditModal) {
+          const goldModalFeedback = document.getElementById('goldModalFeedback');
+          const goldModalSave = document.getElementById('goldModalSave');
+
+          document.querySelectorAll('.edit-character-gold').forEach(button => {
+            button.addEventListener('click', () => {
+              document.getElementById('goldModalCharId').value = button.dataset.characterId;
+              document.getElementById('goldModalCharName').textContent = button.dataset.characterName;
+              document.getElementById('goldModalInput').value = button.dataset.characterGold;
+              goldModalFeedback.textContent = '';
+              goldEditModal.hidden = false;
+            });
+          });
+          document.getElementById('goldModalCancel').addEventListener('click', () => {
+            goldEditModal.hidden = true;
+          });
+          goldModalSave.addEventListener('click', async () => {
+            const characterId = document.getElementById('goldModalCharId').value;
+            const gold = document.getElementById('goldModalInput').value;
+            if (!/^\d+$/.test(gold)) {
+              goldModalFeedback.textContent = 'Gold must be a non-negative whole number.';
+              return;
+            }
+
+            goldModalSave.disabled = true;
+            goldModalFeedback.textContent = 'Updating character purse...';
+            try {
+              const response = await fetch('/api/admin/character-gold', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ characterId, gold })
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || 'Could not update character gold.');
+              goldModalFeedback.textContent =
+                'Purse for ' + data.updated.name + ' set to ' + data.updated.newGold + ' gp.';
+              window.setTimeout(() => window.location.reload(), 700);
+            } catch (error) {
+              goldModalFeedback.textContent = error.message;
+              goldModalSave.disabled = false;
+            }
+          });
+        }
 
         function updateSpeciesTraits(selectId, displayId) {
           const select = document.getElementById(selectId);

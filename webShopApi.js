@@ -89,6 +89,45 @@ router.get('/my-characters', (req, res) => {
   return res.json({ characters: db.getAliveCharactersByPlayerId(player.id) });
 });
 
+router.post('/admin/character-gold', (req, res) => {
+  const user = req.session && req.session.user;
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. DM/Admin rights required.' });
+  }
+
+  if (user.id !== 0) {
+    const admin = Number.isSafeInteger(user.id)
+      ? db.prepare('SELECT role FROM players WHERE id = ?').get(user.id)
+      : null;
+    if (!admin || admin.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. DM/Admin rights required.' });
+    }
+  }
+
+  const { characterId, gold } = req.body || {};
+  if (characterId === undefined || characterId === null || characterId === '' || gold === undefined) {
+    return res.status(400).json({ error: 'Missing characterId or gold parameter.' });
+  }
+
+  try {
+    const updated = db.updateCharacterGold(characterId, gold);
+    return res.json({ success: true, updated });
+  } catch (error) {
+    if (
+      error.message === 'Invalid character ID.' ||
+      error.message === 'Gold amount must be a non-negative integer.'
+    ) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error.message === 'Character not found.') {
+      return res.status(404).json({ error: error.message });
+    }
+
+    console.error('Character gold update failed:', error);
+    return res.status(500).json({ error: 'Could not update character gold.' });
+  }
+});
+
 router.post('/shop/buy', async (req, res) => {
   const player = getSessionPlayer(req);
   if (!player) return res.status(401).json({ error: 'Unauthorized' });
