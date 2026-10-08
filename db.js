@@ -173,6 +173,9 @@ if (!charCols.includes('subclass')) {
 if (!charCols.includes('xp')) {
   db.exec("ALTER TABLE characters ADD COLUMN xp INTEGER NOT NULL DEFAULT 0;");
 }
+if (!charCols.includes('gold_gp')) {
+  db.exec('ALTER TABLE characters ADD COLUMN gold_gp INTEGER NOT NULL DEFAULT 0 CHECK (gold_gp >= 0);');
+}
 if (!charCols.includes('death_adventure_id')) {
   db.exec('ALTER TABLE characters ADD COLUMN death_adventure_id INTEGER REFERENCES adventures(id) ON DELETE SET NULL;');
 }
@@ -483,7 +486,7 @@ function getAliveCharactersByPlayerId(playerId) {
       race AS species,
       class AS character_class,
       level,
-      NULL AS gold_gp
+      gold_gp
     FROM characters
     WHERE player_id = ? AND status = 'alive' COLLATE NOCASE
     ORDER BY name ASC
@@ -527,8 +530,10 @@ function processWebPurchase({
       throw new Error('Item is not available in the shop.');
     }
 
-    const qty = parseInt(quantity, 10) || 1;
-    if (qty <= 0) {
+    const qty = quantity === undefined || quantity === null || quantity === ''
+      ? 1
+      : Number(quantity);
+    if (!Number.isSafeInteger(qty) || qty <= 0) {
       throw new Error('Invalid quantity.');
     }
     if (item.stock !== null && item.stock < qty) {
@@ -543,7 +548,19 @@ function processWebPurchase({
     const discountPercent = modifier ? modifier.percent : 0;
     const basePrice = item.price;
     const finalUnitPrice = modifier ? applyModifier(basePrice, modifier) : basePrice;
-    const totalPaid = finalUnitPrice * qty;
+    const totalCost = finalUnitPrice * qty;
+
+    if (character.gold_gp < totalCost) {
+      throw new Error(
+        `Insufficient funds. ${character.name} has ${character.gold_gp} gp, but the purchase costs ${totalCost} gp.`
+      );
+    }
+
+    db.prepare(`
+      UPDATE characters
+      SET gold_gp = gold_gp - ?
+      WHERE id = ? AND gold_gp >= ?
+    `).run(totalCost, character.id, totalCost);
 
     if (item.stock !== null) {
       db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
@@ -563,17 +580,18 @@ function processWebPurchase({
       basePrice,
       discountPercent,
       finalUnitPrice,
-      totalPaid
+      totalCost
     );
 
     return {
       item,
-      character,
+      character: { ...character, gold_gp: character.gold_gp - totalCost },
       quantity: qty,
       basePrice,
       discountPercent,
       finalUnitPrice,
-      totalPaid,
+      totalCost,
+      totalPaid: totalCost,
       remainingStock: item.stock !== null ? item.stock - qty : null
     };
   });
@@ -1217,22 +1235,26 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     return db.prepare('DELETE FROM players WHERE id = ?').run(id);
   },
 
-  addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
+  addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive', gold_gp = 0 }) => {
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
     const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
+    const parsedGoldGp = Number(gold_gp);
 
     if (isNaN(pId)) throw new Error('Valid player must be selected.');
     if (!trimmedName) throw new Error('Character name is required.');
     if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
+    if (!Number.isSafeInteger(parsedGoldGp) || parsedGoldGp < 0) {
+      throw new Error('Gold must be a non-negative whole number.');
+    }
     const { canonicalSpecies, canonicalClass, canonicalSubclass } =
       validateCharacterOptions(race, class_name, subclass);
     const pLevel = calculateLevelFromXp(parsedXp);
 
     const run = db.transaction(() => {
       const result = db.prepare(`
-        INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_gp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         pId,
         trimmedName,
@@ -1241,7 +1263,8 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         canonicalSubclass,
         pLevel,
         parsedXp,
-        status
+        status,
+        parsedGoldGp
       );
       db.prepare(`
         INSERT INTO character_classes
@@ -1305,6 +1328,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     level,
     override_level,
     status,
+    gold_gp,
     adventure_ids,
     class_allocations,
     death_adventure_id,
@@ -1313,7 +1337,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   }) => {
     const run = db.transaction(() => {
       const charId = Number(id);
-      const char = db.prepare('SELECT id FROM characters WHERE id = ?').get(charId);
+      const char = db.prepare('SELECT id, gold_gp FROM characters WHERE id = ?').get(charId);
       if (!Number.isSafeInteger(charId) || !char) {
         throw new Error(`Character #${id} not found.`);
       }
@@ -1346,6 +1370,10 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       const parsedXp = parseInt(xp, 10);
       if (!Number.isSafeInteger(parsedXp) || parsedXp < 0) {
         throw new Error('Adventure XP must be a non-negative whole number.');
+      }
+      const parsedGoldGp = gold_gp === undefined ? char.gold_gp : Number(gold_gp);
+      if (!Number.isSafeInteger(parsedGoldGp) || parsedGoldGp < 0) {
+        throw new Error('Gold must be a non-negative whole number.');
       }
 
       const targetAdvIds = Array.from(new Set((adventure_ids || []).map(Number)));
@@ -1407,7 +1435,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       const result = db.prepare(`
         UPDATE characters
         SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?,
-            death_adventure_id = ?, death_dm_player_id = ?, death_notes = ?
+            death_adventure_id = ?, death_dm_player_id = ?, death_notes = ?, gold_gp = ?
         WHERE id = ?
       `).run(
         pId,
@@ -1421,6 +1449,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         deathAdventureId,
         deathDmPlayerId,
         deathNotes,
+        parsedGoldGp,
         charId
       );
 

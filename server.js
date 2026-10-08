@@ -356,8 +356,8 @@ router.post('/players/delete', (req, res) => {
 
 router.post('/characters/add', (req, res) => {
   try {
-    const { player_id, name, race, class_name, subclass, xp, status } = req.body;
-    db.addCharacter({ player_id, name, race, class_name, subclass, xp, status });
+    const { player_id, name, race, class_name, subclass, xp, status, gold_gp } = req.body;
+    db.addCharacter({ player_id, name, race, class_name, subclass, xp, status, gold_gp });
     res.redirect('/admin?tab=players&status=char_added');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
@@ -418,6 +418,7 @@ router.post('/characters/update', (req, res) => {
       level,
       override_level,
       status,
+      gold_gp,
       adventure_ids,
       class_allocations,
       death_adventure_id,
@@ -446,6 +447,7 @@ router.post('/characters/update', (req, res) => {
       level,
       override_level,
       status,
+      gold_gp,
       adventure_ids: selectedAdventureIds,
       class_allocations: selectedClassAllocations,
       death_adventure_id,
@@ -682,6 +684,7 @@ router.get('/', (req, res) => {
               <th class="sortable">Price</th>
               <th class="sortable">Stock</th>
               <th class="sortable">Status</th>
+              <th>Action</th>
               ${isAdmin ? '<th>Actions</th>' : ''}
             </tr>
           </thead>
@@ -694,6 +697,7 @@ router.get('/', (req, res) => {
                 <td data-sort="${item.price}">${formatCp(item.price)}</td>
                 <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
                 <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
+                <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${item.price}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
                 ${isAdmin ? `<td>
                   <form method="POST" action="/admin/items/update" style="display:inline;">
                     <input type="hidden" name="id" value="${item.id}">
@@ -714,6 +718,28 @@ router.get('/', (req, res) => {
         </div>
       </div>
 
+      <div id="shopPurchaseModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="shopPurchaseTitle" hidden>
+        <div class="card shop-modal-card">
+          <h3 id="shopPurchaseTitle">🪙 Purchase from Grimbold</h3>
+          <p>
+            Item: <strong id="shopPurchaseItem"></strong><br>
+            Base Price: <strong id="shopPurchasePrice"></strong> gp<br>
+            Available Stock: <strong id="shopPurchaseStock"></strong>
+          </p>
+          <label for="shopPurchaseCharacter">Choose a character</label>
+          <select id="shopPurchaseCharacter" style="width: 100%; margin: 8px 0 12px;">
+            <option value="">Loading characters...</option>
+          </select>
+          <label for="shopPurchaseQuantity">Quantity</label>
+          <input id="shopPurchaseQuantity" type="number" min="1" step="1" value="1" style="width: 100%; margin: 8px 0 12px;">
+          <p id="shopPurchaseFeedback" role="status" aria-live="polite"></p>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" id="shopPurchaseCancel" class="btn">Cancel</button>
+            <button type="button" id="shopPurchaseConfirm" class="btn btn-green">Confirm Purchase</button>
+          </div>
+        </div>
+      </div>
+
       <script>
         const catalogData = ${catalogJson};
         function autofillCatalog() {
@@ -727,6 +753,85 @@ router.get('/', (req, res) => {
           document.getElementById('itemDesc').value = item.description;
           document.getElementById('itemStock').value = 1;
         }
+
+        const shopPurchaseModal = document.getElementById('shopPurchaseModal');
+        const shopPurchaseCharacter = document.getElementById('shopPurchaseCharacter');
+        const shopPurchaseFeedback = document.getElementById('shopPurchaseFeedback');
+        const shopPurchaseConfirm = document.getElementById('shopPurchaseConfirm');
+        let selectedShopItemName = '';
+
+        async function openShopPurchaseModal(itemName, price, stock) {
+          selectedShopItemName = itemName;
+          document.getElementById('shopPurchaseItem').textContent = itemName;
+          document.getElementById('shopPurchasePrice').textContent = price;
+          document.getElementById('shopPurchaseStock').textContent =
+            stock === '' ? 'Unlimited' : stock;
+          document.getElementById('shopPurchaseQuantity').value = '1';
+          document.getElementById('shopPurchaseQuantity').max = stock;
+          shopPurchaseFeedback.textContent = '';
+          shopPurchaseModal.hidden = false;
+          shopPurchaseCharacter.replaceChildren(new Option('Loading characters...', ''));
+          shopPurchaseConfirm.disabled = true;
+
+          try {
+            const response = await fetch('/api/my-characters');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load your characters.');
+            shopPurchaseCharacter.replaceChildren(new Option('Select a character', ''));
+            for (const character of data.characters) {
+              shopPurchaseCharacter.add(new Option(
+                character.name + ' (Lvl ' + character.level + ', ' + character.gold_gp + ' gp)',
+                character.id
+              ));
+            }
+            if (data.characters.length === 0) {
+              shopPurchaseCharacter.replaceChildren(new Option('No living characters available', ''));
+              shopPurchaseFeedback.textContent = 'You need a living character to make a purchase.';
+            }
+          } catch (error) {
+            shopPurchaseCharacter.replaceChildren(new Option('Characters unavailable', ''));
+            shopPurchaseFeedback.textContent = error.message;
+          } finally {
+            shopPurchaseConfirm.disabled = shopPurchaseCharacter.options.length < 2;
+          }
+        }
+
+        document.querySelectorAll('.shop-buy-button').forEach(button => {
+          button.addEventListener('click', () => openShopPurchaseModal(
+            button.dataset.itemName,
+            button.dataset.itemPrice,
+            button.dataset.itemStock
+          ));
+        });
+        document.getElementById('shopPurchaseCancel').addEventListener('click', () => {
+          shopPurchaseModal.hidden = true;
+        });
+        shopPurchaseConfirm.addEventListener('click', async () => {
+          const characterId = shopPurchaseCharacter.value;
+          const quantity = Number(document.getElementById('shopPurchaseQuantity').value);
+          if (!characterId || !Number.isSafeInteger(quantity) || quantity < 1) {
+            shopPurchaseFeedback.textContent = 'Choose a character and enter a valid quantity.';
+            return;
+          }
+
+          shopPurchaseConfirm.disabled = true;
+          shopPurchaseFeedback.textContent = 'Completing your purchase...';
+          try {
+            const response = await fetch('/api/shop/buy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ itemName: selectedShopItemName, characterId, quantity })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Purchase failed.');
+            shopPurchaseFeedback.textContent =
+              'Purchase complete! ' + data.transaction.totalCost + ' gp paid. Refreshing inventory...';
+            window.setTimeout(() => window.location.reload(), 900);
+          } catch (error) {
+            shopPurchaseFeedback.textContent = error.message;
+            shopPurchaseConfirm.disabled = false;
+          }
+        });
       </script>
     `;
   }
@@ -1907,10 +2012,14 @@ router.get('/', (req, res) => {
             <!-- Row 3: Manual XP Override, Level Override Option & Status -->
             <div style="background: #232428; padding: 12px; border-radius: 6px; margin-bottom: 14px;">
               <h4 style="margin: 0 0 8px 0; color: #d4af37; font-size: 13px;">Progression & Level Override:</h4>
-              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; align-items: flex-end;">
+              <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: flex-end;">
                 <div>
                   <label style="font-size: 12px;">Adventure XP (Override):</label><br>
                   <input type="number" name="xp" min="0" value="${charToEdit.xp}" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label style="font-size: 12px;">Gold (gp):</label><br>
+                  <input type="number" name="gold_gp" min="0" step="1" value="${charToEdit.gold_gp}" required style="width: 100%; margin-top: 4px;">
                 </div>
                 <div>
                   <label style="font-size: 12px;">Level (1–20):</label><br>
@@ -2260,10 +2369,14 @@ router.get('/', (req, res) => {
               </div>
 
               <!-- Row 3: XP, Level (Locked), Status, Submit Button -->
-              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 14px; align-items: flex-end;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 14px; align-items: flex-end;">
                 <div>
                   <label style="white-space: nowrap; font-size: 12px;">Starting XP (0 = Lvl 3):</label><br>
                   <input type="number" name="xp" min="0" value="0" required style="width: 100%; margin-top: 4px;">
+                </div>
+                <div>
+                  <label style="white-space: nowrap; font-size: 12px;">Starting Gold (gp):</label><br>
+                  <input type="number" name="gold_gp" min="0" step="1" value="0" required style="width: 100%; margin-top: 4px;">
                 </div>
                 <div>
                   <label style="white-space: nowrap; font-size: 12px;">Starting Level:</label><br>
@@ -2554,6 +2667,9 @@ router.get('/', (req, res) => {
         .tab-btn { padding: 8px 16px; background: #2b2d31; color: #dbdee1; text-decoration: none; border-radius: 4px; font-weight: bold; }
         .tab-btn.active { background: #5865f2; color: #fff; }
         .card { background: #2b2d31; padding: 18px; border-radius: 8px; margin-bottom: 20px; }
+        .shop-modal:not([hidden]) { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, 0.72); }
+        .shop-modal[hidden] { display: none; }
+        .shop-modal-card { width: min(460px, 100%); max-height: 90vh; overflow: auto; margin: 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
         th, td { text-align: left; padding: 10px; border-bottom: 1px solid #35373c; }
         th { background: #1e1f22; color: #949ba4; }

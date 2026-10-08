@@ -25,27 +25,30 @@ async function sendGrimboldShopEmbed({
   totalPaid
 }) {
   const token = process.env.DISCORD_TOKEN;
-  if (!token || !channelId) return;
+  if (!token || !channelId) {
+    console.warn('[Grimbold] Missing DISCORD_TOKEN or ANNOUNCMENT_CHANNEL. Skipping Discord broadcast.');
+    return;
+  }
 
   const embed = {
-    title: "🪙 Transaction Complete at Grimbold's Wares!",
+    title: "🪙 Transaction Sealed at Grimbold's Wares!",
     color: 0xd4af37,
     description:
-      '*Grimbold stamps the parchment ledger and slides the wrapped goods across the weathered oak counter with a nod.*\n\n' +
-      '"A fine acquisition indeed! May it serve you well in the trials ahead."',
+      '*Grimbold gives an appreciative nod, sliding the goods across the heavy oak counter before noting the transaction in his ledger.*\n\n' +
+      '"May this serve you well in the perils ahead."',
     fields: [
-      { name: 'Item', value: `**${item.name}** (${item.category})`, inline: true },
+      { name: 'Item', value: `**${item.name}** \`${item.category}\``, inline: true },
       { name: 'Quantity', value: `${quantity}`, inline: true },
       {
-        name: 'Character (Recipient)',
+        name: 'Recipient (Character)',
         value: `🛡️ **${character.name}** (Lvl ${character.level} ${character.class || 'Adventurer'})`,
         inline: false
       },
-      { name: 'Buyer (Discord)', value: buyerTag, inline: true },
+      { name: 'Purchased By', value: buyerTag, inline: true },
       {
-        name: 'Discount Applied',
+        name: 'Discount',
         value: discountPercent < 0
-          ? `${Math.abs(discountPercent)}%`
+          ? `${Math.abs(discountPercent)}% discount`
           : discountPercent > 0
             ? `${discountPercent}% surcharge`
             : 'None (0%)',
@@ -55,9 +58,10 @@ async function sendGrimboldShopEmbed({
         name: 'Total Paid',
         value: `**${totalPaid} gp** (${finalUnitPrice} gp each)`,
         inline: true
-      }
+      },
+      { name: 'Gold Remaining', value: `${character.gold_gp} gp`, inline: true }
     ],
-    footer: { text: "Grimbold's Emporium • Web Purchase" },
+    footer: { text: "Grimbold's Emporium • Web Campaign Hub" },
     timestamp: new Date().toISOString()
   };
 
@@ -71,10 +75,10 @@ async function sendGrimboldShopEmbed({
       body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } })
     });
     if (!response.ok) {
-      console.error('Failed to post shop notification to Discord:', await response.text());
+      console.error('[Grimbold] Discord API Error:', await response.text());
     }
   } catch (error) {
-    console.error('Error sending Discord notification:', error);
+    console.error('[Grimbold] Failed to send Discord purchase message:', error);
   }
 }
 
@@ -117,18 +121,16 @@ router.post('/shop/buy', async (req, res) => {
     const channelId = process.env.ANNOUNCMENT_CHANNEL ||
       process.env.DISCORD_SHOP_CHANNEL_ID ||
       process.env.CHANNEL_ID;
-    if (channelId) {
-      await sendGrimboldShopEmbed({
-        channelId,
-        item: result.item,
-        character: result.character,
-        quantity: result.quantity,
-        buyerTag: player.discord_tag,
-        discountPercent: result.discountPercent,
-        finalUnitPrice: result.finalUnitPrice,
-        totalPaid: result.totalPaid
-      });
-    }
+    void sendGrimboldShopEmbed({
+      channelId,
+      item: result.item,
+      character: result.character,
+      quantity: result.quantity,
+      buyerTag: player.discord_tag,
+      discountPercent: result.discountPercent,
+      finalUnitPrice: result.finalUnitPrice,
+      totalPaid: result.totalCost
+    });
 
     return res.json({ success: true, transaction: result });
   } catch (error) {
@@ -137,7 +139,11 @@ router.post('/shop/buy', async (req, res) => {
       'Item is not available in the shop.',
       'Invalid quantity.'
     ];
-    if (clientErrorMessages.includes(error.message) || error.message.startsWith('Insufficient stock.')) {
+    if (
+      clientErrorMessages.includes(error.message) ||
+      error.message.startsWith('Insufficient stock.') ||
+      error.message.startsWith('Insufficient funds.')
+    ) {
       return res.status(400).json({ error: error.message });
     }
 
