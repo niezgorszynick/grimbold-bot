@@ -2,6 +2,15 @@
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
+const SKILLS = {
+  Acrobatics: 'dex', 'Animal Handling': 'wis', Arcana: 'int', Athletics: 'str',
+  Deception: 'cha', History: 'int', Insight: 'wis', Intimidation: 'cha',
+  Investigation: 'int', Medicine: 'wis', Nature: 'int', Perception: 'wis',
+  Performance: 'cha', Persuasion: 'cha', Religion: 'int', 'Sleight of Hand': 'dex',
+  Stealth: 'dex', Survival: 'wis'
+};
+const SKILL_NAMES = Object.keys(SKILLS);
+
 // Expands a sparse { level: value } map into a 20-entry array indexed by level - 1.
 // Each value carries forward until the next listed level; levels before the first entry are 0.
 function byLevel(map) {
@@ -43,6 +52,8 @@ function findCanonical(names, input) {
 
 module.exports = {
   ABILITIES,
+  SKILLS,
+  SKILL_NAMES,
   byLevel,
   atLevel,
   abilityModifier,

@@ -1232,7 +1232,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
 
     return db.transaction(() => {
       const character = db.prepare(`
-        SELECT id, player_id, name, race, class, subclass, level
+        SELECT id, player_id, name, race, class, subclass, level, sheet_data
         FROM characters
         WHERE id = ?
       `).get(characterId);
@@ -1270,6 +1270,16 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       if (!nextSheetData || typeof nextSheetData !== 'object' || Array.isArray(nextSheetData)) {
         throw new Error('Character sheet data must be an object.');
       }
+      // Merge over the stored sheet so fields the editor does not manage
+      // (inventory, feats, languages, creation choices) survive a save.
+      let storedSheetData = {};
+      try {
+        const parsed = JSON.parse(character.sheet_data || '{}');
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) storedSheetData = parsed;
+      } catch {
+        // Unreadable stored data is replaced by the incoming sheet.
+      }
+      nextSheetData = { ...storedSheetData, ...nextSheetData };
       if (
         nextSheetData.abilities &&
         typeof nextSheetData.abilities === 'object' &&

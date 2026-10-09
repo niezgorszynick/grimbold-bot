@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const rules = require('../rules');
-const { validatePointBuy } = require('../dndData');
 
 const scores = overrides => ({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...overrides });
 
@@ -19,16 +18,60 @@ test('all 16 PHB 2024 backgrounds are complete', () => {
   }
 });
 
-test('point buy accepts the new backgrounds', () => {
-  const result = validatePointBuy({
+test('point buy with a background bonus', () => {
+  const result = rules.generateAbilityScores({
+    method: 'Point Buy',
     baseScores: { str: 15, dex: 10, con: 14, int: 8, wis: 13, cha: 12 },
-    background: 'farmer',
-    bonusMode: '2+1',
-    bonusAbilities: ['str', 'con']
+    background: 'Farmer',
+    bonuses: { str: 2, con: 1 }
   });
-  assert.equal(result.background, 'Farmer');
-  assert.equal(result.abilities.str, 17);
-  assert.equal(result.abilities.con, 15);
+  assert.equal(result.bonusMode, '2+1');
+  assert.equal(result.scores.str, 17);
+  assert.equal(result.scores.con, 15);
+  assert.equal(result.modifiers.str, 3);
+});
+
+test('background bonus applies to every generation method', () => {
+  const standard = rules.generateAbilityScores({
+    method: 'Standard Array',
+    baseScores: { str: 8, dex: 14, con: 13, int: 15, wis: 12, cha: 10 },
+    background: 'Sage',
+    bonuses: { con: 1, int: 1, wis: 1 }
+  });
+  assert.equal(standard.scores.int, 16);
+  const rolled = rules.generateAbilityScores({
+    method: 'Manual/Rolled',
+    baseScores: { str: 18, dex: 3, con: 12, int: 9, wis: 11, cha: 7 },
+    background: 'Soldier',
+    bonuses: { str: 2, dex: 1 }
+  });
+  assert.equal(rolled.scores.str, 20);
+});
+
+test('ability generation rejects invalid scores and bonuses', () => {
+  const base = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 };
+  const generate = overrides => rules.generateAbilityScores({
+    method: 'Standard Array', baseScores: base, background: 'Soldier', bonuses: { str: 2, con: 1 }, ...overrides
+  });
+  assert.throws(() => generate({ bonuses: { str: 2, cha: 1 } }), /Soldier can only increase/);
+  assert.throws(() => generate({ bonuses: { str: 2, con: 2 } }), /\+2\/\+1/);
+  assert.throws(() => generate({ bonuses: { str: 1 } }), /\+2\/\+1/);
+  assert.throws(() => generate({ baseScores: { ...base, str: 14 } }), /Standard Array/);
+  assert.throws(() => generate({ method: 'Manual/Rolled', baseScores: { ...base, str: 19 } }), /3 to 18/);
+  assert.throws(() => generate({ method: 'Point Buy', baseScores: { ...base, cha: 9 } }), /27 points/);
+});
+
+test('armor class picks the best trained option', () => {
+  const modifiers = { str: 3, dex: 2, con: 2, int: 0, wis: 1, cha: 0 };
+  const ac = (itemNames, armorTraining, classNames) =>
+    rules.calculateArmorClass({ itemNames, modifiers, armorTraining, classNames });
+  assert.deepEqual(ac(['Chain Mail', 'Shield'], ['Heavy armor', 'Shields']), { ac: 18, source: 'Chain Mail + Shield' });
+  assert.equal(ac(['Chain Mail'], ['Light armor']).ac, 12); // untrained armor is ignored
+  assert.equal(ac(['Chain Shirt'], ['Medium armor']).ac, 15);
+  assert.equal(ac([], [], ['Barbarian']).ac, 14);
+  assert.equal(ac([], [], ['Monk']).ac, 13);
+  // Monk Unarmored Defense cannot add a shield, so plain 10 + DEX + shield wins.
+  assert.deepEqual(ac(['Shield'], ['Shields'], ['Monk']), { ac: 14, source: 'Unarmored + Shield' });
 });
 
 test('every class has 20-level tables and shared milestones', () => {

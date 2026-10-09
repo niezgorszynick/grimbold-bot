@@ -1,15 +1,8 @@
 const express = require('express');
 const db = require('./db');
 const { formatCp } = require('./currency');
-const {
-  DND_DATA,
-  validateCharacterOptions,
-  validatePointBuy
-} = require('./dndData');
+const { DND_DATA } = require('./dndData');
 const rules = require('./rules');
-
-// House rule: new characters start at level 3.
-const STARTING_LEVEL = 3;
 
 const router = express.Router();
 
@@ -141,178 +134,88 @@ router.get('/characters/:id', (req, res) => {
   });
 });
 
+// Rules data the character creator needs to render its choices.
+router.get('/rules/creation', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const classes = Object.fromEntries(Object.entries(rules.ALL_CLASSES).map(([name, data]) => [name, {
+    hitDie: data.hitDie,
+    primaryAbilities: data.primaryAbilities,
+    savingThrows: data.savingThrows,
+    skillChoices: data.skillChoices,
+    toolProficiencies: data.toolProficiencies,
+    armorTraining: data.armorTraining,
+    weaponProficiencies: data.weaponProficiencies,
+    startingEquipment: data.startingEquipment,
+    featuresByLevel: Object.fromEntries(Object.entries(data.featuresByLevel)
+      .filter(([level]) => Number(level) <= rules.STARTING_LEVEL))
+  }]));
+  return res.json({
+    startingLevel: rules.STARTING_LEVEL,
+    abilities: rules.ABILITIES,
+    skills: rules.SKILL_NAMES,
+    languages: rules.STANDARD_LANGUAGES.filter(language => language !== 'Common'),
+    languageChoices: rules.STARTING_LANGUAGE_CHOICES,
+    classes,
+    subclasses: rules.DND_CLASSES_AND_SUBCLASSES,
+    backgrounds: rules.BACKGROUNDS,
+    species: rules.DND_SPECIES_DATA,
+    speciesOptions: rules.SPECIES_OPTIONS,
+    sizeOptions: Object.fromEntries(rules.DND_SPECIES.map(name => [name, rules.sizeOptions(name)])),
+    originFeats: rules.ORIGIN_FEATS,
+    toolCategories: rules.TOOL_CATEGORIES,
+    generationMethods: rules.GENERATION_METHODS,
+    pointBuyCosts: rules.POINT_BUY_COSTS,
+    totalPointBuyPoints: rules.TOTAL_POINT_BUY_POINTS,
+    standardArray: rules.STANDARD_ARRAY,
+    standardArraySuggestions: rules.STANDARD_ARRAY_SUGGESTIONS
+  });
+});
+
+function buildCharacterFromBody(body) {
+  const request = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  return rules.buildStartingCharacter({
+    ...request,
+    className: request.className === undefined ? request.character_class : request.className
+  });
+}
+
+// Validates a creation request without saving it; the creator uses this for its live summary.
+router.post('/characters/preview', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ character: buildCharacterFromBody(req.body) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 router.post('/characters/create', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   if (user.id <= 0) return res.status(403).json({ error: 'A player account is required to create a character.' });
 
-  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-    ? req.body
-    : {};
-  const {
-    name,
-    species,
-    character_class,
-    subclass,
-    background,
-    generationMethod,
-    baseScores,
-    backgroundBonuses
-  } = body;
-  if (
-    typeof name !== 'string' || !name.trim() ||
-    typeof species !== 'string' || !species.trim() ||
-    typeof character_class !== 'string' || !character_class.trim()
-  ) {
-    return res.status(400).json({ error: 'Name, species, and class are required.' });
-  }
-  if (!['Point Buy', 'Standard Array', 'Manual/Rolled'].includes(generationMethod)) {
-    return res.status(400).json({ error: 'Choose Point Buy, Standard Array, or Manual/Rolled.' });
-  }
-
-  let canonicalOptions;
+  let character;
   try {
-    canonicalOptions = validateCharacterOptions(species, character_class, subclass || '');
+    character = buildCharacterFromBody(req.body);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
 
-  const abilityNames = DND_DATA.abilityScores;
-  let finalAbilities;
-  let generationData;
-  if (generationMethod === 'Point Buy') {
-    if (
-      !backgroundBonuses ||
-      typeof backgroundBonuses !== 'object' ||
-      Array.isArray(backgroundBonuses) ||
-      Object.keys(backgroundBonuses).some(ability => !abilityNames.includes(ability))
-    ) {
-      return res.status(400).json({ error: 'Background bonuses must be an ability-to-bonus object.' });
-    }
-    const normalizedBonuses = Object.fromEntries(abilityNames.map(ability => [
-      ability,
-      backgroundBonuses[ability] === undefined ? 0 : backgroundBonuses[ability]
-    ]));
-    try {
-      const backgroundName = typeof background === 'string'
-        ? Object.keys(DND_DATA.backgrounds).find(
-          value => value.toLowerCase() === background.trim().toLowerCase()
-        )
-        : null;
-      const bonusEntries = Object.entries(normalizedBonuses)
-        .filter(([, value]) => value > 0)
-        .sort((left, right) => right[1] - left[1]);
-      const bonusValues = bonusEntries.map(([, value]) => value);
-      const bonusMode = bonusValues.length === 2 && bonusValues.includes(2) && bonusValues.includes(1)
-        ? '2+1'
-        : bonusValues.length === 3 && bonusValues.every(value => value === 1)
-          ? '1+1+1'
-          : '';
-      const validated = validatePointBuy({
-        baseScores,
-        background: backgroundName,
-        bonusMode,
-        bonusAbilities: bonusEntries.map(([ability]) => ability)
-      });
-      abilityNames.forEach(ability => {
-        if (
-          !Number.isInteger(normalizedBonuses[ability]) ||
-          normalizedBonuses[ability] < 0 ||
-          normalizedBonuses[ability] > 2
-        ) {
-          throw new Error('Each background bonus must be a whole number from 0 to 2.');
-        }
-      });
-      finalAbilities = Object.fromEntries(abilityNames.map(ability => [
-        ability,
-        {
-          score: validated.abilities[ability],
-          modifier: DND_DATA.getModifier(validated.abilities[ability])
-        }
-      ]));
-      generationData = {
-        pointBuy: {
-          background: validated.background,
-          bonusMode: validated.bonusMode,
-          bonusAbilities: validated.bonusAbilities,
-          baseScores: validated.baseScores,
-          pointsSpent: validated.pointsSpent
-        },
-        backgroundBonuses: normalizedBonuses
-      };
-    } catch (error) {
-      return res.status(400).json({ error: error.message });
-    }
-  } else {
-    if (!baseScores || typeof baseScores !== 'object' || Array.isArray(baseScores)) {
-      return res.status(400).json({ error: 'Ability scores must be provided as an object.' });
-    }
-    const scores = Object.fromEntries(abilityNames.map(ability => [ability, baseScores[ability]]));
-    if (generationMethod === 'Standard Array') {
-      const validStandardArray = Object.values(scores).every(Number.isInteger) &&
-        Object.values(scores).sort((a, b) => a - b).join(',') === '8,10,12,13,14,15';
-      if (!validStandardArray) {
-        return res.status(400).json({ error: 'Standard Array must use 15, 14, 13, 12, 10, and 8 once each.' });
-      }
-    } else if (Object.values(scores).some(score =>
-      !Number.isInteger(score) || score < 1 || score > 30
-    )) {
-      return res.status(400).json({ error: 'Manual/Rolled ability scores must be whole numbers from 1 to 30.' });
-    }
-    finalAbilities = Object.fromEntries(abilityNames.map(ability => [
-      ability,
-      {
-        score: scores[ability],
-        modifier: DND_DATA.getModifier(scores[ability])
-      }
-    ]));
-    generationData = { background: typeof background === 'string' ? background.trim() : '' };
-  }
-
-  const dexterityModifier = finalAbilities.dex.modifier;
-  const backgroundName = generationData.pointBuy
-    ? generationData.pointBuy.background
-    : generationData.background;
-  const backgroundData = rules.BACKGROUNDS[backgroundName];
-  const startingClasses = [{
-    className: canonicalOptions.canonicalClass,
-    subclassName: canonicalOptions.canonicalSubclass || null,
-    level: STARTING_LEVEL
-  }];
-  const { max: hpMax } = rules.calculateMaxHp({
-    classes: startingClasses,
-    constitution: finalAbilities.con.score,
-    species: canonicalOptions.canonicalSpecies,
-    feats: backgroundData ? [backgroundData.originFeat] : []
-  });
-  const initialSheetData = {
-    ...generationData,
-    abilities: finalAbilities,
-    generationMethod,
-    armorClass: 10 + dexterityModifier,
-    initiative: `${dexterityModifier >= 0 ? '+' : ''}${dexterityModifier}`,
-    speed: `${DND_DATA.species[canonicalOptions.canonicalSpecies].speed} ft.`,
-    hpMax,
-    hpCurrent: hpMax,
-    hpTemp: 0,
-    hitDice: rules.formatHitDicePool(rules.getHitDicePool(startingClasses)),
-    attacks: [],
-    features: '',
-    equipmentText: ''
-  };
   const runTransaction = db.transaction(() => {
     const inserted = db.prepare(`
       INSERT INTO characters
         (player_id, name, race, class, subclass, level, xp, status, gold_gp, sheet_data)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 'alive', 0, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 0, 'alive', ?, ?)
     `).run(
       user.id,
-      name.trim(),
-      canonicalOptions.canonicalSpecies,
-      canonicalOptions.canonicalClass,
-      canonicalOptions.canonicalSubclass,
-      STARTING_LEVEL,
-      JSON.stringify(initialSheetData)
+      character.name,
+      character.species,
+      character.className,
+      character.subclass,
+      character.level,
+      character.goldGp,
+      JSON.stringify(character.sheetData)
     );
     db.prepare(`
       INSERT INTO character_classes
@@ -320,9 +223,9 @@ router.post('/characters/create', (req, res) => {
       VALUES (?, ?, ?, ?, 1)
     `).run(
       inserted.lastInsertRowid,
-      canonicalOptions.canonicalClass,
-      canonicalOptions.canonicalSubclass || null,
-      STARTING_LEVEL
+      character.className,
+      character.subclass,
+      character.level
     );
     return inserted.lastInsertRowid;
   });

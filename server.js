@@ -1,5 +1,6 @@
 // server.js — Express DM Admin Panel with Context Tabs, Restock & Custom Announcements
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
@@ -9,8 +10,7 @@ const { restockShop } = require('./restock');
 const {
   DND_SPECIES,
   DND_DATA,
-  DND_CLASSES_AND_SUBCLASSES,
-  STANDARD_ARRAY_SUGGESTIONS
+  DND_CLASSES_AND_SUBCLASSES
 } = require('./dndData');
 
 // Middleware parsowania formularzy i JSON
@@ -53,13 +53,18 @@ function requireRootAdmin(req, res, next) {
 
 router.use(requireAuth);
 router.use((req, res, next) => {
-  const selfServiceCharacterRoute = [
-    '/characters/self-add',
-    '/characters/self-update'
-  ].includes(req.path);
+  const selfServiceCharacterRoute = req.path === '/characters/self-update';
   return req.method === 'POST' && !selfServiceCharacterRoute
     ? requireAdmin(req, res, next)
     : next();
+});
+
+// Client scripts for the admin panel (only files listed here are served).
+const ADMIN_ASSETS = { 'character-creator.js': path.join(__dirname, 'public', 'character-creator.js') };
+router.get('/assets/:file', (req, res) => {
+  const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
+  if (!file) return res.status(404).send('Not found');
+  return res.sendFile(file);
 });
 
 // Helper: Escape HTML
@@ -367,27 +372,6 @@ router.post('/characters/add', (req, res) => {
     res.redirect('/admin?tab=players&status=char_added');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
-  }
-});
-
-router.post('/characters/self-add', (req, res) => {
-  const playerId = req.session.user.id;
-  if (playerId <= 0) return res.status(403).send('A player account is required to create a character.');
-
-  try {
-    const { name, race, class_name, subclass } = req.body;
-    db.addCharacter({
-      player_id: playerId,
-      name,
-      race,
-      class_name,
-      subclass,
-      xp: 0,
-      status: 'alive'
-    });
-    res.redirect('/admin?tab=character-sheet&status=char_added');
-  } catch (err) {
-    res.redirect(`/admin?tab=character-sheet&err=${encodeURIComponent(err.message)}`);
   }
 });
 
@@ -1745,91 +1729,6 @@ router.get('/', (req, res) => {
       ...DND_DATA.classes,
       ...DND_DATA.supplementalClasses
     }).replace(/</g, '\\u003c');
-    const standardArraySuggestionsJson = JSON.stringify(STANDARD_ARRAY_SUGGESTIONS).replace(/</g, '\\u003c');
-    const renderCharacterForm = character => {
-      const isEdit = Boolean(character);
-      const prefix = isEdit ? 'sheet-edit' : 'sheet-add';
-      const selectedRace = character ? character.race : '';
-      const selectedClass = character ? character.class : '';
-      const selectedSubclass = character ? character.subclass : '';
-      const speciesOptions = `${isEdit ? '' : '<option value="" selected disabled>-- Choose Species --</option>'}${DND_SPECIES.map(species =>
-        `<option value="${escapeHtml(species)}" ${species === selectedRace ? 'selected' : ''}>${escapeHtml(species)}</option>`
-      ).join('')}`;
-      const classOptions = `${isEdit ? '' : '<option value="" selected disabled>-- Choose Class --</option>'}${classNames.map(className =>
-        `<option value="${escapeHtml(className)}" ${className === selectedClass ? 'selected' : ''}>${escapeHtml(className)}</option>`
-      ).join('')}`;
-      const subclassOptions = (DND_CLASSES_AND_SUBCLASSES[selectedClass] || []).map(subclass =>
-        `<option value="${escapeHtml(subclass)}" ${subclass === selectedSubclass ? 'selected' : ''}>${escapeHtml(subclass)}</option>`
-      ).join('');
-      const characterCreationOptions = !isEdit ? `
-        <section class="character-creation-abilities">
-          <h4>Ability Generation</h4>
-          <label>Method
-            <select id="sheet-add-method">
-              <option>Point Buy</option>
-              <option>Standard Array</option>
-              <option>Manual/Rolled</option>
-            </select>
-          </label>
-          <label>Background
-            <select id="sheet-add-background" required>
-              <option value="">Choose background</option>
-              ${Object.keys(DND_DATA.backgrounds).map(background =>
-                `<option value="${escapeHtml(background)}">${escapeHtml(background)}</option>`
-              ).join('')}
-            </select>
-          </label>
-          <button id="sheet-add-class-suggestion" class="btn btn-small" type="button">Use class suggestion</button>
-          <p id="sheet-add-points" class="muted small" aria-live="polite">Point Buy: 27 points remaining.</p>
-          <div class="character-creation-score-grid">
-            ${DND_DATA.abilityScores.map(ability => `
-              <label>${ability.toUpperCase()}
-                <input type="number" min="8" max="15" value="8" data-create-ability="${ability}" required>
-              </label>
-            `).join('')}
-          </div>
-          <h5>Background bonuses</h5>
-          <div class="character-creation-score-grid">
-            ${DND_DATA.abilityScores.map(ability => `
-              <label>${ability.toUpperCase()} bonus
-                <select data-create-bonus="${ability}">
-                  <option value="0">+0</option><option value="1">+1</option><option value="2">+2</option>
-                </select>
-              </label>
-            `).join('')}
-          </div>
-        </section>
-      ` : '';
-      return `
-        <form method="POST" action="/admin/characters/${isEdit ? 'self-update' : 'self-add'}" class="character-editor" ${isEdit ? '' : 'id="sheet-add-form"'}>
-          ${isEdit ? `<input type="hidden" name="id" value="${character.id}">` : ''}
-          <label>
-            Character Name
-            <input type="text" name="name" maxlength="100" value="${escapeHtml(character ? character.name : '')}" required>
-          </label>
-          <div class="character-editor-fields">
-            <label>
-              Species
-              <select id="${prefix}-species" name="race" required>${speciesOptions}</select>
-            </label>
-            <label>
-              Class
-              <select id="${prefix}-class" name="class_name" required>${classOptions}</select>
-            </label>
-            <label>
-              Subclass
-              <select id="${prefix}-subclass" name="subclass">
-                <option value="">-- None / Base --</option>
-                ${subclassOptions}
-              </select>
-            </label>
-          </div>
-          ${characterCreationOptions}
-          <div id="${prefix}-traits" class="species-traits" aria-live="polite"></div>
-          <button type="submit" class="btn btn-green">${isEdit ? 'Save Character' : 'Create Character'}</button>
-        </form>
-      `;
-    };
     const editFormHtml = req.query.edit_char
       ? canEditRequestedCharacter
         ? `
@@ -1927,7 +1826,7 @@ router.get('/', (req, res) => {
       <section class="card">
         <h3>${isAdmin ? 'Campaign Characters' : 'Your Characters'}</h3>
         ${canManageOwnCharacters
-          ? `<p class="muted">${isAdmin ? 'All campaign characters are visible to you. You can create and edit campaign characters.' : 'Create a character or edit your existing character details below.'}</p>${req.query.edit_char ? '' : `<button id="open-character-creator" class="btn btn-green" type="button">+ Create New Character</button><section id="character-creator-view" class="card" hidden><div class="sheet-section-heading"><h4>Create New Character</h4><button id="close-character-creator" class="btn btn-secondary" type="button">Cancel</button></div>${renderCharacterForm(null)}</section>`}`
+          ? `<p class="muted">${isAdmin ? 'All campaign characters are visible to you. You can create and edit campaign characters.' : 'Create a character or edit your existing character details below.'}</p>${req.query.edit_char ? '' : `<button id="open-character-creator" class="btn btn-green" type="button">+ Create New Character</button><section id="character-creator-view" class="card" hidden><div class="sheet-section-heading"><h4>Create New Character</h4><button id="close-character-creator" class="btn btn-secondary" type="button">Cancel</button></div><div id="character-creator-root"></div><script src="/admin/assets/character-creator.js" defer></script></section>`}`
           : '<p class="muted">All campaign characters are visible to DMs and admins.</p>'}
       </section>
       ${editFormHtml}
@@ -1973,7 +1872,6 @@ router.get('/', (req, res) => {
         const sheetSpecies = ${sheetSpeciesJson};
         const sheetBackgrounds = ${sheetBackgroundsJson};
         const sheetClassRules = ${sheetClassRulesJson};
-        const standardArraySuggestions = ${standardArraySuggestionsJson};
         const fullSheetCharacterId = ${canEditRequestedCharacter ? Number(characterToEdit.id) : 'null'};
 
         function initFullCharacterSheet() {
@@ -2491,156 +2389,6 @@ router.get('/', (req, res) => {
           loadSheet();
         }
 
-        function initCharacterEditor(prefix) {
-          const speciesSelect = document.getElementById(prefix + '-species');
-          const classSelect = document.getElementById(prefix + '-class');
-          const subclassSelect = document.getElementById(prefix + '-subclass');
-          const traitsContainer = document.getElementById(prefix + '-traits');
-          if (!speciesSelect || !classSelect || !subclassSelect || !traitsContainer) return;
-
-          function updateTraits() {
-            const species = sheetSpecies[speciesSelect.value];
-            if (!species) {
-              traitsContainer.replaceChildren();
-              return;
-            }
-            const heading = document.createElement('strong');
-            heading.textContent = 'Species Traits';
-            const list = document.createElement('ul');
-            species.traits.forEach(trait => {
-              const item = document.createElement('li');
-              const name = document.createElement('strong');
-              name.textContent = trait.name;
-              item.append(name, document.createTextNode(' — ' + trait.description));
-              list.appendChild(item);
-            });
-            traitsContainer.replaceChildren(heading, list);
-          }
-
-          function updateSubclasses() {
-            const previousValue = subclassSelect.value;
-            subclassSelect.replaceChildren(new Option('-- None / Base --', ''));
-            (sheetClassTree[classSelect.value] || []).forEach(subclass => {
-              subclassSelect.add(new Option(subclass, subclass));
-            });
-            if ([...subclassSelect.options].some(option => option.value === previousValue)) {
-              subclassSelect.value = previousValue;
-            }
-          }
-
-          speciesSelect.addEventListener('change', updateTraits);
-          classSelect.addEventListener('change', updateSubclasses);
-          updateTraits();
-
-          if (prefix === 'sheet-add') {
-            const form = document.getElementById('sheet-add-form');
-            const methodSelect = document.getElementById('sheet-add-method');
-            const backgroundSelect = document.getElementById('sheet-add-background');
-            const scores = [...form.querySelectorAll('[data-create-ability]')];
-            const bonuses = [...form.querySelectorAll('[data-create-bonus]')];
-            const pointsDisplay = document.getElementById('sheet-add-points');
-            const pointCosts = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
-
-            function updateCreationInputs() {
-              const method = methodSelect.value;
-              const pointBuy = method === 'Point Buy';
-              scores.forEach(input => {
-                input.min = method === 'Manual/Rolled' ? '1' : '8';
-                input.max = method === 'Manual/Rolled' ? '30' : '15';
-                if (Number(input.value) < Number(input.min)) input.value = input.min;
-                if (Number(input.value) > Number(input.max)) input.value = input.max;
-              });
-              const allowedBonuses = sheetBackgrounds[backgroundSelect.value]
-                ? sheetBackgrounds[backgroundSelect.value].abilityBoosts
-                : [];
-              bonuses.forEach(select => {
-                const allowed = allowedBonuses.includes(select.dataset.createBonus);
-                select.disabled = !pointBuy || !allowed;
-                if (!allowed) select.value = '0';
-              });
-              backgroundSelect.required = pointBuy;
-              const spent = scores.reduce((total, input) =>
-                total + (pointCosts[Number(input.value)] || 0), 0
-              );
-              pointsDisplay.hidden = !pointBuy;
-              pointsDisplay.textContent = pointBuy
-                ? 'Point Buy: ' + (27 - spent) + ' points remaining.'
-                : '';
-            }
-
-            document.getElementById('sheet-add-class-suggestion').addEventListener('click', () => {
-              const suggestion = standardArraySuggestions[classSelect.value];
-              if (!suggestion) return;
-              scores.forEach(input => { input.value = suggestion[input.dataset.createAbility]; });
-              updateCreationInputs();
-            });
-            methodSelect.addEventListener('change', updateCreationInputs);
-            classSelect.addEventListener('change', updateCreationInputs);
-            backgroundSelect.addEventListener('change', () => {
-              const allowed = sheetBackgrounds[backgroundSelect.value]
-                ? sheetBackgrounds[backgroundSelect.value].abilityBoosts
-                : [];
-              bonuses.forEach(select => {
-                select.disabled = methodSelect.value !== 'Point Buy' ||
-                  !allowed.includes(select.dataset.createBonus);
-                if (select.disabled) select.value = '0';
-              });
-            });
-            scores.forEach(input => input.addEventListener('input', updateCreationInputs));
-            updateCreationInputs();
-
-            form.addEventListener('submit', async event => {
-              event.preventDefault();
-              const method = methodSelect.value;
-              const baseScores = Object.fromEntries(scores.map(input => [
-                input.dataset.createAbility, Number(input.value)
-              ]));
-              const backgroundBonuses = Object.fromEntries(bonuses.map(select => [
-                select.dataset.createBonus, Number(select.value)
-              ]));
-              if (method === 'Point Buy') {
-                const spent = Object.values(baseScores).reduce((total, score) =>
-                  total + (pointCosts[score] === undefined ? Infinity : pointCosts[score]), 0
-                );
-                if (spent !== 27) {
-                  window.alert('Point Buy requires spending exactly 27 points (currently spent: ' + spent + ').');
-                  return;
-                }
-                if (Object.values(backgroundBonuses).reduce((total, bonus) => total + bonus, 0) !== 3) {
-                  window.alert('Choose either a +2/+1 or +1/+1/+1 Background bonus.');
-                  return;
-                }
-              }
-              const submitButton = form.querySelector('[type="submit"]');
-              submitButton.disabled = true;
-              try {
-                const response = await fetch('/api/characters/create', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    name: form.querySelector('[name="name"]').value,
-                    species: speciesSelect.value,
-                    character_class: classSelect.value,
-                    subclass: subclassSelect.value,
-                    background: backgroundSelect.value,
-                    generationMethod: method,
-                    baseScores,
-                    backgroundBonuses
-                  })
-                });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Could not create character.');
-                window.location.href = '/admin?tab=character-sheet&edit_char=' + result.characterId;
-              } catch (error) {
-                window.alert(error.message);
-                submitButton.disabled = false;
-              }
-            });
-          }
-        }
-
-        initCharacterEditor('sheet-add');
-        initCharacterEditor('sheet-edit');
         initFullCharacterSheet();
         const creatorView = document.getElementById('character-creator-view');
         const openCreatorButton = document.getElementById('open-character-creator');
@@ -3628,6 +3376,25 @@ router.get('/', (req, res) => {
         .species-traits p { margin: 5px 0; }
         .species-traits ul { margin: 6px 0 0; padding-left: 18px; }
         .species-traits li { padding: 3px 0; }
+        .character-creator { display: grid; gap: 14px; margin-top: 14px; }
+        .creator-field { display: grid; gap: 5px; }
+        .creator-field select, .creator-field input { width: 100%; }
+        .creator-section { display: grid; gap: 10px; padding: 14px; border: 1px solid #3f4147; border-radius: 8px; background: #1e1f22; }
+        .creator-section h4 { margin: 0; color: #f1c40f; }
+        .creator-section h5 { margin: 6px 0 4px; color: #dbdee1; }
+        .creator-section p { margin: 0; }
+        .creator-section-body { display: grid; gap: 10px; }
+        .creator-choice { display: grid; gap: 6px; }
+        .creator-choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px 12px; }
+        .creator-check { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
+        .creator-check.is-locked { color: #949ba4; }
+        .creator-equipment { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+        .creator-subchoice { display: grid; gap: 8px; padding-left: 10px; border-left: 2px solid #3f4147; }
+        .creator-score { display: grid; gap: 4px; justify-items: stretch; text-align: center; color: #949ba4; font-size: 11px; }
+        .creator-score input, .creator-score select { min-width: 0; width: 100%; }
+        .creator-final-score { color: #dbdee1; font-size: 13px; }
+        .creator-summary { padding: 10px; background: #232428; border-radius: 4px; font-size: 13px; }
+        .creator-summary-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
         .character-sheet-full { max-width: 1200px; margin: 0 auto; color: #dbdee1; }
         .sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; border-bottom: 2px solid #3f4147; padding-bottom: 14px; margin-bottom: 12px; }
         .sheet-identity { min-width: 0; flex: 1; }
@@ -3740,6 +3507,7 @@ router.get('/', (req, res) => {
           .analytics-grid { grid-template-columns: minmax(0, 1fr); }
           .character-editor-fields { grid-template-columns: minmax(0, 1fr); }
           .character-creation-score-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .creator-summary-grid, .creator-choice-grid { grid-template-columns: minmax(0, 1fr); }
           .sheet-layout { grid-template-columns: minmax(0, 1fr); }
           .sheet-identity-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .point-buy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
