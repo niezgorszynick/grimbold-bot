@@ -1741,6 +1741,10 @@ router.get('/', (req, res) => {
     const sheetClassTreeJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
     const sheetSpeciesJson = JSON.stringify(DND_DATA.species).replace(/</g, '\\u003c');
     const sheetBackgroundsJson = JSON.stringify(DND_DATA.backgrounds).replace(/</g, '\\u003c');
+    const sheetClassRulesJson = JSON.stringify({
+      ...DND_DATA.classes,
+      ...DND_DATA.supplementalClasses
+    }).replace(/</g, '\\u003c');
     const standardArraySuggestionsJson = JSON.stringify(STANDARD_ARRAY_SUGGESTIONS).replace(/</g, '\\u003c');
     const renderCharacterForm = character => {
       const isEdit = Boolean(character);
@@ -1839,6 +1843,7 @@ router.get('/', (req, res) => {
                   <label>Species<select id="cs_species" required>${DND_SPECIES.map(species => `<option value="${escapeHtml(species)}">${escapeHtml(species)}</option>`).join('')}</select></label>
                   <label>Class<select id="cs_class" required>${classNames.map(className => `<option value="${escapeHtml(className)}">${escapeHtml(className)}</option>`).join('')}</select></label>
                   <label>Subclass<select id="cs_subclass"><option value="">-- None / Base --</option></select></label>
+                  <label>Background<select id="cs_background"><option value="">Choose background</option>${Object.keys(DND_DATA.backgrounds).map(background => `<option value="${escapeHtml(background)}">${escapeHtml(background)}</option>`).join('')}</select></label>
                 </div>
               </div>
               <div class="sheet-header-actions">
@@ -1897,12 +1902,15 @@ router.get('/', (req, res) => {
                 </section>
                 <section class="sheet-card">
                   <h4>Class Features &amp; Species Traits</h4>
-                  <textarea id="cs_features" rows="5" maxlength="10000" placeholder="Darkvision, Fey Ancestry, Channel Divinity..."></textarea>
+                  <div id="cs_auto_features" class="sheet-auto-features" aria-live="polite"></div>
+                  <label class="sheet-notes-label">Additional notes<textarea id="cs_features" rows="5" maxlength="10000" placeholder="Record additional features, choices, or reminders..."></textarea></label>
                 </section>
               </div>
               <div class="sheet-col">
                 <section class="sheet-card">
                   <h4>Skills</h4>
+                  <p id="cs_skill_guidance" class="muted small" aria-live="polite"></p>
+                  <div id="cs_species_skill_choices"></div>
                   <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
                 </section>
                 <section class="sheet-card">
@@ -1964,6 +1972,7 @@ router.get('/', (req, res) => {
         const sheetClassTree = ${sheetClassTreeJson};
         const sheetSpecies = ${sheetSpeciesJson};
         const sheetBackgrounds = ${sheetBackgroundsJson};
+        const sheetClassRules = ${sheetClassRulesJson};
         const standardArraySuggestions = ${standardArraySuggestionsJson};
         const fullSheetCharacterId = ${canEditRequestedCharacter ? Number(characterToEdit.id) : 'null'};
 
@@ -1981,6 +1990,12 @@ router.get('/', (req, res) => {
             ['Sleight of Hand', 'dex'], ['Stealth', 'dex'], ['Survival', 'wis']
           ];
           const abilityContainer = document.getElementById('cs_ability_container');
+          const classSelect = document.getElementById('cs_class');
+          const subclassSelect = document.getElementById('cs_subclass');
+          const speciesSelect = document.getElementById('cs_species');
+          const backgroundSelect = document.getElementById('cs_background');
+          const autoFeatures = document.getElementById('cs_auto_features');
+          const speciesSkillChoicesContainer = document.getElementById('cs_species_skill_choices');
           abilities.forEach(ability => {
             const row = document.createElement('div');
             row.className = 'sheet-ability';
@@ -2019,12 +2034,109 @@ router.get('/', (req, res) => {
           });
 
           const message = document.getElementById('cs_message');
-          const classSelect = document.getElementById('cs_class');
-          const subclassSelect = document.getElementById('cs_subclass');
           const pointBuyError = document.getElementById('cs_point_buy_error');
           const abilityScores = [...abilityContainer.querySelectorAll('[data-ability]')];
           const proficiencyBonus = document.getElementById('cs_prof_bonus');
           let sheetCharacterLevel = 1;
+          let classLevel = 1;
+          let classLevels = {};
+          let selectedClassSkills = [];
+          let selectedSpeciesSkills = [];
+          let savedSpeciesSkills = [];
+
+          function updateRuleDrivenFields() {
+            const classData = sheetClassRules[classSelect.value] || {};
+            const backgroundData = sheetBackgrounds[backgroundSelect.value] || {};
+            const speciesData = sheetSpecies[speciesSelect.value] || {};
+            const fixedSkills = new Set([
+              ...(backgroundData.skillProficiencies || []),
+              ...(speciesData.skillProficiencies || []),
+              ...selectedSpeciesSkills,
+              ...savedSpeciesSkills
+            ]);
+            const classOptions = new Set(
+              classData.skillChoices ? classData.skillChoices.options : []
+            );
+            selectedClassSkills = selectedClassSkills.filter(skill =>
+              classOptions.has(skill) && !fixedSkills.has(skill)
+            );
+            const classChoiceCount = classData.skillChoices ? classData.skillChoices.count : 0;
+            speciesSkillChoicesContainer.replaceChildren();
+            if (speciesData.skillChoiceCount) {
+              const label = document.createElement('label');
+              label.className = 'sheet-species-skill-choice';
+              label.textContent = 'Choose ' + speciesData.skillChoiceCount + ' species skill proficiency';
+              for (let index = 0; index < speciesData.skillChoiceCount; index += 1) {
+                const select = document.createElement('select');
+                select.setAttribute('aria-label', 'Species skill choice ' + (index + 1));
+                select.add(new Option('Choose a skill', ''));
+                skills.forEach(([skill]) => select.add(new Option(skill, skill)));
+                select.value = selectedSpeciesSkills[index] || '';
+                select.addEventListener('change', () => {
+                  selectedSpeciesSkills = [...speciesSkillChoicesContainer.querySelectorAll('select')]
+                    .map(item => item.value)
+                    .filter(Boolean);
+                  updateRuleDrivenFields();
+                });
+                label.appendChild(select);
+              }
+              speciesSkillChoicesContainer.appendChild(label);
+            }
+            skills.forEach(([skill]) => {
+              const checkbox = skillsContainer.querySelector('[data-skill="' + skill + '"]');
+              const automatic = fixedSkills.has(skill);
+              checkbox.checked = automatic || selectedClassSkills.includes(skill);
+              checkbox.disabled = automatic || !classOptions.has(skill);
+              const row = checkbox.closest('.sheet-check-row');
+              row.classList.toggle('is-automatic-proficiency', automatic);
+              const source = (backgroundData.skillProficiencies || []).includes(skill)
+                ? 'Background'
+                : (speciesData.skillProficiencies || []).includes(skill)
+                  ? 'Species'
+                  : 'Character feature';
+              row.title = automatic
+                ? 'Granted by ' + source
+                : classOptions.has(skill) ? 'Choose as a class proficiency' : 'Not available from this class';
+            });
+            abilities.forEach(ability => {
+              const checkbox = savesContainer.querySelector('[data-save="' + ability + '"]');
+              checkbox.checked = (classData.savingThrows || []).includes(ability);
+              checkbox.disabled = true;
+              checkbox.closest('.sheet-check-row').classList.toggle('is-automatic-proficiency', checkbox.checked);
+            });
+            const chosenCount = selectedClassSkills.length;
+            const speciesChoiceCount = speciesData.skillChoiceCount || 0;
+            document.getElementById('cs_skill_guidance').textContent = classChoiceCount
+              ? 'Choose ' + classChoiceCount + ' skill proficiencies for ' + classSelect.value +
+                ' (' + chosenCount + ' selected). Background and species proficiencies are automatic.'
+              : 'Background and species proficiencies are automatic.';
+            const classFeatures = [];
+            Object.entries(classData.featuresByLevel || {})
+              .filter(([level]) => Number(level) <= classLevel)
+              .forEach(([, names]) => classFeatures.push(...names));
+            const autoLines = [
+              ...classFeatures.map(name => 'Class: ' + name),
+              ...(subclassSelect.value && classLevel >= 3
+                ? ['Subclass selected: ' + subclassSelect.value]
+                : []),
+              ...(backgroundData.skillProficiencies || []).map(skill => 'Background proficiency: ' + skill),
+              ...(speciesData.traits || []).map(trait => trait.name + ': ' + trait.description)
+            ];
+            autoFeatures.replaceChildren();
+            if (autoLines.length) {
+              const list = document.createElement('ul');
+              autoLines.forEach(line => {
+                const item = document.createElement('li');
+                item.textContent = line;
+                list.appendChild(item);
+              });
+              autoFeatures.appendChild(list);
+            } else {
+              autoFeatures.textContent = 'Choose a class, species, and background to see features and proficiencies.';
+            }
+            updateDerivedStats(sheetCharacterLevel);
+            updateAbilityValidation();
+          }
 
           function updateSubclasses(selected = subclassSelect.value) {
             subclassSelect.replaceChildren(new Option('-- None / Base --', ''));
@@ -2076,14 +2188,26 @@ router.get('/', (req, res) => {
 
           function updateAbilityValidation() {
             const inputs = abilityScores.map(input => Number(input.value));
-            const validScores = inputs.every(score =>
+            const validAbilities = inputs.every(score =>
               Number.isInteger(score) && score >= 1 && score <= 30
             );
-            pointBuyError.textContent = validScores ? '' : 'Ability scores must be whole numbers from 1 to 30.';
-            pointBuyError.classList.toggle('is-error', !validScores);
-            pointBuyError.hidden = validScores;
-            document.getElementById('cs_save').disabled = !validScores;
-            return validScores;
+            const classData = sheetClassRules[classSelect.value] || {};
+            const requiredSkills = classData.skillChoices ? classData.skillChoices.count : 0;
+            const speciesChoiceCount = (sheetSpecies[speciesSelect.value] || {}).skillChoiceCount || 0;
+            const validClassSkills = selectedClassSkills.length === requiredSkills &&
+              selectedSpeciesSkills.length === speciesChoiceCount &&
+              new Set(selectedSpeciesSkills).size === selectedSpeciesSkills.length;
+            const error = !validAbilities
+              ? 'Ability scores must be whole numbers from 1 to 30.'
+              : !validClassSkills
+                ? 'Choose exactly ' + requiredSkills + ' skill proficiencies for ' + classSelect.value +
+                  (speciesChoiceCount ? ' and ' + speciesChoiceCount + ' species skill proficiency.' : '.')
+                : '';
+            pointBuyError.textContent = error;
+            pointBuyError.classList.toggle('is-error', Boolean(error));
+            pointBuyError.hidden = !error;
+            document.getElementById('cs_save').disabled = Boolean(error);
+            return !error;
           }
 
           function getAbilityScores() {
@@ -2127,7 +2251,6 @@ router.get('/', (req, res) => {
           document.getElementById('cs_attacks_tbody').addEventListener('click', event => {
             if (event.target.matches('.sheet-remove-attack')) event.target.closest('tr').remove();
           });
-          classSelect.addEventListener('change', () => updateSubclasses(''));
           abilityContainer.addEventListener('input', event => {
             if (event.target.matches('[data-ability]')) {
               updateAbilityValidation();
@@ -2136,6 +2259,31 @@ router.get('/', (req, res) => {
           });
           savesContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
           skillsContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
+          skillsContainer.addEventListener('change', () => {
+            const classData = sheetClassRules[classSelect.value] || {};
+            const classOptions = new Set(classData.skillChoices ? classData.skillChoices.options : []);
+            const backgroundData = sheetBackgrounds[backgroundSelect.value] || {};
+            const speciesData = sheetSpecies[speciesSelect.value] || {};
+            const fixedSkills = new Set([
+              ...(backgroundData.skillProficiencies || []),
+              ...(speciesData.skillProficiencies || []),
+              ...savedSpeciesSkills
+            ]);
+            selectedClassSkills = skills
+              .map(([skill]) => skill)
+              .filter(skill => classOptions.has(skill) && !fixedSkills.has(skill) &&
+                skillsContainer.querySelector('[data-skill="' + skill + '"]').checked);
+            updateRuleDrivenFields();
+          });
+          classSelect.addEventListener('change', () => {
+            classLevel = classLevels[classSelect.value] || sheetCharacterLevel;
+            selectedClassSkills = [];
+            updateSubclasses('');
+            updateRuleDrivenFields();
+          });
+          subclassSelect.addEventListener('change', updateRuleDrivenFields);
+          speciesSelect.addEventListener('change', updateRuleDrivenFields);
+          backgroundSelect.addEventListener('change', updateRuleDrivenFields);
 
           async function loadSheet() {
             message.textContent = 'Loading character sheet...';
@@ -2146,10 +2294,49 @@ router.get('/', (req, res) => {
               const character = result.character;
               const data = result.sheetData || {};
               sheetCharacterLevel = character.level || 1;
+              const classRows = Array.isArray(result.classes) ? result.classes : [];
+              classLevels = Object.fromEntries(classRows.map(classRow => [
+                classRow.class_name, classRow.class_level
+              ]));
+              classLevel = classLevels[character.class] || sheetCharacterLevel;
               document.getElementById('cs_name').value = character.name || '';
-              document.getElementById('cs_species').value = character.race || '';
+              speciesSelect.value = character.race || '';
               classSelect.value = character.class || '';
               updateSubclasses(character.subclass || '');
+              const savedBackground = data.pointBuy && data.pointBuy.background
+                ? data.pointBuy.background
+                : data.background;
+              backgroundSelect.value = Object.prototype.hasOwnProperty.call(sheetBackgrounds, savedBackground)
+                ? savedBackground
+                : '';
+              const savedSkills = Array.isArray(data.skillProficiencies) ? data.skillProficiencies : [];
+              const backgroundSkills = sheetBackgrounds[backgroundSelect.value]
+                ? sheetBackgrounds[backgroundSelect.value].skillProficiencies
+                : [];
+              const speciesSkills = (sheetSpecies[speciesSelect.value] || {}).skillProficiencies || [];
+              const classSkillOptions = (sheetClassRules[classSelect.value] || {}).skillChoices
+                ? sheetClassRules[classSelect.value].skillChoices.options
+                : [];
+              const savedSpeciesChoices = savedSkills.filter(skill =>
+                !classSkillOptions.includes(skill) &&
+                !backgroundSkills.includes(skill) &&
+                !speciesSkills.includes(skill)
+              );
+              selectedSpeciesSkills = Array.isArray(data.speciesSkillChoices)
+                ? data.speciesSkillChoices
+                : savedSpeciesChoices.slice(0, ((sheetSpecies[speciesSelect.value] || {}).skillChoiceCount || 0));
+              savedSpeciesSkills = savedSkills.filter(skill =>
+                !classSkillOptions.includes(skill) &&
+                !backgroundSkills.includes(skill) &&
+                !speciesSkills.includes(skill) &&
+                !selectedSpeciesSkills.includes(skill)
+              );
+              selectedClassSkills = savedSkills.filter(skill =>
+                classSkillOptions.includes(skill) &&
+                !backgroundSkills.includes(skill) &&
+                !speciesSkills.includes(skill)
+              );
+              updateRuleDrivenFields();
               document.getElementById('cs_header_name').textContent = character.name || 'Character Sheet';
               document.getElementById('cs_header_sub').textContent =
                 'Level ' + (character.level || 1) + ' ' + (character.race || '') + ' ' +
@@ -2178,21 +2365,6 @@ router.get('/', (req, res) => {
                 input.value = value === undefined || value === null
                   ? 10
                   : Math.max(1, Math.min(30, Number(value) || 1));
-              });
-              abilities.forEach(ability => {
-                const checkbox = savesContainer.querySelector('[data-save="' + ability + '"]');
-                checkbox.checked = Array.isArray(data.savingProficiencies)
-                  ? data.savingProficiencies.includes(ability)
-                  : Boolean(
-                    (data.savingThrows && data.savingThrows[ability]) ||
-                    (data.savingThrows && data.savingThrows[ability.toUpperCase()])
-                  );
-              });
-              skills.forEach(([skill]) => {
-                const checkbox = skillsContainer.querySelector('[data-skill="' + skill + '"]');
-                checkbox.checked = Array.isArray(data.skillProficiencies)
-                  ? data.skillProficiencies.includes(skill)
-                  : Boolean(data.skills && data.skills[skill]);
               });
               const fields = {
                 cs_ac: 'armorClass', cs_initiative: 'initiative', cs_speed: 'speed',
@@ -2254,12 +2426,17 @@ router.get('/', (req, res) => {
             button.disabled = true;
             const sheetData = {
               abilities: currentScores,
-              savingProficiencies: abilities.filter(ability =>
-                savesContainer.querySelector('[data-save="' + ability + '"]').checked
-              ),
-              skillProficiencies: skills.filter(([skill]) =>
-                skillsContainer.querySelector('[data-skill="' + skill + '"]').checked
-              ).map(([skill]) => skill),
+              savingProficiencies: (sheetClassRules[classSelect.value] || {}).savingThrows || [],
+              skillProficiencies: [...new Set([
+                ...selectedClassSkills,
+                ...selectedSpeciesSkills,
+                ...savedSpeciesSkills,
+                ...((sheetBackgrounds[backgroundSelect.value] || {}).skillProficiencies || []),
+                ...((sheetSpecies[speciesSelect.value] || {}).skillProficiencies || [])
+              ])],
+              classSkillChoices: selectedClassSkills,
+              speciesSkillChoices: selectedSpeciesSkills,
+              background: backgroundSelect.value,
               armorClass: document.getElementById('cs_ac').value === ''
                 ? null : Number(document.getElementById('cs_ac').value),
               initiative: document.getElementById('cs_initiative').value,
@@ -2288,6 +2465,7 @@ router.get('/', (req, res) => {
                   species: document.getElementById('cs_species').value,
                   character_class: classSelect.value,
                   subclass: subclassSelect.value,
+                  background: backgroundSelect.value,
                   sheetData
                 })
               });
@@ -3503,6 +3681,12 @@ router.get('/', (req, res) => {
         .sheet-check-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; min-height: 24px; font-size: 13px; }
         .sheet-check-row input { width: 15px; height: 15px; accent-color: #d4af37; }
         .sheet-check-row small { color: #949ba4; }
+        .sheet-check-row.is-automatic-proficiency { color: #f1c40f; }
+        .sheet-species-skill-choice { display: grid; gap: 6px; margin: 8px 0; color: #949ba4; font-size: 12px; }
+        .sheet-auto-features { max-height: 320px; overflow: auto; margin-bottom: 10px; }
+        .sheet-auto-features ul { margin: 0; padding-left: 18px; }
+        .sheet-auto-features li { padding: 3px 0; font-size: 12px; line-height: 1.45; }
+        .sheet-notes-label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
         .sheet-combat-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
         .sheet-stat { display: grid; gap: 5px; align-content: center; min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 9px 6px; text-align: center; }
         .sheet-stat span { color: #949ba4; text-transform: uppercase; font-size: 10px; }

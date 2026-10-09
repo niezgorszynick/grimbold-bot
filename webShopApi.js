@@ -130,7 +130,11 @@ router.get('/characters/:id', (req, res) => {
     }
   }
 
-  return res.json({ character, sheetData });
+  return res.json({
+    character,
+    sheetData,
+    classes: db.getCharacterClasses(characterId)
+  });
 });
 
 router.post('/characters/create', (req, res) => {

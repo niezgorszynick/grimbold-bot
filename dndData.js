@@ -34,7 +34,8 @@ const DND_SPECIES_DATA = {
       { name: 'Fey Ancestry', description: 'You have advantage on saves to avoid or end the Charmed condition on yourself.' },
       { name: 'Keen Senses', description: 'You have proficiency in the Perception skill.' },
       { name: 'Trance', description: 'You do not need to sleep, and magic cannot put you to sleep. Meditation lets you finish a Long Rest in 4 hours.' }
-    ]
+    ],
+    skillProficiencies: ['Perception']
   },
   Gnome: {
     size: 'Small', speed: 30, traits: [
@@ -61,7 +62,8 @@ const DND_SPECIES_DATA = {
       { name: 'Resourceful', description: 'You gain Heroic Inspiration whenever you finish a Long Rest.' },
       { name: 'Skillful', description: 'You gain proficiency in one skill of your choice.' },
       { name: 'Versatile', description: 'You gain one Origin feat of your choice.' }
-    ]
+    ],
+    skillChoiceCount: 1
   },
   Orc: {
     size: 'Medium', speed: 30, traits: [
@@ -199,21 +201,121 @@ const MULTICLASS_PROFICIENCIES = {
 const DND_DATA = {
   // The 2024 Core Rules classes. Artificer remains available as a supplement below.
   classes: {
-    Barbarian: { hitDice: '1d12', savingThrows: ['str', 'con'] },
-    Bard: { hitDice: '1d8', savingThrows: ['dex', 'cha'] },
-    Cleric: { hitDice: '1d8', savingThrows: ['wis', 'cha'] },
-    Druid: { hitDice: '1d8', savingThrows: ['int', 'wis'] },
-    Fighter: { hitDice: '1d10', savingThrows: ['str', 'con'] },
-    Monk: { hitDice: '1d8', savingThrows: ['str', 'dex'] },
-    Paladin: { hitDice: '1d10', savingThrows: ['wis', 'cha'] },
-    Ranger: { hitDice: '1d10', savingThrows: ['str', 'dex'] },
-    Rogue: { hitDice: '1d8', savingThrows: ['dex', 'int'] },
-    Sorcerer: { hitDice: '1d6', savingThrows: ['con', 'cha'] },
-    Warlock: { hitDice: '1d8', savingThrows: ['wis', 'cha'] },
-    Wizard: { hitDice: '1d6', savingThrows: ['int', 'wis'] }
+    Barbarian: {
+      hitDice: '1d12', savingThrows: ['str', 'con'],
+      skillChoices: { count: 2, options: ['Animal Handling', 'Athletics', 'Intimidation', 'Nature', 'Perception', 'Survival'] },
+      featuresByLevel: {
+        1: ['Rage', 'Unarmored Defense', 'Weapon Mastery'],
+        2: ['Danger Sense', 'Reckless Attack'],
+        3: ['Primal Knowledge', 'Barbarian Subclass']
+      }
+    },
+    Bard: {
+      hitDice: '1d8', savingThrows: ['dex', 'cha'],
+      skillChoices: { count: 3, options: ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'] },
+      featuresByLevel: {
+        1: ['Bardic Inspiration', 'Spellcasting'],
+        2: ['Expertise', 'Jack of All Trades'],
+        3: ['Bard Subclass']
+      }
+    },
+    Cleric: {
+      hitDice: '1d8', savingThrows: ['wis', 'cha'],
+      skillChoices: { count: 2, options: ['History', 'Insight', 'Medicine', 'Persuasion', 'Religion'] },
+      featuresByLevel: {
+        1: ['Divine Order', 'Spellcasting'],
+        2: ['Channel Divinity'],
+        3: ['Cleric Subclass']
+      }
+    },
+    Druid: {
+      hitDice: '1d8', savingThrows: ['int', 'wis'],
+      skillChoices: { count: 2, options: ['Arcana', 'Animal Handling', 'Insight', 'Medicine', 'Nature', 'Perception', 'Religion', 'Survival'] },
+      featuresByLevel: {
+        1: ['Druidic', 'Primal Order', 'Spellcasting'],
+        2: ['Wild Shape'],
+        3: ['Druid Subclass']
+      }
+    },
+    Fighter: {
+      hitDice: '1d10', savingThrows: ['str', 'con'],
+      skillChoices: { count: 2, options: ['Acrobatics', 'Animal Handling', 'Athletics', 'History', 'Insight', 'Intimidation', 'Perception', 'Survival'] },
+      featuresByLevel: {
+        1: ['Fighting Style', 'Second Wind', 'Weapon Mastery'],
+        2: ['Action Surge', 'Tactical Mind'],
+        3: ['Fighter Subclass']
+      }
+    },
+    Monk: {
+      hitDice: '1d8', savingThrows: ['str', 'dex'],
+      skillChoices: { count: 2, options: ['Acrobatics', 'Athletics', 'History', 'Insight', 'Religion', 'Stealth'] },
+      featuresByLevel: {
+        1: ['Martial Arts', 'Unarmored Defense'],
+        2: ["Monk's Focus", 'Unarmored Movement'],
+        3: ['Deflect Attacks', 'Monk Subclass']
+      }
+    },
+    Paladin: {
+      hitDice: '1d10', savingThrows: ['wis', 'cha'],
+      skillChoices: { count: 2, options: ['Athletics', 'Insight', 'Intimidation', 'Medicine', 'Persuasion', 'Religion'] },
+      featuresByLevel: {
+        1: ['Lay on Hands', 'Spellcasting', 'Weapon Mastery'],
+        2: ["Fighting Style", "Paladin's Smite"],
+        3: ['Channel Divinity', 'Paladin Subclass']
+      }
+    },
+    Ranger: {
+      hitDice: '1d10', savingThrows: ['str', 'dex'],
+      skillChoices: { count: 3, options: ['Animal Handling', 'Athletics', 'Insight', 'Investigation', 'Nature', 'Perception', 'Stealth', 'Survival'] },
+      featuresByLevel: {
+        1: ['Favored Enemy', 'Weapon Mastery'],
+        2: ['Deft Explorer', 'Fighting Style'],
+        3: ['Ranger Subclass']
+      }
+    },
+    Rogue: {
+      hitDice: '1d8', savingThrows: ['dex', 'int'],
+      skillChoices: { count: 4, options: ['Acrobatics', 'Athletics', 'Deception', 'Insight', 'Intimidation', 'Investigation', 'Perception', 'Persuasion', 'Sleight of Hand', 'Stealth'] },
+      featuresByLevel: {
+        1: ["Expertise", 'Sneak Attack', "Thieves' Cant", 'Weapon Mastery'],
+        2: ['Cunning Action'],
+        3: ['Rogue Subclass']
+      }
+    },
+    Sorcerer: {
+      hitDice: '1d6', savingThrows: ['con', 'cha'],
+      skillChoices: { count: 2, options: ['Arcana', 'Deception', 'Insight', 'Intimidation', 'Persuasion', 'Religion'] },
+      featuresByLevel: {
+        1: ['Innate Sorcery', 'Spellcasting'],
+        2: ['Font of Magic', 'Metamagic'],
+        3: ['Sorcerer Subclass']
+      }
+    },
+    Warlock: {
+      hitDice: '1d8', savingThrows: ['wis', 'cha'],
+      skillChoices: { count: 2, options: ['Arcana', 'Deception', 'History', 'Intimidation', 'Investigation', 'Nature', 'Religion'] },
+      featuresByLevel: {
+        1: ['Eldritch Invocations', 'Pact Magic'],
+        2: ['Magical Cunning'],
+        3: ['Warlock Subclass']
+      }
+    },
+    Wizard: {
+      hitDice: '1d6', savingThrows: ['int', 'wis'],
+      skillChoices: { count: 2, options: ['Arcana', 'History', 'Insight', 'Investigation', 'Medicine', 'Religion'] },
+      featuresByLevel: {
+        1: ['Arcane Recovery', 'Spellbook', 'Spellcasting'],
+        2: ['Scholar'],
+        3: ['Wizard Subclass']
+      }
+    }
   },
   supplementalClasses: {
-    Artificer: { hitDice: '1d8', savingThrows: ['con', 'int'] }
+    Artificer: {
+      hitDice: '1d8', savingThrows: ['con', 'int'],
+      skillChoices: { count: 2, options: ['Arcana', 'History', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Sleight of Hand'] },
+      featuresByLevel: { 1: ['Magical Tinkering', 'Spellcasting'], 2: ['Infuse Item'], 3: ['Artificer Specialist'] }
+    }
   },
   species: DND_SPECIES_DATA,
   backgrounds: {
