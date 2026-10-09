@@ -1,5 +1,7 @@
 // dndData.js — Canonical D&D 2024 (Revised 5e) Reference Data
 
+const rules = require('./rules');
+
 // Official 2024 Core Species
 const DND_SPECIES_DATA = {
   Aasimar: {
@@ -166,164 +168,12 @@ const DND_CLASSES_AND_SUBCLASSES = {
   ]
 };
 
-const MULTICLASS_REQUIREMENTS = {
-  Artificer: { abilities: ['intelligence'], minScore: 13 },
-  Barbarian: { abilities: ['strength'], minScore: 13 },
-  Bard: { abilities: ['charisma'], minScore: 13 },
-  Cleric: { abilities: ['wisdom'], minScore: 13 },
-  Druid: { abilities: ['wisdom'], minScore: 13 },
-  Fighter: { abilities: ['strength', 'dexterity'], logic: 'OR', minScore: 13 },
-  Monk: { abilities: ['dexterity', 'wisdom'], logic: 'AND', minScore: 13 },
-  Paladin: { abilities: ['strength', 'charisma'], logic: 'AND', minScore: 13 },
-  Ranger: { abilities: ['dexterity', 'wisdom'], logic: 'AND', minScore: 13 },
-  Rogue: { abilities: ['dexterity'], minScore: 13 },
-  Sorcerer: { abilities: ['charisma'], minScore: 13 },
-  Warlock: { abilities: ['charisma'], minScore: 13 },
-  Wizard: { abilities: ['intelligence'], minScore: 13 }
-};
-
-const MULTICLASS_PROFICIENCIES = {
-  Artificer: { lightArmor: true, mediumArmor: true, shields: true },
-  Barbarian: { shields: true, martialWeapons: true },
-  Bard: { lightArmor: true, oneSkillOfChoice: true },
-  Cleric: { lightArmor: true, mediumArmor: true, shields: true },
-  Druid: { lightArmor: true, mediumArmor: true, shields: true },
-  Fighter: { lightArmor: true, mediumArmor: true, shields: true, martialWeapons: true },
-  Monk: { simpleWeapons: true, martialWeaponsLight: true },
-  Paladin: { lightArmor: true, mediumArmor: true, shields: true, martialWeapons: true },
-  Ranger: { lightArmor: true, mediumArmor: true, shields: true, martialWeapons: true, oneSkillFromList: true },
-  Rogue: { lightArmor: true, oneSkillFromList: true, thievesTools: true },
-  Sorcerer: {},
-  Warlock: { lightArmor: true, simpleWeapons: true },
-  Wizard: {}
-};
-
 const DND_DATA = {
-  // The 2024 Core Rules classes. Artificer remains available as a supplement below.
-  classes: {
-    Barbarian: {
-      hitDice: '1d12', savingThrows: ['str', 'con'],
-      skillChoices: { count: 2, options: ['Animal Handling', 'Athletics', 'Intimidation', 'Nature', 'Perception', 'Survival'] },
-      featuresByLevel: {
-        1: ['Rage', 'Unarmored Defense', 'Weapon Mastery'],
-        2: ['Danger Sense', 'Reckless Attack'],
-        3: ['Primal Knowledge', 'Barbarian Subclass']
-      }
-    },
-    Bard: {
-      hitDice: '1d8', savingThrows: ['dex', 'cha'],
-      skillChoices: { count: 3, options: ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'] },
-      featuresByLevel: {
-        1: ['Bardic Inspiration', 'Spellcasting'],
-        2: ['Expertise', 'Jack of All Trades'],
-        3: ['Bard Subclass']
-      }
-    },
-    Cleric: {
-      hitDice: '1d8', savingThrows: ['wis', 'cha'],
-      skillChoices: { count: 2, options: ['History', 'Insight', 'Medicine', 'Persuasion', 'Religion'] },
-      featuresByLevel: {
-        1: ['Divine Order', 'Spellcasting'],
-        2: ['Channel Divinity'],
-        3: ['Cleric Subclass']
-      }
-    },
-    Druid: {
-      hitDice: '1d8', savingThrows: ['int', 'wis'],
-      skillChoices: { count: 2, options: ['Arcana', 'Animal Handling', 'Insight', 'Medicine', 'Nature', 'Perception', 'Religion', 'Survival'] },
-      featuresByLevel: {
-        1: ['Druidic', 'Primal Order', 'Spellcasting'],
-        2: ['Wild Shape'],
-        3: ['Druid Subclass']
-      }
-    },
-    Fighter: {
-      hitDice: '1d10', savingThrows: ['str', 'con'],
-      skillChoices: { count: 2, options: ['Acrobatics', 'Animal Handling', 'Athletics', 'History', 'Insight', 'Intimidation', 'Perception', 'Survival'] },
-      featuresByLevel: {
-        1: ['Fighting Style', 'Second Wind', 'Weapon Mastery'],
-        2: ['Action Surge', 'Tactical Mind'],
-        3: ['Fighter Subclass']
-      }
-    },
-    Monk: {
-      hitDice: '1d8', savingThrows: ['str', 'dex'],
-      skillChoices: { count: 2, options: ['Acrobatics', 'Athletics', 'History', 'Insight', 'Religion', 'Stealth'] },
-      featuresByLevel: {
-        1: ['Martial Arts', 'Unarmored Defense'],
-        2: ["Monk's Focus", 'Unarmored Movement'],
-        3: ['Deflect Attacks', 'Monk Subclass']
-      }
-    },
-    Paladin: {
-      hitDice: '1d10', savingThrows: ['wis', 'cha'],
-      skillChoices: { count: 2, options: ['Athletics', 'Insight', 'Intimidation', 'Medicine', 'Persuasion', 'Religion'] },
-      featuresByLevel: {
-        1: ['Lay on Hands', 'Spellcasting', 'Weapon Mastery'],
-        2: ["Fighting Style", "Paladin's Smite"],
-        3: ['Channel Divinity', 'Paladin Subclass']
-      }
-    },
-    Ranger: {
-      hitDice: '1d10', savingThrows: ['str', 'dex'],
-      skillChoices: { count: 3, options: ['Animal Handling', 'Athletics', 'Insight', 'Investigation', 'Nature', 'Perception', 'Stealth', 'Survival'] },
-      featuresByLevel: {
-        1: ['Favored Enemy', 'Weapon Mastery'],
-        2: ['Deft Explorer', 'Fighting Style'],
-        3: ['Ranger Subclass']
-      }
-    },
-    Rogue: {
-      hitDice: '1d8', savingThrows: ['dex', 'int'],
-      skillChoices: { count: 4, options: ['Acrobatics', 'Athletics', 'Deception', 'Insight', 'Intimidation', 'Investigation', 'Perception', 'Persuasion', 'Sleight of Hand', 'Stealth'] },
-      featuresByLevel: {
-        1: ["Expertise", 'Sneak Attack', "Thieves' Cant", 'Weapon Mastery'],
-        2: ['Cunning Action'],
-        3: ['Rogue Subclass']
-      }
-    },
-    Sorcerer: {
-      hitDice: '1d6', savingThrows: ['con', 'cha'],
-      skillChoices: { count: 2, options: ['Arcana', 'Deception', 'Insight', 'Intimidation', 'Persuasion', 'Religion'] },
-      featuresByLevel: {
-        1: ['Innate Sorcery', 'Spellcasting'],
-        2: ['Font of Magic', 'Metamagic'],
-        3: ['Sorcerer Subclass']
-      }
-    },
-    Warlock: {
-      hitDice: '1d8', savingThrows: ['wis', 'cha'],
-      skillChoices: { count: 2, options: ['Arcana', 'Deception', 'History', 'Intimidation', 'Investigation', 'Nature', 'Religion'] },
-      featuresByLevel: {
-        1: ['Eldritch Invocations', 'Pact Magic'],
-        2: ['Magical Cunning'],
-        3: ['Warlock Subclass']
-      }
-    },
-    Wizard: {
-      hitDice: '1d6', savingThrows: ['int', 'wis'],
-      skillChoices: { count: 2, options: ['Arcana', 'History', 'Insight', 'Investigation', 'Medicine', 'Religion'] },
-      featuresByLevel: {
-        1: ['Arcane Recovery', 'Spellbook', 'Spellcasting'],
-        2: ['Scholar'],
-        3: ['Wizard Subclass']
-      }
-    }
-  },
-  supplementalClasses: {
-    Artificer: {
-      hitDice: '1d8', savingThrows: ['con', 'int'],
-      skillChoices: { count: 2, options: ['Arcana', 'History', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Sleight of Hand'] },
-      featuresByLevel: { 1: ['Magical Tinkering', 'Spellcasting'], 2: ['Infuse Item'], 3: ['Artificer Specialist'] }
-    }
-  },
+  // Class, background and multiclass rules live in ./rules (levels 1–20, 2024 PHB).
+  classes: rules.CLASSES,
+  supplementalClasses: rules.SUPPLEMENTAL_CLASSES,
   species: DND_SPECIES_DATA,
-  backgrounds: {
-    Acolyte: { abilityBoosts: ['int', 'wis', 'cha'], skillProficiencies: ['Insight', 'Religion'] },
-    Criminal: { abilityBoosts: ['dex', 'con', 'int'], skillProficiencies: ['Sleight of Hand', 'Stealth'] },
-    Sage: { abilityBoosts: ['con', 'int', 'wis'], skillProficiencies: ['Arcana', 'History'] },
-    Soldier: { abilityBoosts: ['str', 'dex', 'con'], skillProficiencies: ['Athletics', 'Intimidation'] }
-  },
+  backgrounds: rules.BACKGROUNDS,
   abilityScores: ['str', 'dex', 'con', 'int', 'wis', 'cha'],
   generationMethods: ['Standard Array', 'Manual/Rolled', 'Point Buy'],
   getProficiencyBonus: level => Math.ceil(level / 4) + 1,
@@ -470,8 +320,8 @@ module.exports = {
   DND_SPECIES,
   DND_DATA,
   DND_CLASSES_AND_SUBCLASSES,
-  MULTICLASS_REQUIREMENTS,
-  MULTICLASS_PROFICIENCIES,
+  MULTICLASS_REQUIREMENTS: rules.MULTICLASS_REQUIREMENTS,
+  MULTICLASS_PROFICIENCIES: rules.MULTICLASS_PROFICIENCIES,
   validateCharacterOptions,
   POINT_BUY_COSTS,
   TOTAL_POINT_BUY_POINTS,

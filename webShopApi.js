@@ -6,6 +6,10 @@ const {
   validateCharacterOptions,
   validatePointBuy
 } = require('./dndData');
+const rules = require('./rules');
+
+// House rule: new characters start at level 3.
+const STARTING_LEVEL = 3;
 
 const router = express.Router();
 
@@ -266,8 +270,21 @@ router.post('/characters/create', (req, res) => {
   }
 
   const dexterityModifier = finalAbilities.dex.modifier;
-  const classData = DND_DATA.classes[canonicalOptions.canonicalClass] ||
-    DND_DATA.supplementalClasses[canonicalOptions.canonicalClass];
+  const backgroundName = generationData.pointBuy
+    ? generationData.pointBuy.background
+    : generationData.background;
+  const backgroundData = rules.BACKGROUNDS[backgroundName];
+  const startingClasses = [{
+    className: canonicalOptions.canonicalClass,
+    subclassName: canonicalOptions.canonicalSubclass || null,
+    level: STARTING_LEVEL
+  }];
+  const { max: hpMax } = rules.calculateMaxHp({
+    classes: startingClasses,
+    constitution: finalAbilities.con.score,
+    species: canonicalOptions.canonicalSpecies,
+    feats: backgroundData ? [backgroundData.originFeat] : []
+  });
   const initialSheetData = {
     ...generationData,
     abilities: finalAbilities,
@@ -275,10 +292,10 @@ router.post('/characters/create', (req, res) => {
     armorClass: 10 + dexterityModifier,
     initiative: `${dexterityModifier >= 0 ? '+' : ''}${dexterityModifier}`,
     speed: `${DND_DATA.species[canonicalOptions.canonicalSpecies].speed} ft.`,
-    hpMax: 20,
-    hpCurrent: 20,
+    hpMax,
+    hpCurrent: hpMax,
     hpTemp: 0,
-    hitDice: `3${classData.hitDice.slice(1)}`,
+    hitDice: rules.formatHitDicePool(rules.getHitDicePool(startingClasses)),
     attacks: [],
     features: '',
     equipmentText: ''
@@ -287,23 +304,25 @@ router.post('/characters/create', (req, res) => {
     const inserted = db.prepare(`
       INSERT INTO characters
         (player_id, name, race, class, subclass, level, xp, status, gold_gp, sheet_data)
-      VALUES (?, ?, ?, ?, ?, 3, 0, 'alive', 0, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 0, 'alive', 0, ?)
     `).run(
       user.id,
       name.trim(),
       canonicalOptions.canonicalSpecies,
       canonicalOptions.canonicalClass,
       canonicalOptions.canonicalSubclass,
+      STARTING_LEVEL,
       JSON.stringify(initialSheetData)
     );
     db.prepare(`
       INSERT INTO character_classes
         (character_id, class_name, subclass_name, class_level, is_primary)
-      VALUES (?, ?, ?, 3, 1)
+      VALUES (?, ?, ?, ?, 1)
     `).run(
       inserted.lastInsertRowid,
       canonicalOptions.canonicalClass,
-      canonicalOptions.canonicalSubclass || null
+      canonicalOptions.canonicalSubclass || null,
+      STARTING_LEVEL
     );
     return inserted.lastInsertRowid;
   });
