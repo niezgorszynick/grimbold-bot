@@ -130,8 +130,79 @@ router.get('/characters/:id', (req, res) => {
   return res.json({
     character,
     sheetData,
-    classes: db.getCharacterClasses(characterId)
+    classes: db.getCharacterClasses(characterId),
+    vitals: vitalsViewFor(character, sheetData)
   });
+});
+
+// Rule-derived values (max HP, hit dice, slots) for a stored character.
+// Returns null when the character's classes are not in the rules (legacy data).
+function vitalsContextFor(character, sheetData) {
+  const rows = db.getCharacterClasses(character.id);
+  const classRows = rows.length
+    ? rows.map(row => ({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level }))
+    : [{ className: character.class, subclassName: character.subclass, level: character.level }];
+  try {
+    return rules.deriveVitalsContext({ species: character.race, sheetData, classRows });
+  } catch {
+    return null;
+  }
+}
+
+function vitalsViewFor(character, sheetData) {
+  const context = vitalsContextFor(character, sheetData);
+  if (!context) return null;
+  return rules.buildVitalsView(rules.normalizeVitals(sheetData, context.hpMax), context);
+}
+
+// HP, rests, death saves, exhaustion and spell slot usage.
+router.post('/characters/:id/vitals', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const characterId = Number(req.params.id);
+  if (!Number.isSafeInteger(characterId) || characterId <= 0) {
+    return res.status(400).json({ error: 'Invalid character ID.' });
+  }
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  if (!rules.VITALS_ACTIONS.includes(body.action)) {
+    return res.status(400).json({ error: 'Unknown vitals action.' });
+  }
+
+  try {
+    const result = db.transaction(() => {
+      const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
+      if (!character) return { status: 404, error: 'Character not found.' };
+      if (user.role !== 'admin' && character.player_id !== user.id) return { status: 403, error: 'Forbidden.' };
+
+      let sheetData = {};
+      try {
+        sheetData = JSON.parse(character.sheet_data || '{}') || {};
+      } catch {
+        return { status: 500, error: 'Could not read character sheet data.' };
+      }
+      const context = vitalsContextFor(character, sheetData);
+      if (!context) return { status: 400, error: 'This character has no valid class levels to calculate Hit Points from.' };
+
+      const outcome = rules.applyVitalsAction(
+        rules.normalizeVitals(sheetData, context.hpMax),
+        body.action,
+        body,
+        context
+      );
+      const nextSheet = { ...sheetData, ...outcome.vitals };
+      db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), characterId);
+      return {
+        vitals: rules.buildVitalsView(outcome.vitals, context, outcome.hpMax),
+        events: outcome.events,
+        rolls: outcome.rolls || (outcome.roll ? [{ die: 'd20', roll: outcome.roll }] : []),
+        healed: outcome.healed
+      };
+    })();
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
 });
 
 // Rules data the character creator needs to render its choices.

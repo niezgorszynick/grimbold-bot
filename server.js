@@ -60,7 +60,10 @@ router.use((req, res, next) => {
 });
 
 // Client scripts for the admin panel (only files listed here are served).
-const ADMIN_ASSETS = { 'character-creator.js': path.join(__dirname, 'public', 'character-creator.js') };
+const ADMIN_ASSETS = {
+  'character-creator.js': path.join(__dirname, 'public', 'character-creator.js'),
+  'character-vitals.js': path.join(__dirname, 'public', 'character-vitals.js')
+};
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
   if (!file) return res.status(404).send('Not found');
@@ -1780,12 +1783,8 @@ router.get('/', (req, res) => {
                 </div>
                 <section class="sheet-card">
                   <h4>Hit Points &amp; Vitality</h4>
-                  <div class="sheet-vitals">
-                    <label>Current HP<input type="number" id="cs_hp_current" min="0"></label>
-                    <label>Max HP<input type="number" id="cs_hp_max" min="0"></label>
-                    <label>Temp HP<input type="number" id="cs_hp_temp" min="0"></label>
-                    <label>Hit Dice<input type="text" id="cs_hit_dice" maxlength="40" placeholder="3d8"></label>
-                  </div>
+                  <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
+                  <script src="/admin/assets/character-vitals.js" defer></script>
                 </section>
                 <section class="sheet-card">
                   <div class="sheet-section-heading">
@@ -2266,24 +2265,12 @@ router.get('/', (req, res) => {
               });
               const fields = {
                 cs_ac: 'armorClass', cs_initiative: 'initiative', cs_speed: 'speed',
-                cs_hp_current: 'hpCurrent', cs_hp_max: 'hpMax', cs_hp_temp: 'hpTemp',
-                cs_hit_dice: 'hitDice', cs_features: 'features', cs_equipment: 'equipmentText'
+                cs_features: 'features', cs_equipment: 'equipmentText'
               };
               Object.entries(fields).forEach(([id, key]) => {
-                const legacyKey = {
-                  hpCurrent: 'currentHp',
-                  hpMax: 'maxHp',
-                  hpTemp: 'tempHp',
-                  equipmentText: 'equipment'
-                }[key];
+                const legacyKey = { equipmentText: 'equipment' }[key];
                 const value = data[key] === undefined && legacyKey ? data[legacyKey] : data[key];
-                const defaultValue = {
-                  cs_ac: 10,
-                  cs_hp_current: 10,
-                  cs_hp_max: 10,
-                  cs_hp_temp: 0,
-                  cs_hit_dice: sheetCharacterLevel + 'd8'
-                }[id];
+                const defaultValue = { cs_ac: 10 }[id];
                 document.getElementById(id).value = value === undefined || value === null
                   ? (defaultValue === undefined ? '' : defaultValue)
                   : value;
@@ -2339,13 +2326,6 @@ router.get('/', (req, res) => {
                 ? null : Number(document.getElementById('cs_ac').value),
               initiative: document.getElementById('cs_initiative').value,
               speed: document.getElementById('cs_speed').value,
-              hpCurrent: document.getElementById('cs_hp_current').value === ''
-                ? null : Number(document.getElementById('cs_hp_current').value),
-              hpMax: document.getElementById('cs_hp_max').value === ''
-                ? null : Number(document.getElementById('cs_hp_max').value),
-              hpTemp: document.getElementById('cs_hp_temp').value === ''
-                ? 0 : Number(document.getElementById('cs_hp_temp').value),
-              hitDice: document.getElementById('cs_hit_dice').value,
               attacks: [...document.querySelectorAll('#cs_attacks_tbody tr')].map(row =>
                 Object.fromEntries([...row.querySelectorAll('[data-attack-field]')].map(input =>
                   [input.dataset.attackField, input.value.trim()]
@@ -2369,6 +2349,8 @@ router.get('/', (req, res) => {
               });
               const result = await response.json();
               if (!response.ok) throw new Error(result.error || 'Could not save character sheet.');
+              // Ability changes (CON) can change max HP and hit point recovery.
+              if (window.refreshCharacterVitals) window.refreshCharacterVitals();
               document.getElementById('cs_header_name').textContent =
                 document.getElementById('cs_name').value;
               document.getElementById('cs_header_sub').textContent =
@@ -3401,7 +3383,7 @@ router.get('/', (req, res) => {
         .sheet-identity h2 { margin: 0; color: #f2f3f5; }
         .sheet-identity > span { display: block; color: #949ba4; font-size: 13px; margin: 3px 0 12px; }
         .sheet-identity-fields { display: grid; grid-template-columns: 1.2fr repeat(3, minmax(130px, 1fr)); gap: 10px; }
-        .sheet-identity-fields label, .sheet-vitals label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
+        .sheet-identity-fields label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
         .sheet-header-actions { display: flex; gap: 10px; align-items: center; }
         .btn-secondary { background: #4e5058; color: #fff; }
         .btn-success { background: #23a55a; color: #fff; font-weight: bold; }
@@ -3459,9 +3441,35 @@ router.get('/', (req, res) => {
         .sheet-stat span { color: #949ba4; text-transform: uppercase; font-size: 10px; }
         .sheet-stat input { width: 100%; min-width: 0; padding: 3px; border: 0; background: transparent; color: #fff; text-align: center; font-size: 18px; font-weight: bold; }
         .sheet-stat strong { color: #f1c40f; font-size: 18px; }
-        .sheet-vitals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-        .sheet-vitals input, .sheet-card textarea { width: 100%; min-width: 0; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
-        .sheet-vitals input { text-align: center; font-size: 16px; font-weight: bold; }
+        .sheet-card textarea { width: 100%; min-width: 0; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+        .vitals { display: grid; gap: 12px; }
+        .vitals.is-busy { opacity: 0.6; pointer-events: none; }
+        .vitals input[type=number], .vitals select { width: 90px; padding: 5px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+        .vitals h5 { margin: 0 0 4px; color: #dbdee1; }
+        .vitals p { margin: 0; }
+        .vitals-hp-numbers { display: flex; align-items: baseline; gap: 6px; }
+        .vitals-hp-current { font-size: 28px; color: #23a55a; }
+        .vitals-hp.is-bloodied .vitals-hp-current { color: #f0b232; }
+        .vitals-hp.is-down .vitals-hp-current { color: #f23f43; }
+        .vitals-temp { padding: 2px 6px; border-radius: 3px; background: #5865f2; color: #fff; font-size: 12px; font-weight: bold; }
+        .vitals-bar { height: 6px; margin: 6px 0 10px; background: #3f4147; border-radius: 3px; overflow: hidden; }
+        .vitals-bar span { display: block; height: 100%; background: #23a55a; }
+        .vitals-hp.is-bloodied .vitals-bar span { background: #f0b232; }
+        .vitals-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+        .vitals-inline { display: inline-flex; align-items: center; gap: 6px; color: #dbdee1; font-size: 13px; }
+        .vitals-breakdown { margin-top: 8px; font-size: 12px; color: #949ba4; }
+        .vitals-breakdown summary { cursor: pointer; }
+        .vitals-dying { padding: 10px; border: 1px solid #f23f43; border-radius: 6px; background: rgba(242, 63, 67, 0.12); }
+        .vitals-dying.is-stable { border-color: #949ba4; background: #232428; }
+        .vitals-saves { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+        .vitals-pips { display: inline-flex; gap: 3px; }
+        .vitals-pip { width: 12px; height: 12px; border: 2px solid #949ba4; border-radius: 50%; }
+        .vitals-pips.is-success .vitals-pip.is-filled { background: #23a55a; border-color: #23a55a; }
+        .vitals-pips.is-failure .vitals-pip.is-filled { background: #f23f43; border-color: #f23f43; }
+        .vitals-exhaustion { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .vitals-hitdie, .vitals-slot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
+        .vitals-slot-label { min-width: 120px; }
+        .vitals-slot-boxes { display: inline-flex; gap: 4px; }
         .sheet-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
         .sheet-section-heading h4 { margin: 0; }
         .sheet-table-wrap { overflow-x: auto; }
@@ -3519,7 +3527,6 @@ router.get('/', (req, res) => {
           .sheet-header-actions { width: 100%; }
           .sheet-header-actions > * { flex: 1; text-align: center; }
           .sheet-combat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .sheet-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .point-buy-card { padding: 12px; }
           .point-buy-header { align-items: flex-start; }
           .point-buy-header > div:first-child > span { display: block; }

@@ -15,5 +15,6 @@ module.exports = {
   ...require('./multiclass'),
   ...require('./progression'),
   ...require('./creation'),
+  ...require('./vitals'),
   ...require('./content')
 };

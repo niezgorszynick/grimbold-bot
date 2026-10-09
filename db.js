@@ -1,6 +1,12 @@
 // db.js — SQLite layer using better-sqlite3
 const crypto = require('crypto');
 const { validateCharacterOptions } = require('./dndData');
+
+// Sheet fields owned by the vitals API (see rules/vitals.js).
+const VITALS_KEYS = [
+  'hpCurrent', 'hpTemp', 'hpMaxBonus', 'hitDiceSpent', 'deathSaves',
+  'stable', 'exhaustion', 'spellSlotsSpent', 'pactSlotsSpent'
+];
 const Database = require('better-sqlite3');
 const path = require('path');
 
@@ -1280,6 +1286,12 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         // Unreadable stored data is replaced by the incoming sheet.
       }
       nextSheetData = { ...storedSheetData, ...nextSheetData };
+      // Vitals change only through the vitals API, so a stale editor tab
+      // cannot undo damage, rests or spent slots.
+      for (const key of VITALS_KEYS) {
+        if (Object.hasOwn(storedSheetData, key)) nextSheetData[key] = storedSheetData[key];
+        else delete nextSheetData[key];
+      }
       if (
         nextSheetData.abilities &&
         typeof nextSheetData.abilities === 'object' &&
