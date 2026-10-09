@@ -11,7 +11,10 @@ const VITALS_KEYS = [
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'data.sqlite');
+// DB_PATH lets local testing use a separate database file.
+const dbPath = process.env.DB_PATH
+  ? path.resolve(__dirname, process.env.DB_PATH)
+  : path.join(__dirname, 'data.sqlite');
 const db = new Database(dbPath);
 
 db.pragma('journal_mode = WAL');
@@ -473,6 +476,32 @@ function levelUpCharacter({ id, player_id, is_admin, request }) {
   })();
 }
 
+// Saves a character built by rules.buildStartingCharacter. Returns its ID.
+function insertStartingCharacter(playerId, character) {
+  return db.transaction(() => {
+    const inserted = db.prepare(`
+      INSERT INTO characters
+        (player_id, name, race, class, subclass, level, xp, status, gold_gp, sheet_data)
+      VALUES (?, ?, ?, ?, ?, ?, 0, 'alive', ?, ?)
+    `).run(
+      playerId,
+      character.name,
+      character.species,
+      character.className,
+      character.subclass,
+      character.level,
+      character.goldGp,
+      JSON.stringify(character.sheetData)
+    );
+    db.prepare(`
+      INSERT INTO character_classes
+        (character_id, class_name, subclass_name, class_level, is_primary)
+      VALUES (?, ?, ?, ?, 1)
+    `).run(inserted.lastInsertRowid, character.className, character.subclass, character.level);
+    return Number(inserted.lastInsertRowid);
+  })();
+}
+
 function updateCharacterProgression(characterId, xp) {
   const character = db.prepare('SELECT class, subclass FROM characters WHERE id = ?').get(characterId);
   if (!character) return;
@@ -790,6 +819,7 @@ module.exports = {
   processWebPurchase,
   getCharacterLevelUpOptions,
   levelUpCharacter,
+  insertStartingCharacter,
 
   // Postacie z rasą, podklasą i automatycznym poziomem
   addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {

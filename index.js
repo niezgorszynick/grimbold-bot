@@ -181,4 +181,9 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Without a token (local development) only the web panel runs.
+if (process.env.DISCORD_TOKEN) {
+  client.login(process.env.DISCORD_TOKEN);
+} else {
+  console.warn('⚠️  DISCORD_TOKEN is not set: running the web panel only, Discord bot is offline.');
+}

@@ -346,6 +346,8 @@ function applyLevelUp(state, request) {
   const before = hpMaxFor(classes, sheetData, species);
   const after = hpMaxFor(nextClasses, nextSheet, species);
   entry.hpGain = after - before;
+  // Stored for display; matches the vitals view, which includes the manual adjustment.
+  nextSheet.hpMax = after + (Number.isInteger(sheetData.hpMaxBonus) ? sheetData.hpMaxBonus : 0);
   if (Number.isInteger(nextSheet.hpCurrent)) nextSheet.hpCurrent += Math.max(0, entry.hpGain);
   nextSheet.hitDice = formatHitDicePool(getHitDicePool(nextClasses));
   nextSheet.spellSlots = getSpellSlots(nextClasses);
@@ -388,6 +390,7 @@ function revertLastLevel(state) {
         cantrips: Math.max(0, (pending.cantrips || 0) - Math.max(0, spells.cantripsGained || 0)),
         preparedSpells: Math.max(0, (pending.preparedSpells || 0) - Math.max(0, spells.preparedGained || 0))
       },
+      hpMax: classes.length ? hpMaxFor(classes, { ...sheetData, abilities: writeScores(sheetData, scores), levelHistory: history.slice(0, -1) }, state.species) + (Number.isInteger(sheetData.hpMaxBonus) ? sheetData.hpMaxBonus : 0) : sheetData.hpMax,
       hitDice: formatHitDicePool(getHitDicePool(classes)),
       spellSlots: getSpellSlots(classes),
       levelHistory: history.slice(0, -1)

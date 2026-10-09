@@ -224,7 +224,7 @@ router.post('/characters/:id/vitals', (req, res) => {
         body,
         context
       );
-      const nextSheet = { ...sheetData, ...outcome.vitals };
+      const nextSheet = { ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax };
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), characterId);
       return {
         vitals: rules.buildVitalsView(outcome.vitals, context, outcome.hpMax),
@@ -308,36 +308,8 @@ router.post('/characters/create', (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
-  const runTransaction = db.transaction(() => {
-    const inserted = db.prepare(`
-      INSERT INTO characters
-        (player_id, name, race, class, subclass, level, xp, status, gold_gp, sheet_data)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 'alive', ?, ?)
-    `).run(
-      user.id,
-      character.name,
-      character.species,
-      character.className,
-      character.subclass,
-      character.level,
-      character.goldGp,
-      JSON.stringify(character.sheetData)
-    );
-    db.prepare(`
-      INSERT INTO character_classes
-        (character_id, class_name, subclass_name, class_level, is_primary)
-      VALUES (?, ?, ?, ?, 1)
-    `).run(
-      inserted.lastInsertRowid,
-      character.className,
-      character.subclass,
-      character.level
-    );
-    return inserted.lastInsertRowid;
-  });
-
   try {
-    const characterId = runTransaction();
+    const characterId = db.insertStartingCharacter(user.id, character);
     return res.json({ success: true, characterId });
   } catch (error) {
     console.error('Character creation failed:', error);

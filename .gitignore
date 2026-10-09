@@ -8,6 +8,7 @@ dist
 .env
 .env.* 
 !.env.example
+!.env.dev.example
 service-account.json
 rolls.json
 
@@ -19,5 +20,6 @@ pnpm-debug.log*
 data.sqlite
 data.sqlite-wal
 data.sqlite-shm
+data.dev.sqlite*
 logs/
 *.log
