@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('./db');
 const { formatCp } = require('./currency');
+const { DND_DATA, calculatePointBuyCost, getAbilityModifier } = require('./dndData');
 
 const router = express.Router();
 
@@ -128,6 +129,152 @@ router.get('/characters/:id', (req, res) => {
   return res.json({ character, sheetData });
 });
 
+router.post('/characters/:id/abilities', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const characterId = Number(req.params.id);
+  if (!Number.isSafeInteger(characterId) || characterId <= 0) {
+    return res.status(400).json({ error: 'Invalid character ID.' });
+  }
+
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+    ? req.body
+    : {};
+  const { method, baseScores, background, backgroundBonuses } = body;
+  if (method !== 'Point Buy') {
+    return res.status(400).json({ error: 'Only Point Buy ability generation is supported.' });
+  }
+  const canonicalBackground = typeof background === 'string'
+    ? Object.keys(DND_DATA.backgrounds).find(name => name.toLowerCase() === background.trim().toLowerCase())
+    : null;
+  if (!canonicalBackground) {
+    return res.status(400).json({ error: 'Select a valid D&D 2024 background.' });
+  }
+
+  let pointsSpent;
+  try {
+    pointsSpent = calculatePointBuyCost(baseScores);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (pointsSpent !== 27) {
+    return res.status(400).json({
+      error: `You must spend exactly 27 points (currently spent: ${pointsSpent}).`
+    });
+  }
+
+  const abilities = DND_DATA.abilityScores;
+  if (
+    !backgroundBonuses ||
+    typeof backgroundBonuses !== 'object' ||
+    Array.isArray(backgroundBonuses) ||
+    Object.keys(backgroundBonuses).some(ability => !abilities.includes(ability))
+  ) {
+    return res.status(400).json({ error: 'Background bonuses must be an ability-to-bonus object.' });
+  }
+
+  const normalizedBonuses = Object.fromEntries(abilities.map(ability => {
+    const value = backgroundBonuses[ability] === undefined ? 0 : backgroundBonuses[ability];
+    return [ability, value];
+  }));
+  if (Object.values(normalizedBonuses).some(value =>
+    !Number.isInteger(value) || value < 0 || value > 2
+  )) {
+    return res.status(400).json({ error: 'Each background bonus must be a whole number from 0 to 2.' });
+  }
+
+  const bonusValues = Object.values(normalizedBonuses).filter(value => value > 0);
+  const isTwoOne = bonusValues.length === 2 && bonusValues.includes(2) && bonusValues.includes(1);
+  const isOneOneOne = bonusValues.length === 3 && bonusValues.every(value => value === 1);
+  if (!isTwoOne && !isOneOneOne) {
+    return res.status(400).json({
+      error: 'Invalid background bonuses. Must be (+2/+1) or (+1/+1/+1).'
+    });
+  }
+  const selectedBonusAbilities = Object.entries(normalizedBonuses)
+    .filter(([, value]) => value > 0)
+    .map(([ability]) => ability);
+  const allowedBonusAbilities = DND_DATA.backgrounds[canonicalBackground].abilityBoosts;
+  if (selectedBonusAbilities.some(ability => !allowedBonusAbilities.includes(ability))) {
+    return res.status(400).json({
+      error: 'Background bonuses must use abilities allowed by the selected Background.'
+    });
+  }
+
+  const finalScores = {};
+  for (const ability of abilities) {
+    const base = baseScores[ability];
+    const bonus = normalizedBonuses[ability];
+    const total = base + bonus;
+    if (total > 20) {
+      return res.status(400).json({ error: `${ability.toUpperCase()} cannot exceed 20.` });
+    }
+    finalScores[ability] = {
+      base,
+      bonus,
+      total,
+      modifier: getAbilityModifier(total)
+    };
+  }
+
+  try {
+    const update = db.transaction(() => {
+      const character = db.prepare(
+        'SELECT id, player_id, sheet_data FROM characters WHERE id = ?'
+      ).get(characterId);
+      if (!character) return { error: 'not_found' };
+      if (user.role !== 'admin' && character.player_id !== user.id) {
+        return { error: 'forbidden' };
+      }
+
+      let sheetData = {};
+      if (character.sheet_data) {
+        try {
+          sheetData = JSON.parse(character.sheet_data);
+        } catch {
+          throw new Error('Stored character sheet data is invalid JSON.');
+        }
+        if (!sheetData || typeof sheetData !== 'object' || Array.isArray(sheetData)) {
+          throw new Error('Stored character sheet data must be an object.');
+        }
+      }
+
+      sheetData.abilities = Object.fromEntries(
+        abilities.map(ability => [ability, finalScores[ability].total])
+      );
+      sheetData.abilityDetails = finalScores;
+      sheetData.baseAbilityScores = baseScores;
+      sheetData.backgroundBonuses = normalizedBonuses;
+      sheetData.background = canonicalBackground;
+      sheetData.generationMethod = method;
+      delete sheetData.pointBuy;
+
+      db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?')
+        .run(JSON.stringify(sheetData), characterId);
+      return { abilities: finalScores };
+    });
+    const result = update();
+    if (result.error === 'not_found') {
+      return res.status(404).json({ error: 'Character not found.' });
+    }
+    if (result.error === 'forbidden') {
+      return res.status(403).json({ error: 'Forbidden.' });
+    }
+    return res.json({ success: true, abilities: result.abilities });
+  } catch (error) {
+    if (
+      error.message === 'Stored character sheet data is invalid JSON.' ||
+      error.message === 'Stored character sheet data must be an object.'
+    ) {
+      console.error(`Unable to update abilities for character ${characterId}:`, error);
+      return res.status(500).json({ error: 'Could not read stored character sheet data.' });
+    }
+    console.error(`Unable to save abilities for character ${characterId}:`, error);
+    return res.status(500).json({ error: 'Could not save character abilities.' });
+  }
+});
+
 router.post('/characters/:id/sheet', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -178,6 +325,18 @@ router.post('/characters/:id/sheet', (req, res) => {
     if (
       error.message === 'Invalid character ID.' ||
       error.message === 'Character name cannot be empty.' ||
+      error.message === 'Character sheet data must be an object.' ||
+      error.message === 'Invalid character sheet data.' ||
+      error.message.startsWith('Point Buy data ') ||
+      error.message.startsWith('Point Buy ') ||
+      error.message.startsWith('Select a valid D&D 2024 background') ||
+      error.message.startsWith('Background bonuses must use abilities') ||
+      error.message.startsWith('Score for ') ||
+      error.message.startsWith('Select a valid D&D 2024 background') ||
+      error.message.startsWith('Background ability bonuses ') ||
+      error.message.startsWith('Choose either +2/+1') ||
+      error.message.startsWith('Background bonuses must apply') ||
+      error.message.startsWith('No ability score can exceed 20') ||
       error.message.startsWith('Invalid species ') ||
       error.message.startsWith('Invalid class ') ||
       error.message.startsWith('Invalid subclass ')

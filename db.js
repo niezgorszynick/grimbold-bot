@@ -1,6 +1,6 @@
 // db.js — SQLite layer using better-sqlite3
 const crypto = require('crypto');
-const { validateCharacterOptions } = require('./dndData');
+const { validateCharacterOptions, validatePointBuy } = require('./dndData');
 const Database = require('better-sqlite3');
 const path = require('path');
 
@@ -1261,6 +1261,19 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         nextSubclass = canonicalOptions.canonicalSubclass;
       }
 
+      let nextSheetData;
+      try {
+        nextSheetData = JSON.parse(sheet_data);
+      } catch {
+        throw new Error('Invalid character sheet data.');
+      }
+      if (!nextSheetData || typeof nextSheetData !== 'object' || Array.isArray(nextSheetData)) {
+        throw new Error('Character sheet data must be an object.');
+      }
+      const pointBuy = validatePointBuy(nextSheetData.pointBuy);
+      nextSheetData.pointBuy = pointBuy;
+      nextSheetData.abilities = pointBuy.abilities;
+
       const result = db.prepare(`
         UPDATE characters
         SET name = ?, race = ?, class = ?, subclass = ?, sheet_data = ?
@@ -1270,7 +1283,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         nextSpecies,
         nextClass,
         nextSubclass,
-        sheet_data,
+        JSON.stringify(nextSheetData),
         characterId
       );
       if ((class_name !== null && class_name !== undefined) ||

@@ -6,7 +6,12 @@ const db = require('./db');
 const { formatCp } = require('./currency');
 const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
 const { restockShop } = require('./restock');
-const { DND_SPECIES, DND_DATA, DND_CLASSES_AND_SUBCLASSES } = require('./dndData');
+const {
+  DND_SPECIES,
+  DND_DATA,
+  DND_CLASSES_AND_SUBCLASSES,
+  STANDARD_ARRAY_SUGGESTIONS
+} = require('./dndData');
 
 // Middleware parsowania formularzy i JSON
 router.use(express.urlencoded({ extended: true }));
@@ -1735,6 +1740,8 @@ router.get('/', (req, res) => {
     const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
     const sheetClassTreeJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
     const sheetSpeciesJson = JSON.stringify(DND_DATA.species).replace(/</g, '\\u003c');
+    const sheetBackgroundsJson = JSON.stringify(DND_DATA.backgrounds).replace(/</g, '\\u003c');
+    const standardArraySuggestionsJson = JSON.stringify(STANDARD_ARRAY_SUGGESTIONS).replace(/</g, '\\u003c');
     const renderCharacterForm = character => {
       const isEdit = Boolean(character);
       const prefix = isEdit ? 'sheet-edit' : 'sheet-add';
@@ -1792,6 +1799,7 @@ router.get('/', (req, res) => {
                   <label>Species<select id="cs_species" required>${DND_SPECIES.map(species => `<option value="${escapeHtml(species)}">${escapeHtml(species)}</option>`).join('')}</select></label>
                   <label>Class<select id="cs_class" required>${classNames.map(className => `<option value="${escapeHtml(className)}">${escapeHtml(className)}</option>`).join('')}</select></label>
                   <label>Subclass<select id="cs_subclass"><option value="">-- None / Base --</option></select></label>
+                  <label>Background<select id="cs_background" required><option value="">Choose background</option>${Object.keys(DND_DATA.backgrounds).map(background => `<option value="${escapeHtml(background)}">${escapeHtml(background)}</option>`).join('')}</select></label>
                 </div>
               </div>
               <div class="sheet-header-actions">
@@ -1800,12 +1808,43 @@ router.get('/', (req, res) => {
               </div>
             </header>
             <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
+            <section class="sheet-card point-buy-card">
+              <div class="point-buy-header">
+                <div>
+                  <h3>Ability Scores (Point Buy)</h3>
+                  <span>D&amp;D 2024 Rules · Base scores 8–15 · Background bonuses (+2/+1 or +1/+1/+1)</span>
+                </div>
+                <div class="point-buy-total">
+                  <span>POINTS REMAINING</span>
+                  <strong id="cs_point_buy_remaining">27</strong><small>/ 27</small>
+                </div>
+              </div>
+              <div id="cs_ability_container" class="sheet-abilities point-buy-grid"></div>
+              <div class="point-buy-origin">
+                <h4>Origin: Background Ability Boost</h4>
+                <p>Choose either +2 to one ability and +1 to another, or +1 to three different abilities.</p>
+                <div class="point-buy-bonus-options">
+                  <label>Background
+                    <select id="cs_background" required><option value="">Choose background</option>${Object.keys(DND_DATA.backgrounds).map(background => `<option value="${escapeHtml(background)}">${escapeHtml(background)}</option>`).join('')}</select>
+                  </label>
+                  <label>Bonus option
+                    <select id="cs_bonus_mode">
+                      <option value="2+1">+2 / +1</option>
+                      <option value="1+1+1">+1 / +1 / +1</option>
+                    </select>
+                  </label>
+                  <button id="cs_apply_class_suggestion" class="btn btn-small" type="button">Use class suggestion</button>
+                </div>
+                <div id="pbBonusContainer" class="point-buy-bonus-grid"></div>
+              </div>
+              <p id="cs_point_buy_error" class="point-buy-error" role="status" aria-live="polite"></p>
+              <div class="point-buy-actions">
+                <button id="cs_reset_point_buy" class="btn btn-secondary" type="button">Reset Scores</button>
+                <button id="cs_save_abilities" class="btn btn-primary" type="button">Save Abilities</button>
+              </div>
+            </section>
             <div class="sheet-layout">
               <div class="sheet-col">
-                <section class="sheet-card">
-                  <h4>Ability Scores</h4>
-                  <div id="cs_ability_container" class="sheet-abilities"></div>
-                </section>
                 <section class="sheet-card">
                   <h4>Saving Throws</h4>
                   <div id="cs_saves_container" class="sheet-check-list"></div>
@@ -1907,6 +1946,8 @@ router.get('/', (req, res) => {
       <script>
         const sheetClassTree = ${sheetClassTreeJson};
         const sheetSpecies = ${sheetSpeciesJson};
+        const sheetBackgrounds = ${sheetBackgroundsJson};
+        const standardArraySuggestions = ${standardArraySuggestionsJson};
         const fullSheetCharacterId = ${canEditRequestedCharacter ? Number(characterToEdit.id) : 'null'};
 
         function initFullCharacterSheet() {
@@ -1924,20 +1965,43 @@ router.get('/', (req, res) => {
           ];
           const abilityContainer = document.getElementById('cs_ability_container');
           abilities.forEach(ability => {
-            const row = document.createElement('label');
+            const row = document.createElement('div');
             row.className = 'sheet-ability';
             const name = document.createElement('strong');
             name.textContent = ability.toUpperCase();
+            const controls = document.createElement('div');
+            controls.className = 'point-buy-score-controls';
+            const decrement = document.createElement('button');
+            decrement.type = 'button';
+            decrement.className = 'point-buy-step';
+            decrement.textContent = '−';
+            decrement.setAttribute('aria-label', 'Decrease ' + ability.toUpperCase());
             const score = document.createElement('input');
             score.type = 'number';
-            score.min = '1';
-            score.max = '30';
+            score.min = '8';
+            score.max = '15';
             score.dataset.ability = ability;
             score.setAttribute('aria-label', ability.toUpperCase() + ' score');
+            score.value = '8';
+            const increment = document.createElement('button');
+            increment.type = 'button';
+            increment.className = 'point-buy-step';
+            increment.textContent = '+';
+            increment.setAttribute('aria-label', 'Increase ' + ability.toUpperCase());
+            controls.append(decrement, score, increment);
             const modifier = document.createElement('span');
             modifier.className = 'sheet-ability-modifier';
             modifier.dataset.modifier = ability;
-            row.append(name, score, modifier);
+            const finalScore = document.createElement('span');
+            finalScore.className = 'sheet-ability-final';
+            finalScore.dataset.effective = ability;
+            const cost = document.createElement('small');
+            cost.className = 'point-buy-score-cost';
+            cost.dataset.cost = ability;
+            const summary = document.createElement('small');
+            summary.className = 'point-buy-score-summary';
+            summary.dataset.summary = ability;
+            row.append(name, controls, finalScore, modifier, cost, summary);
             abilityContainer.appendChild(row);
           });
 
@@ -1961,8 +2025,16 @@ router.get('/', (req, res) => {
           const message = document.getElementById('cs_message');
           const classSelect = document.getElementById('cs_class');
           const subclassSelect = document.getElementById('cs_subclass');
+          const backgroundSelect = document.getElementById('cs_background');
+          const bonusModeSelect = document.getElementById('cs_bonus_mode');
+          const bonusContainer = document.getElementById('pbBonusContainer');
+          const pointBuyRemaining = document.getElementById('cs_point_buy_remaining');
+          const pointBuyError = document.getElementById('cs_point_buy_error');
+          const pointBuyCosts = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+          const totalPointBuyPoints = 27;
           const abilityScores = [...abilityContainer.querySelectorAll('[data-ability]')];
           const proficiencyBonus = document.getElementById('cs_prof_bonus');
+          let selectedBackgroundBonuses = Object.fromEntries(abilities.map(ability => [ability, 0]));
           let sheetCharacterLevel = 1;
 
           function updateSubclasses(selected = subclassSelect.value) {
@@ -1979,14 +2051,21 @@ router.get('/', (req, res) => {
             const bonus = Math.ceil(Math.max(1, Number(level) || 1) / 4) + 1;
             proficiencyBonus.textContent = '+' + bonus;
             abilityScores.forEach(input => {
-              const score = Number(input.value);
+              const ability = input.dataset.ability;
+              const base = Number(input.value);
+              const abilityBonus = selectedBackgroundBonuses[ability] || 0;
+              const score = base + abilityBonus;
               const modifier = Number.isFinite(score) ? Math.floor((score - 10) / 2) : 0;
-              const label = document.querySelector('[data-modifier="' + input.dataset.ability + '"]');
+              const label = document.querySelector('[data-modifier="' + ability + '"]');
+              document.querySelector('[data-effective="' + ability + '"]').textContent = score;
               label.textContent = (modifier >= 0 ? '+' : '') + modifier;
+              document.querySelector('[data-summary="' + ability + '"]').textContent =
+                'Base: ' + base + ' | Bonus: +' + abilityBonus;
             });
             abilities.forEach(ability => {
               const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
-              const modifier = Number(scoreInput.value) ? Math.floor((Number(scoreInput.value) - 10) / 2) : 0;
+              const score = Number(scoreInput.value) + (selectedBackgroundBonuses[ability] || 0);
+              const modifier = Number(score) ? Math.floor((score - 10) / 2) : 0;
               const saveRow = savesContainer.querySelector('[data-save="' + ability + '"]').closest('.sheet-check-row');
               const saveTotal = modifier + (saveRow.querySelector('input').checked ? bonus : 0);
               saveRow.querySelector('.sheet-check-modifier').textContent =
@@ -1994,12 +2073,120 @@ router.get('/', (req, res) => {
             });
             skills.forEach(([skill, ability]) => {
               const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
-              const modifier = Number(scoreInput.value) ? Math.floor((Number(scoreInput.value) - 10) / 2) : 0;
+              const score = Number(scoreInput.value) + (selectedBackgroundBonuses[ability] || 0);
+              const modifier = Number(score) ? Math.floor((score - 10) / 2) : 0;
               const skillRow = skillsContainer.querySelector('[data-skill="' + skill + '"]').closest('.sheet-check-row');
               const total = modifier + (skillRow.querySelector('input').checked ? bonus : 0);
               skillRow.querySelector('.sheet-check-modifier').textContent =
                 (total >= 0 ? '+' : '') + total;
             });
+          }
+
+          function updatePointBuyOptions() {
+            const background = sheetBackgrounds[backgroundSelect.value];
+            const allowed = background ? background.abilityBoosts : [];
+            abilities.forEach(ability => {
+              if (!allowed.includes(ability)) selectedBackgroundBonuses[ability] = 0;
+            });
+            bonusContainer.replaceChildren();
+            abilities.forEach(ability => {
+              const wrapper = document.createElement('label');
+              wrapper.className = 'point-buy-bonus-select';
+              const name = document.createElement('span');
+              name.textContent = ability.toUpperCase();
+              const select = document.createElement('select');
+              select.setAttribute('aria-label', ability.toUpperCase() + ' background bonus');
+              [0, 1, 2].forEach(value => {
+                select.add(new Option('+' + value, String(value)));
+              });
+              select.value = String(selectedBackgroundBonuses[ability] || 0);
+              select.disabled = !allowed.includes(ability);
+              select.addEventListener('change', () => {
+                selectedBackgroundBonuses[ability] = Number(select.value);
+                const bonusValues = Object.values(selectedBackgroundBonuses).filter(value => value > 0);
+                if (bonusValues.length === 2 && bonusValues.includes(2) && bonusValues.includes(1)) {
+                  bonusModeSelect.value = '2+1';
+                } else if (bonusValues.length === 3 && bonusValues.every(value => value === 1)) {
+                  bonusModeSelect.value = '1+1+1';
+                }
+                updatePointBuyOptions();
+              });
+              wrapper.append(name, select);
+              bonusContainer.appendChild(wrapper);
+            });
+            updatePointBuySummary();
+            updateDerivedStats(sheetCharacterLevel);
+          }
+
+          function updatePointBuySummary() {
+            const inputs = abilityScores.map(input => Number(input.value));
+            const validScores = inputs.every(score => Number.isInteger(score) && score >= 8 && score <= 15);
+            const spent = validScores
+              ? inputs.reduce((total, score) => total + pointBuyCosts[score], 0)
+              : 0;
+            const remaining = totalPointBuyPoints - spent;
+            const allowedBonuses = sheetBackgrounds[backgroundSelect.value]
+              ? sheetBackgrounds[backgroundSelect.value].abilityBoosts
+              : [];
+            const bonusValues = abilities.map(ability => selectedBackgroundBonuses[ability] || 0);
+            const positiveBonuses = bonusValues.filter(value => value > 0);
+            const validTwoOne = bonusModeSelect.value === '2+1' &&
+              positiveBonuses.length === 2 && positiveBonuses.includes(2) && positiveBonuses.includes(1);
+            const validTriple = bonusModeSelect.value === '1+1+1' &&
+              positiveBonuses.length === 3 && positiveBonuses.every(value => value === 1);
+            const bonusesAllowed = abilities.every((ability, index) =>
+              bonusValues[index] === 0 || allowedBonuses.includes(ability)
+            );
+            const validBonuses = bonusesAllowed && (validTwoOne || validTriple);
+            pointBuyRemaining.textContent = validScores
+              ? String(remaining)
+              : '—';
+            pointBuyError.textContent = !validScores
+              ? 'Each base ability score must be a whole number from 8 to 15.'
+              : remaining !== 0
+                ? 'You must spend exactly 27 points (currently spent: ' + spent + ').'
+                : !backgroundSelect.value
+                  ? 'Choose a Background to apply its ability bonuses.'
+                  : !validBonuses
+                    ? 'Background bonuses must be +2/+1 or +1/+1/+1 on allowed abilities.'
+                  : '';
+            pointBuyError.classList.toggle('is-error', Boolean(pointBuyError.textContent));
+            abilityScores.forEach(input => {
+              const score = Number(input.value);
+              const abilityCost = pointBuyCosts[score] || 0;
+              const otherSpent = spent - abilityCost;
+              const [decrement, , increment] = input.parentElement.querySelectorAll('.point-buy-step');
+              decrement.disabled = !validScores || score <= 8;
+              increment.disabled = !validScores || score >= 15 ||
+                otherSpent + pointBuyCosts[score + 1] > totalPointBuyPoints;
+              document.querySelector('[data-cost="' + input.dataset.ability + '"]').textContent =
+                validScores ? pointBuyCosts[score] + ' pts' : '';
+            });
+            const remainingColor = remaining < 0 ? '#ed4245' : remaining === 0 ? '#23a55a' : '#f1c40f';
+            pointBuyRemaining.style.color = remainingColor;
+            document.getElementById('cs_save_abilities').disabled =
+              !(validScores && remaining === 0 && Boolean(backgroundSelect.value) && validBonuses);
+            return validScores && remaining === 0 && Boolean(backgroundSelect.value) && validBonuses;
+          }
+
+          function getPointBuyData() {
+            if (!updatePointBuySummary()) {
+              throw new Error(pointBuyError.textContent || 'Point Buy scores are invalid.');
+            }
+            const bonusAbilities = abilities
+              .filter(ability => selectedBackgroundBonuses[ability] > 0)
+              .sort((left, right) =>
+                selectedBackgroundBonuses[right] - selectedBackgroundBonuses[left]
+              );
+            return {
+              baseScores: Object.fromEntries(abilityScores.map(input => [
+                input.dataset.ability, Number(input.value)
+              ])),
+              background: backgroundSelect.value,
+              bonusMode: bonusModeSelect.value,
+              bonusAbilities,
+              backgroundBonuses: { ...selectedBackgroundBonuses }
+            };
           }
 
           function addAttackRow(attack = { bonus: '+5', damage: '1d8+3' }) {
@@ -2031,13 +2218,47 @@ router.get('/', (req, res) => {
           }
 
           document.getElementById('cs_add_attack').addEventListener('click', () => addAttackRow());
+          document.getElementById('cs_apply_class_suggestion').addEventListener('click', () => {
+            const suggestion = standardArraySuggestions[classSelect.value];
+            if (!suggestion) {
+              message.textContent = 'No Point Buy suggestion is available for this class.';
+              message.classList.add('is-error');
+              return;
+            }
+            abilityScores.forEach(input => {
+              input.value = suggestion[input.dataset.ability];
+            });
+            message.textContent = '';
+            message.classList.remove('is-error');
+            updatePointBuySummary();
+            updateDerivedStats(sheetCharacterLevel);
+          });
           document.getElementById('cs_attacks_tbody').addEventListener('click', event => {
             if (event.target.matches('.sheet-remove-attack')) event.target.closest('tr').remove();
           });
+          abilityContainer.addEventListener('click', event => {
+            const button = event.target.closest('.point-buy-step');
+            if (!button || button.disabled) return;
+            const scoreInput = button.parentElement.querySelector('[data-ability]');
+            const direction = button.textContent === '+' ? 1 : -1;
+            scoreInput.value = Number(scoreInput.value) + direction;
+            updatePointBuySummary();
+            updateDerivedStats(sheetCharacterLevel);
+          });
+          document.getElementById('cs_reset_point_buy').addEventListener('click', () => {
+            abilityScores.forEach(input => { input.value = 8; });
+            selectedBackgroundBonuses = Object.fromEntries(abilities.map(ability => [ability, 0]));
+            updatePointBuyOptions();
+          });
           classSelect.addEventListener('change', () => updateSubclasses(''));
           abilityContainer.addEventListener('input', event => {
-            if (event.target.matches('[data-ability]')) updateDerivedStats(sheetCharacterLevel);
+            if (event.target.matches('[data-ability]')) {
+              updatePointBuySummary();
+              updateDerivedStats(sheetCharacterLevel);
+            }
           });
+          backgroundSelect.addEventListener('change', updatePointBuyOptions);
+          bonusModeSelect.addEventListener('change', updatePointBuyOptions);
           savesContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
           skillsContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
 
@@ -2054,6 +2275,25 @@ router.get('/', (req, res) => {
               document.getElementById('cs_species').value = character.race || '';
               classSelect.value = character.class || '';
               updateSubclasses(character.subclass || '');
+              const pointBuy = data.pointBuy || null;
+              backgroundSelect.value = pointBuy ? pointBuy.background : (data.background || '');
+              const storedBonuses = data.backgroundBonuses || {};
+              const storedBonusEntries = Object.entries(storedBonuses)
+                .filter(([, value]) => Number(value) > 0)
+                .sort((left, right) => Number(right[1]) - Number(left[1]));
+              const pointBuyBonuses = pointBuy && Array.isArray(pointBuy.bonusAbilities)
+                ? pointBuy.bonusAbilities.reduce((bonuses, ability, index) => {
+                  bonuses[ability] = pointBuy.bonusMode === '2+1' && index === 0 ? 2 : 1;
+                  return bonuses;
+                }, {})
+                : storedBonuses;
+              selectedBackgroundBonuses = Object.fromEntries(
+                abilities.map(ability => [ability, Number(pointBuyBonuses[ability]) || 0])
+              );
+              bonusModeSelect.value = pointBuy
+                ? pointBuy.bonusMode
+                : storedBonusEntries.length === 3 ? '1+1+1' : '2+1';
+              updatePointBuyOptions();
               document.getElementById('cs_header_name').textContent = character.name || 'Character Sheet';
               document.getElementById('cs_header_sub').textContent =
                 'Level ' + (character.level || 1) + ' ' + (character.race || '') + ' ' +
@@ -2062,10 +2302,18 @@ router.get('/', (req, res) => {
               abilities.forEach(ability => {
                 const input = abilityContainer.querySelector('[data-ability="' + ability + '"]');
                 const scores = data.abilities || {};
-                const value = scores[ability] === undefined
+                const value = pointBuy && pointBuy.baseScores
+                  ? pointBuy.baseScores[ability]
+                  : data.baseAbilityScores && data.baseAbilityScores[ability] !== undefined
+                    ? data.baseAbilityScores[ability]
+                  : scores[ability] === undefined
                   ? scores[ability.toUpperCase()]
-                  : scores[ability];
-                input.value = value === undefined || value === null ? 10 : value;
+                  : scores[ability] && typeof scores[ability] === 'object'
+                    ? scores[ability].base
+                    : scores[ability];
+                input.value = value === undefined || value === null
+                  ? 8
+                  : Math.max(8, Math.min(15, Number(value) || 8));
               });
               abilities.forEach(ability => {
                 const checkbox = savesContainer.querySelector('[data-save="' + ability + '"]');
@@ -2116,6 +2364,7 @@ router.get('/', (req, res) => {
               const attacks = Array.isArray(data.attacks) ? data.attacks : [];
               if (attacks.length > 0) attacks.forEach(addAttackRow);
               else addAttackRow();
+              updatePointBuySummary();
               updateDerivedStats(character.level);
               message.textContent = '';
             } catch (error) {
@@ -2124,16 +2373,59 @@ router.get('/', (req, res) => {
             }
           }
 
+          async function submitPointBuy() {
+            const button = document.getElementById('cs_save_abilities');
+            button.disabled = true;
+            message.classList.remove('is-error');
+            try {
+              const pointBuy = getPointBuyData();
+              const backgroundBonuses = Object.fromEntries(
+                abilities.map(ability => [ability, 0])
+              );
+              Object.assign(backgroundBonuses, pointBuy.backgroundBonuses);
+
+              const response = await fetch('/api/characters/' + fullSheetCharacterId + '/abilities', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  method: 'Point Buy',
+                  background: pointBuy.background,
+                  baseScores: pointBuy.baseScores,
+                  backgroundBonuses
+                })
+              });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || 'Could not save abilities.');
+              message.textContent = 'Ability scores saved successfully.';
+              message.classList.remove('is-error');
+            } catch (error) {
+              message.textContent = error.message;
+              message.classList.add('is-error');
+            } finally {
+              button.disabled = false;
+            }
+          }
+
           async function saveSheet() {
             const button = document.getElementById('cs_save');
             button.disabled = true;
             message.classList.remove('is-error');
             message.textContent = 'Saving character sheet...';
+            let pointBuy;
+            try {
+              pointBuy = getPointBuyData();
+            } catch (error) {
+              message.textContent = error.message;
+              message.classList.add('is-error');
+              button.disabled = false;
+              return;
+            }
             const sheetData = {
               abilities: Object.fromEntries(abilityScores.map(input => [
                 input.dataset.ability,
                 input.value === '' ? 10 : Number(input.value)
               ])),
+              pointBuy,
               savingProficiencies: abilities.filter(ability =>
                 savesContainer.querySelector('[data-save="' + ability + '"]').checked
               ),
@@ -2189,6 +2481,7 @@ router.get('/', (req, res) => {
             }
           }
 
+          document.getElementById('cs_save_abilities').addEventListener('click', submitPointBuy);
           document.getElementById('cs_save').addEventListener('click', saveSheet);
           loadSheet();
         }
@@ -3209,7 +3502,7 @@ router.get('/', (req, res) => {
         .sheet-identity { min-width: 0; flex: 1; }
         .sheet-identity h2 { margin: 0; color: #f2f3f5; }
         .sheet-identity > span { display: block; color: #949ba4; font-size: 13px; margin: 3px 0 12px; }
-        .sheet-identity-fields { display: grid; grid-template-columns: 1.2fr repeat(3, minmax(130px, 1fr)); gap: 10px; }
+        .sheet-identity-fields { display: grid; grid-template-columns: 1.2fr repeat(4, minmax(130px, 1fr)); gap: 10px; }
         .sheet-identity-fields label, .sheet-vitals label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
         .sheet-header-actions { display: flex; gap: 10px; align-items: center; }
         .btn-secondary { background: #4e5058; color: #fff; }
@@ -3220,10 +3513,43 @@ router.get('/', (req, res) => {
         .sheet-col { display: grid; gap: 14px; min-width: 0; }
         .sheet-card { min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 12px; }
         .sheet-card h4 { margin: 0 0 10px; color: #f1c40f; text-transform: uppercase; font-size: 12px; }
+        .point-buy-card { max-width: 850px; margin: 0 auto 16px; padding: 20px; }
+        .point-buy-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #3f4147; padding-bottom: 12px; margin-bottom: 16px; }
+        .point-buy-header h3 { margin: 0; color: #f2f3f5; }
+        .point-buy-header > div:first-child > span { color: #949ba4; font-size: 12px; }
+        .point-buy-total { display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 4px; text-align: right; }
+        .point-buy-total > span { grid-column: 1 / -1; color: #949ba4; font-size: 10px; }
+        .point-buy-total strong { color: #f1c40f; font-size: 28px; }
+        .point-buy-total small { color: #6b7280; font-size: 15px; }
+        .point-buy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+        .point-buy-score-controls { display: flex; align-items: center; gap: 4px; }
+        .point-buy-score-controls input { max-width: 42px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #fff; }
+        .point-buy-step { width: 26px; height: 30px; padding: 0; border: 1px solid #4a4d55; border-radius: 4px; background: #303239; color: #f2f3f5; font-size: 17px; cursor: pointer; }
+        .point-buy-step:hover:not(:disabled) { border-color: #f1c40f; color: #f1c40f; }
+        .point-buy-step:disabled { opacity: .35; cursor: not-allowed; }
+        .point-buy-score-cost { grid-column: 2 / 3; color: #949ba4; text-align: center; font-size: 10px; }
+        .point-buy-origin { margin-top: 18px; padding: 14px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 8px; }
+        .point-buy-origin h4 { margin: 0 0 8px; color: #f1c40f; font-size: 13px; }
+        .point-buy-origin p { margin: 0 0 12px; color: #949ba4; font-size: 12px; }
+        .point-buy-bonus-options { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+        .point-buy-bonus-options label { display: grid; flex: 1 1 170px; gap: 4px; color: #949ba4; font-size: 11px; }
+        .point-buy-bonus-options select { width: 100%; min-width: 0; padding: 6px; }
+        .point-buy-bonus-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+        .point-buy-bonus-select { display: grid; gap: 4px; color: #949ba4; text-align: center; font-size: 11px; }
+        .point-buy-bonus-select select { width: 100%; padding: 5px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #fff; }
+        .point-buy-bonus-select select:disabled { opacity: .45; }
+        .point-buy-bonus-choice { min-height: 38px; border: 1px solid #4a4d55; border-radius: 5px; background: #1e1f22; color: #dbdee1; cursor: pointer; }
+        .point-buy-bonus-choice.selected { border-color: #f1c40f; background: rgba(241, 196, 15, .15); color: #f1c40f; font-weight: bold; }
+        .point-buy-bonus-choice:disabled { opacity: .4; cursor: not-allowed; }
+        .point-buy-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+        .btn-primary { background: #5865f2; color: #fff; font-weight: 600; }
+        .point-buy-error { min-height: 16px; }
+        .point-buy-error.is-error { color: #f23f43; }
         .sheet-abilities { display: grid; gap: 8px; }
-        .sheet-ability { display: grid; grid-template-columns: 1fr 64px 42px; gap: 7px; align-items: center; background: #232428; border: 1px solid #3f4147; border-radius: 5px; padding: 7px; }
+        .sheet-ability { display: grid; grid-template-columns: minmax(34px, 1fr) auto 30px 30px; gap: 5px; align-items: center; background: #232428; border: 1px solid #3f4147; border-radius: 6px; padding: 9px; }
         .sheet-ability strong { color: #f1c40f; font-size: 13px; }
         .sheet-ability input { width: 100%; padding: 5px; text-align: center; font-weight: bold; }
+        .sheet-ability-final { color: #dbdee1; text-align: center; font-weight: bold; }
         .sheet-ability-modifier { text-align: center; color: #f2f3f5; font-weight: bold; }
         .sheet-check-list { display: grid; gap: 5px; }
         .sheet-check-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; min-height: 24px; font-size: 13px; }
@@ -3283,6 +3609,8 @@ router.get('/', (req, res) => {
           .character-editor-fields { grid-template-columns: minmax(0, 1fr); }
           .sheet-layout { grid-template-columns: minmax(0, 1fr); }
           .sheet-identity-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .point-buy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .point-buy-bonus-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
         @media (max-width: 480px) {
           .analytics-breakdown { grid-template-columns: minmax(0, 1fr); }
@@ -3291,6 +3619,11 @@ router.get('/', (req, res) => {
           .sheet-header-actions > * { flex: 1; text-align: center; }
           .sheet-combat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .sheet-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .point-buy-card { padding: 12px; }
+          .point-buy-header { align-items: flex-start; }
+          .point-buy-header > div:first-child > span { display: block; }
+          .point-buy-actions { flex-wrap: wrap; }
+          .point-buy-actions button { flex: 1; }
         }
         .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
         .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
