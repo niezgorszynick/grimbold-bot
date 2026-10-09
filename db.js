@@ -1,6 +1,6 @@
 // db.js — SQLite layer using better-sqlite3
 const crypto = require('crypto');
-const { validateCharacterOptions, validatePointBuy } = require('./dndData');
+const { validateCharacterOptions } = require('./dndData');
 const Database = require('better-sqlite3');
 const path = require('path');
 
@@ -1270,9 +1270,25 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       if (!nextSheetData || typeof nextSheetData !== 'object' || Array.isArray(nextSheetData)) {
         throw new Error('Character sheet data must be an object.');
       }
-      const pointBuy = validatePointBuy(nextSheetData.pointBuy);
-      nextSheetData.pointBuy = pointBuy;
-      nextSheetData.abilities = pointBuy.abilities;
+      if (
+        nextSheetData.abilities &&
+        typeof nextSheetData.abilities === 'object' &&
+        !Array.isArray(nextSheetData.abilities)
+      ) {
+        for (const [ability, value] of Object.entries(nextSheetData.abilities)) {
+          const score = value && typeof value === 'object'
+            ? (value.score === undefined ? value.total : value.score)
+            : value;
+          if (
+            !['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(ability) ||
+            !Number.isInteger(score) ||
+            score < 1 ||
+            score > 30
+          ) {
+            throw new Error('Ability scores must be whole numbers from 1 to 30.');
+          }
+        }
+      }
 
       const result = db.prepare(`
         UPDATE characters

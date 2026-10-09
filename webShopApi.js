@@ -1,7 +1,11 @@
 const express = require('express');
 const db = require('./db');
 const { formatCp } = require('./currency');
-const { DND_DATA, calculatePointBuyCost, getAbilityModifier } = require('./dndData');
+const {
+  DND_DATA,
+  validateCharacterOptions,
+  validatePointBuy
+} = require('./dndData');
 
 const router = express.Router();
 
@@ -129,6 +133,186 @@ router.get('/characters/:id', (req, res) => {
   return res.json({ character, sheetData });
 });
 
+router.post('/characters/create', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (user.id <= 0) return res.status(403).json({ error: 'A player account is required to create a character.' });
+
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+    ? req.body
+    : {};
+  const {
+    name,
+    species,
+    character_class,
+    subclass,
+    background,
+    generationMethod,
+    baseScores,
+    backgroundBonuses
+  } = body;
+  if (
+    typeof name !== 'string' || !name.trim() ||
+    typeof species !== 'string' || !species.trim() ||
+    typeof character_class !== 'string' || !character_class.trim()
+  ) {
+    return res.status(400).json({ error: 'Name, species, and class are required.' });
+  }
+  if (!['Point Buy', 'Standard Array', 'Manual/Rolled'].includes(generationMethod)) {
+    return res.status(400).json({ error: 'Choose Point Buy, Standard Array, or Manual/Rolled.' });
+  }
+
+  let canonicalOptions;
+  try {
+    canonicalOptions = validateCharacterOptions(species, character_class, subclass || '');
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  const abilityNames = DND_DATA.abilityScores;
+  let finalAbilities;
+  let generationData;
+  if (generationMethod === 'Point Buy') {
+    if (
+      !backgroundBonuses ||
+      typeof backgroundBonuses !== 'object' ||
+      Array.isArray(backgroundBonuses) ||
+      Object.keys(backgroundBonuses).some(ability => !abilityNames.includes(ability))
+    ) {
+      return res.status(400).json({ error: 'Background bonuses must be an ability-to-bonus object.' });
+    }
+    const normalizedBonuses = Object.fromEntries(abilityNames.map(ability => [
+      ability,
+      backgroundBonuses[ability] === undefined ? 0 : backgroundBonuses[ability]
+    ]));
+    try {
+      const backgroundName = typeof background === 'string'
+        ? Object.keys(DND_DATA.backgrounds).find(
+          value => value.toLowerCase() === background.trim().toLowerCase()
+        )
+        : null;
+      const bonusEntries = Object.entries(normalizedBonuses)
+        .filter(([, value]) => value > 0)
+        .sort((left, right) => right[1] - left[1]);
+      const bonusValues = bonusEntries.map(([, value]) => value);
+      const bonusMode = bonusValues.length === 2 && bonusValues.includes(2) && bonusValues.includes(1)
+        ? '2+1'
+        : bonusValues.length === 3 && bonusValues.every(value => value === 1)
+          ? '1+1+1'
+          : '';
+      const validated = validatePointBuy({
+        baseScores,
+        background: backgroundName,
+        bonusMode,
+        bonusAbilities: bonusEntries.map(([ability]) => ability)
+      });
+      abilityNames.forEach(ability => {
+        if (
+          !Number.isInteger(normalizedBonuses[ability]) ||
+          normalizedBonuses[ability] < 0 ||
+          normalizedBonuses[ability] > 2
+        ) {
+          throw new Error('Each background bonus must be a whole number from 0 to 2.');
+        }
+      });
+      finalAbilities = Object.fromEntries(abilityNames.map(ability => [
+        ability,
+        {
+          score: validated.abilities[ability],
+          modifier: DND_DATA.getModifier(validated.abilities[ability])
+        }
+      ]));
+      generationData = {
+        pointBuy: {
+          background: validated.background,
+          bonusMode: validated.bonusMode,
+          bonusAbilities: validated.bonusAbilities,
+          baseScores: validated.baseScores,
+          pointsSpent: validated.pointsSpent
+        },
+        backgroundBonuses: normalizedBonuses
+      };
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  } else {
+    if (!baseScores || typeof baseScores !== 'object' || Array.isArray(baseScores)) {
+      return res.status(400).json({ error: 'Ability scores must be provided as an object.' });
+    }
+    const scores = Object.fromEntries(abilityNames.map(ability => [ability, baseScores[ability]]));
+    if (generationMethod === 'Standard Array') {
+      const validStandardArray = Object.values(scores).every(Number.isInteger) &&
+        Object.values(scores).sort((a, b) => a - b).join(',') === '8,10,12,13,14,15';
+      if (!validStandardArray) {
+        return res.status(400).json({ error: 'Standard Array must use 15, 14, 13, 12, 10, and 8 once each.' });
+      }
+    } else if (Object.values(scores).some(score =>
+      !Number.isInteger(score) || score < 1 || score > 30
+    )) {
+      return res.status(400).json({ error: 'Manual/Rolled ability scores must be whole numbers from 1 to 30.' });
+    }
+    finalAbilities = Object.fromEntries(abilityNames.map(ability => [
+      ability,
+      {
+        score: scores[ability],
+        modifier: DND_DATA.getModifier(scores[ability])
+      }
+    ]));
+    generationData = { background: typeof background === 'string' ? background.trim() : '' };
+  }
+
+  const dexterityModifier = finalAbilities.dex.modifier;
+  const classData = DND_DATA.classes[canonicalOptions.canonicalClass] ||
+    DND_DATA.supplementalClasses[canonicalOptions.canonicalClass];
+  const initialSheetData = {
+    ...generationData,
+    abilities: finalAbilities,
+    generationMethod,
+    armorClass: 10 + dexterityModifier,
+    initiative: `${dexterityModifier >= 0 ? '+' : ''}${dexterityModifier}`,
+    speed: `${DND_DATA.species[canonicalOptions.canonicalSpecies].speed} ft.`,
+    hpMax: 20,
+    hpCurrent: 20,
+    hpTemp: 0,
+    hitDice: `3${classData.hitDice.slice(1)}`,
+    attacks: [],
+    features: '',
+    equipmentText: ''
+  };
+  const runTransaction = db.transaction(() => {
+    const inserted = db.prepare(`
+      INSERT INTO characters
+        (player_id, name, race, class, subclass, level, xp, status, gold_gp, sheet_data)
+      VALUES (?, ?, ?, ?, ?, 3, 0, 'alive', 0, ?)
+    `).run(
+      user.id,
+      name.trim(),
+      canonicalOptions.canonicalSpecies,
+      canonicalOptions.canonicalClass,
+      canonicalOptions.canonicalSubclass,
+      JSON.stringify(initialSheetData)
+    );
+    db.prepare(`
+      INSERT INTO character_classes
+        (character_id, class_name, subclass_name, class_level, is_primary)
+      VALUES (?, ?, ?, 3, 1)
+    `).run(
+      inserted.lastInsertRowid,
+      canonicalOptions.canonicalClass,
+      canonicalOptions.canonicalSubclass || null
+    );
+    return inserted.lastInsertRowid;
+  });
+
+  try {
+    const characterId = runTransaction();
+    return res.json({ success: true, characterId });
+  } catch (error) {
+    console.error('Character creation failed:', error);
+    return res.status(500).json({ error: 'Could not create character.' });
+  }
+});
+
 router.post('/characters/:id/abilities', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -141,81 +325,16 @@ router.post('/characters/:id/abilities', (req, res) => {
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
     ? req.body
     : {};
-  const { method, baseScores, background, backgroundBonuses } = body;
-  if (method !== 'Point Buy') {
-    return res.status(400).json({ error: 'Only Point Buy ability generation is supported.' });
-  }
-  const canonicalBackground = typeof background === 'string'
-    ? Object.keys(DND_DATA.backgrounds).find(name => name.toLowerCase() === background.trim().toLowerCase())
-    : null;
-  if (!canonicalBackground) {
-    return res.status(400).json({ error: 'Select a valid D&D 2024 background.' });
-  }
-
-  let pointsSpent;
-  try {
-    pointsSpent = calculatePointBuyCost(baseScores);
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
-  if (pointsSpent !== 27) {
-    return res.status(400).json({
-      error: `You must spend exactly 27 points (currently spent: ${pointsSpent}).`
-    });
-  }
-
+  const abilityScores = body.abilities || body.scores;
   const abilities = DND_DATA.abilityScores;
   if (
-    !backgroundBonuses ||
-    typeof backgroundBonuses !== 'object' ||
-    Array.isArray(backgroundBonuses) ||
-    Object.keys(backgroundBonuses).some(ability => !abilities.includes(ability))
+    !abilityScores ||
+    typeof abilityScores !== 'object' ||
+    Array.isArray(abilityScores) ||
+    abilities.some(ability => !Number.isInteger(abilityScores[ability]) ||
+      abilityScores[ability] < 1 || abilityScores[ability] > 30)
   ) {
-    return res.status(400).json({ error: 'Background bonuses must be an ability-to-bonus object.' });
-  }
-
-  const normalizedBonuses = Object.fromEntries(abilities.map(ability => {
-    const value = backgroundBonuses[ability] === undefined ? 0 : backgroundBonuses[ability];
-    return [ability, value];
-  }));
-  if (Object.values(normalizedBonuses).some(value =>
-    !Number.isInteger(value) || value < 0 || value > 2
-  )) {
-    return res.status(400).json({ error: 'Each background bonus must be a whole number from 0 to 2.' });
-  }
-
-  const bonusValues = Object.values(normalizedBonuses).filter(value => value > 0);
-  const isTwoOne = bonusValues.length === 2 && bonusValues.includes(2) && bonusValues.includes(1);
-  const isOneOneOne = bonusValues.length === 3 && bonusValues.every(value => value === 1);
-  if (!isTwoOne && !isOneOneOne) {
-    return res.status(400).json({
-      error: 'Invalid background bonuses. Must be (+2/+1) or (+1/+1/+1).'
-    });
-  }
-  const selectedBonusAbilities = Object.entries(normalizedBonuses)
-    .filter(([, value]) => value > 0)
-    .map(([ability]) => ability);
-  const allowedBonusAbilities = DND_DATA.backgrounds[canonicalBackground].abilityBoosts;
-  if (selectedBonusAbilities.some(ability => !allowedBonusAbilities.includes(ability))) {
-    return res.status(400).json({
-      error: 'Background bonuses must use abilities allowed by the selected Background.'
-    });
-  }
-
-  const finalScores = {};
-  for (const ability of abilities) {
-    const base = baseScores[ability];
-    const bonus = normalizedBonuses[ability];
-    const total = base + bonus;
-    if (total > 20) {
-      return res.status(400).json({ error: `${ability.toUpperCase()} cannot exceed 20.` });
-    }
-    finalScores[ability] = {
-      base,
-      bonus,
-      total,
-      modifier: getAbilityModifier(total)
-    };
+    return res.status(400).json({ error: 'Ability scores must be whole numbers from 1 to 30.' });
   }
 
   try {
@@ -239,20 +358,14 @@ router.post('/characters/:id/abilities', (req, res) => {
           throw new Error('Stored character sheet data must be an object.');
         }
       }
-
-      sheetData.abilities = Object.fromEntries(
-        abilities.map(ability => [ability, finalScores[ability].total])
-      );
-      sheetData.abilityDetails = finalScores;
-      sheetData.baseAbilityScores = baseScores;
-      sheetData.backgroundBonuses = normalizedBonuses;
-      sheetData.background = canonicalBackground;
-      sheetData.generationMethod = method;
+      sheetData.abilities = Object.fromEntries(abilities.map(ability => [
+        ability, abilityScores[ability]
+      ]));
+      sheetData.generationMethod = 'Manual/Rolled';
       delete sheetData.pointBuy;
-
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?')
         .run(JSON.stringify(sheetData), characterId);
-      return { abilities: finalScores };
+      return { abilities: sheetData.abilities };
     });
     const result = update();
     if (result.error === 'not_found') {
@@ -327,16 +440,7 @@ router.post('/characters/:id/sheet', (req, res) => {
       error.message === 'Character name cannot be empty.' ||
       error.message === 'Character sheet data must be an object.' ||
       error.message === 'Invalid character sheet data.' ||
-      error.message.startsWith('Point Buy data ') ||
-      error.message.startsWith('Point Buy ') ||
-      error.message.startsWith('Select a valid D&D 2024 background') ||
-      error.message.startsWith('Background bonuses must use abilities') ||
-      error.message.startsWith('Score for ') ||
-      error.message.startsWith('Select a valid D&D 2024 background') ||
-      error.message.startsWith('Background ability bonuses ') ||
-      error.message.startsWith('Choose either +2/+1') ||
-      error.message.startsWith('Background bonuses must apply') ||
-      error.message.startsWith('No ability score can exceed 20') ||
+      error.message === 'Ability scores must be whole numbers from 1 to 30.' ||
       error.message.startsWith('Invalid species ') ||
       error.message.startsWith('Invalid class ') ||
       error.message.startsWith('Invalid subclass ')
