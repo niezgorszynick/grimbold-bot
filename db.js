@@ -96,6 +96,7 @@ db.exec(`
     class TEXT NOT NULL,
     level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1 AND level <= 20),
     status TEXT NOT NULL DEFAULT 'alive' CHECK (status IN ('alive', 'dead')),
+    sheet_data TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
   );
@@ -184,6 +185,9 @@ if (!charCols.includes('death_dm_player_id')) {
 }
 if (!charCols.includes('death_notes')) {
   db.exec('ALTER TABLE characters ADD COLUMN death_notes TEXT;');
+}
+if (!charCols.includes('sheet_data')) {
+  db.exec('ALTER TABLE characters ADD COLUMN sheet_data TEXT;');
 }
 
 // Backfill the multiclass table from the legacy character columns.
@@ -1220,6 +1224,62 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   },
   
   getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
+  updateCharacterSheet: ({ id, player_id, is_admin, name, race, class_name, subclass, sheet_data }) => {
+    const characterId = Number(id);
+    if (!Number.isSafeInteger(characterId) || characterId <= 0) {
+      throw new Error('Invalid character ID.');
+    }
+
+    return db.transaction(() => {
+      const character = db.prepare(`
+        SELECT id, player_id, name, race, class, subclass, level
+        FROM characters
+        WHERE id = ?
+      `).get(characterId);
+      if (!character) throw new Error('Character not found.');
+      if (!is_admin && character.player_id !== Number(player_id)) {
+        throw new Error('Forbidden.');
+      }
+
+      const nextName = name === null || name === undefined ? character.name : name.trim();
+      if (!nextName) throw new Error('Character name cannot be empty.');
+      let nextSpecies = character.race;
+      let nextClass = character.class;
+      let nextSubclass = character.subclass;
+      const updatesClassDetails =
+        (race !== null && race !== undefined) ||
+        (class_name !== null && class_name !== undefined) ||
+        (subclass !== null && subclass !== undefined);
+      if (updatesClassDetails) {
+        const canonicalOptions = validateCharacterOptions(
+          race === null || race === undefined ? character.race : race,
+          class_name === null || class_name === undefined ? character.class : class_name,
+          subclass === null || subclass === undefined ? character.subclass : subclass
+        );
+        nextSpecies = canonicalOptions.canonicalSpecies;
+        nextClass = canonicalOptions.canonicalClass;
+        nextSubclass = canonicalOptions.canonicalSubclass;
+      }
+
+      const result = db.prepare(`
+        UPDATE characters
+        SET name = ?, race = ?, class = ?, subclass = ?, sheet_data = ?
+        WHERE id = ?
+      `).run(
+        nextName,
+        nextSpecies,
+        nextClass,
+        nextSubclass,
+        sheet_data,
+        characterId
+      );
+      if ((class_name !== null && class_name !== undefined) ||
+          (subclass !== null && subclass !== undefined)) {
+        reconcileCharacterClassLevels(characterId, character.level, nextClass, nextSubclass);
+      }
+      return result;
+    })();
+  },
   updateCharacterDetailsForPlayer: ({ id, player_id, name, race, class_name, subclass }) => {
     const characterId = Number(id);
     const playerId = Number(player_id);

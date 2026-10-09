@@ -15,6 +15,17 @@ function getSessionPlayer(req) {
   `).get(userId) || null;
 }
 
+function getSessionApiUser(req) {
+  const sessionUser = req.session && req.session.user;
+  if (!sessionUser) return null;
+  if (sessionUser.id === 0 && sessionUser.role === 'admin') {
+    return { id: 0, role: 'admin' };
+  }
+  if (!Number.isSafeInteger(sessionUser.id) || sessionUser.id <= 0) return null;
+
+  return db.prepare('SELECT id, role FROM players WHERE id = ?').get(sessionUser.id) || null;
+}
+
 async function sendGrimboldShopEmbed({
   channelId,
   item,
@@ -88,6 +99,95 @@ router.get('/my-characters', (req, res) => {
   if (!player) return res.status(401).json({ error: 'Unauthorized' });
 
   return res.json({ characters: db.getAliveCharactersByPlayerId(player.id) });
+});
+
+router.get('/characters/:id', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const characterId = Number(req.params.id);
+  if (!Number.isSafeInteger(characterId) || characterId <= 0) {
+    return res.status(400).json({ error: 'Invalid character ID.' });
+  }
+  const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
+  if (!character) return res.status(404).json({ error: 'Character not found.' });
+  if (user.role !== 'admin' && character.player_id !== user.id) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+
+  let sheetData = {};
+  if (character.sheet_data) {
+    try {
+      sheetData = JSON.parse(character.sheet_data);
+    } catch (error) {
+      console.error(`Failed to parse sheet data for character ${characterId}:`, error);
+      return res.status(500).json({ error: 'Could not read character sheet data.' });
+    }
+  }
+
+  return res.json({ character, sheetData });
+});
+
+router.post('/characters/:id/sheet', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const characterId = Number(req.params.id);
+  if (!Number.isSafeInteger(characterId) || characterId <= 0) {
+    return res.status(400).json({ error: 'Invalid character ID.' });
+  }
+
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+    ? req.body
+    : {};
+  const { name, species, character_class, subclass } = body;
+  for (const [field, value] of Object.entries({ name, species, character_class, subclass })) {
+    if (value !== undefined && value !== null && typeof value !== 'string') {
+      return res.status(400).json({ error: `${field} must be a string.` });
+    }
+  }
+  const sheetData = body.sheetData === undefined || body.sheetData === null
+    ? {}
+    : body.sheetData;
+  if (typeof sheetData !== 'object' || Array.isArray(sheetData)) {
+    return res.status(400).json({ error: 'sheetData must be an object.' });
+  }
+
+  try {
+    const updated = db.updateCharacterSheet({
+      id: characterId,
+      player_id: user.id,
+      is_admin: user.role === 'admin',
+      name,
+      race: species,
+      class_name: character_class,
+      subclass,
+      sheet_data: JSON.stringify(sheetData)
+    });
+    if (updated.changes !== 1) {
+      return res.status(404).json({ error: 'Character not found.' });
+    }
+    return res.json({ success: true, message: 'Character sheet saved successfully.' });
+  } catch (error) {
+    if (error.message === 'Character not found.') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'Forbidden.') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (
+      error.message === 'Invalid character ID.' ||
+      error.message === 'Character name cannot be empty.' ||
+      error.message.startsWith('Invalid species ') ||
+      error.message.startsWith('Invalid class ') ||
+      error.message.startsWith('Invalid subclass ')
+    ) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    console.error('Character sheet update failed:', error);
+    return res.status(500).json({ error: 'Could not save character sheet.' });
+  }
 });
 
 router.post('/admin/character-gold', (req, res) => {

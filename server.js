@@ -1781,7 +1781,82 @@ router.get('/', (req, res) => {
     };
     const editFormHtml = req.query.edit_char
       ? canEditRequestedCharacter
-        ? `<section class="card"><div class="character-sheet-header"><h3>Edit Existing Character</h3><a href="/admin?tab=character-sheet" class="btn btn-small">Cancel</a></div>${renderCharacterForm(characterToEdit)}</section>`
+        ? `
+          <section id="fullCharacterSheetContainer" class="character-sheet-full">
+            <header class="sheet-header">
+              <div class="sheet-identity">
+                <h2 id="cs_header_name">Character Sheet</h2>
+                <span id="cs_header_sub">Loading character...</span>
+                <div class="sheet-identity-fields">
+                  <label>Name<input id="cs_name" type="text" maxlength="100" required></label>
+                  <label>Species<select id="cs_species" required>${DND_SPECIES.map(species => `<option value="${escapeHtml(species)}">${escapeHtml(species)}</option>`).join('')}</select></label>
+                  <label>Class<select id="cs_class" required>${classNames.map(className => `<option value="${escapeHtml(className)}">${escapeHtml(className)}</option>`).join('')}</select></label>
+                  <label>Subclass<select id="cs_subclass"><option value="">-- None / Base --</option></select></label>
+                </div>
+              </div>
+              <div class="sheet-header-actions">
+                <a href="/admin?tab=character-sheet" class="btn btn-secondary">Back / Cancel</a>
+                <button id="cs_save" class="btn btn-success" type="button">Save Sheet</button>
+              </div>
+            </header>
+            <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
+            <div class="sheet-layout">
+              <div class="sheet-col">
+                <section class="sheet-card">
+                  <h4>Ability Scores</h4>
+                  <div id="cs_ability_container" class="sheet-abilities"></div>
+                </section>
+                <section class="sheet-card">
+                  <h4>Saving Throws</h4>
+                  <div id="cs_saves_container" class="sheet-check-list"></div>
+                </section>
+              </div>
+              <div class="sheet-col">
+                <div class="sheet-combat-stats">
+                  <label class="sheet-stat"><span>Armor Class</span><input type="number" id="cs_ac" min="0" max="100"></label>
+                  <label class="sheet-stat"><span>Initiative</span><input type="text" id="cs_initiative" maxlength="20"></label>
+                  <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
+                  <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
+                </div>
+                <section class="sheet-card">
+                  <h4>Hit Points &amp; Vitality</h4>
+                  <div class="sheet-vitals">
+                    <label>Current HP<input type="number" id="cs_hp_current" min="0"></label>
+                    <label>Max HP<input type="number" id="cs_hp_max" min="0"></label>
+                    <label>Temp HP<input type="number" id="cs_hp_temp" min="0"></label>
+                    <label>Hit Dice<input type="text" id="cs_hit_dice" maxlength="40" placeholder="3d8"></label>
+                  </div>
+                </section>
+                <section class="sheet-card">
+                  <div class="sheet-section-heading">
+                    <h4>Weapons &amp; Attacks</h4>
+                    <button id="cs_add_attack" class="btn btn-small" type="button">+ Add Weapon</button>
+                  </div>
+                  <div class="sheet-table-wrap">
+                    <table class="sheet-attacks">
+                      <thead><tr><th>Name</th><th>Atk Bonus</th><th>Damage / Type</th><th>Notes</th><th><span class="sr-only">Actions</span></th></tr></thead>
+                      <tbody id="cs_attacks_tbody"></tbody>
+                    </table>
+                  </div>
+                </section>
+                <section class="sheet-card">
+                  <h4>Class Features &amp; Species Traits</h4>
+                  <textarea id="cs_features" rows="5" maxlength="10000" placeholder="Darkvision, Fey Ancestry, Channel Divinity..."></textarea>
+                </section>
+              </div>
+              <div class="sheet-col">
+                <section class="sheet-card">
+                  <h4>Skills</h4>
+                  <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
+                </section>
+                <section class="sheet-card">
+                  <h4>Equipment &amp; Items</h4>
+                  <textarea id="cs_equipment" rows="5" maxlength="10000" placeholder="Armor, weapons, rations, magical trinkets..."></textarea>
+                </section>
+              </div>
+            </div>
+          </section>
+        `
         : '<div class="alert red">Character not found or you do not have permission to edit it.</div>'
       : '';
     contentHtml = `
@@ -1832,6 +1907,291 @@ router.get('/', (req, res) => {
       <script>
         const sheetClassTree = ${sheetClassTreeJson};
         const sheetSpecies = ${sheetSpeciesJson};
+        const fullSheetCharacterId = ${canEditRequestedCharacter ? Number(characterToEdit.id) : 'null'};
+
+        function initFullCharacterSheet() {
+          const container = document.getElementById('fullCharacterSheetContainer');
+          if (!container) return;
+
+          const abilities = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+          const skills = [
+            ['Acrobatics', 'dex'], ['Animal Handling', 'wis'], ['Arcana', 'int'],
+            ['Athletics', 'str'], ['Deception', 'cha'], ['History', 'int'],
+            ['Insight', 'wis'], ['Intimidation', 'cha'], ['Investigation', 'int'],
+            ['Medicine', 'wis'], ['Nature', 'int'], ['Perception', 'wis'],
+            ['Performance', 'cha'], ['Persuasion', 'cha'], ['Religion', 'int'],
+            ['Sleight of Hand', 'dex'], ['Stealth', 'dex'], ['Survival', 'wis']
+          ];
+          const abilityContainer = document.getElementById('cs_ability_container');
+          abilities.forEach(ability => {
+            const row = document.createElement('label');
+            row.className = 'sheet-ability';
+            const name = document.createElement('strong');
+            name.textContent = ability.toUpperCase();
+            const score = document.createElement('input');
+            score.type = 'number';
+            score.min = '1';
+            score.max = '30';
+            score.dataset.ability = ability;
+            score.setAttribute('aria-label', ability.toUpperCase() + ' score');
+            const modifier = document.createElement('span');
+            modifier.className = 'sheet-ability-modifier';
+            modifier.dataset.modifier = ability;
+            row.append(name, score, modifier);
+            abilityContainer.appendChild(row);
+          });
+
+          const savesContainer = document.getElementById('cs_saves_container');
+          const skillsContainer = document.getElementById('cs_skills_container');
+          abilities.forEach(ability => {
+            const row = document.createElement('label');
+            row.className = 'sheet-check-row';
+            row.innerHTML = '<input type="checkbox" data-save="' + ability + '"><span>' +
+              ability.toUpperCase() + '</span><strong class="sheet-check-modifier"></strong>';
+            savesContainer.appendChild(row);
+          });
+          skills.forEach(([skill, ability]) => {
+            const row = document.createElement('label');
+            row.className = 'sheet-check-row';
+            row.innerHTML = '<input type="checkbox" data-skill="' + skill + '"><span>' + skill +
+              '</span><small>' + ability.toUpperCase() + '</small><strong class="sheet-check-modifier"></strong>';
+            skillsContainer.appendChild(row);
+          });
+
+          const message = document.getElementById('cs_message');
+          const classSelect = document.getElementById('cs_class');
+          const subclassSelect = document.getElementById('cs_subclass');
+          const abilityScores = [...abilityContainer.querySelectorAll('[data-ability]')];
+          const proficiencyBonus = document.getElementById('cs_prof_bonus');
+          let sheetCharacterLevel = 1;
+
+          function updateSubclasses(selected = subclassSelect.value) {
+            subclassSelect.replaceChildren(new Option('-- None / Base --', ''));
+            (sheetClassTree[classSelect.value] || []).forEach(subclass => {
+              subclassSelect.add(new Option(subclass, subclass));
+            });
+            if ([...subclassSelect.options].some(option => option.value === selected)) {
+              subclassSelect.value = selected;
+            }
+          }
+
+          function updateDerivedStats(level) {
+            const bonus = Math.ceil(Math.max(1, Number(level) || 1) / 4) + 1;
+            proficiencyBonus.textContent = '+' + bonus;
+            abilityScores.forEach(input => {
+              const score = Number(input.value);
+              const modifier = Number.isFinite(score) ? Math.floor((score - 10) / 2) : 0;
+              const label = document.querySelector('[data-modifier="' + input.dataset.ability + '"]');
+              label.textContent = (modifier >= 0 ? '+' : '') + modifier;
+            });
+            abilities.forEach(ability => {
+              const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
+              const modifier = Number(scoreInput.value) ? Math.floor((Number(scoreInput.value) - 10) / 2) : 0;
+              const saveRow = savesContainer.querySelector('[data-save="' + ability + '"]').closest('.sheet-check-row');
+              const saveTotal = modifier + (saveRow.querySelector('input').checked ? bonus : 0);
+              saveRow.querySelector('.sheet-check-modifier').textContent =
+                (saveTotal >= 0 ? '+' : '') + saveTotal;
+            });
+            skills.forEach(([skill, ability]) => {
+              const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
+              const modifier = Number(scoreInput.value) ? Math.floor((Number(scoreInput.value) - 10) / 2) : 0;
+              const skillRow = skillsContainer.querySelector('[data-skill="' + skill + '"]').closest('.sheet-check-row');
+              const total = modifier + (skillRow.querySelector('input').checked ? bonus : 0);
+              skillRow.querySelector('.sheet-check-modifier').textContent =
+                (total >= 0 ? '+' : '') + total;
+            });
+          }
+
+          function addAttackRow(attack = { bonus: '+5', damage: '1d8+3' }) {
+            const row = document.createElement('tr');
+            [
+              ['name', 'Weapon name'], ['bonus', 'Attack bonus'],
+              ['damage', 'Damage / type'], ['notes', 'Notes']
+            ].forEach(([field, placeholder]) => {
+              const cell = document.createElement('td');
+              const input = document.createElement('input');
+              input.type = 'text';
+              input.maxLength = field === 'notes' ? 300 : 100;
+              input.dataset.attackField = field;
+              input.setAttribute('aria-label', placeholder);
+              input.placeholder = placeholder;
+              input.value = typeof attack[field] === 'string' ? attack[field] : '';
+              cell.appendChild(input);
+              row.appendChild(cell);
+            });
+            const actionCell = document.createElement('td');
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn btn-small sheet-remove-attack';
+            remove.textContent = 'Remove';
+            remove.setAttribute('aria-label', 'Remove attack');
+            actionCell.appendChild(remove);
+            row.appendChild(actionCell);
+            document.getElementById('cs_attacks_tbody').appendChild(row);
+          }
+
+          document.getElementById('cs_add_attack').addEventListener('click', () => addAttackRow());
+          document.getElementById('cs_attacks_tbody').addEventListener('click', event => {
+            if (event.target.matches('.sheet-remove-attack')) event.target.closest('tr').remove();
+          });
+          classSelect.addEventListener('change', () => updateSubclasses(''));
+          abilityContainer.addEventListener('input', event => {
+            if (event.target.matches('[data-ability]')) updateDerivedStats(sheetCharacterLevel);
+          });
+          savesContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
+          skillsContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
+
+          async function loadSheet() {
+            message.textContent = 'Loading character sheet...';
+            try {
+              const response = await fetch('/api/characters/' + fullSheetCharacterId);
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || 'Could not load character sheet.');
+              const character = result.character;
+              const data = result.sheetData || {};
+              sheetCharacterLevel = character.level || 1;
+              document.getElementById('cs_name').value = character.name || '';
+              document.getElementById('cs_species').value = character.race || '';
+              classSelect.value = character.class || '';
+              updateSubclasses(character.subclass || '');
+              document.getElementById('cs_header_name').textContent = character.name || 'Character Sheet';
+              document.getElementById('cs_header_sub').textContent =
+                'Level ' + (character.level || 1) + ' ' + (character.race || '') + ' ' +
+                (character.class || 'Adventurer') +
+                (character.subclass ? ' (' + character.subclass + ')' : '');
+              abilities.forEach(ability => {
+                const input = abilityContainer.querySelector('[data-ability="' + ability + '"]');
+                const scores = data.abilities || {};
+                const value = scores[ability] === undefined
+                  ? scores[ability.toUpperCase()]
+                  : scores[ability];
+                input.value = value === undefined || value === null ? 10 : value;
+              });
+              abilities.forEach(ability => {
+                const checkbox = savesContainer.querySelector('[data-save="' + ability + '"]');
+                checkbox.checked = Array.isArray(data.savingProficiencies)
+                  ? data.savingProficiencies.includes(ability)
+                  : Boolean(
+                    (data.savingThrows && data.savingThrows[ability]) ||
+                    (data.savingThrows && data.savingThrows[ability.toUpperCase()])
+                  );
+              });
+              skills.forEach(([skill]) => {
+                const checkbox = skillsContainer.querySelector('[data-skill="' + skill + '"]');
+                checkbox.checked = Array.isArray(data.skillProficiencies)
+                  ? data.skillProficiencies.includes(skill)
+                  : Boolean(data.skills && data.skills[skill]);
+              });
+              const fields = {
+                cs_ac: 'armorClass', cs_initiative: 'initiative', cs_speed: 'speed',
+                cs_hp_current: 'hpCurrent', cs_hp_max: 'hpMax', cs_hp_temp: 'hpTemp',
+                cs_hit_dice: 'hitDice', cs_features: 'features', cs_equipment: 'equipmentText'
+              };
+              Object.entries(fields).forEach(([id, key]) => {
+                const legacyKey = {
+                  hpCurrent: 'currentHp',
+                  hpMax: 'maxHp',
+                  hpTemp: 'tempHp',
+                  equipmentText: 'equipment'
+                }[key];
+                const value = data[key] === undefined && legacyKey ? data[legacyKey] : data[key];
+                const defaultValue = {
+                  cs_ac: 10,
+                  cs_hp_current: 10,
+                  cs_hp_max: 10,
+                  cs_hp_temp: 0,
+                  cs_hit_dice: sheetCharacterLevel + 'd8'
+                }[id];
+                document.getElementById(id).value = value === undefined || value === null
+                  ? (defaultValue === undefined ? '' : defaultValue)
+                  : value;
+              });
+              document.getElementById('cs_initiative').value =
+                data.initiative === undefined
+                  ? (Math.floor((Number(abilityContainer.querySelector('[data-ability="dex"]').value) - 10) / 2) >= 0
+                    ? '+' : '') + Math.floor((Number(abilityContainer.querySelector('[data-ability="dex"]').value) - 10) / 2)
+                  : data.initiative;
+              document.getElementById('cs_speed').value =
+                data.speed === undefined ? '30 ft.' : data.speed;
+              const attacks = Array.isArray(data.attacks) ? data.attacks : [];
+              if (attacks.length > 0) attacks.forEach(addAttackRow);
+              else addAttackRow();
+              updateDerivedStats(character.level);
+              message.textContent = '';
+            } catch (error) {
+              message.textContent = error.message;
+              message.classList.add('is-error');
+            }
+          }
+
+          async function saveSheet() {
+            const button = document.getElementById('cs_save');
+            button.disabled = true;
+            message.classList.remove('is-error');
+            message.textContent = 'Saving character sheet...';
+            const sheetData = {
+              abilities: Object.fromEntries(abilityScores.map(input => [
+                input.dataset.ability,
+                input.value === '' ? 10 : Number(input.value)
+              ])),
+              savingProficiencies: abilities.filter(ability =>
+                savesContainer.querySelector('[data-save="' + ability + '"]').checked
+              ),
+              skillProficiencies: skills.filter(([skill]) =>
+                skillsContainer.querySelector('[data-skill="' + skill + '"]').checked
+              ).map(([skill]) => skill),
+              armorClass: document.getElementById('cs_ac').value === ''
+                ? null : Number(document.getElementById('cs_ac').value),
+              initiative: document.getElementById('cs_initiative').value,
+              speed: document.getElementById('cs_speed').value,
+              hpCurrent: document.getElementById('cs_hp_current').value === ''
+                ? null : Number(document.getElementById('cs_hp_current').value),
+              hpMax: document.getElementById('cs_hp_max').value === ''
+                ? null : Number(document.getElementById('cs_hp_max').value),
+              hpTemp: document.getElementById('cs_hp_temp').value === ''
+                ? 0 : Number(document.getElementById('cs_hp_temp').value),
+              hitDice: document.getElementById('cs_hit_dice').value,
+              attacks: [...document.querySelectorAll('#cs_attacks_tbody tr')].map(row =>
+                Object.fromEntries([...row.querySelectorAll('[data-attack-field]')].map(input =>
+                  [input.dataset.attackField, input.value.trim()]
+                ))
+              ),
+              features: document.getElementById('cs_features').value,
+              equipmentText: document.getElementById('cs_equipment').value
+            };
+            try {
+              const response = await fetch('/api/characters/' + fullSheetCharacterId + '/sheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: document.getElementById('cs_name').value,
+                  species: document.getElementById('cs_species').value,
+                  character_class: classSelect.value,
+                  subclass: subclassSelect.value,
+                  sheetData
+                })
+              });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || 'Could not save character sheet.');
+              document.getElementById('cs_header_name').textContent =
+                document.getElementById('cs_name').value;
+              document.getElementById('cs_header_sub').textContent =
+                'Level ' + sheetCharacterLevel + ' ' +
+                document.getElementById('cs_species').value + ' ' + classSelect.value +
+                (subclassSelect.value ? ' (' + subclassSelect.value + ')' : '');
+              message.textContent = result.message || 'Character sheet saved.';
+              message.classList.remove('is-error');
+            } catch (error) {
+              message.textContent = error.message;
+              message.classList.add('is-error');
+            } finally {
+              button.disabled = false;
+            }
+          }
+
+          document.getElementById('cs_save').addEventListener('click', saveSheet);
+          loadSheet();
+        }
 
         function initCharacterEditor(prefix) {
           const speciesSelect = document.getElementById(prefix + '-species');
@@ -1877,6 +2237,7 @@ router.get('/', (req, res) => {
 
         initCharacterEditor('sheet-add');
         initCharacterEditor('sheet-edit');
+        initFullCharacterSheet();
       </script>
     `;
   }
@@ -2116,7 +2477,7 @@ router.get('/', (req, res) => {
                 Redistribute multiclass levels
               </label>
               <p style="color: #949ba4; font-size: 12px; margin: 6px 0;">
-                Leave unchecked to assign level-ups automatically to the primary class. When enabled, set secondary class levels; the primary class receives the remaining XP-derived levels.
+                Leave unchecked to assign level-ups automatically to the primary class. You can still remove secondary classes; their levels return to the primary class. When enabled, set secondary class levels; the primary class receives the remaining XP-derived levels.
               </p>
               <div id="secondary-class-allocations">
                 ${secondaryClassAllocationRows || '<p id="no-secondary-classes" style="color: #949ba4; font-size: 12px;">No secondary classes.</p>'}
@@ -2195,12 +2556,16 @@ router.get('/', (req, res) => {
             const addClassSelect = document.getElementById('add-secondary-class');
             const addClassButton = document.getElementById('add-secondary-class-button');
             const characterForm = document.querySelector('form[action="/admin/characters/update"]');
+            let hasRemovedClassAllocation = false;
 
             function updateAllocationMode() {
               const enabled = allocationToggle.checked;
-              allocationJson.disabled = !enabled;
-              allocationContainer.querySelectorAll('select, input, button').forEach(control => {
+              allocationJson.disabled = !enabled && !hasRemovedClassAllocation;
+              allocationContainer.querySelectorAll('select, input').forEach(control => {
                 control.disabled = !enabled;
+              });
+              allocationContainer.querySelectorAll('.remove-class-allocation').forEach(button => {
+                button.disabled = false;
               });
               addClassSelect.disabled = !enabled;
               addClassButton.disabled = !enabled;
@@ -2250,6 +2615,7 @@ router.get('/', (req, res) => {
             allocationContainer.addEventListener('click', event => {
               if (event.target.matches('.remove-class-allocation')) {
                 event.target.closest('.class-allocation-row').remove();
+                hasRemovedClassAllocation = true;
                 if (!allocationContainer.querySelector('.class-allocation-row')) {
                   const emptyMessage = document.createElement('p');
                   emptyMessage.id = 'no-secondary-classes';
@@ -2257,6 +2623,7 @@ router.get('/', (req, res) => {
                   emptyMessage.textContent = 'No secondary classes.';
                   allocationContainer.appendChild(emptyMessage);
                 }
+                updateAllocationMode();
               }
             });
             allocationToggle.addEventListener('change', updateAllocationMode);
@@ -2271,7 +2638,7 @@ router.get('/', (req, res) => {
               addClassSelect.value = '';
             });
             characterForm.addEventListener('submit', () => {
-              if (allocationToggle.checked) {
+              if (allocationToggle.checked || hasRemovedClassAllocation) {
                 allocationJson.value = JSON.stringify(
                   [...allocationContainer.querySelectorAll('.class-allocation-row')].map(row => ({
                     class_name: row.querySelector('.class-allocation-name').value,
@@ -2837,6 +3204,49 @@ router.get('/', (req, res) => {
         .species-traits p { margin: 5px 0; }
         .species-traits ul { margin: 6px 0 0; padding-left: 18px; }
         .species-traits li { padding: 3px 0; }
+        .character-sheet-full { max-width: 1200px; margin: 0 auto; color: #dbdee1; }
+        .sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; border-bottom: 2px solid #3f4147; padding-bottom: 14px; margin-bottom: 12px; }
+        .sheet-identity { min-width: 0; flex: 1; }
+        .sheet-identity h2 { margin: 0; color: #f2f3f5; }
+        .sheet-identity > span { display: block; color: #949ba4; font-size: 13px; margin: 3px 0 12px; }
+        .sheet-identity-fields { display: grid; grid-template-columns: 1.2fr repeat(3, minmax(130px, 1fr)); gap: 10px; }
+        .sheet-identity-fields label, .sheet-vitals label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
+        .sheet-header-actions { display: flex; gap: 10px; align-items: center; }
+        .btn-secondary { background: #4e5058; color: #fff; }
+        .btn-success { background: #23a55a; color: #fff; font-weight: bold; }
+        .sheet-message { min-height: 20px; margin: 0 0 10px; color: #23a55a; font-size: 13px; }
+        .sheet-message.is-error { color: #f23f43; }
+        .sheet-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+        .sheet-col { display: grid; gap: 14px; min-width: 0; }
+        .sheet-card { min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 12px; }
+        .sheet-card h4 { margin: 0 0 10px; color: #f1c40f; text-transform: uppercase; font-size: 12px; }
+        .sheet-abilities { display: grid; gap: 8px; }
+        .sheet-ability { display: grid; grid-template-columns: 1fr 64px 42px; gap: 7px; align-items: center; background: #232428; border: 1px solid #3f4147; border-radius: 5px; padding: 7px; }
+        .sheet-ability strong { color: #f1c40f; font-size: 13px; }
+        .sheet-ability input { width: 100%; padding: 5px; text-align: center; font-weight: bold; }
+        .sheet-ability-modifier { text-align: center; color: #f2f3f5; font-weight: bold; }
+        .sheet-check-list { display: grid; gap: 5px; }
+        .sheet-check-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; min-height: 24px; font-size: 13px; }
+        .sheet-check-row input { width: 15px; height: 15px; accent-color: #d4af37; }
+        .sheet-check-row small { color: #949ba4; }
+        .sheet-combat-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .sheet-stat { display: grid; gap: 5px; align-content: center; min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 9px 6px; text-align: center; }
+        .sheet-stat span { color: #949ba4; text-transform: uppercase; font-size: 10px; }
+        .sheet-stat input { width: 100%; min-width: 0; padding: 3px; border: 0; background: transparent; color: #fff; text-align: center; font-size: 18px; font-weight: bold; }
+        .sheet-stat strong { color: #f1c40f; font-size: 18px; }
+        .sheet-vitals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .sheet-vitals input, .sheet-card textarea { width: 100%; min-width: 0; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+        .sheet-vitals input { text-align: center; font-size: 16px; font-weight: bold; }
+        .sheet-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .sheet-section-heading h4 { margin: 0; }
+        .sheet-table-wrap { overflow-x: auto; }
+        .sheet-attacks { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 12px; }
+        .sheet-attacks th { color: #949ba4; text-align: left; border-bottom: 1px solid #3f4147; }
+        .sheet-attacks td, .sheet-attacks th { padding: 5px 4px; }
+        .sheet-attacks input { width: 100%; min-width: 70px; padding: 5px; }
+        .sheet-remove-attack { padding: 4px 7px; }
+        .sheet-skills { max-height: 440px; overflow-y: auto; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
         .player-subtabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid #3b3e45; }
         .player-subtabs a { padding: 8px 12px; color: #dbdee1; text-decoration: none; border-bottom: 2px solid transparent; }
         .player-subtabs a.active { color: #d4af37; border-bottom-color: #d4af37; font-weight: bold; }
@@ -2871,9 +3281,16 @@ router.get('/', (req, res) => {
           .adventure-layout { grid-template-columns: minmax(0, 1fr); }
           .analytics-grid { grid-template-columns: minmax(0, 1fr); }
           .character-editor-fields { grid-template-columns: minmax(0, 1fr); }
+          .sheet-layout { grid-template-columns: minmax(0, 1fr); }
+          .sheet-identity-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 480px) {
           .analytics-breakdown { grid-template-columns: minmax(0, 1fr); }
+          .sheet-header { flex-direction: column; }
+          .sheet-header-actions { width: 100%; }
+          .sheet-header-actions > * { flex: 1; text-align: center; }
+          .sheet-combat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .sheet-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
         .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
