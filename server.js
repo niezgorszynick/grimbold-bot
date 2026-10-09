@@ -62,7 +62,8 @@ router.use((req, res, next) => {
 // Client scripts for the admin panel (only files listed here are served).
 const ADMIN_ASSETS = {
   'character-creator.js': path.join(__dirname, 'public', 'character-creator.js'),
-  'character-vitals.js': path.join(__dirname, 'public', 'character-vitals.js')
+  'character-vitals.js': path.join(__dirname, 'public', 'character-vitals.js'),
+  'character-levelup.js': path.join(__dirname, 'public', 'character-levelup.js')
 };
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
@@ -1735,6 +1736,8 @@ router.get('/', (req, res) => {
     const editFormHtml = req.query.edit_char
       ? canEditRequestedCharacter
         ? `
+          <section id="cs_levelup" class="sheet-card levelup" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+          <script src="/admin/assets/character-levelup.js" defer></script>
           <section id="fullCharacterSheetContainer" class="character-sheet-full">
             <header class="sheet-header">
               <div class="sheet-identity">
@@ -1843,8 +1846,14 @@ router.get('/', (req, res) => {
                   </li>
                 `).join('')
                 : `<li>${escapeHtml(character.character_class || 'Unknown')}</li>`;
-              const editButton = isAdmin || (canManageOwnCharacters && character.player_id === currentUser.id)
-                ? `<a href="/admin?tab=character-sheet&edit_char=${character.character_id}" class="btn btn-small">Edit Character Sheet</a>`
+              const canEdit = isAdmin || (canManageOwnCharacters && character.player_id === currentUser.id);
+              // Levels earned from XP that the player has not applied yet.
+              const appliedLevels = classRows.reduce((sum, classRow) => sum + classRow.class_level, 0);
+              const pendingLevels = character.character_status === 'alive' && classRows.length > 0
+                ? Math.max(0, (character.character_level || 0) - appliedLevels)
+                : 0;
+              const editButton = canEdit
+                ? `<a href="/admin?tab=character-sheet&edit_char=${character.character_id}" class="btn btn-small">Edit Character Sheet</a>${pendingLevels > 0 ? ` <a href="/admin?tab=character-sheet&edit_char=${character.character_id}" class="btn btn-small btn-gold">Level Up${pendingLevels > 1 ? ` (${pendingLevels})` : ''}</a>` : ''}`
                 : '';
               return `
                 <article class="card character-sheet">
@@ -1855,7 +1864,7 @@ router.get('/', (req, res) => {
                   ${isAdmin ? `<p class="muted small">Player: ${escapeHtml(character.discord_tag)}</p>` : ''}
                   <dl class="character-sheet-details">
                     <div><dt>Race</dt><dd>${escapeHtml(character.character_race || 'Unknown')}</dd></div>
-                    <div><dt>Level</dt><dd>${character.character_level || 3}</dd></div>
+                    <div><dt>Level</dt><dd>${character.character_level || 3}${pendingLevels > 0 ? ` <span class="tag gold" title="Earned but not yet applied">+${pendingLevels} pending</span>` : ''}</dd></div>
                     <div><dt>XP</dt><dd>${character.character_xp ?? 0}</dd></div>
                   </dl>
                   <h4>Classes</h4>
@@ -3313,6 +3322,14 @@ router.get('/', (req, res) => {
         .tag { padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; background: #4e5058; }
         .tag.green { background: #23a55a; color: #fff; }
         .tag.red { background: #f23f43; color: #fff; }
+        .tag.gold { background: #d4af37; color: #1e1f22; }
+        .levelup { border: 1px solid #d4af37; margin-bottom: 14px; }
+        .levelup-banner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+        .levelup-banner strong { color: #f1c40f; }
+        .levelup-wizard { display: grid; gap: 12px; }
+        .levelup-wizard h4 { margin: 0; color: #f1c40f; }
+        .levelup-wizard select { width: 100%; }
+        .levelup-details { display: grid; gap: 10px; }
         .player-group { margin-bottom: 10px; }
         .player-group-title { color: #d4af37; font-size: 12px; font-weight: bold; border-bottom: 1px solid #3b3e45; padding-bottom: 4px; margin-bottom: 6px; }
         .character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }

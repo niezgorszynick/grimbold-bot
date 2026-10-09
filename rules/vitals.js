@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const { abilityModifier } = require('./util');
 const { calculateMaxHp, getHitDicePool } = require('./hitPoints');
 const { getSpellSlots } = require('./spellcasting');
+const { collectCharacterFeats } = require('./levelUp');
 
 const MAX_EXHAUSTION = 6;
 
@@ -234,7 +235,7 @@ function abilityScore(sheetData, ability) {
 // classRows: [{ className, subclassName, level }], starting class first.
 function deriveVitalsContext({ species, sheetData, classRows }) {
   const constitution = abilityScore(sheetData, 'con');
-  const feats = Array.isArray((sheetData || {}).originFeats) ? sheetData.originFeats : [];
+  const feats = collectCharacterFeats(sheetData);
   const hp = calculateMaxHp({ classes: classRows, constitution, species, feats });
   const bonus = Number.isInteger((sheetData || {}).hpMaxBonus) ? sheetData.hpMaxBonus : 0;
   const spellSlots = getSpellSlots(classRows);

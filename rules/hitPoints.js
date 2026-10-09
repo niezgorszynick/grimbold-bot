@@ -7,7 +7,7 @@
 
 const { abilityModifier } = require('./util');
 const { getClass } = require('./classes');
-const { hpPerLevelFromFeats } = require('./feats');
+const { hpPerLevelFromFeats, hpFlatFromFeats } = require('./feats');
 
 function averageHitDieValue(hitDie) {
   return hitDie / 2 + 1;
@@ -52,7 +52,7 @@ function calculateMaxHp({ classes, constitution, species = '', feats = [] }) {
   });
 
   const fromSpecies = (SPECIES_HP_PER_LEVEL[species] || 0) * totalLevel;
-  const fromFeats = hpPerLevelFromFeats(feats) * totalLevel;
+  const fromFeats = hpPerLevelFromFeats(feats) * totalLevel + hpFlatFromFeats(feats);
   const fromSubclass = subclassHpBonus(classes);
 
   return {

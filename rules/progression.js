@@ -42,7 +42,8 @@ function planLevelUp({ classes, scores, newClass, species = '', feats = [] }) {
     : classes.map(row => (row.className === newClass ? { ...row, level: classLevel } : row));
 
   const choices = [];
-  if (classLevel === SUBCLASS_LEVEL && !subclassName) choices.push('subclass');
+  // Also catches older characters that reached level 3 without choosing one.
+  if (classLevel >= SUBCLASS_LEVEL && !subclassName) choices.push('subclass');
   if (classData.asiLevels.includes(classLevel)) choices.push('abilityScoreImprovementOrFeat');
   if (classLevel === EPIC_BOON_LEVEL) choices.push('epicBoon');
   if (isNewClass && classes.length > 0) choices.push('multiclassProficiencies');

@@ -1,6 +1,7 @@
 // db.js — SQLite layer using better-sqlite3
 const crypto = require('crypto');
 const { validateCharacterOptions } = require('./dndData');
+const rules = require('./rules');
 
 // Sheet fields owned by the vitals API (see rules/vitals.js).
 const VITALS_KEYS = [
@@ -309,7 +310,11 @@ function replaceCharacterClasses(characterId, classAllocations, xp) {
   return allocations;
 }
 
+// Keeps the primary class row in sync with the character's class and trims
+// class levels above targetLevel. It never adds levels: levels earned from XP
+// stay pending until the player applies them with a level-up.
 function reconcileCharacterClassLevels(characterId, targetLevel, className, subclassName) {
+  removeRecordedLevelsAbove(characterId, targetLevel);
   let classes = getCharacterClassRows(characterId);
   let primary = classes.find(item => item.is_primary === 1);
   if (!primary) {
@@ -353,13 +358,7 @@ function reconcileCharacterClassLevels(characterId, targetLevel, className, subc
 
   classes = getCharacterClassRows(characterId);
   primary = classes.find(item => item.is_primary === 1);
-  let remaining = targetLevel - classes.reduce((sum, item) => sum + item.class_level, 0);
-  if (remaining > 0) {
-    db.prepare('UPDATE character_classes SET class_level = class_level + ? WHERE id = ?')
-      .run(remaining, primary.id);
-    return;
-  }
-
+  const remaining = targetLevel - classes.reduce((sum, item) => sum + item.class_level, 0);
   if (remaining < 0) {
     let levelsToRemove = -remaining;
     const reduceClass = db.prepare(
@@ -380,6 +379,98 @@ function reconcileCharacterClassLevels(characterId, targetLevel, className, subc
       );
     }
   }
+}
+
+// ─── Level-ups ─────────────────────────────────────────────────────────────
+// XP earns levels (characters.level); the player applies each one through a
+// guided level-up, which adds the class level and records its choices in
+// sheet_data.levelHistory.
+
+function readSheetData(raw) {
+  try {
+    const parsed = JSON.parse(raw || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    throw new Error('Stored character sheet data is invalid.');
+  }
+}
+
+function levelUpState(character) {
+  const rows = getCharacterClassRows(character.id);
+  return {
+    classes: rows.map(row => ({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level })),
+    earnedLevel: character.level,
+    species: character.race,
+    sheetData: readSheetData(character.sheet_data)
+  };
+}
+
+// Writes rule-engine class rows back, keeping the primary row's identity.
+function writeClassRows(characterId, classes) {
+  const existing = getCharacterClassRows(characterId);
+  const update = db.prepare('UPDATE character_classes SET class_level = ?, subclass_name = ? WHERE id = ?');
+  const remove = db.prepare('DELETE FROM character_classes WHERE id = ?');
+  const insert = db.prepare(`
+    INSERT INTO character_classes (character_id, class_name, subclass_name, class_level, is_primary)
+    VALUES (?, ?, ?, ?, 0)
+  `);
+  for (const row of existing) {
+    const next = classes.find(item => item.className === row.class_name);
+    if (next) update.run(next.level, next.subclassName || null, row.id);
+    else remove.run(row.id);
+  }
+  for (const item of classes) {
+    if (!existing.some(row => row.class_name === item.className)) {
+      insert.run(characterId, item.className, item.subclassName || null, item.level);
+    }
+  }
+  const primary = getCharacterClassRows(characterId).find(row => row.is_primary === 1);
+  if (primary) {
+    db.prepare('UPDATE characters SET subclass = ? WHERE id = ?').run(primary.subclass_name || '', characterId);
+  }
+}
+
+// Undoes recorded level-ups, newest first, until the applied level fits.
+function removeRecordedLevelsAbove(characterId, targetLevel) {
+  for (;;) {
+    const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
+    const state = levelUpState(character);
+    const applied = state.classes.reduce((sum, row) => sum + row.level, 0);
+    if (applied <= targetLevel) return;
+    const reverted = rules.revertLastLevel(state);
+    if (!reverted) return;
+    const appliedAfter = reverted.classes.reduce((sum, row) => sum + row.level, 0);
+    if (appliedAfter >= applied) return; // History no longer matches the class rows.
+    writeClassRows(characterId, reverted.classes);
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?')
+      .run(JSON.stringify(reverted.sheetData), characterId);
+  }
+}
+
+function loadOwnedCharacter(characterId, playerId, isAdmin) {
+  const id = Number(characterId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid character ID.');
+  const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(id);
+  if (!character) throw new Error('Character not found.');
+  if (!isAdmin && character.player_id !== Number(playerId)) throw new Error('Forbidden.');
+  return character;
+}
+
+function getCharacterLevelUpOptions({ id, player_id, is_admin }) {
+  const character = loadOwnedCharacter(id, player_id, is_admin);
+  return rules.getLevelUpOptions(levelUpState(character));
+}
+
+function levelUpCharacter({ id, player_id, is_admin, request }) {
+  return db.transaction(() => {
+    const character = loadOwnedCharacter(id, player_id, is_admin);
+    if (character.status !== 'alive') throw new Error('Only living characters can level up.');
+    const result = rules.applyLevelUp(levelUpState(character), request);
+    writeClassRows(character.id, result.classes);
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?')
+      .run(JSON.stringify(result.sheetData), character.id);
+    return { entry: result.entry, classes: result.classes };
+  })();
 }
 
 function updateCharacterProgression(characterId, xp) {
@@ -697,6 +788,8 @@ module.exports = {
   getCharacterByIdAndPlayer,
   updateCharacterGold,
   processWebPurchase,
+  getCharacterLevelUpOptions,
+  levelUpCharacter,
 
   // Postacie z rasą, podklasą i automatycznym poziomem
   addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {

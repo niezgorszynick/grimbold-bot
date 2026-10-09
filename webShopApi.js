@@ -155,6 +155,41 @@ function vitalsViewFor(character, sheetData) {
   return rules.buildVitalsView(rules.normalizeVitals(sheetData, context.hpMax), context);
 }
 
+function levelUpErrorStatus(message) {
+  if (message === 'Forbidden.') return 403;
+  if (message === 'Character not found.') return 404;
+  return 400;
+}
+
+// Choices available for the character's next earned level.
+router.get('/characters/:id/level-up', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterLevelUpOptions({ id: req.params.id, player_id: user.id, is_admin: user.role === 'admin' }));
+  } catch (error) {
+    return res.status(levelUpErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// Applies one level: { className, subclass, improvement, multiclassSkills, multiclassTools }.
+router.post('/characters/:id/level-up', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const request = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const result = db.levelUpCharacter({ id: req.params.id, player_id: user.id, is_admin: user.role === 'admin', request });
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    const status = levelUpErrorStatus(error.message);
+    if (status === 400 && error instanceof TypeError) {
+      console.error('Level-up failed:', error);
+      return res.status(500).json({ error: 'Could not apply the level-up.' });
+    }
+    return res.status(status).json({ error: error.message });
+  }
+});
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);
