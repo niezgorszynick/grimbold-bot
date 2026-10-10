@@ -3,29 +3,19 @@ const db = require('./db');
 const { formatCp } = require('./currency');
 const { DND_DATA } = require('./dndData');
 const rules = require('./rules');
+const { loadSessionUser, isAdmin } = require('./auth');
 
 const router = express.Router();
 
-function getSessionPlayer(req) {
-  const userId = req.session && req.session.user && req.session.user.id;
-  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
-
-  return db.prepare(`
-    SELECT id, discord_id, discord_tag
-    FROM players
-    WHERE id = ?
-  `).get(userId) || null;
+// Any logged-in user, including the emergency admin (id 0).
+function getSessionApiUser(req) {
+  return loadSessionUser(req);
 }
 
-function getSessionApiUser(req) {
-  const sessionUser = req.session && req.session.user;
-  if (!sessionUser) return null;
-  if (sessionUser.id === 0 && sessionUser.role === 'admin') {
-    return { id: 0, role: 'admin' };
-  }
-  if (!Number.isSafeInteger(sessionUser.id) || sessionUser.id <= 0) return null;
-
-  return db.prepare('SELECT id, role FROM players WHERE id = ?').get(sessionUser.id) || null;
+// A logged-in player account (excludes the emergency admin, who has no characters).
+function getSessionPlayer(req) {
+  const user = loadSessionUser(req);
+  return user && user.id > 0 ? user : null;
 }
 
 async function sendGrimboldShopEmbed({
@@ -113,7 +103,7 @@ router.get('/characters/:id', (req, res) => {
   }
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
   if (!character) return res.status(404).json({ error: 'Character not found.' });
-  if (user.role !== 'admin' && character.player_id !== user.id) {
+  if (!isAdmin(user) && character.player_id !== user.id) {
     return res.status(403).json({ error: 'Forbidden.' });
   }
 
@@ -166,7 +156,7 @@ router.get('/characters/:id/level-up', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    return res.json(db.getCharacterLevelUpOptions({ id: req.params.id, player_id: user.id, is_admin: user.role === 'admin' }));
+    return res.json(db.getCharacterLevelUpOptions({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
   } catch (error) {
     return res.status(levelUpErrorStatus(error.message)).json({ error: error.message });
   }
@@ -178,7 +168,7 @@ router.post('/characters/:id/level-up', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const request = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
-    const result = db.levelUpCharacter({ id: req.params.id, player_id: user.id, is_admin: user.role === 'admin', request });
+    const result = db.levelUpCharacter({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), request });
     return res.json({ success: true, ...result });
   } catch (error) {
     const status = levelUpErrorStatus(error.message);
@@ -207,7 +197,7 @@ router.post('/characters/:id/vitals', (req, res) => {
     const result = db.transaction(() => {
       const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
       if (!character) return { status: 404, error: 'Character not found.' };
-      if (user.role !== 'admin' && character.player_id !== user.id) return { status: 403, error: 'Forbidden.' };
+      if (!isAdmin(user) && character.player_id !== user.id) return { status: 403, error: 'Forbidden.' };
 
       let sheetData = {};
       try {
@@ -347,7 +337,7 @@ router.post('/characters/:id/abilities', (req, res) => {
         'SELECT id, player_id, sheet_data FROM characters WHERE id = ?'
       ).get(characterId);
       if (!character) return { error: 'not_found' };
-      if (user.role !== 'admin' && character.player_id !== user.id) {
+      if (!isAdmin(user) && character.player_id !== user.id) {
         return { error: 'forbidden' };
       }
 
@@ -421,7 +411,7 @@ router.post('/characters/:id/sheet', (req, res) => {
     const updated = db.updateCharacterSheet({
       id: characterId,
       player_id: user.id,
-      is_admin: user.role === 'admin',
+      is_admin: isAdmin(user),
       name,
       race: species,
       class_name: character_class,
@@ -458,18 +448,8 @@ router.post('/characters/:id/sheet', (req, res) => {
 });
 
 router.post('/admin/character-gold', (req, res) => {
-  const user = req.session && req.session.user;
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(getSessionApiUser(req))) {
     return res.status(403).json({ error: 'Access denied. DM/Admin rights required.' });
-  }
-
-  if (user.id !== 0) {
-    const admin = Number.isSafeInteger(user.id)
-      ? db.prepare('SELECT role FROM players WHERE id = ?').get(user.id)
-      : null;
-    if (!admin || admin.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. DM/Admin rights required.' });
-    }
   }
 
   const { characterId, gold } = req.body || {};

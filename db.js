@@ -19,7 +19,7 @@ const db = new Database(dbPath);
 
 db.pragma('journal_mode = WAL');
 
-// 1. Tabela rzutów
+// 1. Weekly d20 rolls
 db.exec(`
   CREATE TABLE IF NOT EXISTS rolls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,13 +31,13 @@ db.exec(`
   );
 `);
 
-// Bezpieczne dodanie kolumny username do rolls, jeśli jeszcze nie istnieje
+// Add the rolls.username column if it does not exist yet
 const rollsColumns = db.prepare("PRAGMA table_info(rolls)").all();
 if (!rollsColumns.some(col => col.name === 'username')) {
   db.exec("ALTER TABLE rolls ADD COLUMN username TEXT;");
 }
 
-// 2. Tabela przedmiotów
+// 2. Shop items (current stock on the counter)
 db.exec(`
   CREATE TABLE IF NOT EXISTS items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,7 @@ db.exec(`
   );
 `);
 
-// 3. Tabela historii sprzedaży (odpowiednik arkusza Sales)
+// 3. Sales history (replaces the old Sales spreadsheet)
 db.exec(`
   CREATE TABLE IF NOT EXISTS sales (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +68,7 @@ db.exec(`
   );
 `);
 
-// 4. Stwórz catalog przedmiotów
+// 4. Master item catalog
 db.exec(`
   CREATE TABLE IF NOT EXISTS catalog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,7 +90,7 @@ db.exec(`
   INSERT OR IGNORE INTO config (key, value) VALUES ('party_level', '3');
 `);
 
-// 5. Stwórz tabele dla graczy i ich postaci
+// 5. Players and their characters
 db.exec(`
   CREATE TABLE IF NOT EXISTS players (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,7 +124,7 @@ db.exec(`
   ON players (discord_tag COLLATE NOCASE);
 `);
 
-// 5.1. Tabela klas postaci (multiclassing)
+// 5.1. Character class levels (multiclassing)
 db.exec(`
   CREATE TABLE IF NOT EXISTS character_classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,7 +138,7 @@ db.exec(`
   );
 `);
 
-// 6. Tabela przygód
+// 6. Adventures
 db.exec(`
   CREATE TABLE IF NOT EXISTS adventures (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,16 +164,16 @@ db.exec(`
 try {
   db.exec(`ALTER TABLE adventures ADD COLUMN dm_character_id INTEGER REFERENCES characters(id)`);
 } catch (e) {
-  // Kolumna już istnieje
+  // Column already exists
 }
 
-// 6.1. Bezpieczna migracja kolumn w tabeli players
+// 6.1. Add missing columns to players
 const playerCols = db.prepare("PRAGMA table_info(players)").all().map(c => c.name);
 if (!playerCols.includes('dm_points')) {
   db.exec("ALTER TABLE players ADD COLUMN dm_points INTEGER NOT NULL DEFAULT 0;");
 }
 
-// 6.2. Bezpieczna migracja kolumn w tabeli characters
+// 6.2. Add missing columns to characters
 const charCols = db.prepare("PRAGMA table_info(characters)").all().map(c => c.name);
 if (!charCols.includes('race')) {
   db.exec("ALTER TABLE characters ADD COLUMN race TEXT NOT NULL DEFAULT 'Unknown';");
@@ -222,7 +222,7 @@ const migrateCharacterClasses = db.transaction(() => {
 });
 migrateCharacterClasses();
 
-// Funkcja pomocnicza: Obliczanie poziomu na podstawie punktów przygód
+// Character level from adventure points (campaign rule: start at 3, +1 per 4 points)
 function calculateLevelFromXp(xp) {
   const points = Math.max(0, parseInt(xp, 10) || 0);
   if (points < 3) return 3;
@@ -821,50 +821,6 @@ module.exports = {
   levelUpCharacter,
   insertStartingCharacter,
 
-  // Postacie z rasą, podklasą i automatycznym poziomem
-  addCharacter: ({ player_id, name, race, class_name, subclass = '', xp = 0, status = 'alive' }) => {
-    const pId = parseInt(player_id, 10);
-    const trimmedName = (name || '').trim();
-    if (isNaN(pId)) throw new Error('Valid player must be selected.');
-    if (!trimmedName) throw new Error('Character name is required.');
-
-    const { canonicalSpecies, canonicalClass, canonicalSubclass } = validateCharacterOptions(race, class_name, subclass);
-
-    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
-    const calculatedLevel = calculateLevelFromXp(parsedXp);
-
-    return db.prepare(`
-      INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(pId, trimmedName, canonicalSpecies, canonicalClass, canonicalSubclass, calculatedLevel, parsedXp, status);
-  },
-
-  updateCharacter: ({ id, player_id, name, race, class_name, subclass, xp, level, override_level, status }) => {
-    const cId = parseInt(id, 10);
-    const pId = parseInt(player_id, 10);
-    const trimmedName = (name || '').trim();
-    if (isNaN(cId)) throw new Error('Invalid character ID.');
-    if (isNaN(pId)) throw new Error('Valid player must be selected.');
-    if (!trimmedName) throw new Error('Character name is required.');
-
-    const { canonicalSpecies, canonicalClass, canonicalSubclass } = validateCharacterOptions(race, class_name, subclass);
-
-    const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
-    let finalLevel = calculateLevelFromXp(parsedXp);
-    if (override_level === '1' || override_level === 1 || override_level === true) {
-      const manualLvl = parseInt(level, 10);
-      if (!isNaN(manualLvl) && manualLvl >= 1 && manualLvl <= 20) {
-        finalLevel = manualLvl;
-      }
-    }
-
-    return db.prepare(`
-      UPDATE characters
-      SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?
-      WHERE id = ?
-    `).run(pId, trimmedName, canonicalSpecies, canonicalClass, canonicalSubclass, finalLevel, parsedXp, status, cId);
-  },
-
 getAdventureById: (id) => {
   return db.prepare('SELECT * FROM adventures WHERE id = ?').get(Number(id));
 },
@@ -882,7 +838,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     const newDmCharId = dm_character_id ? Number(dm_character_id) : null;
     const targetCharIds = Array.from(new Set((character_ids || []).map(Number)));
 
-    // 1. Pobierz obecny stan przygody
+    // 1. Load the current adventure
     const oldAdv = db.prepare('SELECT * FROM adventures WHERE id = ?').get(advId);
     if (!oldAdv) {
       throw new Error(`Adventure #${advId} not found.`);
@@ -893,7 +849,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     const oldDmCharId = oldAdv.dm_character_id ? Number(oldAdv.dm_character_id) : null;
     const oldDmPlayerId = oldAdv.dm_player_id ? Number(oldAdv.dm_player_id) : null;
 
-    // 2. Porównanie listy uczestników
+    // 2. Compare participant lists
     const currentRewards = db.prepare('SELECT character_id FROM adventure_rewards WHERE adventure_id = ?').all(advId);
     const oldCharIds = currentRewards.map(r => r.character_id);
 
@@ -903,7 +859,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
 
     const getCharStmt = db.prepare('SELECT xp FROM characters WHERE id = ?');
 
-    // 3. Postacie usunięte z sesji: cofnięcie starego XP i rekalkulacja poziomu
+    // 3. Removed participants: take back their XP and recalculate level
     for (const charId of toRemove) {
       const char = getCharStmt.get(charId);
       if (char) {
@@ -913,7 +869,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       db.prepare('DELETE FROM adventure_rewards WHERE adventure_id = ? AND character_id = ?').run(advId, charId);
     }
 
-    // 4. Postacie zachowane: korekta o różnicę XP
+    // 4. Remaining participants: adjust by the XP difference
     if (diffXp !== 0) {
       for (const charId of toKeep) {
         const char = getCharStmt.get(charId);
@@ -935,9 +891,9 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       }
     }
 
-    // 6. Rozliczenie bonusu DM (+1 XP dla postaci vs dm_points gracza)
+    // 6. DM bonus (+1 XP to the DM's character, or +1 DM point to the player)
     if (oldDmCharId !== newDmCharId || oldDmPlayerId !== newDmPlayerId) {
-      // Cofnięcie starej nagrody DM
+      // Undo the previous DM reward
       if (oldDmCharId) {
         const prevChar = getCharStmt.get(oldDmCharId);
         if (prevChar) {
@@ -960,7 +916,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       }
     }
 
-    // 7. Aktualizacja danych przygody
+    // 7. Save the adventure details
     db.prepare(`
       UPDATE adventures 
       SET title = ?, description = ?, xp_awarded = ?, dm_player_id = ?, dm_character_id = ?
@@ -971,16 +927,16 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   return run();
 },
 
-  // Przypisanie 1 punktu DM do wybranej postaci
+  // Spend 1 banked DM point as +1 XP on one of the player's characters
   assignDmPointToCharacter: (playerId, characterId) => {
     const run = db.transaction(() => {
       const player = db.prepare('SELECT dm_points FROM players WHERE id = ?').get(playerId);
       if (!player || player.dm_points < 1) {
-        throw new Error('Gracz nie posiada punktów DM do wykorzystania.');
+        throw new Error('This player has no DM points to spend.');
       }
       const char = db.prepare('SELECT id, xp FROM characters WHERE id = ? AND player_id = ?').get(characterId, playerId);
       if (!char) {
-        throw new Error('Wybrana postać nie należy do tego gracza.');
+        throw new Error('That character does not belong to this player.');
       }
 
       const newXp = char.xp + 1;
@@ -990,7 +946,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     return run();
   },
 
-  // Obsługa przygód
+  // Adventures
   getAllAdventures: () => db.prepare(`
     SELECT a.*, p.discord_tag AS dm_name 
     FROM adventures a
@@ -1028,7 +984,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         }
       }
 
-      // Obsługa bonusu DM: bezpośrednio na postać lub do banku gracza
+      // DM bonus: directly to a character, or banked with the player
       if (targetDmCharId) {
         const dmChar = db.prepare('SELECT xp FROM characters WHERE id = ?').get(targetDmCharId);
         if (dmChar) {
@@ -1043,11 +999,6 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     });
     return run();
   },
-  
-  //Bezpośredni dostęp do bazy dla skryptów (seed, restock, maintenance)
-  db,
-  prepare: (sql) => db.prepare(sql),
-  transaction: (fn) => db.transaction(fn),
 
   addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
       const trimmedName = (name || '').trim();
@@ -1075,7 +1026,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       }
       if (!trimmedDesc) throw new Error('Description is required.');
 
-      // Sprawdzenie unikalności nazwy
+      // Names must be unique
       const existing = db.prepare('SELECT id FROM catalog WHERE name = ? COLLATE NOCASE').get(trimmedName);
       if (existing) {
         throw new Error(`An item named "${trimmedName}" already exists in the Master Catalog (ID: ${existing.id}).`);
@@ -1098,7 +1049,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       );
     },
 
-  //getPartyLevel - w przyszłości ma dostosować katalog przedmiotów do poziomu party
+  // Party level, used to filter the catalog by min_level
   getPartyLevel: () => {
     const row = db.prepare("SELECT value FROM config WHERE key = 'party_level'").get();
     return row ? parseInt(row.value, 10) : 1;
@@ -1119,14 +1070,14 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   getAllItemsForAdmin: () => queries.getAllItemsAdmin.all(),
   findItemByName: (name) => queries.getItemByName.get(name),
 
- // ─── MASTER CATALOG & SYNCHRONIZACJA Z LADĄ (ITEMS) ───────────────────────
+ // ─── MASTER CATALOG & COUNTER SYNC (ITEMS) ────────────────────────────────
 
   // Pobranie pojedynczego wpisu z katalogu po ID
   getCatalogItemById: (id) => {
     return db.prepare('SELECT * FROM catalog WHERE id = ?').get(parseInt(id, 10));
   },
 
-  // Aktualizacja pozycji w catalog wraz z natychmiastową synchronizacją items
+  // Update a catalog entry and sync it to the counter (items) immediately
   updateCatalogItem: db.transaction(({ id, name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
     const trimmedName = (name || '').trim();
     const trimmedCat = (category || '').trim();
@@ -1142,11 +1093,11 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     if (isNaN(max_stock) || max_stock < min_stock) throw new Error('Max stock must be >= min stock.');
     if (!trimmedDesc) throw new Error('Description is required.');
 
-    // 1. Sprawdzamy starą nazwę w katalogu, aby znaleźć powiązany rekord w items
+    // 1. Look up the old name to find the matching counter item
     const oldItem = db.prepare('SELECT name FROM catalog WHERE id = ?').get(parseInt(id, 10));
     if (!oldItem) throw new Error('Catalog item not found.');
 
-    // 2. Aktualizujemy Master Catalog
+    // 2. Update the master catalog
     db.prepare(`
       UPDATE catalog
       SET name = ?,
@@ -1170,7 +1121,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       parseInt(id, 10)
     );
 
-    // 3. Jeśli przedmiot znajduje się obecnie na ladzie (tabela items), synchronizujemy go od razu
+    // 3. If the item is currently on the counter (items), sync it now
     const shelfItem = db.prepare('SELECT id FROM items WHERE name = ? COLLATE NOCASE').get(oldItem.name);
     if (shelfItem) {
       const newPriceGp = Math.max(1, Math.round(parseInt(base_price_cp, 10) / 100));
@@ -1191,7 +1142,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     }
   }),
 
-  // Usunięcie z katalogu wraz z wyczyszczeniem z lady sklepowej
+  // Delete from the catalog and remove it from the counter
   deleteCatalogItem: db.transaction((id) => {
     const item = db.prepare('SELECT name FROM catalog WHERE id = ?').get(parseInt(id, 10));
     if (item) {
@@ -1234,7 +1185,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     runAll();
   },
 
-  // ─── ZARZĄDZANIE ASORTYMENTEM SKLEPU (ITEMS) ──────────────────────────────
+  // ─── SHOP COUNTER (ITEMS) ─────────────────────────────────────────────────
 
   addItem: ({ name, category, price, stock, description, is_active = 1 }) => {
     const trimmedName = (name || '').trim();
@@ -1261,7 +1212,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     });
   },
 
-  // Transakcja zakupu: weryfikacja magazynu + odliczenie + zapis do rejestru sprzedaży
+  // Purchase transaction: check stock, deduct it, record the sale
   purchaseItemTransaction: db.transaction((itemId, quantity, saleData) => {
     const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
     if (!item) throw new Error('ITEM_NOT_FOUND');
@@ -1790,7 +1741,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     return db.prepare('DELETE FROM characters WHERE id = ?').run(id);
   },
 
-  // ─── POBIERANIE DANYCH DO PANELU DM ───────────────────────────────────────
+  // ─── DM PANEL QUERIES ─────────────────────────────────────────────────────
 
   getAllCatalogItems: () => db.prepare('SELECT * FROM catalog ORDER BY name ASC').all(),
   getAllSales: () => db.prepare('SELECT * FROM sales ORDER BY created_at DESC LIMIT 100').all(),
@@ -1813,7 +1764,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     LIMIT 100
   `).all(),
 
-  // Eksport instancji bazy dla zewnętrznych skryptów
+  // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),
   transaction: (fn) => db.transaction(fn)

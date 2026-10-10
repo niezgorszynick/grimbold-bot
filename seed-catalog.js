@@ -34,7 +34,7 @@ function determineTierAndLevel(name, category, priceCp) {
     return { tier: 'magic', min_level: minLvl, min_stock: 1, max_stock: 1 };
   }
 
-  // Rare items (ciężkie pancerze, zaawansowana alchemia, zwoje, droższa broń palna)
+  // Rare items (heavy armor, advanced alchemy, scrolls, pricier firearms)
   if (
     n === 'plate armor' || n === 'half plate armor' || n === 'breastplate' ||
     n === 'potion of greater healing' || cat === 'scroll' || cat === 'gemstone' ||

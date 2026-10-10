@@ -85,9 +85,9 @@ module.exports = {
       await interaction.editReply({ embeds: [embed] });
 
     } catch (error) {
-      console.error('Błąd podczas wykonywania /roll:', error);
+      console.error('Error in /roll:', error);
       await interaction.editReply({
-        content: 'Wystąpił błąd podczas rejestrowania rzutu. Spróbuj ponownie później.'
+        content: '*Grimbold scratches his head.* "I lost track of your roll. Try again in a moment."'
       });
     }
   },

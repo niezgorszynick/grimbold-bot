@@ -84,7 +84,7 @@ async function restockShop() {
     return;
   }
 
-  // Podział na pule
+  // Split the catalog into pools
   const cantripScrolls = pool.filter(i => 
     i.category === 'Spell Scroll' && i.name.startsWith('Spell Scroll (Cantrip:')
   );
@@ -101,7 +101,7 @@ async function restockShop() {
   const magics = pool.filter(i => i.tier === 'magic' && !i.name.toLowerCase().includes('scroll'));
   const staples = pool.filter(i => i.tier === 'staple');
 
-  // Losowanie według dynamicznej konfiguracji
+  // Draw items according to the restock settings
   const selectedStaples = staples;
   const selectedCommons = pickRandom(generalCommons, cfg.commons_count);
   const selectedCantrips = pickRandom(cantripScrolls, cfg.cantrips_count);

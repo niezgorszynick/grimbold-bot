@@ -8,6 +8,7 @@ const app = express();
 const adminRouter = require('./server');
 const webShopApiRouter = require('./webShopApi');
 const db = require('./db');
+const { ROOT_ADMIN } = require('./auth');
 
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret || sessionSecret.length < 32) {
@@ -84,7 +85,7 @@ app.post('/login', (req, res) => {
     crypto.timingSafeEqual(passwordBytes, configuredPasswordBytes);
 
   const user = isEmergencyAdminLogin
-    ? { id: 0, discord_tag: 'Root DM', role: 'admin' }
+    ? ROOT_ADMIN
     : db.authenticatePlayer(username, password);
   if (!user) return res.redirect('/login?error=1');
 

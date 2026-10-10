@@ -4,6 +4,7 @@ const path = require('path');
 const router = express.Router();
 const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
+const { loadSessionUser, isAdmin, isRootAdmin } = require('./auth');
 const { formatCp } = require('./currency');
 const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
 const { restockShop } = require('./restock');
@@ -18,36 +19,23 @@ router.use(express.urlencoded({ extended: true }));
 router.use(express.json());
 
 function requireAuth(req, res, next) {
-  if (!req.session || !req.session.user) return res.redirect('/login');
-  if (req.session.user.id === 0 && req.session.user.role === 'admin') return next();
-
-  const player = db.prepare(`
-    SELECT id, discord_tag, role, password_hash
-    FROM players
-    WHERE id = ?
-  `).get(req.session.user.id);
-  if (!player || !player.password_hash) {
+  const user = loadSessionUser(req);
+  if (!user) {
     req.session = null;
     return res.redirect('/login');
   }
-
-  req.session.user = {
-    id: player.id,
-    discord_tag: player.discord_tag,
-    role: player.role || 'player'
-  };
+  // Keep the session in step with role or tag changes made by an admin.
+  req.session.user = { id: user.id, discord_tag: user.discord_tag, role: user.role };
   return next();
 }
 
 function requireAdmin(req, res, next) {
-  if (req.session && req.session.user && req.session.user.role === 'admin') return next();
+  if (isAdmin(req.session.user)) return next();
   return res.status(403).send('Forbidden: Dungeon Master privileges required.');
 }
 
 function requireRootAdmin(req, res, next) {
-  if (req.session && req.session.user && req.session.user.id === 0 && req.session.user.role === 'admin') {
-    return next();
-  }
+  if (isRootAdmin(req.session.user)) return next();
   return res.status(403).send('Forbidden: Only the emergency admin can manage account passwords and roles.');
 }
 
@@ -144,7 +132,7 @@ router.post('/restock-settings', (req, res) => {
   }
 });
 
-// Ręczne wywołanie restocku z panelu
+// Manual restock from the panel
 router.post('/restock', async (req, res) => {
   try {
     await restockShop();
@@ -155,7 +143,7 @@ router.post('/restock', async (req, res) => {
   }
 });
 
-// Wysłanie customowej wiadomości na kanał Discord
+// Send a custom message to a Discord channel
 router.post('/message', async (req, res) => {
   try {
     const { title, message, as_embed } = req.body;
@@ -234,7 +222,7 @@ router.post('/items/update', (req, res) => {
 
 // ─── POST ENDPOINTS: CATALOG ────────────────────────────────────────────────
 
-// POST /admin/catalog/add — dodawanie nowego przedmiotu z walutami D&D
+// POST /admin/catalog/add — add a catalog item (price in gp/sp/cp)
 router.post('/catalog/add', (req, res) => {
   try {
     const { name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock } = req.body;
@@ -272,7 +260,7 @@ router.post('/catalog/add', (req, res) => {
   }
 });
 
-// POST /admin/catalog/update — aktualizacja przedmiotu z walutami D&D
+// POST /admin/catalog/update — update a catalog item (price in gp/sp/cp)
 router.post('/catalog/update', (req, res) => {
   try {
     const { id, name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock } = req.body;
@@ -464,7 +452,7 @@ router.post('/characters/delete', (req, res) => {
   }
 });
 
-// POST: Przypisanie 1 punktu DM do wybranej postaci
+// POST: spend 1 DM point on a character
 router.post('/players/assign-dm-point', (req, res) => {
   try {
     const { player_id, character_id } = req.body;
@@ -475,12 +463,12 @@ router.post('/players/assign-dm-point', (req, res) => {
   }
 });
 
-// POST: Zapisanie ukończonej przygody i przyznanie XP / punktu DM
+// POST: record a finished adventure and award XP / DM point
 router.post('/adventures/add', (req, res) => {
   try {
     const { title, description, xp_awarded, dm_player_id, dm_character_id, character_ids } = req.body;
     
-    // Checkboxy HTML zwracają string (jeden wybór) lub tablicę (wiele wyborów)
+    // HTML checkboxes send a string (one checked) or an array (several)
     let assignedCharIds = [];
     if (character_ids) {
       assignedCharIds = Array.isArray(character_ids) ? character_ids.map(Number) : [parseInt(character_ids, 10)];
@@ -607,7 +595,7 @@ router.get('/', (req, res) => {
 
   let contentHtml = '';
 
-  // ── ZAKŁADKA: ITEMS ──
+  // ── TAB: ITEMS ──
   if (currentTab === 'items') {
     const catalogJson = JSON.stringify(catalogItems.map(c => ({
       name: c.name,
@@ -871,7 +859,7 @@ router.get('/', (req, res) => {
     `;
   }
 
-// ── ZAKŁADKA: CATALOG ──
+// ── TAB: CATALOG ──
   else if (currentTab === 'catalog') {
     const editId = req.query.edit_catalog ? parseInt(req.query.edit_catalog, 10) : null;
     const itemToEdit = editId ? db.getCatalogItemById(editId) : null;
@@ -1310,7 +1298,7 @@ router.get('/', (req, res) => {
     `;
   }
 
-  // ── ZAKŁADKA: RESTOCK ENGINE ──
+  // ── TAB: RESTOCK ENGINE ──
   else if (currentTab === 'restock') {
     const cfg = db.getRestockConfig();
 
@@ -1440,7 +1428,7 @@ router.get('/', (req, res) => {
     `;
   }
 
-  // ── ZAKŁADKA: ANALYTICS ──
+  // ── TAB: ANALYTICS ──
   else if (currentTab === 'analytics') {
     const analytics = db.getCharacterAnalytics();
     const analyticsJson = JSON.stringify(analytics).replace(/</g, '\\u003c');
@@ -1670,7 +1658,7 @@ router.get('/', (req, res) => {
     `;
   }
 
-  // ── ZAKŁADKA: SALES ──
+  // ── TAB: SALES ──
   else if (currentTab === 'sales') {
     contentHtml = `
       <div class="card">
@@ -2398,7 +2386,7 @@ router.get('/', (req, res) => {
     `;
   }
 
-  // ── ZAKŁADKA: ROLLS ──
+  // ── TAB: ROLLS ──
   else if (currentTab === 'rolls') {
     contentHtml = `
       <div class="card">
@@ -2429,7 +2417,7 @@ router.get('/', (req, res) => {
     `;
   }
 
-  // ── ZAKŁADKA: PLAYERS & CHARACTERS ──
+  // ── TAB: PLAYERS & CHARACTERS ──
   else if (currentTab === 'players') {
     const allPlayers = (db.getAllPlayers ? db.getAllPlayers() : [])
       .filter(player => isAdmin || player.id === currentUser.id);
@@ -3228,7 +3216,7 @@ router.get('/', (req, res) => {
     contentHtml = `${playersSubnavHtml}${playerView === 'accounts' ? accountAccessHtml : rosterHtml}`;
   }
 
-  // Główny layout HTML
+  // Main HTML layout
   res.send(`
     <!DOCTYPE html>
     <html>

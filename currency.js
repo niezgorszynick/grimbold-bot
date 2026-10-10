@@ -1,4 +1,4 @@
-// currency.js — obsługa przeliczania i formatowania walut D&D 5e
+// currency.js — D&D currency parsing and formatting (stored as copper pieces)
 function parsePriceToCp(raw) {
   if (!raw && raw !== 0) return 100;
   const clean = String(raw).replace(/GP/i, '').replace(/,/g, '').trim();
