@@ -273,18 +273,33 @@
     const search = el('input', { type: 'search', placeholder: 'Search spells…', 'aria-label': 'Search spells' });
     const groups = [];
 
+    // Spells of several levels are split into one folding section per level
+    // (open where something is chosen), so the page never needs a scroll box.
     function group(title, spells, selected, limit) {
       const chosen = new Set(selected);
       const status = el('small', { className: 'muted' });
-      const list = el('div', { className: 'spell-pick-list' });
-      const inputs = spells.map(spell => {
-        const input = el('input', { type: 'checkbox', value: spell.name });
-        input.checked = chosen.has(spell.name);
-        list.append(el('label', { className: 'creator-check', 'data-name': spell.name.toLowerCase() }, [
-          input, el('span', { text: spell.name }),
-          el('small', { className: 'muted', text: (spell.level ? 'L' + spell.level : 'C') + (spell.ritual ? ' · R' : '') + (spell.concentration ? ' · C' : '') })
-        ]));
-        return input;
+      const body = el('div');
+      const levels = [...new Set(spells.map(spell => spell.level))].sort((a, b) => a - b);
+      const inputs = [];
+      levels.forEach(level => {
+        const list = el('div', { className: 'spell-pick-list' });
+        spells.filter(spell => spell.level === level).forEach(spell => {
+          const input = el('input', { type: 'checkbox', value: spell.name });
+          input.checked = chosen.has(spell.name);
+          list.append(el('label', { className: 'creator-check', 'data-name': spell.name.toLowerCase() }, [
+            input, el('span', { text: spell.name }),
+            el('small', { className: 'muted', text: (spell.level ? 'L' + spell.level : 'C') + (spell.ritual ? ' · R' : '') + (spell.concentration ? ' · C' : '') })
+          ]));
+          inputs.push(input);
+        });
+        if (levels.length === 1) {
+          body.append(list);
+          return;
+        }
+        const section = el('details', { className: 'spell-level-group' }, [el('summary', { text: levelLabel(level) }), list]);
+        section.open = [...list.querySelectorAll('input')].some(input => input.checked);
+        section.dataset.initiallyOpen = section.open ? '1' : '';
+        body.append(section);
       });
       const value = () => inputs.filter(input => input.checked).map(input => input.value);
       const refresh = () => {
@@ -292,10 +307,10 @@
         inputs.forEach(input => { input.disabled = limit !== null && !input.checked && count >= limit; });
         status.textContent = title + ': ' + count + (limit !== null ? ' / ' + limit : '') + ' selected';
       };
-      list.addEventListener('change', refresh);
+      body.addEventListener('change', refresh);
       refresh();
-      groups.push(list);
-      return { element: el('div', { className: 'creator-choice' }, [el('h5', { text: title }), status, list]), value };
+      groups.push(body);
+      return { element: el('div', { className: 'creator-choice' }, [el('h5', { text: title }), status, body]), value };
     }
 
     const cantrips = source.cantripLimit
@@ -312,9 +327,17 @@
 
     search.addEventListener('input', () => {
       const query = search.value.trim().toLowerCase();
-      groups.forEach(list => list.querySelectorAll('label').forEach(label => {
-        label.style.display = !query || label.dataset.name.includes(query) ? '' : 'none';
-      }));
+      groups.forEach(body => {
+        body.querySelectorAll('label').forEach(label => {
+          label.style.display = !query || label.dataset.name.includes(query) ? '' : 'none';
+        });
+        // While searching, open the levels with matches and hide the rest.
+        body.querySelectorAll('details.spell-level-group').forEach(section => {
+          const matches = [...section.querySelectorAll('label')].some(label => label.style.display !== 'none');
+          section.style.display = !query || matches ? '' : 'none';
+          section.open = query ? matches : Boolean(section.dataset.initiallyOpen);
+        });
+      });
     });
 
     const save = button('Save choices', async () => {

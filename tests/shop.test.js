@@ -37,7 +37,7 @@ test('a purchase takes gold, stock and adds the item to the sheet and ledger', (
   assert.equal(after.gold_gp, 2.37); // mirrored for the previous app version
   const sheet = JSON.parse(after.sheet_data);
   assert.deepEqual(sheet.inventory, [{ name: itemName, quantity: 2, source: 'shop' }]);
-  assert.equal(sheet.equipmentText, `Dagger\nBought: ${itemName} ×2`);
+  assert.equal(sheet.equipmentText, 'Dagger', 'the notes are left to the player');
 
   const sale = db.prepare('SELECT * FROM sales WHERE item_name = ?').get(itemName);
   assert.equal(sale.character_id, id);

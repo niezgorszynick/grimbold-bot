@@ -73,10 +73,6 @@ module.exports = function renderAdminPage(req) {
     statusBanner = '<div class="alert green">✅ Item added to shop shelves!</div>';
   } else if (status === 'catalog_updated') {
     statusBanner = '<div class="alert green">✅ Catalog item updated!</div>';
-  } else if (status === 'magic_imported') {
-    const added = Number(req.query.added) || 0;
-    const skipped = Number(req.query.skipped) || 0;
-    statusBanner = `<div class="alert green">✅ Imported ${added} magic item${added === 1 ? '' : 's'} into the catalog${skipped ? ` (${skipped} already there, left unchanged)` : ''}.</div>`;
   } else if (status === 'catalog_deleted') {
     statusBanner = '<div class="alert red">🗑️ Catalog item permanently deleted.</div>';
   } else if (status === 'player_added') {

@@ -13,8 +13,6 @@ const RARITIES = ['Common', 'Uncommon', 'Rare', 'Very Rare', 'Legendary', 'Artif
 // Magic Item Price by rarity (Dungeon Master's Guide 2024), in GP. Potions,
 // scrolls and ammunition are consumables and cost half.
 const PRICE_GP = { Common: 100, Uncommon: 400, Rare: 4000, 'Very Rare': 40000, Legendary: 200000 };
-// The lowest party level at which the weekly restock may offer each rarity.
-const MIN_PARTY_LEVEL = { Common: 1, Uncommon: 3, Rare: 5, 'Very Rare': 11, Legendary: 17 };
 const ATTUNEMENT_LIMIT = 3;
 
 // Items whose rarity is "Rarity Varies" (or split oddly in the source):
@@ -520,7 +518,6 @@ function effectiveAbilityScore(sheetData, ability) {
 module.exports = {
   MAGIC_ITEM_RARITIES: RARITIES,
   MAGIC_ITEM_PRICE_GP: PRICE_GP,
-  MAGIC_ITEM_MIN_PARTY_LEVEL: MIN_PARTY_LEVEL,
   ATTUNEMENT_LIMIT,
   normalizeMagicItem,
   getMagicItemCatalog,

@@ -14,6 +14,7 @@ module.exports = {
   ...require('./db/analytics'),
   ...require('./db/spells'),
   ...require('./db/magicItems'),
+  ...require('./db/inventory'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),

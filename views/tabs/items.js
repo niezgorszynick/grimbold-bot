@@ -12,9 +12,12 @@ module.exports = function renderItemsTab(ctx) {
   const catalogJson = JSON.stringify(catalogItems.map(c => ({
     name: c.name,
     category: c.category,
+    tier: c.tier,
     price: c.base_price_cp,
     description: c.description
-  })));
+  }))).replace(/</g, '\\u003c'); // keeps "</script>" in item text from ending the script
+  const optionsOf = values => [...new Set(values)].sort((a, b) => a.localeCompare(b))
+    .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
 
   contentHtml = `
     ${isAdmin ? `<div class="card" style="margin-bottom: 20px;">
@@ -37,12 +40,15 @@ module.exports = function renderItemsTab(ctx) {
 
     ${isAdmin ? `<div class="card">
       <h3>Add Item to Shop Shelf</h3>
-      <div style="margin-bottom: 12px;">
-        <label><strong>Quick-Fill from Catalog:</strong></label><br>
-        <select id="catalogSelect" onchange="autofillCatalog()" style="width: 100%; max-width: 450px; padding: 6px; margin-top: 4px;">
-          <option value="">-- Choose item from Master Catalog --</option>
-          ${catalogItems.map((c, idx) => `<option value="${idx}">${escapeHtml(c.name)} (${c.tier} -${formatCp(c.base_price_cp)})</option>`).join('')}
-        </select>
+      <div class="catalog-picker">
+        <label for="catalogSearch"><strong>Fill from the Master Catalog</strong> <span class="muted small">(or type an item below yourself)</span></label>
+        <div class="table-filter">
+          <input type="search" id="catalogSearch" placeholder="Search name, category or description…" autocomplete="off">
+          <select id="catalogCategory" aria-label="Filter by category"><option value="">All categories</option>${optionsOf(catalogItems.map(c => c.category))}</select>
+          <select id="catalogTier" aria-label="Filter by tier"><option value="">All tiers</option>${optionsOf(catalogItems.map(c => c.tier))}</select>
+          <span id="catalogCount" class="muted small table-filter-count"></span>
+        </div>
+        <ul id="catalogResults" class="catalog-results"></ul>
       </div>
 
       <form method="POST" action="/admin/items/add">
@@ -156,9 +162,7 @@ module.exports = function renderItemsTab(ctx) {
 
     <script>
       const catalogData = ${catalogJson};
-      function autofillCatalog() {
-        const idx = document.getElementById('catalogSelect').value;
-        if (idx === '') return;
+      function autofillCatalog(idx) {
         const item = catalogData[idx];
         if (!item) return;
         document.getElementById('itemName').value = item.name;
@@ -167,6 +171,60 @@ module.exports = function renderItemsTab(ctx) {
         document.getElementById('itemDesc').value = item.description;
         document.getElementById('itemStock').value = 1;
       }
+
+      // Search the catalog instead of scrolling a list of every item.
+      (function () {
+        const search = document.getElementById('catalogSearch');
+        if (!search) return;
+        const category = document.getElementById('catalogCategory');
+        const tier = document.getElementById('catalogTier');
+        const results = document.getElementById('catalogResults');
+        const count = document.getElementById('catalogCount');
+        const MAX = 15;
+        let chosen = null;
+        function render() {
+          const words = search.value.toLowerCase().split(/s+/).filter(Boolean);
+          const filtered = !words.length && !category.value && !tier.value;
+          const matches = catalogData
+            .map((item, idx) => ({ item, idx }))
+            .filter(({ item }) => (!category.value || item.category === category.value) && (!tier.value || item.tier === tier.value) &&
+              words.every(word => (item.name + ' ' + item.category + ' ' + (item.description || '')).toLowerCase().includes(word)))
+            // Names that start with the search come first.
+            .sort((a, b) => (words.length ? Number(!a.item.name.toLowerCase().startsWith(words[0])) - Number(!b.item.name.toLowerCase().startsWith(words[0])) : 0) ||
+              a.item.name.localeCompare(b.item.name));
+          results.replaceChildren();
+          if (filtered) {
+            count.textContent = catalogData.length + ' items: search or pick a category';
+            return;
+          }
+          count.textContent = matches.length + ' match' + (matches.length === 1 ? '' : 'es') + (matches.length > MAX ? ' · showing ' + MAX + ', refine to see the rest' : '');
+          matches.slice(0, MAX).forEach(({ item, idx }) => {
+            const li = document.createElement('li');
+            const pick = document.createElement('button');
+            pick.type = 'button';
+            pick.className = 'catalog-result' + (chosen === idx ? ' is-chosen' : '');
+            pick.title = item.description || '';
+            const name = document.createElement('strong');
+            name.textContent = item.name;
+            const meta = document.createElement('span');
+            meta.className = 'muted small';
+            meta.textContent = item.category + ' · ' + item.tier + ' · ' + formatShopCopper(item.price);
+            pick.append(name, meta);
+            pick.addEventListener('click', () => {
+              chosen = idx;
+              autofillCatalog(idx);
+              render();
+              document.getElementById('itemStock').focus();
+            });
+            li.appendChild(pick);
+            results.appendChild(li);
+          });
+        }
+        search.addEventListener('input', render);
+        category.addEventListener('change', render);
+        tier.addEventListener('change', render);
+        render();
+      })();
 
       const shopPurchaseModal = document.getElementById('shopPurchaseModal');
       const shopPurchaseCharacter = document.getElementById('shopPurchaseCharacter');

@@ -305,6 +305,46 @@ router.post('/characters/:id/magic-items', (req, res) => {
   }
 });
 
+// Shop catalog items that can be put on a character sheet.
+router.get('/catalog/sheet-items', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  // Magic items are flagged: only a DM can add them this way.
+  const items = db.getCatalogForSheets().map(item => {
+    const magic = rules.matchMagicItem(item.name);
+    return { ...item, magic: Boolean(magic && (magic.variant || !magic.item.variants.length)) };
+  });
+  return res.json({ items });
+});
+
+router.get('/characters/:id/inventory', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterInventory({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { action: 'add', catalogId | name, quantity, description }
+// { action: 'update', index, name, quantity } | { action: 'remove', index, name }
+router.post('/characters/:id/inventory', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.changeCharacterInventory({
+      id: req.params.id, player_id: user.id, is_admin: isAdmin(user), action: body.action, params: body
+    }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Inventory action failed:', error);
+      return res.status(500).json({ error: 'Could not update items.' });
+    }
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);

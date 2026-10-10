@@ -69,6 +69,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <h4>Saving Throws</h4>
                 <div id="cs_saves_container" class="sheet-check-list"></div>
               </section>
+              <section class="sheet-card">
+                <h4>Skills</h4>
+                <p id="cs_skill_guidance" class="muted small" aria-live="polite"></p>
+                <div id="cs_species_skill_choices"></div>
+                <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
+              </section>
             </div>
             <div class="sheet-col">
               <div class="sheet-combat-stats">
@@ -87,7 +93,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
                   <h4>Weapons &amp; Attacks</h4>
                   <button id="cs_add_attack" class="btn btn-small" type="button">+ Add Weapon</button>
                 </div>
-                <div class="sheet-table-wrap">
+                <div>
                   <table class="sheet-attacks">
                     <thead><tr><th>Name</th><th>Atk Bonus</th><th>Damage / Type</th><th>Notes</th><th><span class="sr-only">Actions</span></th></tr></thead>
                     <tbody id="cs_attacks_tbody"></tbody>
@@ -100,19 +106,13 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <label class="sheet-notes-label">Additional notes<textarea id="cs_features" rows="5" maxlength="10000" placeholder="Record additional features, choices, or reminders..."></textarea></label>
               </section>
             </div>
-            <div class="sheet-col">
-              <section class="sheet-card">
-                <h4>Skills</h4>
-                <p id="cs_skill_guidance" class="muted small" aria-live="polite"></p>
-                <div id="cs_species_skill_choices"></div>
-                <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
-              </section>
-              <section class="sheet-card">
-                <h4>Equipment &amp; Items</h4>
-                <textarea id="cs_equipment" rows="5" maxlength="10000" placeholder="Armor, weapons, rations, magical trinkets..."></textarea>
-              </section>
-            </div>
           </div>
+          <section class="sheet-card sheet-equipment">
+            <h4>Equipment &amp; Items</h4>
+            <div id="cs_inventory" class="inventory" data-character-id="${Number(characterToEdit.id)}">Loading items...</div>
+            <script src="/admin/assets/character-inventory.js" defer></script>
+            <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>
+          </section>
           <section id="cs_spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-spells.js" defer></script>
           <section id="cs_magic_items" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
@@ -456,6 +456,20 @@ module.exports = function renderCharacterSheetTab(ctx) {
           ]));
         }
 
+        // Notes boxes grow to fit their text, so the sheet has no inner scroll bars.
+        const notesBoxes = ['cs_features', 'cs_equipment'].map(id => document.getElementById(id));
+        function autosize(box) {
+          box.style.height = 'auto';
+          box.style.height = (box.scrollHeight + 2) + 'px';
+        }
+        function autosizeNotes() {
+          notesBoxes.forEach(autosize);
+        }
+        notesBoxes.forEach(box => {
+          box.classList.add('is-autosized');
+          box.addEventListener('input', () => autosize(box));
+        });
+
         function addAttackRow(attack = { bonus: '+5', damage: '1d8+3' }) {
           const row = document.createElement('tr');
           [
@@ -463,6 +477,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             ['damage', 'Damage / type'], ['notes', 'Notes']
           ].forEach(([field, placeholder]) => {
             const cell = document.createElement('td');
+            cell.dataset.label = placeholder;
             const input = document.createElement('input');
             input.type = 'text';
             input.maxLength = field === 'notes' ? 300 : 100;
@@ -476,8 +491,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
           const actionCell = document.createElement('td');
           const remove = document.createElement('button');
           remove.type = 'button';
-          remove.className = 'btn btn-small sheet-remove-attack';
-          remove.textContent = 'Remove';
+          remove.className = 'btn btn-small btn-secondary sheet-remove-attack';
+          remove.textContent = '✕';
+          remove.title = 'Remove';
           remove.setAttribute('aria-label', 'Remove attack');
           actionCell.appendChild(remove);
           row.appendChild(actionCell);
@@ -616,6 +632,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 ? (defaultValue === undefined ? '' : defaultValue)
                 : value;
             });
+            // Older characters got their starting equipment copied into the notes;
+            // the item list shows it now, so drop that exact, untouched copy.
+            const startingCopy = (Array.isArray(data.inventory) ? data.inventory : [])
+              .map(item => (item.quantity > 1 ? item.name + ' ×' + item.quantity : item.name)).join('\n');
+            const notes = document.getElementById('cs_equipment');
+            if (startingCopy && notes.value.trim().replace(/\n\d+ GP$/, '') === startingCopy) notes.value = '';
             document.getElementById('cs_initiative').value =
               data.initiative === undefined
                 ? (Math.floor((Number(abilityContainer.querySelector('[data-ability="dex"]').value) - 10) / 2) >= 0
@@ -629,6 +651,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             updateAbilityValidation();
             updateDerivedStats(character.level);
             lockRuleOwnedFields(character, data);
+            autosizeNotes();
             message.textContent = '';
           } catch (error) {
             message.textContent = error.message;

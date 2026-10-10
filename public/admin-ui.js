@@ -101,6 +101,125 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       rows.forEach(row => tbody.appendChild(row));
+      if (table.refreshFilter) table.refreshFilter();
     });
   });
+
+  document.querySelectorAll('table[data-filter]').forEach(setupTableFilter);
 });
+
+// Filter bar for long tables: <table id="…" data-filter="category,tier"
+// data-filter-level data-page-size="50">. Rows carry data-search (lower-case
+// text to search), one data-<field> per filter and data-level. Shows the first
+// page of matches with "Show more"; the filters survive a page reload.
+function setupTableFilter(table) {
+  const tbody = table.querySelector('tbody');
+  const fields = table.dataset.filter.split(',').map(field => field.trim()).filter(Boolean);
+  const pageSize = Number(table.dataset.pageSize) || 50;
+  const storageKey = 'table-filter:' + (table.id || location.pathname);
+  const rows = () => Array.from(tbody.querySelectorAll('tr'));
+  let limit = pageSize;
+
+  const make = (tag, props) => Object.assign(document.createElement(tag), props || {});
+  const bar = make('div', { className: 'table-filter' });
+  const search = make('input', { type: 'search', placeholder: 'Search name, category or description…' });
+  search.setAttribute('aria-label', 'Search the table');
+  bar.appendChild(search);
+
+  const selects = {};
+  fields.forEach(field => {
+    const values = [...new Set(rows().map(row => row.dataset[field]).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const select = make('select');
+    select.setAttribute('aria-label', 'Filter by ' + field);
+    select.add(new Option('All ' + (field === 'category' ? 'categories' : field + 's'), ''));
+    values.forEach(value => select.add(new Option(value, value)));
+    selects[field] = select;
+    bar.appendChild(select);
+  });
+
+  let level = null;
+  if (table.hasAttribute('data-filter-level')) {
+    level = make('input', { type: 'number', min: '1', max: '20', placeholder: 'Any' });
+    level.setAttribute('aria-label', 'Up to level');
+    const label = make('label', { className: 'table-filter-level', textContent: 'Up to level ' });
+    label.appendChild(level);
+    bar.appendChild(label);
+  }
+
+  const reset = make('button', { type: 'button', className: 'btn btn-small btn-secondary', textContent: 'Clear' });
+  const count = make('span', { className: 'muted small table-filter-count' });
+  bar.append(reset, count);
+  table.parentNode.insertBefore(bar, table);
+
+  const more = make('div', { className: 'table-filter-more' });
+  const showMore = make('button', { type: 'button', className: 'btn btn-small' });
+  const showAll = make('button', { type: 'button', className: 'btn btn-small btn-secondary', textContent: 'Show all' });
+  more.append(showMore, showAll);
+  table.parentNode.insertBefore(more, table.nextSibling);
+
+  function save() {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        search: search.value,
+        level: level ? level.value : '',
+        selects: Object.fromEntries(Object.entries(selects).map(([field, select]) => [field, select.value]))
+      }));
+    } catch {
+      // Storage can be unavailable (private windows); filters then just reset.
+    }
+  }
+
+  function restore() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (!saved) return;
+      search.value = saved.search || '';
+      if (level) level.value = saved.level || '';
+      Object.entries(saved.selects || {}).forEach(([field, value]) => {
+        if (selects[field] && [...selects[field].options].some(option => option.value === value)) selects[field].value = value;
+      });
+    } catch {
+      // Ignore unreadable saved filters.
+    }
+  }
+
+  function refresh() {
+    const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const maxLevel = level && level.value !== '' ? Number(level.value) : null;
+    let matches = 0;
+    rows().forEach(row => {
+      const text = row.dataset.search || row.textContent.toLowerCase();
+      const ok = words.every(word => text.includes(word)) &&
+        Object.entries(selects).every(([field, select]) => !select.value || row.dataset[field] === select.value) &&
+        (maxLevel === null || Number(row.dataset.level) <= maxLevel);
+      if (ok) matches += 1;
+      row.hidden = !ok || matches > limit;
+    });
+    const total = rows().length;
+    const shown = Math.min(matches, limit);
+    count.textContent = matches === total
+      ? (shown < total ? 'Showing ' + shown + ' of ' + total : total + ' items')
+      : matches + ' of ' + total + ' match' + (shown < matches ? ' · showing ' + shown : '');
+    more.hidden = matches <= limit;
+    showMore.textContent = 'Show ' + Math.min(pageSize, matches - limit) + ' more';
+  }
+
+  const changed = () => { limit = pageSize; save(); refresh(); };
+  search.addEventListener('input', changed);
+  Object.values(selects).forEach(select => select.addEventListener('change', changed));
+  if (level) level.addEventListener('input', changed);
+  reset.addEventListener('click', () => {
+    search.value = '';
+    if (level) level.value = '';
+    Object.values(selects).forEach(select => { select.value = ''; });
+    changed();
+    search.focus();
+  });
+  showMore.addEventListener('click', () => { limit += pageSize; refresh(); });
+  showAll.addEventListener('click', () => { limit = Infinity; refresh(); });
+
+  table.refreshFilter = refresh;
+  restore();
+  refresh();
+}

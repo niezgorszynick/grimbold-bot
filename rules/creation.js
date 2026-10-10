@@ -150,12 +150,6 @@ function mergeInventory(rows) {
   return [...merged.values()];
 }
 
-function formatInventory(inventory, gold) {
-  const lines = inventory.map(item => (item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name));
-  if (gold > 0) lines.push(`${gold} GP`);
-  return lines.join('\n');
-}
-
 function buildStartingCharacter(input) {
   const request = input && typeof input === 'object' ? input : {};
   const name = typeof request.name === 'string' ? request.name.trim() : '';
@@ -362,7 +356,8 @@ function buildStartingCharacter(input) {
     },
     startingEquipment: { class: classOption, background: backgroundOption },
     inventory,
-    equipmentText: formatInventory(inventory, goldGp),
+    // Free-form notes; the starting equipment is in the inventory list.
+    equipmentText: '',
     attacks: [],
     features: ''
   };

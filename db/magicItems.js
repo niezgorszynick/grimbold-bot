@@ -177,62 +177,8 @@ function magicItemEffectsOfVitals(sheetData, action) {
   return rules.regainChargesOnLongRest(sheetData);
 }
 
-function catalogDescription(text) {
-  const plain = String(text || '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1');
-  const first = plain.split(/\n{2,}/)[0].trim();
-  return first.length > 300 ? `${first.slice(0, 297).trimEnd()}...` : first;
-}
-
-// Adds magic items of the chosen rarities to the shop catalog at Dungeon
-// Master's Guide prices, so the weekly restock can offer them. Items the
-// catalog already has — under any name the shop uses, e.g. "+1 Morningstar"
-// for Weapon +1 or "Potion of Superior Healing" — are left as they are.
-// Artifacts, items without a price and spell scrolls (the catalog has its
-// own) are skipped.
-function importMagicItemsToCatalog({ rarities } = {}) {
-  const wanted = Array.isArray(rarities) && rarities.length ? rarities : ['Common', 'Uncommon', 'Rare'];
-  for (const rarity of wanted) {
-    if (!rules.MAGIC_ITEM_PRICE_GP[rarity]) throw new Error(`Unknown rarity "${rarity}".`);
-  }
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock)
-    VALUES (?, ?, 'magic', ?, ?, ?, 1, ?)
-  `);
-  return db.transaction(() => {
-    const added = [];
-    const existing = [];
-    const keyOf = (item, variant) => `${item.name}|${variant ? variant.label : ''}`;
-    const inCatalog = new Map();
-    for (const row of db.prepare('SELECT name FROM catalog').all()) {
-      const match = rules.matchMagicItem(row.name);
-      if (match && !inCatalog.has(keyOf(match.item, match.variant))) inCatalog.set(keyOf(match.item, match.variant), row.name);
-    }
-    for (const item of Object.values(rules.getMagicItemCatalog())) {
-      if (item.name === 'Spell Scroll') continue;
-      const rows = item.variants.length
-        ? item.variants.map(variant => ({ name: variant.name, rarity: variant.rarity, priceGp: variant.priceGp, key: keyOf(item, variant) }))
-        : [{ name: item.name, rarity: item.rarity, priceGp: item.priceGp, key: keyOf(item, null) }];
-      for (const row of rows) {
-        if (!wanted.includes(row.rarity) || !row.priceGp) continue;
-        if (inCatalog.has(row.key)) {
-          existing.push({ name: row.name, as: inCatalog.get(row.key) });
-          continue;
-        }
-        const result = insert.run(
-          row.name, item.kind, Math.round(row.priceGp * 100), catalogDescription(item.description),
-          rules.MAGIC_ITEM_MIN_PARTY_LEVEL[row.rarity], item.consumable ? 2 : 1
-        );
-        if (result.changes) added.push(row.name);
-        else existing.push({ name: row.name, as: row.name });
-      }
-    }
-    return { added, skipped: existing.length, existing };
-  })();
-}
-
 module.exports = {
   getCharacterMagicItems,
   changeCharacterMagicItems,
-  magicItemEffectsOfVitals,
-  importMagicItemsToCatalog
+  magicItemEffectsOfVitals
 };

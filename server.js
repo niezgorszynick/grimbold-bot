@@ -49,7 +49,8 @@ const ADMIN_ASSETS = {
   'admin-ui.js': path.join(__dirname, 'public', 'admin-ui.js'),
   'character-levelup.js': path.join(__dirname, 'public', 'character-levelup.js'),
   'character-spells.js': path.join(__dirname, 'public', 'character-spells.js'),
-  'character-magic-items.js': path.join(__dirname, 'public', 'character-magic-items.js')
+  'character-magic-items.js': path.join(__dirname, 'public', 'character-magic-items.js'),
+  'character-inventory.js': path.join(__dirname, 'public', 'character-inventory.js')
 };
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
@@ -197,19 +198,6 @@ router.post('/items/update', (req, res) => {
 });
 
 // ─── POST ENDPOINTS: CATALOG ────────────────────────────────────────────────
-
-// POST /admin/catalog/import-magic-items — add magic items of the chosen
-// rarities from rules/content/magic_items.md (existing rows are kept)
-router.post('/catalog/import-magic-items', (req, res) => {
-  try {
-    const rarities = [].concat(req.body.rarities || []).map(String);
-    if (!rarities.length) throw new Error('Choose at least one rarity to import.');
-    const result = db.importMagicItemsToCatalog({ rarities });
-    res.redirect(`/admin?tab=catalog&status=magic_imported&added=${result.added.length}&skipped=${result.skipped}`);
-  } catch (err) {
-    res.redirect(`/admin?tab=catalog&err=${encodeURIComponent(err.message)}`);
-  }
-});
 
 // POST /admin/catalog/add — add a catalog item (price in gp/sp/cp)
 router.post('/catalog/add', (req, res) => {

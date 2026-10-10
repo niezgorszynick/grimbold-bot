@@ -196,27 +196,4 @@ test('buying a magic item in the shop puts it in the Magic Items list', () => {
   const sheet = JSON.parse(db.getCharacterById(id).sheet_data);
   assert.deepEqual(sheet.magicItems.map(entry => [entry.name, entry.variant, entry.source]), [['Weapon', '+1', 'shop']]);
   assert.deepEqual(sheet.inventory.map(row => row.name), ['Rations']);
-  assert.match(sheet.equipmentText, /Bought: \+1 Longsword/);
-});
-
-test('importing magic items into the catalog keeps existing rows', () => {
-  const insert = db.prepare(`INSERT INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock)
-    VALUES (?, 'Wondrous', 'magic', 12345, 'House price.', 4, 1, 1)`);
-  insert.run('Cloak of Protection');
-  insert.run('+1 Morningstar');
-  const result = db.importMagicItemsToCatalog({ rarities: ['Uncommon'] });
-  assert.ok(result.added.includes('Bag of Holding'));
-  assert.ok(result.added.includes('Potion of Healing (Greater)'));
-  assert.ok(!result.added.includes('Weapon +1'), 'the catalog already sells a +1 weapon');
-  assert.ok(!result.added.includes('Weapon +2'), 'only the chosen rarities');
-  assert.deepEqual(result.existing.map(row => [row.name, row.as]).sort(), [
-    ['Cloak of Protection', 'Cloak of Protection'], ['Weapon +1', '+1 Morningstar']
-  ]);
-  assert.equal(result.skipped, 2);
-  const row = name => db.prepare('SELECT * FROM catalog WHERE name = ?').get(name);
-  assert.equal(row('Cloak of Protection').base_price_cp, 12345);
-  assert.equal(row('Bag of Holding').base_price_cp, 40000);
-  assert.equal(row('Bag of Holding').min_level, 3);
-  assert.equal(row('Potion of Healing (Greater)').base_price_cp, 20000);
-  assert.throws(() => db.importMagicItemsToCatalog({ rarities: ['Mythic'] }), /Unknown rarity/);
 });
