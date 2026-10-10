@@ -181,6 +181,76 @@ router.post('/characters/:id/level-up', (req, res) => {
   }
 });
 
+// The spell catalog for the spell picker (descriptions included). It only
+// changes when rules/content/spells.md does, so browsers may cache it briefly.
+router.get('/rules/spells', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.json({ spells: Object.values(rules.getSpellCatalog()) });
+});
+
+// Feat and invocation text for pickers (from rules/content, when present).
+function contentEntries(category) {
+  return Object.values(rules.loadContent(category)).map(entry => ({
+    name: entry.name,
+    category: entry.fields.category || '',
+    prerequisite: entry.fields.prerequisite || '',
+    description: entry.description
+  }));
+}
+
+router.get('/rules/feats', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.json({ feats: contentEntries('feats') });
+});
+
+router.get('/rules/invocations', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.json({ invocations: contentEntries('invocations') });
+});
+
+function spellErrorStatus(message) {
+  if (message === 'Forbidden.') return 403;
+  if (message === 'Character not found.') return 404;
+  return 400;
+}
+
+router.get('/characters/:id/spells', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterSpells({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+  } catch (error) {
+    return res.status(spellErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { action: 'choose', source, cantrips, prepared, addToSpellbook, copyAddedSpells }
+// { action: 'cast', source, spell, slotLevel | pact | free | ritual }
+// { action: 'endConcentration' }
+// { action: 'invocations', invocations: [{ name, cantrip, feat }] }
+router.post('/characters/:id/spells', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const who = { id: req.params.id, player_id: user.id, is_admin: isAdmin(user) };
+  try {
+    if (body.action === 'choose') return res.json(db.chooseCharacterSpells({ ...who, source: body.source, request: body }));
+    if (body.action === 'cast') return res.json(db.castCharacterSpell({ ...who, request: body }));
+    if (body.action === 'endConcentration') return res.json(db.endCharacterConcentration(who));
+    if (body.action === 'invocations') return res.json(db.chooseCharacterInvocations({ ...who, choices: body.invocations }));
+    return res.status(400).json({ error: 'Unknown spell action.' });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Spell action failed:', error);
+      return res.status(500).json({ error: 'Could not update spells.' });
+    }
+    return res.status(spellErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);
@@ -215,13 +285,15 @@ router.post('/characters/:id/vitals', (req, res) => {
         body,
         context
       );
-      const nextSheet = { ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax };
+      const spellEffects = db.spellEffectsOfVitals(character, sheetData, body.action, body, outcome);
+      const nextSheet = { ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax, spellcasting: spellEffects.spellcasting };
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), characterId);
       return {
         vitals: rules.buildVitalsView(outcome.vitals, context, outcome.hpMax),
         events: outcome.events,
         rolls: outcome.rolls || (outcome.roll ? [{ die: 'd20', roll: outcome.roll }] : []),
-        healed: outcome.healed
+        healed: outcome.healed,
+        concentration: spellEffects.concentration
       };
     })();
     if (result.error) return res.status(result.status).json({ error: result.error });
@@ -265,7 +337,9 @@ router.get('/rules/creation', (req, res) => {
     pointBuyCosts: rules.POINT_BUY_COSTS,
     totalPointBuyPoints: rules.TOTAL_POINT_BUY_POINTS,
     standardArray: rules.STANDARD_ARRAY,
-    standardArraySuggestions: rules.STANDARD_ARRAY_SUGGESTIONS
+    standardArraySuggestions: rules.STANDARD_ARRAY_SUGGESTIONS,
+    fightingStyles: rules.FIGHTING_STYLE_NAMES,
+    fightingStyleClasses: rules.FIGHTING_STYLE_FEATURE_LEVELS
   });
 });
 

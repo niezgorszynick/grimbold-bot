@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const { abilityModifier } = require('./util');
 const { calculateMaxHp, getHitDicePool } = require('./hitPoints');
 const { getSpellSlots } = require('./spellcasting');
-const { collectCharacterFeats } = require('./levelUp');
+const { collectCharacterFeats } = require('./feats');
 
 const MAX_EXHAUSTION = 6;
 

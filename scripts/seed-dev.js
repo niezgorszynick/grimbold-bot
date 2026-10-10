@@ -38,7 +38,7 @@ const dm = addAccount('dungeonmaster', 'admin');
 
 // Alice: a Fighter who has earned level 4 (ASI or feat waiting).
 const thorin = addCharacter(alice, {
-  name: 'Thorin Ironfist', species: 'Dwarf', className: 'Fighter', subclass: 'Champion',
+  name: 'Thorin Ironfist', species: 'Dwarf', className: 'Fighter', subclass: 'Champion', fightingStyle: 'Great Weapon Fighting',
   background: 'Soldier', generationMethod: 'Standard Array',
   baseScores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 }, backgroundBonuses: { str: 2, con: 1 },
   classSkills: ['Perception', 'Survival'], backgroundTool: 'Dice', languages: ['Dwarvish', 'Giant'],

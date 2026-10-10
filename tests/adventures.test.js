@@ -5,7 +5,7 @@ const rules = require('../rules');
 
 function createFighter(playerId, name) {
   const character = rules.buildStartingCharacter({
-    name, species: 'Human', size: 'Medium', className: 'Fighter', subclass: 'Champion',
+    name, species: 'Human', size: 'Medium', className: 'Fighter', subclass: 'Champion', fightingStyle: 'Great Weapon Fighting',
     background: 'Soldier', generationMethod: 'Standard Array',
     baseScores: { str: 15, dex: 14, con: 13, int: 8, wis: 12, cha: 10 }, backgroundBonuses: { str: 2, dex: 1 },
     versatileFeat: { name: 'Tough' }, speciesSkills: ['Insight'], classSkills: ['Perception', 'Survival'],

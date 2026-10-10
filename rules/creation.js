@@ -9,7 +9,9 @@ const { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, sizeOptions } = require(
 const { DND_CLASSES_AND_SUBCLASSES } = require('./subclasses');
 const { ALL_CLASSES } = require('./classes');
 const { BACKGROUNDS } = require('./backgrounds');
-const { ORIGIN_FEATS, ORIGIN_FEAT_NAMES } = require('./feats');
+const {
+  ORIGIN_FEATS, ORIGIN_FEAT_NAMES, FIGHTING_STYLE_NAMES, featGrants, hasFightingStyleFeature
+} = require('./feats');
 const { TOOL_CATEGORIES, STANDARD_LANGUAGES, STARTING_LANGUAGE_CHOICES } = require('./equipment');
 const { generateAbilityScores } = require('./abilities');
 const { calculateMaxHp, getHitDicePool, formatHitDicePool } = require('./hitPoints');
@@ -256,6 +258,15 @@ function buildStartingCharacter(input) {
     feats.push(resolved);
   }
 
+  // Fighters, Paladins and Rangers have the Fighting Style feature by level 3.
+  const fightingStyles = [];
+  if (hasFightingStyleFeature([{ className, level: STARTING_LEVEL }])) {
+    if (!FIGHTING_STYLE_NAMES.includes(request.fightingStyle)) {
+      throw new Error(`Choose a Fighting Style for your ${className}.`);
+    }
+    fightingStyles.push({ name: request.fightingStyle, source: className });
+  }
+
   // Languages: Common plus two standard languages.
   const languages = pickFrom(
     'languages',
@@ -300,7 +311,8 @@ function buildStartingCharacter(input) {
     itemNames: inventory.map(item => item.name),
     modifiers: abilities.modifiers,
     armorTraining: classData.armorTraining,
-    classNames: [className]
+    classNames: [className],
+    armoredBonus: fightingStyles.reduce((sum, style) => sum + (featGrants(style).armoredAcBonus || 0), 0)
   });
 
   const classFeatures = steps.flatMap(step =>
@@ -331,6 +343,7 @@ function buildStartingCharacter(input) {
     armorTraining: [...classData.armorTraining],
     languages: ['Common', ...languages],
     originFeats: feats,
+    fightingStyles,
     classFeatures,
     armorClass: armor.ac,
     armorClassSource: armor.source,

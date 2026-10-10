@@ -15,6 +15,9 @@ module.exports = {
   ...require('./multiclass'),
   ...require('./progression'),
   ...require('./creation'),
+  ...require('./spells'),
+  ...require('./invocations'),
+  ...require('./spellbook'),
   ...require('./levelUp'),
   ...require('./vitals'),
   ...require('./content')

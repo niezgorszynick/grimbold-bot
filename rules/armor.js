@@ -18,7 +18,8 @@ const SHIELD_BONUS = 2;
 
 // Picks the best AC the character can get from the items they carry.
 // itemNames: names in the inventory; armorTraining: e.g. ['Light armor', 'Shields'].
-function calculateArmorClass({ itemNames, modifiers, armorTraining, classNames = [] }) {
+// armoredBonus: extra AC while wearing armor (the Defense Fighting Style).
+function calculateArmorClass({ itemNames, modifiers, armorTraining, classNames = [], armoredBonus = 0 }) {
   const trained = category => armorTraining.includes(category);
   const hasShield = itemNames.includes('Shield') && trained('Shields');
   const options = [{ ac: 10 + modifiers.dex, source: 'Unarmored', allowsShield: true }];
@@ -33,7 +34,7 @@ function calculateArmorClass({ itemNames, modifiers, armorTraining, classNames =
     const armor = ARMOR[name];
     if (!armor || !trained(armor.category)) continue;
     const dex = armor.dexCap === null ? modifiers.dex : Math.min(modifiers.dex, armor.dexCap);
-    options.push({ ac: armor.base + dex, source: name, allowsShield: true });
+    options.push({ ac: armor.base + dex + armoredBonus, source: armoredBonus ? `${name} + Defense` : name, allowsShield: true });
   }
 
   const withShield = options.map(option => {

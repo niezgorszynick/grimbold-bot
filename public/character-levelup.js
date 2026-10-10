@@ -14,6 +14,7 @@
     abilityScoreImprovementOrFeat: 'Ability Score Improvement or feat',
     epicBoon: 'Epic Boon or feat',
     multiclassProficiencies: 'Multiclass proficiencies',
+    fightingStyle: 'Fighting Style feat',
     cantrips: 'New cantrips',
     preparedSpells: 'More prepared spells'
   };
@@ -71,7 +72,36 @@
 
   let data = null;
   let rulesData = null;
+  let featTexts = {};
   let message = '';
+
+  // Rules text for a feat, from the feats content file (if present), with
+  // paragraphs, **bold** and *italic*.
+  function featDescription(name) {
+    const text = name && featTexts[name];
+    if (!text) return null;
+    const paragraphs = text.split(/\n{2,}/).map(block => {
+      const p = el('p', { className: 'small' });
+      block.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).forEach(part => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) p.append(el('strong', { text: part.slice(2, -2) }));
+        else if (/^\*[^*]+\*$/.test(part)) p.append(el('em', { text: part.slice(1, -1) }));
+        else if (part) p.append(document.createTextNode(part));
+      });
+      return p;
+    });
+    return el('details', { className: 'feat-description', open: true }, [el('summary', { text: name }), ...paragraphs]);
+  }
+
+  async function loadFeatTexts() {
+    try {
+      const response = await fetch('/api/rules/feats');
+      if (!response.ok) return;
+      const result = await response.json();
+      featTexts = Object.fromEntries((result.feats || []).map(feat => [feat.name, feat.description]));
+    } catch {
+      // Descriptions are optional; the level-up works without them.
+    }
+  }
 
   async function load() {
     try {
@@ -83,6 +113,7 @@
       rulesData = await rulesResponse.json();
       if (!optionsResponse.ok) throw new Error(data.error || 'Could not load level-up options.');
       if (!rulesResponse.ok) throw new Error(rulesData.error || 'Could not load rules.');
+      if (data.pendingLevels > 0) await loadFeatTexts();
     } catch (error) {
       root.hidden = false;
       root.replaceChildren(el('p', { className: 'alert red', text: error.message }));
@@ -156,6 +187,15 @@
         const subclass = selectBox(option.subclassOptions, { placeholder: '-- Choose Subclass --' });
         parts.push(field(option.className + ' Subclass', subclass));
         getters.subclass = () => subclass.value;
+      }
+
+      if (option.fightingStyles) {
+        const reasons = Object.fromEntries(option.fightingStyles.filter(s => s.unavailable).map(s => [s.name, s.unavailable]));
+        const style = selectBox(option.fightingStyles.map(s => s.name), { placeholder: '-- Choose Fighting Style --', disabledReasons: reasons });
+        const styleText = el('div');
+        style.addEventListener('change', () => styleText.replaceChildren(featDescription(style.value) || ''));
+        parts.push(el('h5', { text: 'Fighting Style' }), field('Fighting Style feat', style), styleText);
+        getters.fightingStyle = () => style.value;
       }
 
       if (option.multiclassProficiencies) {
@@ -269,7 +309,7 @@
     function renderFeat() {
       const feats = option.feats.filter(feat => feat.name !== 'Ability Score Improvement');
       const reasons = Object.fromEntries(feats.filter(f => f.unavailable).map(f => [f.name, f.unavailable]));
-      const kindLabel = { general: 'General', origin: 'Origin', epicBoon: 'Epic Boon' };
+      const kindLabel = { general: 'General', origin: 'Origin', epicBoon: 'Epic Boon', fightingStyle: 'Fighting Style' };
       const featSelect = selectBox(feats.map(f => f.name), {
         placeholder: '-- Choose Feat --',
         labels: name => name + ' (' + kindLabel[feats.find(f => f.name === name).kind] + ')',
@@ -287,10 +327,33 @@
           fields.push(field('Ability increase', ability));
           getters.ability = () => ability.value;
         }
-        if (feat && feat.name === 'Skill Expert') {
-          const group = checkboxGroup(rulesData.skills.filter(s => !(data.knownSkills || []).includes(s)), 1, 'New skill');
-          fields.push(group.element);
-          getters.skills = group.value;
+        if (feat && feat.skillExpert) {
+          const known = data.knownSkills || [];
+          const expert = data.knownExpertise || [];
+          const newSkill = selectBox(rulesData.skills.filter(s => !known.includes(s)), { placeholder: '-- New skill proficiency --' });
+          const expertise = el('select');
+          const syncExpertise = () => {
+            const previous = expertise.value;
+            const pool = known.concat(newSkill.value ? [newSkill.value] : []).filter(s => !expert.includes(s)).sort();
+            expertise.replaceChildren(new Option('-- Expertise skill --', ''), ...pool.map(s => new Option(s, s)));
+            if (pool.includes(previous)) expertise.value = previous;
+          };
+          newSkill.addEventListener('change', syncExpertise);
+          syncExpertise();
+          fields.push(field('Skill proficiency', newSkill), field('Expertise', expertise));
+          getters.skills = () => (newSkill.value ? [newSkill.value] : []);
+          getters.expertise = () => (expertise.value ? [expertise.value] : []);
+        }
+        if (feat && feat.skillChoice) {
+          const known = data.knownSkills || [];
+          const expert = data.knownExpertise || [];
+          const skill = selectBox(feat.skillChoice, {
+            placeholder: '-- Skill --',
+            labels: s => s + (known.includes(s) ? ' (gain Expertise)' : ''),
+            disabledReasons: Object.fromEntries(feat.skillChoice.filter(s => expert.includes(s)).map(s => [s, 'already Expertise']))
+          });
+          fields.push(field('Skill proficiency or Expertise', skill));
+          getters.skill = () => skill.value;
         }
         const origin = feat && rulesData.originFeats[feat.name];
         if (origin && origin.grants.spells) {
@@ -310,7 +373,7 @@
           fields.push(group.element);
           getters.picks = group.value;
         }
-        extra.replaceChildren(...fields);
+        extra.replaceChildren(featDescription(feat && feat.name) || '', ...fields);
         readExtra = () => Object.fromEntries(Object.entries(getters).map(([key, get]) => [key, get()]));
       });
       body.replaceChildren(field('Feat', featSelect), extra);

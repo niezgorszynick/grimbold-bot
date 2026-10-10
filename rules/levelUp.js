@@ -11,13 +11,16 @@ const { ABILITIES, SKILL_NAMES, abilityModifier } = require('./util');
 const { getClass, ALL_CLASSES } = require('./classes');
 const { DND_CLASSES_AND_SUBCLASSES } = require('./subclasses');
 const {
-  ORIGIN_FEATS, GENERAL_FEATS, GENERAL_FEAT_LEVEL, EPIC_BOONS, EPIC_BOON_LEVEL_REQUIREMENT, featName, featGrants
+  ORIGIN_FEATS, GENERAL_FEATS, GENERAL_FEAT_LEVEL, EPIC_BOONS, EPIC_BOON_LEVEL_REQUIREMENT, featName, featGrants,
+  FIGHTING_STYLE_FEATS, FIGHTING_STYLE_NAMES, collectCharacterFeats, hasFightingStyleFeature
 } = require('./feats');
 const { TOOL_CATEGORIES } = require('./equipment');
 const { planLevelUp } = require('./progression');
 const { calculateMaxHp, formatHitDicePool, getHitDicePool } = require('./hitPoints');
 const { getSpellSlots, getSpellsKnown, spellcastingFor } = require('./spellcasting');
 const { MULTICLASS_PROFICIENCIES } = require('./multiclass');
+const spellbook = require('./spellbook');
+const { invocationLimit } = require('./invocations');
 
 const STANDARD_SCORE_CAP = 20;
 const EPIC_BOON_SCORE_CAP = 30;
@@ -39,13 +42,6 @@ function writeScores(sheetData, scores) {
 }
 
 // Every feat the character has: Origin feats plus feats taken at level-ups.
-function collectCharacterFeats(sheetData) {
-  const data = sheetData || {};
-  const origin = Array.isArray(data.originFeats) ? data.originFeats : [];
-  const history = Array.isArray(data.levelHistory) ? data.levelHistory : [];
-  return [...origin, ...history.filter(entry => entry.feat).map(entry => entry.feat)];
-}
-
 function appliedLevel(classes) {
   return classes.reduce((sum, row) => sum + row.level, 0);
 }
@@ -72,12 +68,14 @@ function featIneligibility(name, { classes, sheetData, scores, totalLevel }) {
   const origin = ORIGIN_FEATS[name];
   const general = GENERAL_FEATS[name];
   const boon = EPIC_BOONS[name];
-  if (!origin && !general && !boon) return 'Unknown feat.';
+  const style = FIGHTING_STYLE_FEATS[name];
+  if (!origin && !general && !boon && !style) return 'Unknown feat.';
   const repeatable = (origin && origin.repeatable) || (general && general.repeatable);
   if (owned.includes(name) && !repeatable) return 'Already taken.';
+  if (style && !hasFightingStyleFeature(classes)) return 'Requires the Fighting Style feature.';
   if (boon && totalLevel < EPIC_BOON_LEVEL_REQUIREMENT) return `Requires level ${EPIC_BOON_LEVEL_REQUIREMENT}.`;
   if (general && totalLevel < GENERAL_FEAT_LEVEL) return `Requires level ${GENERAL_FEAT_LEVEL}.`;
-  const prerequisite = (general && general.prerequisite) || {};
+  const prerequisite = (general || boon || {}).prerequisite || {};
   if (prerequisite.scores && !prerequisite.scores.some(ability => scores[ability] >= 13)) {
     return `Requires ${prerequisite.scores.map(a => a.toUpperCase()).join(' or ')} 13+.`;
   }
@@ -88,17 +86,31 @@ function featIneligibility(name, { classes, sheetData, scores, totalLevel }) {
   return null;
 }
 
+function featKind(name) {
+  if (EPIC_BOONS[name]) return 'epicBoon';
+  if (ORIGIN_FEATS[name]) return 'origin';
+  if (FIGHTING_STYLE_FEATS[name]) return 'fightingStyle';
+  return 'general';
+}
+
 function listFeats(context, { allowBoons }) {
   const names = [
     ...Object.keys(GENERAL_FEATS),
     ...Object.keys(ORIGIN_FEATS),
+    ...FIGHTING_STYLE_NAMES,
     ...(allowBoons ? Object.keys(EPIC_BOONS) : [])
   ];
   return names.map(name => {
-    const general = GENERAL_FEATS[name];
-    const kind = EPIC_BOONS[name] ? 'epicBoon' : ORIGIN_FEATS[name] ? 'origin' : 'general';
-    const abilityIncrease = EPIC_BOONS[name] ? 'any' : general ? general.abilityIncrease : null;
-    return { name, kind, abilityIncrease, unavailable: featIneligibility(name, context) };
+    const data = GENERAL_FEATS[name] || EPIC_BOONS[name];
+    const grants = featGrants(name);
+    return {
+      name,
+      kind: featKind(name),
+      abilityIncrease: data ? data.abilityIncrease : null,
+      skillChoice: grants.skillChoice ? grants.skillChoice.options : null,
+      skillExpert: Boolean(grants.expertise),
+      unavailable: featIneligibility(name, context)
+    };
   });
 }
 
@@ -131,16 +143,22 @@ function getLevelUpOptions(state) {
       proficiencyBonus: plan.proficiencyBonus,
       hpGain: plan.hpGain,
       features: plan.features,
-      choices: plan.choices,
+      choices: plan.features.includes('Fighting Style') ? [...plan.choices, 'fightingStyle'] : plan.choices,
       spells: plan.spells,
       spellSlots: plan.spellSlots,
       subclassOptions: plan.choices.includes('subclass') ? DND_CLASSES_AND_SUBCLASSES[className] : null,
       multiclassProficiencies: plan.multiclassProficiencies,
       classSkillOptions: getClass(className).skillChoices.options === 'any' ? SKILL_NAMES : getClass(className).skillChoices.options,
-      feats: needsImprovement ? listFeats(nextContext, { allowBoons: plan.choices.includes('epicBoon') }) : null
+      feats: needsImprovement ? listFeats(nextContext, { allowBoons: plan.choices.includes('epicBoon') }) : null,
+      fightingStyles: plan.features.includes('Fighting Style')
+        ? FIGHTING_STYLE_NAMES.map(name => ({
+          name,
+          unavailable: feats.some(feat => featName(feat) === name) ? 'Already taken.' : null
+        }))
+        : null
     });
   }
-  return { pendingLevels, currentLevel: total, scores, knownSkills: sheetData.skillProficiencies || [], options, unavailable };
+  return { pendingLevels, currentLevel: total, scores, knownSkills: sheetData.skillProficiencies || [], knownExpertise: sheetData.expertise || [], options, unavailable };
 }
 
 function pickList(label, picks, count, allowed) {
@@ -158,7 +176,7 @@ function pickList(label, picks, count, allowed) {
 function resolveImprovement(improvement, context, { allowBoons }) {
   const request = improvement && typeof improvement === 'object' ? improvement : {};
   const { scores } = context;
-  const result = { increases: {}, feat: null, addedSkills: [], addedSaves: [], addedTools: [] };
+  const result = { increases: {}, feat: null, addedSkills: [], addedSaves: [], addedTools: [], addedExpertise: [] };
 
   if (request.type === 'asi') {
     const increases = request.increases && typeof request.increases === 'object' ? request.increases : {};
@@ -183,9 +201,9 @@ function resolveImprovement(improvement, context, { allowBoons }) {
   const reason = featIneligibility(name, context);
   if (reason) throw new Error(`${name || 'That feat'}: ${reason}`);
 
-  const general = GENERAL_FEATS[name];
   const isBoon = Boolean(EPIC_BOONS[name]);
-  const allowedIncrease = isBoon ? ABILITIES : general && general.abilityIncrease === 'any' ? ABILITIES : general ? general.abilityIncrease : null;
+  const increaseRule = (GENERAL_FEATS[name] || EPIC_BOONS[name] || {}).abilityIncrease || null;
+  const allowedIncrease = increaseRule === 'any' ? ABILITIES : increaseRule;
   const feat = { name };
   if (allowedIncrease) {
     if (!allowedIncrease.includes(request.ability)) {
@@ -206,11 +224,30 @@ function resolveImprovement(improvement, context, { allowBoons }) {
     }
     result.addedSaves = [request.ability];
   }
+  const expertise = new Set(context.sheetData.expertise || []);
   if (grants.skillChoices) {
     const skills = pickList(`skill for ${name}`, request.skills, grants.skillChoices, SKILL_NAMES.filter(skill => !proficientSkills.has(skill)));
     result.addedSkills = skills;
     feat.skills = skills;
   }
+  if (grants.expertise) {
+    // Skill Expert: Expertise in a skill you're proficient in (including the one just gained).
+    const eligible = [...proficientSkills, ...result.addedSkills].filter(skill => !expertise.has(skill));
+    result.addedExpertise = pickList(`Expertise skill for ${name}`, request.expertise, grants.expertise, eligible);
+    feat.expertise = result.addedExpertise;
+  }
+  if (grants.skillChoice) {
+    // Keen Mind / Observant: proficiency, or Expertise if already proficient.
+    const skill = request.skill;
+    if (!grants.skillChoice.options.includes(skill)) {
+      throw new Error(`Choose a skill for ${name}: ${grants.skillChoice.options.join(', ')}.`);
+    }
+    if (!proficientSkills.has(skill)) result.addedSkills = [skill];
+    else if (!expertise.has(skill)) result.addedExpertise = [skill];
+    else throw new Error(`You already have Expertise in ${skill}; choose another skill for ${name}.`);
+    feat.skill = skill;
+  }
+  if (grants.tools) result.addedTools = grants.tools.filter(tool => !proficientTools.has(tool));
   // Origin feats taken at a level-up use the same choices as at creation.
   if (ORIGIN_FEATS[name]) {
     const origin = ORIGIN_FEATS[name];
@@ -237,6 +274,28 @@ function resolveImprovement(improvement, context, { allowBoons }) {
   }
   result.feat = feat;
   return result;
+}
+
+// A Fighting Style feat the character doesn't already have.
+function resolveFightingStyle(name, sheetData) {
+  if (!FIGHTING_STYLE_NAMES.includes(name)) {
+    throw new Error(`Choose a Fighting Style: ${FIGHTING_STYLE_NAMES.join(', ')}.`);
+  }
+  if (collectCharacterFeats(sheetData).some(feat => featName(feat) === name)) {
+    throw new Error(`You already have the ${name} Fighting Style.`);
+  }
+  return name;
+}
+
+// An Origin feat with its choices, for Lessons of the First Ones.
+// Returns { feat, addedSkills, addedTools }.
+function resolveOriginFeatChoice(featRequest, sheetData) {
+  const request = featRequest && typeof featRequest === 'object' ? featRequest : {};
+  if (!ORIGIN_FEATS[request.name]) throw new Error('Choose an Origin feat.');
+  const resolved = resolveImprovement({ ...request, type: 'feat' }, {
+    classes: [], sheetData: sheetData || {}, scores: readScores(sheetData), totalLevel: 1
+  }, { allowBoons: false });
+  return { feat: resolved.feat, addedSkills: resolved.addedSkills, addedTools: resolved.addedTools };
 }
 
 function hpMaxFor(classes, sheetData, species) {
@@ -312,8 +371,14 @@ function applyLevelUp(state, request) {
     entry.addedSkills.push(...resolved.addedSkills);
     entry.addedSaves.push(...resolved.addedSaves);
     entry.addedTools.push(...resolved.addedTools);
+    entry.addedExpertise = resolved.addedExpertise;
     entry.addedArmor = [...(entry.addedArmor || []), ...((featGrants(resolved.feat).armorTraining) || [])];
     entry.addedWeapons = [...(entry.addedWeapons || []), ...((featGrants(resolved.feat).weaponProficiencies) || [])];
+  }
+
+  // The Fighting Style feature (Fighter 1, Paladin 2, Ranger 2) grants a Fighting Style feat.
+  if (plan.features.includes('Fighting Style')) {
+    entry.fightingStyle = { name: resolveFightingStyle(body.fightingStyle, sheetData) };
   }
 
   const nextScores = { ...scores };
@@ -324,6 +389,7 @@ function applyLevelUp(state, request) {
     ...sheetData,
     abilities: writeScores(sheetData, nextScores),
     skillProficiencies: union(sheetData.skillProficiencies, entry.addedSkills),
+    expertise: union(sheetData.expertise, entry.addedExpertise),
     savingProficiencies: union(sheetData.savingProficiencies, entry.addedSaves),
     toolProficiencies: union(sheetData.toolProficiencies, entry.addedTools),
     armorTraining: union(sheetData.armorTraining, entry.addedArmor),
@@ -351,6 +417,12 @@ function applyLevelUp(state, request) {
   if (Number.isInteger(nextSheet.hpCurrent)) nextSheet.hpCurrent += Math.max(0, entry.hpGain);
   nextSheet.hitDice = formatHitDicePool(getHitDicePool(nextClasses));
   nextSheet.spellSlots = getSpellSlots(nextClasses);
+  // A level grants spell and cantrip replacements under the strict 2024 rules.
+  nextSheet.spellcasting = spellbook.onLevelUp(
+    spellbook.readSpellcasting(nextSheet),
+    spellbook.getSpellSources({ classes: nextClasses, species, sheetData: nextSheet }),
+    plan.className
+  );
 
   return { classes: nextClasses, sheetData: nextSheet, entry };
 }
@@ -373,33 +445,49 @@ function revertLastLevel(state) {
   const without = (list, removed) => (list || []).filter(item => !(removed || []).includes(item));
   const pending = sheetData.pendingChoices || {};
   const spells = entry.spells || {};
-  return {
-    classes,
-    entry,
-    sheetData: {
-      ...sheetData,
-      abilities: writeScores(sheetData, scores),
-      skillProficiencies: without(sheetData.skillProficiencies, entry.addedSkills),
-      savingProficiencies: without(sheetData.savingProficiencies, entry.addedSaves),
-      toolProficiencies: without(sheetData.toolProficiencies, entry.addedTools),
-      armorTraining: without(sheetData.armorTraining, entry.addedArmor),
-      weaponProficiencies: without(sheetData.weaponProficiencies, entry.addedWeapons),
-      classFeatures: (sheetData.classFeatures || []).filter(feature => feature.gainedAt !== entry.level),
-      pendingChoices: {
-        ...pending,
-        cantrips: Math.max(0, (pending.cantrips || 0) - Math.max(0, spells.cantripsGained || 0)),
-        preparedSpells: Math.max(0, (pending.preparedSpells || 0) - Math.max(0, spells.preparedGained || 0))
-      },
-      hpMax: classes.length ? hpMaxFor(classes, { ...sheetData, abilities: writeScores(sheetData, scores), levelHistory: history.slice(0, -1) }, state.species) + (Number.isInteger(sheetData.hpMaxBonus) ? sheetData.hpMaxBonus : 0) : sheetData.hpMax,
-      hitDice: formatHitDicePool(getHitDicePool(classes)),
-      spellSlots: getSpellSlots(classes),
-      levelHistory: history.slice(0, -1)
-    }
+  const revertedSheet = {
+    ...sheetData,
+    abilities: writeScores(sheetData, scores),
+    skillProficiencies: without(sheetData.skillProficiencies, entry.addedSkills),
+    expertise: without(sheetData.expertise, entry.addedExpertise),
+    savingProficiencies: without(sheetData.savingProficiencies, entry.addedSaves),
+    toolProficiencies: without(sheetData.toolProficiencies, entry.addedTools),
+    armorTraining: without(sheetData.armorTraining, entry.addedArmor),
+    weaponProficiencies: without(sheetData.weaponProficiencies, entry.addedWeapons),
+    classFeatures: (sheetData.classFeatures || []).filter(feature => feature.gainedAt !== entry.level),
+    pendingChoices: {
+      ...pending,
+      cantrips: Math.max(0, (pending.cantrips || 0) - Math.max(0, spells.cantripsGained || 0)),
+      preparedSpells: Math.max(0, (pending.preparedSpells || 0) - Math.max(0, spells.preparedGained || 0))
+    },
+    hpMax: classes.length ? hpMaxFor(classes, { ...sheetData, abilities: writeScores(sheetData, scores), levelHistory: history.slice(0, -1) }, state.species) + (Number.isInteger(sheetData.hpMaxBonus) ? sheetData.hpMaxBonus : 0) : sheetData.hpMax,
+    hitDice: formatHitDicePool(getHitDicePool(classes)),
+    spellSlots: getSpellSlots(classes),
+    levelHistory: history.slice(0, -1)
   };
+  // Fewer Warlock levels can mean fewer invocations: drop the newest ones.
+  const invocationCap = invocationLimit(classes);
+  const invocations = Array.isArray(sheetData.invocations) ? sheetData.invocations : [];
+  if (invocations.length > invocationCap) {
+    const dropped = invocations.slice(invocationCap);
+    const removedSkills = dropped.flatMap(item => item.addedSkills || []);
+    const removedTools = dropped.flatMap(item => item.addedTools || []);
+    revertedSheet.invocations = invocations.slice(0, invocationCap);
+    revertedSheet.skillProficiencies = without(revertedSheet.skillProficiencies, removedSkills);
+    revertedSheet.toolProficiencies = without(revertedSheet.toolProficiencies, removedTools);
+  }
+  // Drop spell choices the lower level no longer allows.
+  revertedSheet.spellcasting = spellbook.fitToLimits(
+    spellbook.readSpellcasting(revertedSheet),
+    spellbook.getSpellSources({ classes, species: state.species, sheetData: revertedSheet })
+  );
+  return { classes, entry, sheetData: revertedSheet };
 }
 
 module.exports = {
   collectCharacterFeats,
+  resolveFightingStyle,
+  resolveOriginFeatChoice,
   getLevelUpOptions,
   applyLevelUp,
   revertLastLevel

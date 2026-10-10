@@ -251,6 +251,30 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .vitals-hitdie, .vitals-slot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
 .vitals-slot-label { min-width: 120px; }
 .vitals-slot-boxes { display: inline-flex; gap: 4px; }
+
+/* Spellcasting (public/character-spells.js) */
+.spells { display: grid; gap: 14px; margin-top: 14px; }
+.spells h4 { margin: 0; }
+.spells h5 { margin: 10px 0 4px; color: #dbdee1; }
+.spells p { margin: 0; }
+.spell-source { display: grid; gap: 6px; padding: 12px; border: 1px solid #3f4147; border-radius: 8px; background: #1e1f22; }
+.spell-source-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.spell-source-header strong { color: #f1c40f; }
+.spell-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.spell-row { border-bottom: 1px solid #2b2d31; padding: 4px 0; }
+.spell-row-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.spell-name { background: none; border: 0; padding: 0; color: #dbdee1; font-weight: 600; cursor: pointer; text-align: left; }
+.spell-name:hover, .spell-name:focus-visible { color: #f1c40f; text-decoration: underline; }
+.spell-cast { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.spell-cast select { max-width: 230px; padding: 4px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.spell-details { margin: 6px 0 4px; padding: 8px 10px; background: #232428; border-radius: 4px; font-size: 13px; }
+.spell-details p { margin: 0 0 6px; }
+.spell-concentration { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #5865f2; border-radius: 6px; background: rgba(88, 101, 242, 0.12); }
+.spell-picker { display: grid; gap: 10px; padding: 10px; border: 1px dashed #4e5058; border-radius: 6px; }
+.spell-picker input[type=search] { width: 100%; padding: 6px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.spell-pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px 12px; max-height: 260px; overflow-y: auto; }
+.spellbook summary { cursor: pointer; color: #949ba4; margin-top: 6px; }
+@media (max-width: 700px) { .spell-cast { margin-left: 0; width: 100%; } .spell-cast select { max-width: none; flex: 1; } }
 .sheet-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .sheet-section-heading h4 { margin: 0; }
 .sheet-table-wrap { overflow-x: auto; }
@@ -317,3 +341,9 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .alert { padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; font-size: 14px; }
 .alert.green { background: rgba(35, 165, 90, 0.2); border: 1px solid #23a55a; color: #23a55a; }
 .alert.red { background: rgba(242, 63, 67, 0.2); border: 1px solid #f23f43; color: #f23f43; }
+
+/* Invocation picker rows and feat rules text */
+.invocation-pick { display: grid; gap: 6px; padding: 8px 0; border-bottom: 1px solid rgba(127, 127, 127, 0.25); }
+.invocation-pick select { max-width: 100%; }
+.feat-description { margin: 8px 0; }
+.feat-description summary { cursor: pointer; font-weight: 600; }

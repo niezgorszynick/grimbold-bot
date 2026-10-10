@@ -113,6 +113,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
               </section>
             </div>
           </div>
+          <section id="cs_spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+          <script src="/admin/assets/character-spells.js" defer></script>
         </section>
       `
       : '<div class="alert red">Character not found or you do not have permission to edit it.</div>'

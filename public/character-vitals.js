@@ -62,7 +62,14 @@
           (result.healed !== undefined ? ' → healed ' + result.healed + ' HP.' : '.'));
       }
       (result.events || []).forEach(event => parts.push(EVENT_MESSAGES[event] || ''));
+      if (result.concentration) {
+        parts.push(result.concentration.ended
+          ? 'Concentration on ' + result.concentration.spell + ' ended.'
+          : 'Concentration check for ' + result.concentration.spell + ': Constitution save DC ' + result.concentration.dc + '.');
+      }
       lastMessage = parts.filter(Boolean).join(' ');
+      // Rests restore slots and spell-change windows; damage can end concentration.
+      if (window.refreshCharacterSpells) window.refreshCharacterSpells();
       lastIsError = false;
     } catch (error) {
       lastMessage = error.message;

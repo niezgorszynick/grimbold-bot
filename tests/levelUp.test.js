@@ -5,7 +5,7 @@ const rules = require('../rules');
 // A level 3 Human Fighter (Champion) straight from character creation.
 function fighter(earnedLevel, overrides = {}) {
   const created = rules.buildStartingCharacter({
-    name: 'Brakka', species: 'Human', size: 'Medium', className: 'Fighter', subclass: 'Champion',
+    name: 'Brakka', species: 'Human', size: 'Medium', className: 'Fighter', subclass: 'Champion', fightingStyle: 'Great Weapon Fighting',
     background: 'Soldier', generationMethod: 'Standard Array',
     baseScores: { str: 15, dex: 13, con: 14, int: 12, wis: 10, cha: 8 },
     backgroundBonuses: { str: 2, con: 1 },

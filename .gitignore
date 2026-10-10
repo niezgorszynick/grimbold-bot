@@ -23,3 +23,8 @@ data.sqlite-shm
 data.dev.sqlite*
 logs/
 *.log
+
+# Rules text from the D&D books (not redistributable); kept locally and on the server only
+rules/content/spells.md
+rules/content/feats.md
+rules/content/invocations.md

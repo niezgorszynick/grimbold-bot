@@ -19,8 +19,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const CONTENT_DIR = path.join(__dirname, 'content');
-const CATEGORIES = ['backgrounds', 'species', 'classes', 'subclasses', 'feats', 'spells', 'items'];
+// RULES_CONTENT_DIR lets tests use fixture content instead of the local files.
+const CONTENT_DIR = process.env.RULES_CONTENT_DIR || path.join(__dirname, 'content');
+const CATEGORIES = ['backgrounds', 'species', 'classes', 'subclasses', 'feats', 'spells', 'invocations', 'items'];
 
 function camelCase(key) {
   return key
@@ -29,11 +30,18 @@ function camelCase(key) {
     .replace(/[^a-z0-9]+(.)/g, (_, char) => char.toUpperCase());
 }
 
+// Also accepted: entries as `# Name` when a file has no `## ` headings, bold
+// field names (`- **Level**: 3`), `---` separators between entries, and a
+// `### Description` or `### Benefits` heading, whose text becomes the description.
+const DESCRIPTION_SECTIONS = ['Description', 'Benefits'];
+
 function parseContentMarkdown(markdown) {
   const entries = {};
   let entry = null;
   let section = null;
   let readingFields = false;
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const entryPattern = lines.some(line => /^##\s/.test(line)) ? /^##\s+(.+?)\s*$/ : /^#\s+(.+?)\s*$/;
 
   const finishText = () => {
     if (!entry) return;
@@ -43,8 +51,8 @@ function parseContentMarkdown(markdown) {
     }
   };
 
-  for (const line of markdown.replace(/\r\n/g, '\n').split('\n')) {
-    const entryHeading = line.match(/^##\s+(.+?)\s*$/);
+  for (const line of lines) {
+    const entryHeading = line.match(entryPattern);
     const sectionHeading = line.match(/^###\s+(.+?)\s*$/);
     if (entryHeading && !line.startsWith('###')) {
       finishText();
@@ -55,15 +63,16 @@ function parseContentMarkdown(markdown) {
       continue;
     }
     if (!entry) continue;
+    if (/^-{3,}\s*$/.test(line)) continue;
     if (sectionHeading) {
-      section = sectionHeading[1];
-      entry.sections[section] = '';
+      section = DESCRIPTION_SECTIONS.includes(sectionHeading[1]) ? null : sectionHeading[1];
+      if (section) entry.sections[section] = '';
       readingFields = false;
       continue;
     }
-    const field = readingFields && line.match(/^-\s+([^:]+):\s*(.*)$/);
+    const field = readingFields && line.match(/^-\s+(?:\*\*([^*]+)\*\*|([^:]+)):\s*(.*)$/);
     if (field) {
-      entry.fields[camelCase(field[1])] = field[2].trim();
+      entry.fields[camelCase(field[1] || field[2])] = field[3].trim();
       continue;
     }
     if (readingFields && line.trim() === '') continue;
@@ -77,13 +86,30 @@ function parseContentMarkdown(markdown) {
 
 const cache = new Map();
 
-// Returns {} when the category file has not been provided yet.
-function loadContent(category) {
+const MISSING_DESCRIPTION = /^no description available\.?$/i;
+
+function readEntries(file) {
+  return fs.existsSync(file) ? parseContentMarkdown(fs.readFileSync(file, 'utf8')) : {};
+}
+
+// Returns {} when the category file has not been provided yet. A committed
+// `<category>.fallback.md` fills in entries or descriptions the main file
+// lacks; the main file always wins where it has text.
+function loadContent(category, { dir = CONTENT_DIR } = {}) {
   if (!CATEGORIES.includes(category)) throw new Error(`Unknown content category "${category}".`);
-  if (cache.has(category)) return cache.get(category);
-  const file = path.join(CONTENT_DIR, `${category}.md`);
-  const entries = fs.existsSync(file) ? parseContentMarkdown(fs.readFileSync(file, 'utf8')) : {};
-  cache.set(category, entries);
+  const key = `${dir}|${category}`;
+  if (cache.has(key)) return cache.get(key);
+  const entries = readEntries(path.join(dir, `${category}.md`));
+  const fallback = readEntries(path.join(dir, `${category}.fallback.md`));
+  for (const [name, extra] of Object.entries(fallback)) {
+    const entry = entries[name];
+    if (!entry) entries[name] = { ...extra, fromFallback: true };
+    else if (!entry.description || MISSING_DESCRIPTION.test(entry.description)) {
+      entry.description = extra.description;
+      entry.descriptionFromFallback = true;
+    }
+  }
+  cache.set(key, entries);
   return entries;
 }
 

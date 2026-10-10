@@ -250,5 +250,6 @@ test('content markdown parser reads fields, description and sections', () => {
   assert.equal(entries.Fireball.description, 'A bright streak flashes.');
   assert.equal(entries.Fireball.sections['Using a Higher-Level Spell Slot'], 'The damage increases by 1d6.');
   assert.equal(entries.Light.description, 'You touch one object.');
-  assert.deepEqual(rules.loadContent('spells'), {});
+  const emptyDir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'grimbold-empty-'));
+  assert.deepEqual(rules.loadContent('spells', { dir: emptyDir }), {});
 });

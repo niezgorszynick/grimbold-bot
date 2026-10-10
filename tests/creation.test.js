@@ -6,6 +6,7 @@ const dwarfFighter = overrides => ({
   name: 'Thorin',
   species: 'Dwarf',
   className: 'Fighter',
+  fightingStyle: 'Great Weapon Fighting',
   subclass: 'Champion',
   background: 'Soldier',
   generationMethod: 'Standard Array',

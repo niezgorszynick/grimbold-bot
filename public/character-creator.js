@@ -125,10 +125,11 @@
     const classDetails = el('div', { className: 'species-traits' });
     const classSkillsBox = el('div');
     const classToolsBox = el('div');
+    const fightingStyleBox = el('div');
     const classEquipmentBox = el('div');
     classSection.body.append(
       el('div', { className: 'character-editor-fields' }, [field('Class', classSelect), field('Subclass', subclassSelect)]),
-      classDetails, classSkillsBox, classToolsBox, classEquipmentBox
+      classDetails, classSkillsBox, classToolsBox, fightingStyleBox, classEquipmentBox
     );
 
     // ── Background ──
@@ -239,8 +240,9 @@
         classDetails.replaceChildren();
         classSkillsBox.replaceChildren();
         classToolsBox.replaceChildren();
+        fightingStyleBox.replaceChildren();
         classEquipmentBox.replaceChildren();
-        widgets.classSkills = widgets.classTools = null;
+        widgets.classSkills = widgets.classTools = widgets.fightingStyle = null;
         return;
       }
       const features = Object.entries(data.featuresByLevel)
@@ -260,6 +262,17 @@
       } else {
         widgets.classTools = null;
         classToolsBox.replaceChildren();
+      }
+
+      const previousStyle = widgets.fightingStyle ? widgets.fightingStyle.value : undefined;
+      const styleLevel = (R.fightingStyleClasses || {})[className];
+      if (styleLevel && styleLevel <= R.startingLevel) {
+        widgets.fightingStyle = selectBox(R.fightingStyles || [], { placeholder: '-- Choose Fighting Style --', value: previousStyle, required: true });
+        fightingStyleBox.replaceChildren(el('h5', { text: 'Fighting Style' }),
+          field('Fighting Style feat', widgets.fightingStyle, 'Granted by the ' + className + ' Fighting Style feature (level ' + styleLevel + ').'));
+      } else {
+        widgets.fightingStyle = null;
+        fightingStyleBox.replaceChildren();
       }
 
       const previousEquipment = (form.querySelector('[name="classEquipment"]:checked') || {}).value;
@@ -479,6 +492,7 @@
         speciesSkills: widgets.speciesSkills ? widgets.speciesSkills.value() : [],
         classSkills: widgets.classSkills ? widgets.classSkills.value() : [],
         classTools: widgets.classTools ? widgets.classTools.value() : [],
+        fightingStyle: value(widgets.fightingStyle),
         backgroundTool: value(widgets.backgroundTool),
         originFeatChoices: widgets.backgroundFeat ? widgets.backgroundFeat.value() : {},
         versatileFeat: widgets.versatile
