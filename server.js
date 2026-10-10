@@ -45,6 +45,8 @@ router.use((req, res, next) => {
 const ADMIN_ASSETS = {
   'character-creator.js': path.join(__dirname, 'public', 'character-creator.js'),
   'character-vitals.js': path.join(__dirname, 'public', 'character-vitals.js'),
+  'admin.css': path.join(__dirname, 'public', 'admin.css'),
+  'admin-ui.js': path.join(__dirname, 'public', 'admin-ui.js'),
   'character-levelup.js': path.join(__dirname, 'public', 'character-levelup.js')
 };
 router.get('/assets/:file', (req, res) => {
