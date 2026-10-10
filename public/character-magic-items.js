@@ -108,6 +108,20 @@
     if (item.quantity > 1) badges.push(el('span', { className: 'tag', text: '×' + item.quantity }));
 
     const controls = el('span', { className: 'spell-cast' });
+    // Weapons and armor that can be several things ("Glaive, Greatsword, ..."):
+    // the DM picks which one this is, so it counts in AC and attacks.
+    const choice = item.typeChoice;
+    if (choice && view.canGrant) {
+      const select = el('select', { 'aria-label': (choice.kind === 'armor' ? 'Armor' : 'Weapon') + ' type of ' + item.name });
+      select.add(new Option('-- ' + (choice.kind === 'armor' ? 'Armor' : 'Weapon') + ' type --', ''));
+      choice.options.forEach(option => select.add(new Option(option, option)));
+      select.value = choice.current || '';
+      select.addEventListener('change', () => { if (select.value) act({ action: 'setBase', uid: item.uid, base: select.value }); });
+      controls.append(select);
+    } else if (choice && !choice.current) {
+      badges.push(el('span', { className: 'tag red', text: (choice.kind === 'armor' ? 'Armor' : 'Weapon') + ' type not set — your DM chooses it' }));
+    }
+    if (choice && choice.current && !view.canGrant) badges.push(el('span', { className: 'tag', text: choice.current }));
     if (item.consumable) {
       controls.append(button('Use one', () => {
         if (window.confirm('Use up one ' + item.name + '?')) act({ action: 'consume', uid: item.uid });

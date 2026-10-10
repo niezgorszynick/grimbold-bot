@@ -412,3 +412,4 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-other-attacks h5 { margin: 0; color: #dbdee1; font-size: 13px; }
 .sheet-attacks[hidden] { display: none; }
 .inventory-wear.is-worn { background: #23a55a; }
+.sheet-attacks-auto tr.needs-type td:last-child { color: #f0b232; }

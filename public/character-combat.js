@@ -92,7 +92,7 @@
   }
 
   function renderAttacks() {
-    const rows = view.attacks.map(attack => el('tr', {}, [
+    const rows = view.attacks.map(attack => el('tr', { className: attack.needsType ? 'needs-type' : null }, [
       el('td', { 'data-label': 'Name' }, [el('strong', { text: attack.name }), attack.weapon && attack.weapon !== attack.name ? el('span', { className: 'muted small', text: ' ' + attack.weapon }) : null]),
       el('td', { 'data-label': 'Attack', text: attack.attackBonus }),
       el('td', { 'data-label': 'Damage', text: attack.damage }),

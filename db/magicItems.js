@@ -11,7 +11,7 @@ const { combatWithArmorClass } = require('./combat');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 // Actions only an admin (DM) may take.
-const DM_ACTIONS = ['grant', 'remove'];
+const DM_ACTIONS = ['grant', 'remove', 'setBase'];
 
 function readSheet(raw) {
   try {
@@ -98,6 +98,13 @@ function buildView(character, sheetData, isAdmin) {
       attuneBlocked: item && item.attunement.required && !entry.attuned ? rules.attunementIneligibility(item, owner) : null,
       charges,
       effects: describeEffects(effects),
+      // Weapons and armor that can be several things: what the DM chose.
+      typeChoice: (() => {
+        const options = rules.magicItemBaseOptions(entry);
+        if (!options.length) return null;
+        const gear = rules.gearOfMagicItem(entry, rules.magicItemEntryInfo(entry, catalog));
+        return { kind: item.kind === 'Armor' ? 'armor' : 'weapon', options, current: gear && !gear.unknown ? gear.name : null };
+      })(),
       description: item ? item.description : 'This item is not in the magic item list.'
     };
   });
@@ -138,16 +145,31 @@ function withHpMax(character, sheetData) {
 }
 
 // action: grant { name, variant, quantity, source } (DM) | remove { uid } (DM)
+//       | setBase { uid, base } (DM: which weapon or armor the item is)
 //       | equip | unequip | attune | unattune | consume { uid }
 //       | useCharges | restoreCharges { uid, count }
 function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {} }) {
-  if (DM_ACTIONS.includes(action) && !is_admin) throw new Error('Only a DM can give or take away magic items.');
+  if (DM_ACTIONS.includes(action) && !is_admin) {
+    throw new Error(action === 'setBase' ? 'Only a DM can choose what an item is.' : 'Only a DM can give or take away magic items.');
+  }
   return db.transaction(() => {
     const character = loadCharacter(id, player_id, is_admin);
     const sheetData = readSheet(character.sheet_data);
     let magicItems;
     let message;
-    if (action === 'grant') {
+    if (action === 'setBase') {
+      magicItems = rules.readMagicItems(sheetData).map(entry => ({ ...entry }));
+      const entry = magicItems.find(item => item.uid === params.uid);
+      if (!entry) throw new Error('This character does not have that magic item.');
+      const options = rules.magicItemBaseOptions(entry);
+      if (!options.includes(params.base)) {
+        throw new Error(options.length
+          ? `${rules.magicItemDisplayName(entry)} can be: ${options.join(', ')}.`
+          : `${rules.magicItemDisplayName(entry)} is always the same kind of item.`);
+      }
+      entry.base = params.base;
+      message = `${rules.magicItemDisplayName(entry)} is a ${params.base}.`;
+    } else if (action === 'grant') {
       magicItems = rules.grantMagicItem(sheetData, { ...params, source: params.source || 'dm' });
       const added = magicItems[magicItems.length - 1];
       message = `${character.name} received ${params.quantity > 1 ? `${params.quantity} × ` : ''}${rules.magicItemDisplayName(added)}.`;

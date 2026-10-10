@@ -73,9 +73,12 @@ function gearOfMagicItem(entry, info) {
   const { item } = info;
   if (!item) return null;
   if (item.kind === 'Armor' && /\bshield\b/i.test(`${item.baseItem} ${item.name}`)) return gearOf.shield();
+  // The type the DM chose for an item that can be several things.
+  const chosen = entry.base ? identifyGear(entry.base) : null;
+  if (chosen) return chosen;
   // A base item counts only when it names exactly one thing: "Any Medium or
   // Heavy, Except Hide Armor" or "Glaive, Greatsword, Longsword, ..." need the
-  // DM to name the item ("Frost Brand (Longsword)").
+  // DM to choose (or a name such as "Frost Brand (Longsword)").
   const baseItem = /^any\b/i.test(item.baseItem) || /,| or /.test(item.baseItem) ? '' : item.baseItem;
   const fromText = [entry.label, item.name !== 'Armor' && item.name !== 'Weapon' ? item.name : '', baseItem]
     .map(identifyGear).find(Boolean);
@@ -90,6 +93,33 @@ function gearOfMagicItem(entry, info) {
   if (item.kind === 'Armor') return { type: 'armor', unknown: true };
   if (item.kind === 'Weapon') return { type: 'weapon', unknown: true };
   return null;
+}
+
+// The armor or weapon types a magic item can be, when it isn't fixed:
+// "Glaive, Greatsword, Longsword, ..." → those; "Any Simple or Martial" → all
+// weapons; "Any Melee Weapon" → melee weapons; "Any Medium or Heavy, Except
+// Hide Armor" → those armors. Empty when the type is fixed (or a shield).
+function magicItemBaseOptions(entry) {
+  const info = magicItemEntryInfo(entry);
+  const { item } = info;
+  if (!item || !['Armor', 'Weapon'].includes(item.kind)) return [];
+  const text = String(item.baseItem || '');
+  if (item.kind === 'Armor' && /\bshield\b/i.test(`${text} ${item.name}`)) return [];
+  const type = item.kind.toLowerCase();
+  if (/^any\b/i.test(text)) {
+    if (type === 'armor') {
+      const categories = ['Light', 'Medium', 'Heavy'].filter(category => new RegExp(`\\b${category}\\b`, 'i').test(text));
+      const except = text.match(/except (.+)$/i);
+      const excluded = except ? identifyGear(except[1]) : null;
+      return Object.keys(ARMOR).filter(name => categories.some(category => ARMOR[name].category.startsWith(category)) &&
+        !(excluded && excluded.name === name));
+    }
+    const melee = /melee/i.test(text);
+    if (!melee && /ammunition/i.test(text)) return [];
+    return Object.values(WEAPONS).filter(weapon => !melee || weapon.kind === 'Melee').map(weapon => weapon.name);
+  }
+  const pieces = text.split(/,\s*(?:or\s+)?|\s+or\s+/).map(identifyGear).filter(gear => gear && gear.type === type);
+  return pieces.length > 1 ? [...new Set(pieces.map(gear => gear.name))] : [];
 }
 
 // "+1 bonus to attack rolls and damage rolls" for magic weapons.
@@ -251,7 +281,7 @@ function calculateArmor(ctx) {
   let total;
 
   if (armor && armor.gear.unknown) {
-    notes.push(`${armor.name}: name the armor type (e.g. "+1 Chain Mail") to count it.`);
+    notes.push(`${armor.name}: its armor type isn't set yet, so it doesn't count. The DM chooses it under Magic Items.`);
   }
   if (armor && !armor.gear.unknown) {
     const data = armor.gear;
@@ -425,8 +455,12 @@ function calculateCombat(character) {
   const armorClass = calculateArmor(ctx);
   const weapons = ctx.worn.filter(piece => piece.gear.type === 'weapon');
   const attacks = weapons.filter(piece => !piece.gear.unknown).map(piece => weaponAttack(piece, ctx, armorClass));
+  // Listed anyway, so a worn magic weapon never just disappears.
   weapons.filter(piece => piece.gear.unknown).forEach(piece => {
-    armorClass.notes.push(`${piece.name}: name the weapon (e.g. "+1 Longsword") to list its attack.`);
+    attacks.push({
+      name: piece.name, from: 'magic', uid: piece.uid, weapon: null, needsType: true, attackBonus: '—', damage: '—',
+      notes: ['Weapon type not set yet (e.g. Longsword): the DM chooses it under Magic Items.']
+    });
   });
   attacks.push(unarmedStrike(ctx, armorClass, weapons.length > 0));
   return { armorClass, attacks };
@@ -462,6 +496,7 @@ function validateAcAdjustment(value) {
 module.exports = {
   identifyGear,
   gearOfMagicItem,
+  magicItemBaseOptions,
   wornGear,
   setWorn,
   isWornByDefault: isWorn,

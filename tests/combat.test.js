@@ -203,3 +203,30 @@ test('older characters keep a typed-in AC until they wear armor', () => {
   assert.throws(() => db.setCharacterAcAdjustment({ ...who, value: 50 }), /from -10 to 10/);
   assert.throws(() => db.changeCharacterInventory({ ...who, action: 'wear', params: { index: 0, name: 'Shield', worn: true } }), /list changed/);
 });
+
+test('the DM chooses the type of a magic weapon that can be several', () => {
+  const player = createPlayer();
+  const id = addCharacter(player, { abilities: abilities({ str: 16 }), weaponProficiencies: ['Simple weapons', 'Martial weapons'], inventory: [] });
+  const asPlayer = { id, player_id: player, is_admin: false };
+  const asDm = { id, player_id: 0, is_admin: true };
+  const given = db.changeCharacterMagicItems({ ...asDm, action: 'grant', params: { name: 'Frost Brand' } });
+  const uid = given.magicItems.items[0].uid;
+  assert.deepEqual(given.magicItems.items[0].typeChoice,
+    { kind: 'weapon', options: ['Glaive', 'Greatsword', 'Longsword', 'Rapier', 'Scimitar', 'Shortsword'], current: null });
+  db.changeCharacterMagicItems({ ...asPlayer, action: 'attune', params: { uid } });
+
+  // Worn but with no type: still listed, with a note.
+  let sword = db.getCharacterCombat(asPlayer).attacks.find(entry => entry.name === 'Frost Brand');
+  assert.equal(sword.needsType, true);
+  assert.match(sword.notes[0], /Weapon type not set/);
+
+  assert.throws(() => db.changeCharacterMagicItems({ ...asPlayer, action: 'setBase', params: { uid, base: 'Longsword' } }), /Only a DM can choose/);
+  assert.throws(() => db.changeCharacterMagicItems({ ...asDm, action: 'setBase', params: { uid, base: 'Maul' } }), /can be: Glaive/);
+  const chosen = db.changeCharacterMagicItems({ ...asDm, action: 'setBase', params: { uid, base: 'Longsword' } });
+  assert.equal(chosen.message, 'Frost Brand is a Longsword.');
+  assert.equal(chosen.magicItems.items[0].typeChoice.current, 'Longsword');
+  sword = db.getCharacterCombat(asPlayer).attacks.find(entry => entry.name === 'Frost Brand');
+  assert.equal(sword.weapon, 'Longsword');
+  assert.equal(sword.attackBonus, '+5');
+  assert.equal(sword.damage, '1d8+3 Slashing (1d10+3 two-handed)');
+});
