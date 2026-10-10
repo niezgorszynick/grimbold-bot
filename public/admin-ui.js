@@ -122,7 +122,8 @@ function setupTableFilter(table) {
 
   const make = (tag, props) => Object.assign(document.createElement(tag), props || {});
   const bar = make('div', { className: 'table-filter' });
-  const search = make('input', { type: 'search', placeholder: 'Search name, category or description…' });
+  const search = make('input', { type: 'search', placeholder: table.dataset.searchPlaceholder || 'Search name, category or description…' });
+  const noun = table.dataset.itemLabel || 'items';
   search.setAttribute('aria-label', 'Search the table');
   bar.appendChild(search);
 
@@ -132,7 +133,8 @@ function setupTableFilter(table) {
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const select = make('select');
     select.setAttribute('aria-label', 'Filter by ' + field);
-    select.add(new Option('All ' + (field === 'category' ? 'categories' : field + 's'), ''));
+    const plural = field.endsWith('y') ? field.slice(0, -1) + 'ies' : field.endsWith('s') ? field + 'es' : field + 's';
+    select.add(new Option('All ' + plural, ''));
     values.forEach(value => select.add(new Option(value, value)));
     selects[field] = select;
     bar.appendChild(select);
@@ -199,7 +201,7 @@ function setupTableFilter(table) {
     const total = rows().length;
     const shown = Math.min(matches, limit);
     count.textContent = matches === total
-      ? (shown < total ? 'Showing ' + shown + ' of ' + total : total + ' items')
+      ? (shown < total ? 'Showing ' + shown + ' of ' + total : total + ' ' + noun)
       : matches + ' of ' + total + ' match' + (shown < matches ? ' · showing ' + shown : '');
     more.hidden = matches <= limit;
     showMore.textContent = 'Show ' + Math.min(pageSize, matches - limit) + ' more';

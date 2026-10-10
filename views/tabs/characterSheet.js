@@ -6,6 +6,78 @@ const db = require('../../db');
 const { DND_SPECIES, DND_DATA, DND_CLASSES_AND_SUBCLASSES } = require('../../dndData');
 const { escapeHtml } = require('../helpers');
 
+// The DM's view of every character: one sortable, filterable row each, with
+// the numbers looked up during play.
+function renderRoster() {
+  const rows = db.getCampaignRoster();
+  const players = new Set(rows.map(row => row.player)).size;
+  const alive = rows.filter(row => row.status === 'alive').length;
+  const waiting = rows.filter(row => row.pendingLevels > 0).length;
+  const dash = '<span class="muted">—</span>';
+  const classText = row => row.classes.map(entry => `${escapeHtml(entry.className)}${row.classes.length > 1 ? ` ${entry.level}` : ''}${entry.subclassName ? ` <span class="muted">(${escapeHtml(entry.subclassName)})</span>` : ''}`).join(' / ');
+  const hpCell = row => {
+    if (row.status !== 'alive') return `<td data-sort="-1">${dash}</td>`;
+    if (!row.hp) return `<td data-sort="-1">${dash}</td>`;
+    const ratio = row.hp.max ? row.hp.current / row.hp.max : 0;
+    const state = row.hp.current === 0 ? 'down' : ratio <= 0.5 ? 'hurt' : 'ok';
+    const label = row.hp.current === 0 ? (row.hp.stable ? 'stable' : 'down') : '';
+    return `<td data-sort="${ratio.toFixed(3)}"><span class="roster-hp roster-hp-${state}">${row.hp.current}</span><span class="muted">/${row.hp.max}</span>${row.hp.temp ? ` <span class="tag" title="Temporary HP">+${row.hp.temp}</span>` : ''}${label ? ` <span class="tag red">${label}</span>` : ''}</td>`;
+  };
+  const number = value => (value === null || value === undefined ? `<td data-sort="-1">${dash}</td>` : `<td data-sort="${value}">${value}</td>`);
+  return `
+    <section class="card roster">
+      <div class="roster-heading">
+        <h3>Campaign Roster</h3>
+        <p class="muted small">${rows.length} characters · ${players} players · ${alive} alive${waiting ? ` · <span class="tag gold">${waiting} level-up${waiting > 1 ? 's' : ''} waiting</span>` : ''}</p>
+      </div>
+      <table id="campaign-roster" class="roster-table" data-filter="player,class,status" data-page-size="100" data-item-label="characters" data-search-placeholder="Search character, player, class or species…">
+        <thead>
+          <tr>
+            <th class="sortable">Character</th>
+            <th class="sortable">Player</th>
+            <th class="sortable">Class</th>
+            <th class="sortable">Lvl</th>
+            <th class="sortable">HP</th>
+            <th class="sortable" title="Armor Class">AC</th>
+            <th class="sortable" title="Passive Perception">PP</th>
+            <th class="sortable" title="Spell save DC">DC</th>
+            <th class="sortable">Gold</th>
+            <th class="sortable">XP</th>
+            <th><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr class="${row.status === 'alive' ? '' : 'roster-dead'}"
+                data-search="${escapeHtml(`${row.name} ${row.player} ${row.species} ${row.classes.map(entry => `${entry.className} ${entry.subclassName || ''}`).join(' ')}`.toLowerCase())}"
+                data-player="${escapeHtml(row.player)}" data-class="${escapeHtml(row.classes[0].className)}"
+                data-status="${row.status === 'alive' ? 'Alive' : 'Dead'}">
+              <td data-sort="${escapeHtml(row.name)}">
+                <a href="/admin?tab=character-sheet&edit_char=${row.id}" class="roster-name">${escapeHtml(row.name)}</a>
+                <div class="muted small">${escapeHtml(row.species || 'Unknown')}${row.status === 'alive' ? '' : ' · <span class="tag red">Dead</span>'}</div>
+              </td>
+              <td data-sort="${escapeHtml(row.player)}">${escapeHtml(row.player)}</td>
+              <td data-sort="${escapeHtml(row.classes[0].className)}">${classText(row)}</td>
+              <td data-sort="${row.level}">${row.level}${row.pendingLevels ? ` <span class="tag gold" title="Earned from XP, not applied yet">+${row.pendingLevels}</span>` : ''}</td>
+              ${hpCell(row)}
+              ${number(row.armorClass)}
+              ${number(row.passivePerception)}
+              ${number(row.spellDc)}
+              <td data-sort="${row.goldCp}">${formatGold(row.goldCp)}</td>
+              <td data-sort="${row.xp}">${row.xp}</td>
+              <td class="roster-actions"><a href="/admin?tab=character-sheet&edit_char=${row.id}" class="btn btn-small">${row.pendingLevels ? 'Level up' : 'Open'}</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </section>`;
+}
+
+// Whole gold pieces for the roster ("1,250 gp"); exact coins are on the sheet.
+function formatGold(cp) {
+  const gp = Math.floor((Number(cp) || 0) / 100);
+  return `${gp.toLocaleString('en-US')} gp`;
+}
+
 module.exports = function renderCharacterSheetTab(ctx) {
   const { req, currentUser, isAdmin, status } = ctx;
   let contentHtml = '';
@@ -129,13 +201,13 @@ module.exports = function renderCharacterSheetTab(ctx) {
     <section class="card">
       <h3>${isAdmin ? 'Campaign Characters' : 'Your Characters'}</h3>
       ${canManageOwnCharacters
-        ? `<p class="muted">${isAdmin ? 'All campaign characters are visible to you. You can create and edit campaign characters.' : 'Create a character or edit your existing character details below.'}</p>${req.query.edit_char ? '' : `<button id="open-character-creator" class="btn btn-green" type="button">+ Create New Character</button><section id="character-creator-view" class="card" hidden><div class="sheet-section-heading"><h4>Create New Character</h4><button id="close-character-creator" class="btn btn-secondary" type="button">Cancel</button></div><div id="character-creator-root"></div><script src="/admin/assets/character-creator.js" defer></script></section>`}`
+        ? `${isAdmin ? '' : '<p class="muted">Create a character or edit your existing character details below.</p>'}${req.query.edit_char ? '' : `<button id="open-character-creator" class="btn btn-green" type="button">+ Create New Character</button><section id="character-creator-view" class="card" hidden><div class="sheet-section-heading"><h4>Create New Character</h4><button id="close-character-creator" class="btn btn-secondary" type="button">Cancel</button></div><div id="character-creator-root"></div><script src="/admin/assets/character-creator.js" defer></script></section>`}`
         : '<p class="muted">All campaign characters are visible to DMs and admins.</p>'}
     </section>
     ${editFormHtml}
     ${characters.length === 0
       ? `<section class="card"><p class="muted">${isAdmin ? 'No characters have been created yet.' : 'You have not created any characters yet.'}</p></section>`
-      : `
+      : isAdmin ? renderRoster() : `
         <section class="character-sheet-grid" aria-label="Character sheets">
           ${characters.map(character => {
             const classRows = db.getCharacterClasses(character.character_id);

@@ -75,4 +75,4 @@ function setCharacterAcAdjustment({ id, player_id, is_admin, value }) {
   })();
 }
 
-module.exports = { getCharacterCombat, setCharacterAcAdjustment, combatWithArmorClass: withArmorClass };
+module.exports = { getCharacterCombat, setCharacterAcAdjustment, combatWithArmorClass: withArmorClass, buildCharacterCombat: buildCombat };

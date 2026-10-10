@@ -413,3 +413,19 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-attacks[hidden] { display: none; }
 .inventory-wear.is-worn { background: #23a55a; }
 .sheet-attacks-auto tr.needs-type td:last-child { color: #f0b232; }
+/* Campaign roster (DM view of the Character Sheet tab) */
+.roster-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.roster-heading h3 { margin: 0; }
+.roster-heading p { margin: 0; }
+.roster-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.roster-table th { white-space: nowrap; }
+.roster-table td { padding: 7px 8px; vertical-align: middle; }
+.roster-table tbody tr:hover { background: #2b2d31; }
+.roster-name { color: #f2f3f5; font-weight: bold; text-decoration: none; }
+.roster-name:hover { text-decoration: underline; }
+.roster-hp { font-weight: bold; }
+.roster-hp-ok { color: #23a55a; }
+.roster-hp-hurt { color: #f0b232; }
+.roster-hp-down { color: #f23f43; }
+.roster-dead td { opacity: .55; }
+.roster-actions { text-align: right; white-space: nowrap; }
