@@ -6,6 +6,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { validateCharacterOptions } = require('../dndData');
 const { parseGpToCp } = require('../currency');
+const { recordGoldChange } = require('./gold');
 
 // Sheet fields owned by the vitals API (see rules/vitals.js).
 const VITALS_KEYS = [
@@ -712,6 +713,12 @@ updateCharacterWithAdventures: ({
         replaceCharacterClasses(charId, normalizedAllocations, finalXp);
       } else {
         reconcileCharacterClassLevels(charId, finalLevel, canonicalClass, canonicalSubclass);
+      }
+      // A purse changed on the Players tab is logged like any other edit.
+      if (goldCp !== char.gold_cp) {
+        result.goldChange = recordGoldChange({
+          characterId: charId, user: { role: 'admin', id: null }, oldCp: char.gold_cp, newCp: goldCp, reason: 'Edited on the Players tab'
+        });
       }
       return result;
     });

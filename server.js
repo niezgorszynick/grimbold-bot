@@ -5,6 +5,7 @@ const path = require('path');
 const router = express.Router();
 const { REST, Routes, EmbedBuilder } = require('discord.js');
 const db = require('./db');
+const { coinsToCp } = require('./currency');
 const { escapeHtml } = require('./views/helpers');
 const renderAdminPage = require('./views/adminPage');
 const { loadSessionUser, isAdmin, isRootAdmin } = require('./auth');
@@ -53,7 +54,8 @@ const ADMIN_ASSETS = {
   'character-inventory.js': path.join(__dirname, 'public', 'character-inventory.js'),
   'character-combat.js': path.join(__dirname, 'public', 'character-combat.js'),
   'adventure-table.js': path.join(__dirname, 'public', 'adventure-table.js'),
-  'dice.js': path.join(__dirname, 'public', 'dice.js')
+  'dice.js': path.join(__dirname, 'public', 'dice.js'),
+  'character-purse.js': path.join(__dirname, 'public', 'character-purse.js')
 };
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
@@ -370,13 +372,17 @@ router.post('/characters/update', (req, res) => {
       level,
       override_level,
       status,
-      gold_gp,
       adventure_ids,
       class_allocations,
       death_adventure_id,
       death_dm_player_id,
       death_notes
     } = req.body;
+    // The purse comes in gold, silver and copper (or, from older forms, gp).
+    const gold_gp = req.body.purse_gp !== undefined || req.body.purse_sp !== undefined || req.body.purse_cp !== undefined
+      ? (coinsToCp({ gp: req.body.purse_gp, sp: req.body.purse_sp, cp: req.body.purse_cp }) / 100).toFixed(2)
+      : req.body.gold_gp;
+    if (req.body.discord_thread !== undefined) db.setCharacterThread(id, req.body.discord_thread);
     const selectedAdventureIds = adventure_ids
       ? (Array.isArray(adventure_ids) ? adventure_ids : [adventure_ids]).map(Number)
       : [];
@@ -388,7 +394,7 @@ router.post('/characters/update', (req, res) => {
         throw new Error('Invalid class allocation data.');
       }
     }
-    db.updateCharacterWithAdventures({
+    const updated = db.updateCharacterWithAdventures({
       id,
       player_id,
       name,
@@ -406,6 +412,7 @@ router.post('/characters/update', (req, res) => {
       death_dm_player_id,
       death_notes
     });
+    if (updated && updated.goldChange) require('./characterThreads').announceGoldChange(updated.goldChange);
     res.redirect('/admin?tab=players&status=char_updated');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);

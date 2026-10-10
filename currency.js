@@ -37,4 +37,24 @@ function parseGpToCp(raw) {
   return cp;
 }
 
-module.exports = { parsePriceToCp, parseGpToCp, formatCp };
+// 1247 cp → { gp: 12, sp: 4, cp: 7 } (a purse shown as gold, silver and copper).
+function splitCp(totalCp) {
+  const value = Math.max(0, Math.floor(Number(totalCp) || 0));
+  return { gp: Math.floor(value / 100), sp: Math.floor((value % 100) / 10), cp: value % 10 };
+}
+
+// { gp, sp, cp } (any may be missing) → copper. Whole, non-negative numbers only.
+function coinsToCp(coins) {
+  const source = coins && typeof coins === 'object' ? coins : {};
+  let total = 0;
+  for (const [coin, worth] of [['gp', 100], ['sp', 10], ['cp', 1]]) {
+    const raw = source[coin] === undefined || source[coin] === null || source[coin] === '' ? 0 : source[coin];
+    const amount = Number(raw);
+    if (!Number.isSafeInteger(amount) || amount < 0) throw new Error(`${coin.toUpperCase()} must be a whole number of 0 or more.`);
+    total += amount * worth;
+  }
+  if (!Number.isSafeInteger(total) || total > 1e11) throw new Error('That is more gold than the ledger can hold.');
+  return total;
+}
+
+module.exports = { parsePriceToCp, parseGpToCp, formatCp, splitCp, coinsToCp };

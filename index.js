@@ -129,6 +129,8 @@ client.commands = new Collection();
 
 // New threads in the adventures channel open adventures in the panel.
 require('./adventureThreads').registerAdventureThreads(client);
+// Grimbold's notes (purchases, purse changes) in each character's thread.
+require('./characterThreads').setCharacterThreadsClient(client);
 
 // ─── Load all commands from /commands folder ──────────────────────────────────
 

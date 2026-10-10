@@ -491,3 +491,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .roll-log-total { display: inline-block; min-width: 34px; font-weight: bold; color: #f2f3f5; }
 .roll-log li.nat20 .roll-log-total { color: #23a55a; }
 .roll-log li.nat1 .roll-log-total { color: #f23f43; }
+/* Purses in gold, silver and copper */
+.purse-inputs { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.purse-inputs label { display: inline-flex; align-items: center; gap: 4px; color: #949ba4; font-size: 12px; }
+.purse-inputs input { width: 80px; padding: 5px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.purse { display: grid; gap: 8px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #2b2d31; }
+.purse-total { font-size: 16px; color: #f1c40f; font-weight: bold; }
+.purse-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 12px; color: #949ba4; }

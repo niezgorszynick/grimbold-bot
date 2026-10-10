@@ -100,6 +100,9 @@ module.exports = {
         buyerDiscordId: interaction.user.id
       });
 
+      // Grimbold's receipt in the character's own thread.
+      require('../characterThreads').announcePurchase(result, { buyerTag: interaction.user.tag });
+
       const discountNote = result.discountPercent === 0
         ? ''
         : result.discountPercent < 0

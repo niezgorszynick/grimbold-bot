@@ -295,6 +295,29 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 6,
+    name: "Characters' Discord threads and a log of gold changes",
+    up(db) {
+      const charCols = db.prepare('PRAGMA table_info(characters)').all().map(c => c.name);
+      // The character's thread in the character channel (🧝┆soh-postaci).
+      if (!charCols.includes('discord_thread_id')) db.exec('ALTER TABLE characters ADD COLUMN discord_thread_id TEXT;');
+      db.exec(`
+        -- Every hand edit of a purse (shop purchases are in sales).
+        CREATE TABLE IF NOT EXISTS gold_changes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          changed_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+          changed_by_admin INTEGER NOT NULL DEFAULT 0,
+          old_cp INTEGER NOT NULL,
+          new_cp INTEGER NOT NULL,
+          reason TEXT NOT NULL DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS gold_changes_character ON gold_changes (character_id, id);
+      `);
+    }
   }
 ];
 

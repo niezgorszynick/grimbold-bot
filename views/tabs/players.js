@@ -156,8 +156,16 @@ module.exports = function renderPlayersTab(ctx) {
                 <input type="number" name="xp" min="0" value="${charToEdit.xp}" required style="width: 100%; margin-top: 4px;">
               </div>
               <div>
-                <label style="font-size: 12px;">Gold (gp):</label><br>
-                <input type="number" name="gold_gp" min="0" step="0.01" value="${charToEdit.gold_cp / 100}" required style="width: 100%; margin-top: 4px;">
+                <label style="font-size: 12px;">Purse:</label><br>
+                <span class="purse-inputs">
+                  <label><input type="number" name="purse_gp" min="0" step="1" value="${Math.floor(charToEdit.gold_cp / 100)}" aria-label="Gold pieces"> gp</label>
+                  <label><input type="number" name="purse_sp" min="0" step="1" value="${Math.floor((charToEdit.gold_cp % 100) / 10)}" aria-label="Silver pieces"> sp</label>
+                  <label><input type="number" name="purse_cp" min="0" step="1" value="${charToEdit.gold_cp % 10}" aria-label="Copper pieces"> cp</label>
+                </span>
+              </div>
+              <div>
+                <label style="font-size: 12px;">Discord thread (🧝┆soh-postaci):</label><br>
+                <input type="text" name="discord_thread" value="${escapeHtml(charToEdit.discord_thread_id || '')}" placeholder="Paste the thread link, or leave empty to find it by name" style="width: 100%; margin-top: 4px;">
               </div>
               <div>
                 <label style="font-size: 12px;">Level (1–20):</label><br>
@@ -585,7 +593,7 @@ module.exports = function renderPlayersTab(ctx) {
               ${isAdmin ? `<td style="white-space: nowrap;">
                 ${row.character_id ? `
                   <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
-                  <button type="button" class="btn btn-small btn-gold edit-character-gold" data-character-id="${row.character_id}" data-character-name="${escapeHtml(row.character_name)}" data-character-gold="${(row.character_gold_cp || 0) / 100}">💰 Edit GP</button>
+                  <button type="button" class="btn btn-small btn-gold edit-character-gold" data-character-id="${row.character_id}" data-character-name="${escapeHtml(row.character_name)}" data-character-gold-cp="${row.character_gold_cp || 0}">💰 Edit purse</button>
                   <form method="POST" action="/admin/characters/delete" style="display:inline;" onsubmit="return confirm('Delete character &quot;${escapeHtml(row.character_name)}&quot;?');">
                     <input type="hidden" name="id" value="${row.character_id}">
                     <button type="submit" class="btn btn-small btn-red">Delete Char</button>
@@ -606,11 +614,16 @@ module.exports = function renderPlayersTab(ctx) {
     ${isAdmin ? `
       <div id="goldEditModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="goldEditTitle" hidden>
         <div class="card shop-modal-card">
-          <h3 id="goldEditTitle">🪙 Edit Character Gold</h3>
-          <p>Target Character: <strong id="goldModalCharName"></strong></p>
+          <h3 id="goldEditTitle">🪙 Edit Purse</h3>
+          <p>Character: <strong id="goldModalCharName"></strong></p>
           <input type="hidden" id="goldModalCharId">
-          <label for="goldModalInput">Gold Amount (gp)</label>
-          <input type="number" id="goldModalInput" min="0" step="0.01" style="width: 100%; margin: 8px 0 12px;">
+          <div class="purse-inputs" style="margin: 8px 0;">
+            <label><input type="number" id="goldModalGp" min="0" step="1" aria-label="Gold pieces"> gp</label>
+            <label><input type="number" id="goldModalSp" min="0" step="1" aria-label="Silver pieces"> sp</label>
+            <label><input type="number" id="goldModalCp" min="0" step="1" aria-label="Copper pieces"> cp</label>
+          </div>
+          <label for="goldModalReason">Reason (shown in the character's Discord thread)</label>
+          <input type="text" id="goldModalReason" maxlength="200" placeholder="e.g. Reward from the Mayor of Phandalin" style="width: 100%; margin: 4px 0 12px;">
           <p id="goldModalFeedback" role="status" aria-live="polite"></p>
           <div style="display: flex; justify-content: flex-end; gap: 8px;">
             <button type="button" id="goldModalCancel" class="btn">Cancel</button>
@@ -633,7 +646,11 @@ module.exports = function renderPlayersTab(ctx) {
           button.addEventListener('click', () => {
             document.getElementById('goldModalCharId').value = button.dataset.characterId;
             document.getElementById('goldModalCharName').textContent = button.dataset.characterName;
-            document.getElementById('goldModalInput').value = button.dataset.characterGold;
+            const purseCp = Number(button.dataset.characterGoldCp) || 0;
+            document.getElementById('goldModalGp').value = Math.floor(purseCp / 100);
+            document.getElementById('goldModalSp').value = Math.floor((purseCp % 100) / 10);
+            document.getElementById('goldModalCp').value = purseCp % 10;
+            document.getElementById('goldModalReason').value = '';
             goldModalFeedback.textContent = '';
             goldEditModal.hidden = false;
           });
@@ -643,29 +660,23 @@ module.exports = function renderPlayersTab(ctx) {
         });
         goldModalSave.addEventListener('click', async () => {
           const characterId = document.getElementById('goldModalCharId').value;
-          const gold = document.getElementById('goldModalInput').value;
-          const parsedGold = Number(gold);
-          const goldInCopper = Math.round(parsedGold * 100);
-          if (gold === '' || !Number.isFinite(parsedGold) || parsedGold < 0 ||
-              !Number.isSafeInteger(goldInCopper) ||
-              Math.abs(parsedGold * 100 - goldInCopper) >
-                Number.EPSILON * Math.max(1, Math.abs(parsedGold * 100))) {
-            goldModalFeedback.textContent = 'Gold must be non-negative and have no more than two decimal places.';
-            return;
-          }
-
+          const coins = {
+            gp: document.getElementById('goldModalGp').value,
+            sp: document.getElementById('goldModalSp').value,
+            cp: document.getElementById('goldModalCp').value,
+            reason: document.getElementById('goldModalReason').value
+          };
           goldModalSave.disabled = true;
-          goldModalFeedback.textContent = 'Updating character purse...';
+          goldModalFeedback.textContent = 'Updating the purse...';
           try {
-            const response = await fetch('/api/admin/character-gold', {
+            const response = await fetch('/api/characters/' + encodeURIComponent(characterId) + '/gold', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ characterId, gold: gold.trim() })
+              body: JSON.stringify(coins)
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Could not update character gold.');
-            goldModalFeedback.textContent =
-              'Purse for ' + data.updated.name + ' set to ' + (data.updated.newGoldCp / 100) + ' gp.';
+            if (!response.ok) throw new Error(data.error || 'Could not update the purse.');
+            goldModalFeedback.textContent = 'Purse set to ' + data.formatted + '. Grimbold notes it in the character thread.';
             window.setTimeout(() => window.location.reload(), 700);
           } catch (error) {
             goldModalFeedback.textContent = error.message;

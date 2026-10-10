@@ -750,32 +750,41 @@ router.post('/characters/:id/sheet', (req, res) => {
   }
 });
 
-router.post('/admin/character-gold', (req, res) => {
-  if (!isAdmin(getSessionApiUser(req))) {
-    return res.status(403).json({ error: 'Access denied. DM/Admin rights required.' });
-  }
+// ─── Purses ─────────────────────────────────────────────────────────────────
+// The owner or an admin edits a purse in gold, silver and copper; each change
+// is logged and Grimbold notes it in the character's thread.
 
-  const { characterId, gold } = req.body || {};
-  if (characterId === undefined || characterId === null || characterId === '' || gold === undefined) {
-    return res.status(400).json({ error: 'Missing characterId or gold parameter.' });
-  }
+function goldErrorStatus(message) {
+  if (message === 'Forbidden.') return 403;
+  if (message === 'Character not found.') return 404;
+  return 400;
+}
 
+router.get('/characters/:id/gold', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const updated = db.updateCharacterGold(characterId, gold);
-    return res.json({ success: true, updated });
+    return res.json(db.getCharacterPurse({ characterId: req.params.id, user }));
   } catch (error) {
-    if (
-      error.message === 'Invalid character ID.' ||
-      error.message.startsWith('Gold ')
-    ) {
-      return res.status(400).json({ error: error.message });
-    }
-    if (error.message === 'Character not found.') {
-      return res.status(404).json({ error: error.message });
-    }
+    return res.status(goldErrorStatus(error.message)).json({ error: error.message });
+  }
+});
 
-    console.error('Character gold update failed:', error);
-    return res.status(500).json({ error: 'Could not update character gold.' });
+// { gp, sp, cp, reason }
+router.post('/characters/:id/gold', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const change = db.setCharacterPurse({ characterId: req.params.id, user, coins: { gp: body.gp, sp: body.sp, cp: body.cp }, reason: body.reason });
+    require('./characterThreads').announceGoldChange(change);
+    return res.json({ ...db.getCharacterPurse({ characterId: req.params.id, user }), formatted: formatCp(change.new_cp) });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Purse update failed:', error);
+      return res.status(500).json({ error: 'Could not update the purse.' });
+    }
+    return res.status(goldErrorStatus(error.message)).json({ error: error.message });
   }
 });
 
@@ -813,6 +822,8 @@ router.post('/shop/buy', async (req, res) => {
       process.env.ANNOUNCMENT_CHANNEL ||
       process.env.DISCORD_SHOP_CHANNEL_ID ||
       process.env.CHANNEL_ID;
+    // Grimbold's receipt in the character's own thread.
+    require('./characterThreads').announcePurchase(result, { buyerTag: player.discord_tag });
     void sendGrimboldShopEmbed({
       channelId,
       item: result.item,
