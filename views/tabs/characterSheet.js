@@ -635,9 +635,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
             // Older characters got their starting equipment copied into the notes;
             // the item list shows it now, so drop that exact, untouched copy.
             const startingCopy = (Array.isArray(data.inventory) ? data.inventory : [])
-              .map(item => (item.quantity > 1 ? item.name + ' ×' + item.quantity : item.name)).join('\n');
+              .map(item => (item.quantity > 1 ? item.name + ' ×' + item.quantity : item.name)).join('\\n');
             const notes = document.getElementById('cs_equipment');
-            if (startingCopy && notes.value.trim().replace(/\n\d+ GP$/, '') === startingCopy) notes.value = '';
+            if (startingCopy && notes.value.trim().replace(/\\n\\d+ GP$/, '') === startingCopy) notes.value = '';
             document.getElementById('cs_initiative').value =
               data.initiative === undefined
                 ? (Math.floor((Number(abilityContainer.querySelector('[data-ability="dex"]').value) - 10) / 2) >= 0
