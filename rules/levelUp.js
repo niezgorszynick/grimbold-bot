@@ -262,7 +262,7 @@ function applyLevelUp(state, request) {
     level: plan.totalLevel,
     className: plan.className,
     classLevel: plan.classLevel,
-    features: plan.features,
+    features: [...plan.features],
     increases: {},
     addedSkills: [],
     addedSaves: [],

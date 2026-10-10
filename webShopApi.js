@@ -436,6 +436,7 @@ router.post('/characters/:id/sheet', (req, res) => {
       error.message === 'Character sheet data must be an object.' ||
       error.message === 'Invalid character sheet data.' ||
       error.message === 'Ability scores must be whole numbers from 1 to 30.' ||
+      error.message.startsWith('Species, class and subclass') ||
       error.message.startsWith('Invalid species ') ||
       error.message.startsWith('Invalid class ') ||
       error.message.startsWith('Invalid subclass ')

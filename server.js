@@ -41,10 +41,8 @@ function requireRootAdmin(req, res, next) {
 
 router.use(requireAuth);
 router.use((req, res, next) => {
-  const selfServiceCharacterRoute = req.path === '/characters/self-update';
-  return req.method === 'POST' && !selfServiceCharacterRoute
-    ? requireAdmin(req, res, next)
-    : next();
+  // Every panel form POST is a DM action; players change their characters through /api.
+  return req.method === 'POST' ? requireAdmin(req, res, next) : next();
 });
 
 // Client scripts for the admin panel (only files listed here are served).
@@ -364,26 +362,6 @@ router.post('/characters/add', (req, res) => {
     res.redirect('/admin?tab=players&status=char_added');
   } catch (err) {
     res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
-  }
-});
-
-router.post('/characters/self-update', (req, res) => {
-  const playerId = req.session.user.id;
-  if (playerId <= 0) return res.status(403).send('A player account is required to edit a character.');
-
-  try {
-    const { name, race, class_name, subclass } = req.body;
-    db.updateCharacterDetailsForPlayer({
-      id: req.body.id,
-      player_id: playerId,
-      name,
-      race,
-      class_name,
-      subclass
-    });
-    res.redirect('/admin?tab=character-sheet&status=char_updated');
-  } catch (err) {
-    res.redirect(`/admin?tab=character-sheet&edit_char=${encodeURIComponent(req.body.id)}&err=${encodeURIComponent(err.message)}`);
   }
 });
 
@@ -1749,7 +1727,7 @@ router.get('/', (req, res) => {
               <div class="point-buy-header">
                 <div>
                 <h3>Ability Scores</h3>
-                <span>Edit scores freely from 1–30. Point Buy rules apply only when creating a character.</span>
+                <span>Scores from character creation plus Ability Score Improvements and feats.</span>
                 </div>
               </div>
               <div id="cs_ability_container" class="sheet-abilities point-buy-grid"></div>
@@ -1869,6 +1847,7 @@ router.get('/', (req, res) => {
         const sheetBackgrounds = ${sheetBackgroundsJson};
         const sheetClassRules = ${sheetClassRulesJson};
         const fullSheetCharacterId = ${canEditRequestedCharacter ? Number(characterToEdit.id) : 'null'};
+        const sheetViewerIsAdmin = ${isAdmin ? 'true' : 'false'};
 
         function initFullCharacterSheet() {
           const container = document.getElementById('fullCharacterSheetContainer');
@@ -1937,6 +1916,39 @@ router.get('/', (req, res) => {
           let selectedClassSkills = [];
           let selectedSpeciesSkills = [];
           let savedSpeciesSkills = [];
+          // Saving throws stored on the sheet (class saves plus feats such as Resilient).
+          let savedSaves = [];
+
+          // Species, class, subclass and background come from creation and level-ups
+          // (the DM changes them in the Players tab). For characters built with the
+          // creator, ability scores, skills and saves are also set by the rules, so
+          // only a DM edits them here. The server enforces the same rules.
+          function lockRuleOwnedFields(character, data) {
+            const reason = 'Set at character creation and by level-ups';
+            [speciesSelect, classSelect, backgroundSelect].forEach(select => {
+              select.disabled = true;
+              select.title = reason;
+            });
+            // An older character may still pick a missing subclass.
+            subclassSelect.disabled = Boolean(character.subclass);
+            if (subclassSelect.disabled) subclassSelect.title = reason;
+            if (!data.background) {
+              backgroundSelect.disabled = false;
+              backgroundSelect.title = '';
+            }
+            const rulesManaged = Array.isArray(data.originFeats) || Array.isArray(data.levelHistory);
+            if (!rulesManaged || sheetViewerIsAdmin) return;
+            abilityContainer.querySelectorAll('input').forEach(input => {
+              input.disabled = true;
+              input.title = reason;
+            });
+            skillsContainer.querySelectorAll('input').forEach(input => { input.disabled = true; });
+            speciesSkillChoicesContainer.querySelectorAll('select').forEach(select => { select.disabled = true; });
+            const note = document.createElement('p');
+            note.className = 'muted small';
+            note.textContent = 'Ability scores, skills and saving throws come from character creation and level-ups.';
+            abilityContainer.after(note);
+          }
 
           function updateRuleDrivenFields() {
             const classData = sheetClassRules[classSelect.value] || {};
@@ -1994,7 +2006,7 @@ router.get('/', (req, res) => {
             });
             abilities.forEach(ability => {
               const checkbox = savesContainer.querySelector('[data-save="' + ability + '"]');
-              checkbox.checked = (classData.savingThrows || []).includes(ability);
+              checkbox.checked = (classData.savingThrows || []).includes(ability) || savedSaves.includes(ability);
               checkbox.disabled = true;
               checkbox.closest('.sheet-check-row').classList.toggle('is-automatic-proficiency', checkbox.checked);
             });
@@ -2230,6 +2242,7 @@ router.get('/', (req, res) => {
                 !backgroundSkills.includes(skill) &&
                 !speciesSkills.includes(skill)
               );
+              savedSaves = Array.isArray(data.savingProficiencies) ? data.savingProficiencies : [];
               updateRuleDrivenFields();
               document.getElementById('cs_header_name').textContent = character.name || 'Character Sheet';
               document.getElementById('cs_header_sub').textContent =
@@ -2284,6 +2297,7 @@ router.get('/', (req, res) => {
               else addAttackRow();
               updateAbilityValidation();
               updateDerivedStats(character.level);
+              lockRuleOwnedFields(character, data);
               message.textContent = '';
             } catch (error) {
               message.textContent = error.message;
@@ -2308,7 +2322,10 @@ router.get('/', (req, res) => {
             button.disabled = true;
             const sheetData = {
               abilities: currentScores,
-              savingProficiencies: (sheetClassRules[classSelect.value] || {}).savingThrows || [],
+              savingProficiencies: [...new Set([
+                ...((sheetClassRules[classSelect.value] || {}).savingThrows || []),
+                ...savedSaves
+              ])],
               skillProficiencies: [...new Set([
                 ...selectedClassSkills,
                 ...selectedSpeciesSkills,
@@ -3446,6 +3463,7 @@ router.get('/', (req, res) => {
         .sheet-stat span { color: #949ba4; text-transform: uppercase; font-size: 10px; }
         .sheet-stat input { width: 100%; min-width: 0; padding: 3px; border: 0; background: transparent; color: #fff; text-align: center; font-size: 18px; font-weight: bold; }
         .sheet-stat strong { color: #f1c40f; font-size: 18px; }
+        .character-sheet-full input:disabled, .character-sheet-full select:disabled { opacity: 0.6; cursor: not-allowed; }
         .sheet-card textarea { width: 100%; min-width: 0; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
         .vitals { display: grid; gap: 12px; }
         .vitals.is-busy { opacity: 0.6; pointer-events: none; }

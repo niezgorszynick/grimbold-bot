@@ -9,6 +9,31 @@ const VITALS_KEYS = [
   'hpCurrent', 'hpTemp', 'hpMaxBonus', 'hitDiceSpent', 'deathSaves',
   'stable', 'exhaustion', 'spellSlotsSpent', 'pactSlotsSpent'
 ];
+// Sheet fields set by character creation, level-ups and the shop.
+const RULES_KEYS = [
+  'background', 'size', 'speciesOption', 'speciesSpellAbility', 'originFeats',
+  'levelHistory', 'classFeatures', 'pendingChoices', 'inventory', 'languages',
+  'toolProficiencies', 'weaponProficiencies', 'armorTraining', 'startingEquipment',
+  'generationMethod', 'baseScores', 'backgroundBonuses', 'hpMax', 'hpBreakdown',
+  'hitDice', 'spellSlots'
+];
+// For characters built by the rules engine these come from creation and
+// level-ups; only a DM may edit them directly.
+const RULES_MANAGED_KEYS = [
+  'abilities', 'skillProficiencies', 'savingProficiencies', 'classSkillChoices', 'speciesSkillChoices'
+];
+
+function isRulesManaged(sheetData) {
+  return Array.isArray(sheetData.originFeats) || Array.isArray(sheetData.levelHistory);
+}
+
+// Keeps the stored value of each key (or leaves it unset when there is none).
+function keepStored(nextSheetData, storedSheetData, keys) {
+  for (const key of keys) {
+    if (Object.hasOwn(storedSheetData, key)) nextSheetData[key] = storedSheetData[key];
+    else delete nextSheetData[key];
+  }
+}
 const Database = require('better-sqlite3');
 const path = require('path');
 
@@ -1181,6 +1206,16 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         nextClass = canonicalOptions.canonicalClass;
         nextSubclass = canonicalOptions.canonicalSubclass;
       }
+      // Species, class and subclass come from creation and level-ups. The one
+      // exception: an older character may fill in a missing subclass.
+      const fillsMissingSubclass = !character.subclass && nextSubclass && nextClass === character.class;
+      if (
+        nextSpecies !== character.race ||
+        nextClass !== character.class ||
+        (nextSubclass !== character.subclass && !fillsMissingSubclass)
+      ) {
+        throw new Error('Species, class and subclass are set at creation and by level-ups. Ask the DM to change them in the Players tab.');
+      }
 
       let nextSheetData;
       try {
@@ -1203,9 +1238,12 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       nextSheetData = { ...storedSheetData, ...nextSheetData };
       // Vitals change only through the vitals API, so a stale editor tab
       // cannot undo damage, rests or spent slots.
-      for (const key of VITALS_KEYS) {
-        if (Object.hasOwn(storedSheetData, key)) nextSheetData[key] = storedSheetData[key];
-        else delete nextSheetData[key];
+      keepStored(nextSheetData, storedSheetData, VITALS_KEYS);
+      // A stored background or feat list is never replaced by the editor; an
+      // older sheet without one may still set it.
+      keepStored(nextSheetData, storedSheetData, RULES_KEYS.filter(key => Object.hasOwn(storedSheetData, key)));
+      if (isRulesManaged(storedSheetData) && !is_admin) {
+        keepStored(nextSheetData, storedSheetData, RULES_MANAGED_KEYS);
       }
       if (
         nextSheetData.abilities &&
@@ -1243,39 +1281,6 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
           (subclass !== null && subclass !== undefined)) {
         reconcileCharacterClassLevels(characterId, character.level, nextClass, nextSubclass);
       }
-      return result;
-    })();
-  },
-  updateCharacterDetailsForPlayer: ({ id, player_id, name, race, class_name, subclass }) => {
-    const characterId = Number(id);
-    const playerId = Number(player_id);
-    const trimmedName = (name || '').trim();
-    if (!Number.isSafeInteger(characterId) || characterId <= 0) throw new Error('Invalid character ID.');
-    if (!Number.isSafeInteger(playerId) || playerId <= 0) throw new Error('Valid player must be selected.');
-    if (!trimmedName) throw new Error('Character name is required.');
-
-    const { canonicalSpecies, canonicalClass, canonicalSubclass } =
-      validateCharacterOptions(race, class_name, subclass);
-    return db.transaction(() => {
-      const character = db.prepare(
-        'SELECT level FROM characters WHERE id = ? AND player_id = ?'
-      ).get(characterId, playerId);
-      if (!character) throw new Error('Character not found.');
-
-      const result = db.prepare(`
-        UPDATE characters
-        SET name = ?, race = ?, class = ?, subclass = ?
-        WHERE id = ? AND player_id = ?
-      `).run(
-        trimmedName,
-        canonicalSpecies,
-        canonicalClass,
-        canonicalSubclass,
-        characterId,
-        playerId
-      );
-      if (result.changes !== 1) throw new Error('Character not found.');
-      reconcileCharacterClassLevels(characterId, character.level, canonicalClass, canonicalSubclass);
       return result;
     })();
   },
