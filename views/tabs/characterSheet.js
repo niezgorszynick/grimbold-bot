@@ -83,18 +83,22 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
                 <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
               </div>
+              <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
               <section class="sheet-card">
                 <h4>Hit Points &amp; Vitality</h4>
                 <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
                 <script src="/admin/assets/character-vitals.js" defer></script>
               </section>
               <section class="sheet-card">
-                <div class="sheet-section-heading">
-                  <h4>Weapons &amp; Attacks</h4>
-                  <button id="cs_add_attack" class="btn btn-small" type="button">+ Add Weapon</button>
+                <h4>Weapons &amp; Attacks</h4>
+                <div id="cs_attacks_auto" data-character-id="${Number(characterToEdit.id)}">Loading attacks...</div>
+                <script src="/admin/assets/character-combat.js" defer></script>
+                <div class="sheet-section-heading sheet-other-attacks">
+                  <h5>Other attacks <span class="muted small">(typed in; saved with the sheet)</span></h5>
+                  <button id="cs_add_attack" class="btn btn-small" type="button">+ Add attack</button>
                 </div>
                 <div>
-                  <table class="sheet-attacks">
+                  <table class="sheet-attacks" id="cs_attacks_table">
                     <thead><tr><th>Name</th><th>Atk Bonus</th><th>Damage / Type</th><th>Notes</th><th><span class="sr-only">Actions</span></th></tr></thead>
                     <tbody id="cs_attacks_tbody"></tbody>
                   </table>
@@ -470,7 +474,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
           box.addEventListener('input', () => autosize(box));
         });
 
-        function addAttackRow(attack = { bonus: '+5', damage: '1d8+3' }) {
+        // Typed-in attacks; worn weapons are listed above them automatically.
+        const attacksTable = document.getElementById('cs_attacks_table');
+        function syncAttacksTable() {
+          attacksTable.hidden = document.getElementById('cs_attacks_tbody').children.length === 0;
+        }
+        function addAttackRow(attack = {}) {
           const row = document.createElement('tr');
           [
             ['name', 'Weapon name'], ['bonus', 'Attack bonus'],
@@ -498,11 +507,19 @@ module.exports = function renderCharacterSheetTab(ctx) {
           actionCell.appendChild(remove);
           row.appendChild(actionCell);
           document.getElementById('cs_attacks_tbody').appendChild(row);
+          syncAttacksTable();
         }
 
-        document.getElementById('cs_add_attack').addEventListener('click', () => addAttackRow());
+        document.getElementById('cs_add_attack').addEventListener('click', () => {
+          addAttackRow();
+          const inputs = document.querySelectorAll('#cs_attacks_tbody tr:last-child input');
+          if (inputs.length) inputs[0].focus();
+        });
         document.getElementById('cs_attacks_tbody').addEventListener('click', event => {
-          if (event.target.matches('.sheet-remove-attack')) event.target.closest('tr').remove();
+          if (event.target.matches('.sheet-remove-attack')) {
+            event.target.closest('tr').remove();
+            syncAttacksTable();
+          }
         });
         abilityContainer.addEventListener('input', event => {
           if (event.target.matches('[data-ability]')) {
@@ -645,13 +662,17 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 : data.initiative;
             document.getElementById('cs_speed').value =
               data.speed === undefined ? '30 ft.' : data.speed;
-            const attacks = Array.isArray(data.attacks) ? data.attacks : [];
-            if (attacks.length > 0) attacks.forEach(addAttackRow);
-            else addAttackRow();
+            // Skip untouched placeholder rows ("+5", "1d8+3") saved by older versions.
+            const attacks = (Array.isArray(data.attacks) ? data.attacks : []).filter(attack => attack &&
+              !(!attack.name && !attack.notes && (!attack.bonus || attack.bonus === '+5') && (!attack.damage || attack.damage === '1d8+3')));
+            attacks.forEach(addAttackRow);
+            syncAttacksTable();
             updateAbilityValidation();
             updateDerivedStats(character.level);
             lockRuleOwnedFields(character, data);
             autosizeNotes();
+            // Worn armor sets the Armor Class; the combat panel fills it in.
+            if (window.refreshCharacterCombat) window.refreshCharacterCombat();
             message.textContent = '';
           } catch (error) {
             message.textContent = error.message;
@@ -698,7 +719,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               Object.fromEntries([...row.querySelectorAll('[data-attack-field]')].map(input =>
                 [input.dataset.attackField, input.value.trim()]
               ))
-            ),
+            ).filter(attack => Object.values(attack).some(Boolean)),
             features: document.getElementById('cs_features').value,
             equipmentText: document.getElementById('cs_equipment').value
           };
@@ -719,6 +740,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
             if (!response.ok) throw new Error(result.error || 'Could not save character sheet.');
             // Ability changes (CON) can change max HP and hit point recovery.
             if (window.refreshCharacterVitals) window.refreshCharacterVitals();
+            // Ability changes move Armor Class and attack bonuses.
+            if (window.refreshCharacterCombat) window.refreshCharacterCombat();
             document.getElementById('cs_header_name').textContent =
               document.getElementById('cs_name').value;
             document.getElementById('cs_header_sub').textContent =

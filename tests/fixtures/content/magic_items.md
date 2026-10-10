@@ -183,3 +183,55 @@ Placeholder text: light and flexible.
 Placeholder text: resistance to one damage type.
 
 ---
+
+# Armor, +1, +2, or +3
+
+- **Type**: Armor (Any Light, Medium, or Heavy), Rare (+1), Very Rare (+2)
+- **Rarity**: Or Legendary (+3)
+- **Attunement**: None
+- **Source**: Test Book
+
+### Description
+
+Placeholder text: a bonus to AC.
+
+---
+
+# Bracers of Defense
+
+- **Type**: Wondrous Item
+- **Rarity**: Rare
+- **Attunement**: Requires Attunement
+- **Source**: Test Book
+
+### Description
+
+Placeholder text: AC bonus without armor or shield.
+
+---
+
+# Frost Brand
+
+- **Type**: Weapon (Glaive, Greatsword, Longsword, Rapier, Scimitar, or Shortsword)
+- **Rarity**: Very Rare
+- **Attunement**: Requires Attunement
+- **Source**: Test Book
+
+### Description
+
+Placeholder text: extra cold damage.
+
+---
+
+# Shield, +1, +2, or +3
+
+- **Type**: Armor (Shield), Uncommon (+1), Rare (+2)
+- **Rarity**: Or Very Rare (+3)
+- **Attunement**: None
+- **Source**: Test Book
+
+### Description
+
+Placeholder text: a bonus to AC.
+
+---

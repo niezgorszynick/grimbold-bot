@@ -6,6 +6,7 @@
 
 const { db } = require('./connection');
 const rules = require('../rules');
+const { combatWithArmorClass } = require('./combat');
 
 const MAX_QUANTITY = 9999;
 
@@ -60,12 +61,16 @@ function buildView(sheetData, isAdmin) {
   return {
     items: readInventory(sheetData).map((row, index) => {
       const known = catalog.get(row.name.toLowerCase());
+      const gear = rules.identifyGear(row.name);
       return {
         index,
         name: row.name,
         quantity: Number.isSafeInteger(row.quantity) && row.quantity > 0 ? row.quantity : 1,
         source: row.source || '',
         category: row.category || (known ? known.category : ''),
+        // Armor, shields and weapons can be worn or wielded.
+        gear: gear ? { type: gear.type, name: gear.name, stats: rules.describeGear(gear) } : null,
+        worn: gear ? rules.isWornByDefault(row, gear, sheetData) : false,
         // A custom description wins; otherwise the catalog's.
         description: row.description || (known ? known.description : '')
       };
@@ -81,6 +86,7 @@ function getCharacterInventory({ id, player_id, is_admin }) {
 
 // action: add { catalogId | name, quantity, description }
 //       | update { index, name, quantity } | remove { index, name }
+//       | wear { index, name, worn } (armor, shields and weapons)
 // `name` with update/remove guards against a list changed in another tab.
 function changeCharacterInventory({ id, player_id, is_admin, action, params = {} }) {
   return db.transaction(() => {
@@ -122,6 +128,9 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
           const row = { name, quantity, source };
           if (description) row.description = description;
           if (category) row.category = category;
+          // New weapons are at hand; new armor waits until it is put on.
+          const gear = rules.identifyGear(name);
+          if (gear) row.equipped = gear.type === 'weapon';
           inventory.push(row);
         }
         nextSheet = { ...sheetData, inventory };
@@ -139,10 +148,23 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         message = `${row.name}: ${row.quantity}.`;
       }
       nextSheet = { ...sheetData, inventory };
+    } else if (action === 'wear') {
+      const index = Number(params.index);
+      const row = Number.isSafeInteger(index) ? inventory[index] : null;
+      if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+      const gear = rules.identifyGear(row.name);
+      if (!gear) throw new Error(`${row.name} is not armor, a shield or a weapon.`);
+      const worn = Boolean(params.worn);
+      nextSheet = rules.setWorn({ ...sheetData, inventory }, { from: 'inventory', index }, worn);
+      message = gear.type === 'weapon'
+        ? `${row.name} ${worn ? 'is at hand' : 'is stowed'}.`
+        : `${row.name} ${worn ? 'is on' : 'is off'}.`;
     } else {
       throw new Error('Unknown item action.');
     }
 
+    // Armor and shields change the Armor Class shown elsewhere.
+    nextSheet = combatWithArmorClass(character, nextSheet);
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return { message, inventory: buildView(nextSheet, is_admin) };
   })();

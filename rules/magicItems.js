@@ -246,6 +246,12 @@ function matchMagicItem(rawName, catalog = getMagicItemCatalog()) {
     const variant = item && item.variants.find(entry => entry.label.toLowerCase() === String(label).toLowerCase());
     return variant ? { item, variant } : null;
   };
+  // "Frost Brand (Longsword)": the item, with its base weapon or armor named.
+  const named = name.match(/^(.+?)\s*\(([^)]+)\)$/);
+  if (named) {
+    const base = matchMagicItem(named[1], catalog);
+    if (base) return base;
+  }
   const healing = lower.match(/^potion of (greater|superior|supreme) healing$/);
   if (healing) return byLabel('Potions of Healing', healing[1]);
   const giant = lower.match(/^(belt|potion) of (hill|frost|stone|fire|cloud|storm) giant strength$/);
@@ -313,6 +319,12 @@ function isActive(entry, catalog) {
   const { item } = itemOf(entry, catalog);
   if (!item || !entry.equipped) return false;
   return !item.attunement.required || Boolean(entry.attuned);
+}
+
+// Everything other rules need to know about one owned item.
+function magicItemEntryInfo(entry, catalog = getMagicItemCatalog()) {
+  const { item, variant } = itemOf(entry, catalog);
+  return { item, variant, effects: effectsOf(entry, catalog), active: isActive(entry, catalog), name: displayName(entry, catalog) };
 }
 
 function newUid() {
@@ -525,6 +537,7 @@ module.exports = {
   readMagicItems,
   magicItemDisplayName: displayName,
   magicItemCatalogName: catalogName,
+  magicItemEntryInfo,
   grantMagicItem,
   attunementIneligibility,
   changeMagicItem,

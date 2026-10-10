@@ -7,6 +7,7 @@
 const { db } = require('./connection');
 const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
+const { combatWithArmorClass } = require('./combat');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 // Actions only an admin (DM) may take.
@@ -164,7 +165,12 @@ function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {
         remove: `${result.name} removed.`
       }[action];
     }
-    const nextSheet = withHpMax(character, { ...sheetData, magicItems });
+    let nextSheet = { ...sheetData, magicItems };
+    // Putting on magic armor or a shield takes off the one worn before.
+    if ((action === 'equip' || action === 'attune') && magicItems.some(entry => entry.uid === params.uid)) {
+      nextSheet = rules.setWorn(nextSheet, { from: 'magic', uid: params.uid }, true);
+    }
+    nextSheet = combatWithArmorClass(character, withHpMax(character, nextSheet));
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return { message, magicItems: buildView(character, nextSheet, is_admin) };
   })();

@@ -345,6 +345,30 @@ router.post('/characters/:id/inventory', (req, res) => {
   }
 });
 
+// Armor Class and attacks from worn armor and wielded weapons.
+router.get('/characters/:id/combat', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterCombat({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { action: 'adjustAc', value }
+router.post('/characters/:id/combat', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  if (body.action !== 'adjustAc') return res.status(400).json({ error: 'Unknown combat action.' });
+  try {
+    return res.json(db.setCharacterAcAdjustment({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), value: body.value }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);

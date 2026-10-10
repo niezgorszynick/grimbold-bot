@@ -71,6 +71,8 @@
       isError = false;
       // A DM adding a magic item from the catalog puts it in Magic Items.
       if (body.action === 'add' && window.refreshCharacterMagicItems) window.refreshCharacterMagicItems();
+      // Armor and weapons change Armor Class and the attack list.
+      if (window.refreshCharacterCombat) window.refreshCharacterCombat();
       return true;
     } catch (error) {
       message = error.message;
@@ -98,21 +100,33 @@
     const remove = button('✕', () => {
       if (window.confirm('Remove ' + item.name + ' from the equipment list?')) act({ action: 'remove', index: item.index, name: item.name });
     }, 'btn btn-small btn-secondary inventory-remove', { 'aria-label': 'Remove ' + item.name, title: 'Remove' });
+    // Armor and shields are worn; weapons are at hand (listed under attacks).
+    let wear = null;
+    if (item.gear) {
+      const weapon = item.gear.type === 'weapon';
+      const label = item.worn ? (weapon ? 'At hand' : 'Worn') : (weapon ? 'Wield' : 'Wear');
+      wear = button(label, () => act({ action: 'wear', index: item.index, name: item.name, worn: !item.worn }),
+        'btn btn-small inventory-wear' + (item.worn ? ' is-worn' : ''), {
+          'aria-pressed': String(item.worn),
+          title: item.worn ? (weapon ? 'Stow it (no longer listed as an attack)' : 'Take it off') : (weapon ? 'Have it at hand (listed as an attack)' : 'Put it on')
+        });
+    }
+    const stats = item.gear && item.gear.stats ? el('p', { className: 'small gear-stats', text: item.gear.stats }) : null;
     return el('li', { className: 'inventory-row' }, [
       el('div', { className: 'inventory-row-main' }, [
         el('button', {
           type: 'button', className: 'spell-name', text: item.name, 'aria-expanded': String(open.has(key)),
-          title: item.description ? preview(item.description) : 'No description',
+          title: [item.gear ? item.gear.stats : '', item.description ? preview(item.description) : ''].filter(Boolean).join(' — ') || 'No description',
           onclick: () => { open.has(key) ? open.delete(key) : open.add(key); render(); }
         }),
         item.category ? el('span', { className: 'muted small', text: item.category }) : null,
         item.source === 'custom' ? el('span', { className: 'tag', text: 'Custom' }) : null,
-        el('span', { className: 'inventory-controls' }, [quantity, remove])
+        el('span', { className: 'inventory-controls' }, [wear, quantity, remove])
       ]),
       open.has(key)
-        ? el('div', { className: 'spell-details' }, [item.description
+        ? el('div', { className: 'spell-details' }, [stats, item.description
           ? renderText(item.description)
-          : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' })])
+          : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' }))])
         : null
     ]);
   }

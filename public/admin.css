@@ -397,3 +397,18 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .catalog-result { display: grid; gap: 2px; width: 100%; padding: 7px 9px; text-align: left; background: #2b2d31; border: 1px solid #3f4147; border-radius: 6px; color: #dbdee1; cursor: pointer; }
 .catalog-result:hover, .catalog-result:focus-visible { border-color: #5865f2; }
 .catalog-result.is-chosen { border-color: #23a55a; background: rgba(35, 165, 90, .12); }
+/* Armor Class breakdown and calculated attacks */
+.ac-details { margin: -4px 0 0; }
+.ac-details p { margin: 2px 0; }
+.ac-breakdown { color: #dbdee1; }
+.link-button { padding: 0; border: 0; background: none; color: #00a8fc; cursor: pointer; text-decoration: underline; font: inherit; }
+.sheet-attacks-auto { margin-bottom: 4px; }
+.sheet-attacks-auto th:nth-child(1) { width: 26%; }
+.sheet-attacks-auto th:nth-child(2) { width: 11%; }
+.sheet-attacks-auto th:nth-child(3) { width: 27%; }
+.sheet-attacks-auto th:nth-child(4) { width: auto; }
+.sheet-attacks-auto td { vertical-align: top; padding: 6px 4px; }
+.sheet-other-attacks { margin-top: 12px; }
+.sheet-other-attacks h5 { margin: 0; color: #dbdee1; font-size: 13px; }
+.sheet-attacks[hidden] { display: none; }
+.inventory-wear.is-worn { background: #23a55a; }

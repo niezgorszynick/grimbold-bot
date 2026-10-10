@@ -65,6 +65,8 @@
       // Items can change Hit Points (Constitution) and spell save DCs.
       if (window.refreshCharacterVitals) window.refreshCharacterVitals();
       if (window.refreshCharacterSpells) window.refreshCharacterSpells();
+      // Magic armor, shields and weapons change Armor Class and attacks.
+      if (window.refreshCharacterCombat) window.refreshCharacterCombat();
       return true;
     } catch (error) {
       message = error.message;
@@ -178,7 +180,7 @@
       if (ok) name.value = '';
     }, 'btn btn-small btn-green');
     return el('div', { className: 'spell-picker' }, [
-      el('p', { className: 'muted small', text: 'DM: give this character a magic item (for example adventure loot). Items with versions need the full name, e.g. "Weapon +1" or "Belt of Giant Strength (Hill)".' }),
+      el('p', { className: 'muted small', text: 'DM: give this character a magic item (for example adventure loot). Items with versions need the full name, e.g. "Weapon +1" or "Belt of Giant Strength (Hill)". Name the base weapon or armor where the item allows several, e.g. "+1 Longsword", "Frost Brand (Longsword)" or "Elven Chain (Chain Shirt)", so it shows in AC and attacks.' }),
       el('div', { className: 'vitals-actions' }, [name, quantity, give]),
       datalist
     ]);

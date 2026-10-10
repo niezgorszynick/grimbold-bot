@@ -1,18 +1,19 @@
-// rules/armor.js — Armor table and Armor Class calculation (2024 PHB).
+// rules/armor.js — Armor table (with Strength requirements and Stealth
+// Disadvantage) and the Armor Class picked at character creation (2024 PHB).
 
 const ARMOR = {
-  'Padded Armor': { category: 'Light armor', base: 11, dexCap: null },
-  'Leather Armor': { category: 'Light armor', base: 11, dexCap: null },
-  'Studded Leather Armor': { category: 'Light armor', base: 12, dexCap: null },
-  'Hide Armor': { category: 'Medium armor', base: 12, dexCap: 2 },
-  'Chain Shirt': { category: 'Medium armor', base: 13, dexCap: 2 },
-  'Scale Mail': { category: 'Medium armor', base: 14, dexCap: 2 },
-  Breastplate: { category: 'Medium armor', base: 14, dexCap: 2 },
-  'Half Plate Armor': { category: 'Medium armor', base: 15, dexCap: 2 },
-  'Ring Mail': { category: 'Heavy armor', base: 14, dexCap: 0 },
-  'Chain Mail': { category: 'Heavy armor', base: 16, dexCap: 0 },
-  'Splint Armor': { category: 'Heavy armor', base: 17, dexCap: 0 },
-  'Plate Armor': { category: 'Heavy armor', base: 18, dexCap: 0 }
+  'Padded Armor': { category: 'Light armor', base: 11, dexCap: null, strength: 0, stealthDisadvantage: true },
+  'Leather Armor': { category: 'Light armor', base: 11, dexCap: null, strength: 0, stealthDisadvantage: false },
+  'Studded Leather Armor': { category: 'Light armor', base: 12, dexCap: null, strength: 0, stealthDisadvantage: false },
+  'Hide Armor': { category: 'Medium armor', base: 12, dexCap: 2, strength: 0, stealthDisadvantage: false },
+  'Chain Shirt': { category: 'Medium armor', base: 13, dexCap: 2, strength: 0, stealthDisadvantage: false },
+  'Scale Mail': { category: 'Medium armor', base: 14, dexCap: 2, strength: 0, stealthDisadvantage: true },
+  Breastplate: { category: 'Medium armor', base: 14, dexCap: 2, strength: 0, stealthDisadvantage: false },
+  'Half Plate Armor': { category: 'Medium armor', base: 15, dexCap: 2, strength: 0, stealthDisadvantage: true },
+  'Ring Mail': { category: 'Heavy armor', base: 14, dexCap: 0, strength: 0, stealthDisadvantage: true },
+  'Chain Mail': { category: 'Heavy armor', base: 16, dexCap: 0, strength: 13, stealthDisadvantage: true },
+  'Splint Armor': { category: 'Heavy armor', base: 17, dexCap: 0, strength: 15, stealthDisadvantage: true },
+  'Plate Armor': { category: 'Heavy armor', base: 18, dexCap: 0, strength: 15, stealthDisadvantage: true }
 };
 const SHIELD_BONUS = 2;
 

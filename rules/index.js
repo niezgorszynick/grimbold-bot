@@ -18,6 +18,8 @@ module.exports = {
   ...require('./spells'),
   ...require('./invocations'),
   ...require('./magicItems'),
+  ...require('./weapons'),
+  ...require('./combat'),
   ...require('./spellbook'),
   ...require('./levelUp'),
   ...require('./vitals'),
