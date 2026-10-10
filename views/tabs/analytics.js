@@ -74,6 +74,7 @@ module.exports = function renderAnalyticsTab(ctx) {
           <span class="analytics-badge fallen">Nat 1: ${diceStats.nat1Count}</span>
         </div>
       </div>
+      <p class="muted small">${diceStats.weeklyRolls} weekly shop rolls and ${diceStats.sheetRolls} d20s rolled on character sheets (both dice of advantage and disadvantage count).</p>
       <div class="analytics-dice-chart-wrap">
         <canvas id="diceBarChart" aria-label="d20 roll distribution bar chart" role="img"></canvas>
       </div>

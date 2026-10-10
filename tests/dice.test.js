@@ -138,3 +138,29 @@ test('the extension manifest and feed are public, with CORS', async () => {
     server.close();
   }
 });
+
+test('panel d20 rolls show in the roll history and count towards the d20 stats', () => {
+  const owner = createPlayer();
+  const id = fighter(owner);
+  const before = db.getDiceAnalytics();
+  const user = { id: owner, role: 'player' };
+  const advantage = db.rollForCharacter({ characterId: id, user, request: { roll: 'skill:Athletics', mode: 'advantage' } });
+  db.rollForCharacter({ characterId: id, user, request: { roll: 'attack:0:damage' } });
+  const secret = db.rollForCharacter({ characterId: id, user, request: { roll: 'save:wis', private: true } });
+
+  const history = db.getSheetD20Rolls({ limit: 10 });
+  const listed = history.find(roll => roll.id === advantage.id);
+  assert.equal(listed.faces.length, 2, 'both dice of an advantage roll');
+  assert.equal(listed.faces.filter(face => face.kept).length, 1);
+  assert.ok(!history.some(roll => /damage/.test(roll.label)), 'rolls without a d20 are left out');
+  const hidden = history.find(roll => roll.id === secret.id);
+  assert.equal(hidden.total, null);
+  assert.deepEqual(hidden.faces, []);
+  assert.equal(db.getSheetD20Rolls({ limit: 10, showPrivate: true }).find(roll => roll.id === secret.id).total, secret.total);
+  assert.equal(db.getSheetD20Rolls({ limit: 10, viewerId: owner }).find(roll => roll.id === secret.id).total, secret.total, 'the roller sees their own');
+
+  const after = db.getDiceAnalytics();
+  assert.equal(after.sheetRolls - before.sheetRolls, 3, '2 dice for advantage + 1 for the save');
+  assert.equal(after.totalRolls - before.totalRolls, 3);
+  assert.equal(Object.values(after.distribution).reduce((sum, count) => sum + count, 0), after.totalRolls);
+});

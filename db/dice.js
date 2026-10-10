@@ -184,6 +184,54 @@ function getCharacterRolls({ characterId, user, limit }) {
   return getRecentRolls({ characterIds: [character.id], limit, showPrivate: true });
 }
 
+// ─── d20 history and stats ─────────────────────────────────────────────────
+
+// The d20s in a logged roll: [{ value, kept }] (both dice for advantage).
+function d20Faces(detailJson) {
+  let detail;
+  try {
+    detail = JSON.parse(detailJson);
+  } catch {
+    return [];
+  }
+  const faces = [];
+  for (const part of detail.parts || []) {
+    if (!/d20$/.test(String(part.dice || ''))) continue;
+    (part.rolls || []).forEach((value, index) => faces.push({ value, kept: (part.kept || []).includes(index) }));
+  }
+  return faces;
+}
+
+// Panel rolls that included a d20, newest first, for the Rolls History tab.
+// Private rolls show their numbers only to admins (showPrivate) and the roller.
+function getSheetD20Rolls({ limit = 100, showPrivate = false, viewerId = null } = {}) {
+  return db.prepare(`${ROLL_QUERY} ORDER BY r.id DESC LIMIT 1000`).all()
+    .map(row => ({ row, faces: d20Faces(row.detail) }))
+    .filter(entry => entry.faces.length)
+    .slice(0, limit)
+    .map(({ row, faces }) => {
+      const hidden = row.private && !showPrivate && !(viewerId && row.player_id === Number(viewerId));
+      return {
+        id: row.id,
+        createdAt: row.created_at,
+        character: row.character_name,
+        player: row.player_tag,
+        label: row.label,
+        mode: row.mode,
+        private: Boolean(row.private),
+        faces: hidden ? [] : faces,
+        total: hidden ? null : row.total
+      };
+    });
+}
+
+// Every d20 face rolled in the panel (dropped advantage dice too), for stats.
+function getSheetD20Faces() {
+  return db.prepare("SELECT detail FROM dice_rolls WHERE detail LIKE '%d20%'").all()
+    .flatMap(row => d20Faces(row.detail).map(face => face.value))
+    .filter(value => Number.isInteger(value) && value >= 1 && value <= 20);
+}
+
 // ─── Owlbear Rodeo keys ─────────────────────────────────────────────────────
 
 function getVttKey({ playerId, regenerate = false }) {
@@ -220,5 +268,7 @@ module.exports = {
   getCharacterRolls,
   getVttKey,
   getVttRolls,
+  getSheetD20Rolls,
+  getSheetD20Faces,
   canRollFor
 };

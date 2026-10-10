@@ -76,8 +76,20 @@ function getDiceAnalytics() {
     totalRolls += count;
     totalSum += value * count;
   }
+  const weeklyRolls = totalRolls;
+
+  // d20s rolled on character sheets and the adventure table (db/dice.js).
+  const { getSheetD20Faces } = require('./dice');
+  const sheetFaces = getSheetD20Faces();
+  for (const value of sheetFaces) {
+    distribution[value] += 1;
+    totalRolls += 1;
+    totalSum += value;
+  }
 
   return {
+    weeklyRolls,
+    sheetRolls: sheetFaces.length,
     totalRolls,
     averageRoll: totalRolls ? Number((totalSum / totalRolls).toFixed(2)) : 0,
     nat20Count: distribution[20],
