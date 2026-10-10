@@ -4,6 +4,7 @@ const { formatCp } = require('./currency');
 const { DND_DATA } = require('./dndData');
 const rules = require('./rules');
 const { loadSessionUser, isAdmin } = require('./auth');
+const shop = require('./shop');
 
 const router = express.Router();
 
@@ -90,7 +91,7 @@ router.get('/my-characters', (req, res) => {
   const player = getSessionPlayer(req);
   if (!player) return res.status(401).json({ error: 'Unauthorized' });
 
-  return res.json({ characters: db.getAliveCharactersByPlayerId(player.id) });
+  return res.json({ characters: shop.getShoppingCharacters(player.id) });
 });
 
 router.get('/characters/:id', (req, res) => {
@@ -463,7 +464,7 @@ router.post('/admin/character-gold', (req, res) => {
   } catch (error) {
     if (
       error.message === 'Invalid character ID.' ||
-      error.message === 'Gold amount must be non-negative and have no more than two decimal places.'
+      error.message.startsWith('Gold ')
     ) {
       return res.status(400).json({ error: error.message });
     }
@@ -496,8 +497,8 @@ router.post('/shop/buy', async (req, res) => {
   }
 
   try {
-    const result = db.processWebPurchase({
-      itemName: itemName.trim(),
+    const result = shop.purchaseItem({
+      itemName,
       quantity: quantity === undefined ? 1 : Number(quantity),
       buyerTag: player.discord_tag,
       buyerDiscordId: player.discord_id,
@@ -530,16 +531,7 @@ router.post('/shop/buy', async (req, res) => {
       }
     });
   } catch (error) {
-    const clientErrorMessages = [
-      "Character not found or doesn't belong to you.",
-      'Item is not available in the shop.',
-      'Invalid quantity.'
-    ];
-    if (
-      clientErrorMessages.includes(error.message) ||
-      error.message.startsWith('Insufficient stock.') ||
-      error.message.startsWith('Insufficient funds.')
-    ) {
+    if (error instanceof shop.PurchaseError) {
       return res.status(400).json({ error: error.message });
     }
 

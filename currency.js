@@ -24,4 +24,17 @@ function formatCp(totalCp) {
   return parts.length > 0 ? parts.join(', ') : '0 cp';
 }
 
-module.exports = { parsePriceToCp, formatCp };
+// Parses a gold amount typed by a DM (e.g. "12", "12.5", "12.37") into copper.
+// Unlike parsePriceToCp this rejects bad input instead of using a default.
+function parseGpToCp(raw) {
+  const text = String(raw ?? '').trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) {
+    throw new Error('Gold must be a non-negative amount with at most two decimal places.');
+  }
+  const [whole, fraction = ''] = text.split('.');
+  const cp = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  if (!Number.isSafeInteger(cp)) throw new Error('Gold amount is too large.');
+  return cp;
+}
+
+module.exports = { parsePriceToCp, parseGpToCp, formatCp };

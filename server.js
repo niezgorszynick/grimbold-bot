@@ -2566,7 +2566,7 @@ router.get('/', (req, res) => {
                 </div>
                 <div>
                   <label style="font-size: 12px;">Gold (gp):</label><br>
-                  <input type="number" name="gold_gp" min="0" step="1" value="${charToEdit.gold_gp}" required style="width: 100%; margin-top: 4px;">
+                  <input type="number" name="gold_gp" min="0" step="0.01" value="${charToEdit.gold_cp / 100}" required style="width: 100%; margin-top: 4px;">
                 </div>
                 <div>
                   <label style="font-size: 12px;">Level (1–20):</label><br>
@@ -2929,7 +2929,7 @@ router.get('/', (req, res) => {
                 </div>
                 <div>
                   <label style="white-space: nowrap; font-size: 12px;">Starting Gold (gp):</label><br>
-                  <input type="number" name="gold_gp" min="0" step="1" value="0" required style="width: 100%; margin-top: 4px;">
+                  <input type="number" name="gold_gp" min="0" step="0.01" value="0" required style="width: 100%; margin-top: 4px;">
                 </div>
                 <div>
                   <label style="white-space: nowrap; font-size: 12px;">Starting Level:</label><br>
@@ -2983,7 +2983,7 @@ router.get('/', (req, res) => {
                 </td>
                 <td data-sort="${row.character_level || 0}">Lvl ${row.character_level || 3}</td>
                 <td data-sort="${row.character_xp || 0}">${row.character_xp !== null && row.character_xp !== undefined ? `${row.character_xp} XP` : '—'}</td>
-                <td data-sort="${row.character_gold_gp || 0}">${row.character_id ? formatCp(Math.round((row.character_gold_gp || 0) * 100)) : '—'}</td>
+                <td data-sort="${row.character_gold_cp || 0}">${row.character_id ? formatCp(row.character_gold_cp || 0) : '—'}</td>
                 <td data-sort="${row.character_status || ''}">
                   ${row.character_status === 'alive' 
                     ? '<span class="tag green">Alive</span>' 
@@ -2994,7 +2994,7 @@ router.get('/', (req, res) => {
                 ${isAdmin ? `<td style="white-space: nowrap;">
                   ${row.character_id ? `
                     <a href="/admin?tab=players&edit_char=${row.character_id}" class="btn btn-small">Edit Character</a>
-                    <button type="button" class="btn btn-small btn-gold edit-character-gold" data-character-id="${row.character_id}" data-character-name="${escapeHtml(row.character_name)}" data-character-gold="${row.character_gold_gp || 0}">💰 Edit GP</button>
+                    <button type="button" class="btn btn-small btn-gold edit-character-gold" data-character-id="${row.character_id}" data-character-name="${escapeHtml(row.character_name)}" data-character-gold="${(row.character_gold_cp || 0) / 100}">💰 Edit GP</button>
                     <form method="POST" action="/admin/characters/delete" style="display:inline;" onsubmit="return confirm('Delete character &quot;${escapeHtml(row.character_name)}&quot;?');">
                       <input type="hidden" name="id" value="${row.character_id}">
                       <button type="submit" class="btn btn-small btn-red">Delete Char</button>
@@ -3069,12 +3069,12 @@ router.get('/', (req, res) => {
               const response = await fetch('/api/admin/character-gold', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ characterId, gold: parsedGold })
+                body: JSON.stringify({ characterId, gold: gold.trim() })
               });
               const data = await response.json();
               if (!response.ok) throw new Error(data.error || 'Could not update character gold.');
               goldModalFeedback.textContent =
-                'Purse for ' + data.updated.name + ' set to ' + data.updated.newGold + ' gp.';
+                'Purse for ' + data.updated.name + ' set to ' + (data.updated.newGoldCp / 100) + ' gp.';
               window.setTimeout(() => window.location.reload(), 700);
             } catch (error) {
               goldModalFeedback.textContent = error.message;

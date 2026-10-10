@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const { validateCharacterOptions } = require('./dndData');
 const rules = require('./rules');
+const { parseGpToCp } = require('./currency');
 
 // Sheet fields owned by the vitals API (see rules/vitals.js).
 const VITALS_KEYS = [
@@ -198,6 +199,27 @@ if (!charCols.includes('death_notes')) {
 }
 if (!charCols.includes('sheet_data')) {
   db.exec('ALTER TABLE characters ADD COLUMN sheet_data TEXT;');
+}
+// Gold is stored as whole copper pieces in gold_cp. gold_gp is the old column
+// (it ended up holding fractions after web purchases); triggers keep it as a
+// read-only mirror so the previous app version still shows correct gold.
+if (!charCols.includes('gold_cp')) {
+  db.transaction(() => {
+    db.exec('ALTER TABLE characters ADD COLUMN gold_cp INTEGER NOT NULL DEFAULT 0 CHECK (gold_cp >= 0);');
+    db.exec('UPDATE characters SET gold_cp = CAST(ROUND(gold_gp * 100) AS INTEGER);');
+  })();
+}
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS characters_gold_mirror_insert AFTER INSERT ON characters
+  BEGIN UPDATE characters SET gold_gp = NEW.gold_cp / 100.0 WHERE id = NEW.id; END;
+  CREATE TRIGGER IF NOT EXISTS characters_gold_mirror_update AFTER UPDATE OF gold_cp ON characters
+  BEGIN UPDATE characters SET gold_gp = NEW.gold_cp / 100.0 WHERE id = NEW.id; END;
+`);
+
+// 6.3. Which character paid for a sale (NULL for sales before characters had purses).
+const saleCols = db.prepare('PRAGMA table_info(sales)').all().map(c => c.name);
+if (!saleCols.includes('character_id')) {
+  db.exec('ALTER TABLE sales ADD COLUMN character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL;');
 }
 
 // Backfill the multiclass table from the legacy character columns.
@@ -481,7 +503,7 @@ function insertStartingCharacter(playerId, character) {
   return db.transaction(() => {
     const inserted = db.prepare(`
       INSERT INTO characters
-        (player_id, name, race, class, subclass, level, xp, status, gold_gp, sheet_data)
+        (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
       VALUES (?, ?, ?, ?, ?, ?, 0, 'alive', ?, ?)
     `).run(
       playerId,
@@ -490,7 +512,7 @@ function insertStartingCharacter(playerId, character) {
       character.className,
       character.subclass,
       character.level,
-      character.goldGp,
+      character.goldGp * 100,
       JSON.stringify(character.sheetData)
     );
     db.prepare(`
@@ -499,6 +521,19 @@ function insertStartingCharacter(playerId, character) {
       VALUES (?, ?, ?, ?, 1)
     `).run(inserted.lastInsertRowid, character.className, character.subclass, character.level);
     return Number(inserted.lastInsertRowid);
+  })();
+}
+
+// Sets a character's purse (DM edit). gold is in gp, e.g. 12.37.
+function updateCharacterGold(characterId, gold) {
+  const id = Number(characterId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid character ID.');
+  const goldCp = parseGpToCp(gold);
+  return db.transaction(() => {
+    const character = db.prepare('SELECT id, name, gold_cp FROM characters WHERE id = ?').get(id);
+    if (!character) throw new Error('Character not found.');
+    db.prepare('UPDATE characters SET gold_cp = ? WHERE id = ?').run(goldCp, id);
+    return { id, name: character.name, oldGoldCp: character.gold_cp, newGoldCp: goldCp };
   })();
 }
 
@@ -608,174 +643,6 @@ function getDiceAnalytics() {
   };
 }
 
-function getAliveCharactersByPlayerId(playerId) {
-  return db.prepare(`
-    SELECT
-      id,
-      name,
-      race AS species,
-      class AS character_class,
-      level,
-      gold_gp,
-      CAST(ROUND(gold_gp * 100) AS INTEGER) AS gold_cp
-    FROM characters
-    WHERE player_id = ? AND status = 'alive' COLLATE NOCASE
-    ORDER BY name ASC
-  `).all(playerId);
-}
-
-function getAliveCharactersForPlayer(playerId) {
-  return getAliveCharactersByPlayerId(playerId);
-}
-
-function getCharacterByIdAndPlayer(characterId, playerId) {
-  return db.prepare(`
-    SELECT *
-    FROM characters
-    WHERE id = ? AND player_id = ? AND status = 'alive' COLLATE NOCASE
-  `).get(characterId, playerId);
-}
-
-function updateCharacterGold(characterId, newGold) {
-  const parsedCharacterId = Number(characterId);
-  const parsedGold = Number(newGold);
-  const goldInCopper = Math.round(parsedGold * 100);
-  if (!Number.isSafeInteger(parsedCharacterId) || parsedCharacterId <= 0) {
-    throw new Error('Invalid character ID.');
-  }
-  if (!Number.isFinite(parsedGold) || parsedGold < 0 ||
-      !Number.isSafeInteger(goldInCopper) ||
-      Math.abs(parsedGold * 100 - goldInCopper) > Number.EPSILON * Math.max(1, Math.abs(parsedGold * 100))) {
-    throw new Error('Gold amount must be non-negative and have no more than two decimal places.');
-  }
-
-  const runTransaction = db.transaction(() => {
-    const character = db.prepare(
-      'SELECT id, name, gold_gp FROM characters WHERE id = ?'
-    ).get(parsedCharacterId);
-    if (!character) {
-      throw new Error('Character not found.');
-    }
-
-    db.prepare('UPDATE characters SET gold_gp = ? WHERE id = ?')
-      .run(parsedGold, parsedCharacterId);
-    return {
-      id: character.id,
-      name: character.name,
-      oldGold: character.gold_gp,
-      newGold: parsedGold
-    };
-  });
-
-  return runTransaction();
-}
-
-function processWebPurchase({
-  itemName,
-  quantity = 1,
-  buyerTag,
-  buyerDiscordId,
-  characterId,
-  playerId,
-  userTag,
-  userId
-}) {
-  const runTransaction = db.transaction(() => {
-    const character = getCharacterByIdAndPlayer(characterId, playerId);
-    if (!character) {
-      throw new Error("Character not found or doesn't belong to you.");
-    }
-
-    const item = db.prepare(`
-      SELECT *
-      FROM items
-      WHERE name = ? COLLATE NOCASE AND is_active = 1
-    `).get(itemName);
-    if (!item) {
-      throw new Error('Item is not available in the shop.');
-    }
-
-    const qty = quantity === undefined || quantity === null || quantity === ''
-      ? 1
-      : Number(quantity);
-    if (!Number.isSafeInteger(qty) || qty <= 0) {
-      throw new Error('Invalid quantity.');
-    }
-    if (item.stock !== null && item.stock < qty) {
-      throw new Error(`Insufficient stock. Only ${item.stock} left.`);
-    }
-
-    const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
-    const purchaseBuyerTag = buyerTag || userTag;
-    const purchaseBuyerId = buyerDiscordId || userId;
-    const roll = getUserRoll(purchaseBuyerId);
-    const modifier = roll === null ? null : getDiscount(roll);
-    const discountPercent = modifier ? modifier.percent : 0;
-    const basePrice = item.price;
-    const finalUnitPriceCp = modifier ? applyModifier(basePrice, modifier) : basePrice;
-    const totalCostCp = finalUnitPriceCp * qty;
-    const characterGoldCp = Math.round(character.gold_gp * 100);
-    if (!Number.isSafeInteger(totalCostCp) || !Number.isSafeInteger(characterGoldCp)) {
-      throw new Error('Purchase amount is too large.');
-    }
-
-    if (characterGoldCp < totalCostCp) {
-      throw new Error(
-        `Insufficient funds. ${character.name} has ${character.gold_gp} gp, but the purchase costs ${totalCostCp} cp.`
-      );
-    }
-
-    db.prepare(`
-      UPDATE characters
-      SET gold_gp = ? / 100.0
-      WHERE id = ? AND CAST(ROUND(gold_gp * 100) AS INTEGER) >= ?
-    `).run(characterGoldCp - totalCostCp, character.id, totalCostCp);
-
-    if (item.stock !== null) {
-      db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
-    }
-
-    db.prepare(`
-      INSERT INTO sales (
-        item_name, category, quantity, buyer_tag, buyer_id,
-        base_price, discount_percent, final_price, total_paid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      item.name,
-      item.category,
-      qty,
-      purchaseBuyerTag,
-      purchaseBuyerId,
-      basePrice,
-      discountPercent,
-      finalUnitPriceCp,
-      totalCostCp
-    );
-
-    const remainingGoldCp = characterGoldCp - totalCostCp;
-    return {
-      item,
-      character: {
-        ...character,
-        gold_gp: remainingGoldCp / 100,
-        gold_cp: remainingGoldCp
-      },
-      quantity: qty,
-      basePrice,
-      discountPercent,
-      finalUnitPrice: finalUnitPriceCp / 100,
-      finalUnitPriceCp,
-      totalCost: totalCostCp / 100,
-      totalCostCp,
-      totalPaid: totalCostCp / 100,
-      totalPaidCp: totalCostCp,
-      remainingStock: item.stock !== null ? item.stock - qty : null
-    };
-  });
-
-  return runTransaction();
-}
-
 const queries = {
   // Rolls
   getRoll: db.prepare(`SELECT * FROM rolls WHERE user_id = ? AND week_start = ?`),
@@ -800,23 +667,13 @@ const queries = {
   updateStock: db.prepare(`UPDATE items SET stock = ? WHERE id = ?`),
   updatePrice: db.prepare(`UPDATE items SET price = ? WHERE id = ?`),
   toggleActive: db.prepare(`UPDATE items SET is_active = ? WHERE id = ?`),
-  deleteItem: db.prepare(`DELETE FROM items WHERE id = ?`),
-
-  // Sales
-  insertSale: db.prepare(`
-    INSERT INTO sales (item_name, category, quantity, buyer_tag, buyer_id, base_price, discount_percent, final_price, total_paid)
-    VALUES (@item_name, @category, @quantity, @buyer_tag, @buyer_id, @base_price, @discount_percent, @final_price, @total_paid)
-  `)
+  deleteItem: db.prepare(`DELETE FROM items WHERE id = ?`)
 };
 
 module.exports = {
   calculateLevelFromXp,
   validateCharacterLevels,
-  getAliveCharactersByPlayerId,
-  getAliveCharactersForPlayer,
-  getCharacterByIdAndPlayer,
   updateCharacterGold,
-  processWebPurchase,
   getCharacterLevelUpOptions,
   levelUpCharacter,
   insertStartingCharacter,
@@ -1212,22 +1069,6 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     });
   },
 
-  // Purchase transaction: check stock, deduct it, record the sale
-  purchaseItemTransaction: db.transaction((itemId, quantity, saleData) => {
-    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
-    if (!item) throw new Error('ITEM_NOT_FOUND');
-
-    if (item.stock !== null) {
-      if (item.stock < quantity) {
-        throw new Error(`INSUFFICIENT_STOCK:${item.stock}`);
-      }
-      queries.updateStock.run(item.stock - quantity, itemId);
-    }
-
-    queries.insertSale.run(saleData);
-    return item;
-  }),
-
   setStock: (id, newStock) => queries.updateStock.run(newStock, id),
   setPrice: (id, newPrice) => queries.updatePrice.run(newPrice, id),
   setActive: (id, isActive) => queries.toggleActive.run(isActive ? 1 : 0, id),
@@ -1250,7 +1091,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         c.subclass AS character_subclass,
         c.level AS character_level,
         c.xp AS character_xp,
-        c.gold_gp AS character_gold_gp,
+        c.gold_cp AS character_gold_cp,
         c.status AS character_status
       FROM players p
       LEFT JOIN characters c ON p.id = c.player_id
@@ -1473,21 +1314,18 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
     const pId = parseInt(player_id, 10);
     const trimmedName = (name || '').trim();
     const parsedXp = Math.max(0, parseInt(xp, 10) || 0);
-    const parsedGoldGp = Number(gold_gp);
+    const goldCp = parseGpToCp(gold_gp);
 
     if (isNaN(pId)) throw new Error('Valid player must be selected.');
     if (!trimmedName) throw new Error('Character name is required.');
     if (!['alive', 'dead'].includes(status)) throw new Error('Status must be alive or dead.');
-    if (!Number.isSafeInteger(parsedGoldGp) || parsedGoldGp < 0) {
-      throw new Error('Gold must be a non-negative whole number.');
-    }
     const { canonicalSpecies, canonicalClass, canonicalSubclass } =
       validateCharacterOptions(race, class_name, subclass);
     const pLevel = calculateLevelFromXp(parsedXp);
 
     const run = db.transaction(() => {
       const result = db.prepare(`
-        INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_gp)
+        INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         pId,
@@ -1498,7 +1336,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         pLevel,
         parsedXp,
         status,
-        parsedGoldGp
+        goldCp
       );
       db.prepare(`
         INSERT INTO character_classes
@@ -1571,7 +1409,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
   }) => {
     const run = db.transaction(() => {
       const charId = Number(id);
-      const char = db.prepare('SELECT id, gold_gp FROM characters WHERE id = ?').get(charId);
+      const char = db.prepare('SELECT id, gold_cp FROM characters WHERE id = ?').get(charId);
       if (!Number.isSafeInteger(charId) || !char) {
         throw new Error(`Character #${id} not found.`);
       }
@@ -1605,10 +1443,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       if (!Number.isSafeInteger(parsedXp) || parsedXp < 0) {
         throw new Error('Adventure XP must be a non-negative whole number.');
       }
-      const parsedGoldGp = gold_gp === undefined ? char.gold_gp : Number(gold_gp);
-      if (!Number.isSafeInteger(parsedGoldGp) || parsedGoldGp < 0) {
-        throw new Error('Gold must be a non-negative whole number.');
-      }
+      const goldCp = gold_gp === undefined ? char.gold_cp : parseGpToCp(gold_gp);
 
       const targetAdvIds = Array.from(new Set((adventure_ids || []).map(Number)));
       if (targetAdvIds.some(adventureId => !Number.isSafeInteger(adventureId) || adventureId <= 0)) {
@@ -1669,7 +1504,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
       const result = db.prepare(`
         UPDATE characters
         SET player_id = ?, name = ?, race = ?, class = ?, subclass = ?, level = ?, xp = ?, status = ?,
-            death_adventure_id = ?, death_dm_player_id = ?, death_notes = ?, gold_gp = ?
+            death_adventure_id = ?, death_dm_player_id = ?, death_notes = ?, gold_cp = ?
         WHERE id = ?
       `).run(
         pId,
@@ -1683,7 +1518,7 @@ updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, 
         deathAdventureId,
         deathDmPlayerId,
         deathNotes,
-        parsedGoldGp,
+        goldCp,
         charId
       );
 
