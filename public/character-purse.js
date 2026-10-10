@@ -65,8 +65,9 @@
       try {
         view = await request('POST', { gp: value('gp'), sp: value('sp'), cp: value('cp'), reason: reason.value });
         editing = false;
-        message = 'Purse saved: ' + view.formatted + '. Grimbold notes it in your thread.';
-        isError = false;
+        const note = view.note || {};
+        message = 'Purse saved: ' + view.formatted + '. ' + (note.ok ? 'Grimbold noted it in your thread.' : note.ok === null ? note.reason : 'Not posted to Discord: ' + (note.reason || 'unknown reason') + '.');
+        isError = note.ok === false;
       } catch (error) {
         message = error.message;
         isError = true;

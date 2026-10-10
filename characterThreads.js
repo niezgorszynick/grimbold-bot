@@ -11,6 +11,9 @@
 const db = require('./db');
 const { formatCp } = require('./currency');
 
+// Discord's Embed Links permission (1 << 14).
+const EMBED_LINKS = 16384n;
+
 // 🧝┆soh-postaci — override with CHARACTER_THREADS_CHANNEL_ID.
 const DEFAULT_CHANNEL_ID = '1505600851039752414';
 
@@ -76,19 +79,30 @@ async function threadForCharacter(characterId) {
   return thread.entry;
 }
 
+// Embeds need the Embed Links permission; without it Discord drops them and
+// refuses the (then empty) message, so Grimbold writes plain text instead.
+function canEmbed(thread) {
+  if (!client || !client.user || typeof thread.permissionsFor !== 'function') return true;
+  const permissions = thread.permissionsFor(client.user);
+  return !permissions || permissions.has(EMBED_LINKS);
+}
+
+// Returns { ok, reason, thread } — reason says why nothing was posted.
 async function postToCharacterThread(characterId, message) {
   if (!client || (typeof client.isReady === 'function' && !client.isReady())) {
     console.warn(`Discord bot is not connected; no note posted for character ${characterId}.`);
-    return false;
+    return { ok: false, reason: 'The Discord bot is not connected.' };
   }
   try {
     const thread = await threadForCharacter(characterId);
-    if (!thread) return false;
-    await thread.send({ ...message, allowedMentions: { parse: [] } });
-    return true;
+    if (!thread) return { ok: false, reason: 'No Discord thread found for this character: set it on the Players tab.' };
+    const { text, ...payload } = message;
+    const body = canEmbed(thread) || !text ? payload : { content: text };
+    await thread.send({ ...body, allowedMentions: { parse: [] } });
+    return { ok: true, thread: thread.name };
   } catch (error) {
     console.warn(`Could not post to the thread of character ${characterId}: ${error.message}`);
-    return false;
+    return { ok: false, reason: `Discord refused the message: ${error.message}` };
   }
 }
 
@@ -101,6 +115,7 @@ function purchaseMessage(result, buyerTag) {
     ? ` — ${Math.abs(result.discountPercent)}% off for the weekly roll`
     : result.discountPercent > 0 ? ` — ${result.discountPercent}% surcharge for the weekly roll` : '';
   return {
+    text: `🪙 *Grimbold notes a purchase for ${result.character.name}:* **${result.item.name}**${quantity} for **${formatCp(result.totalCostCp)}**${each}${roll}. Purse left: **${formatCp(result.character.gold_cp)}**.`,
     embeds: [{
       title: '🪙 Grimbold notes a purchase',
       color: 0xd4af37,
@@ -121,7 +136,9 @@ function goldChangeMessage(change) {
   const who = change.changed_by_admin
     ? `the DM${change.changed_by_tag ? ` (${change.changed_by_tag})` : ''}`
     : change.changed_by_tag || 'the player';
+  const sign = difference > 0 ? '+' : '−';
   return {
+    text: `${difference > 0 ? '💰' : '💸'} *Grimbold amends ${change.character_name}'s page:* ${formatCp(change.old_cp)} → **${formatCp(change.new_cp)}** (${sign}${formatCp(Math.abs(difference))}). Reason: ${change.reason || 'none given'}. Changed by ${who}.`,
     embeds: [{
       title: difference > 0 ? '💰 Purse grows' : '💸 Purse shrinks',
       color: difference > 0 ? 0x23a55a : 0xf0b232,
@@ -138,16 +155,23 @@ function goldChangeMessage(change) {
   };
 }
 
-// Fire-and-forget: a slow or missing Discord never holds up a purchase.
+// Never throws, and a slow Discord never holds up a purchase: callers may
+// wait for the result (to show it) or ignore it.
 function announcePurchase(result, { buyerTag } = {}) {
-  postToCharacterThread(result.character.id, purchaseMessage(result, buyerTag))
-    .catch(error => console.warn('Purchase note failed:', error.message));
+  return postToCharacterThread(result.character.id, purchaseMessage(result, buyerTag))
+    .catch(error => ({ ok: false, reason: error.message }));
 }
 
 function announceGoldChange(change) {
-  if (!change) return;
-  postToCharacterThread(change.character_id, goldChangeMessage(change))
-    .catch(error => console.warn('Purse note failed:', error.message));
+  if (!change) return Promise.resolve({ ok: false, reason: 'Nothing changed.' });
+  return postToCharacterThread(change.character_id, goldChangeMessage(change))
+    .catch(error => ({ ok: false, reason: error.message }));
+}
+
+// Waits at most `ms` for an announcement; after that the panel moves on and
+// the note still goes out in the background.
+function withinTime(promise, ms = 4000) {
+  return Promise.race([promise, new Promise(resolve => setTimeout(() => resolve({ ok: null, reason: 'Discord is slow; the note will follow.' }), ms))]);
 }
 
 function setCharacterThreadsClient(discordClient) {
@@ -160,6 +184,7 @@ module.exports = {
   postToCharacterThread,
   announcePurchase,
   announceGoldChange,
+  withinTime,
   purchaseMessage,
   goldChangeMessage
 };

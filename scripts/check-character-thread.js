@@ -41,7 +41,7 @@ console.log(`Stored thread: ${character.discord_thread_id || '— none yet'}`);
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   try {
     console.log(`\nLogged in as ${client.user.tag}.`);
     const channel = await client.channels.fetch(channelId).catch(error => {
@@ -56,6 +56,7 @@ client.once('ready', async () => {
       ['View Channel', PermissionFlagsBits.ViewChannel],
       ['Read Message History', PermissionFlagsBits.ReadMessageHistory],
       ['Send Messages in Threads', PermissionFlagsBits.SendMessagesInThreads],
+      ['Embed Links (for the formatted notes; plain text without it)', PermissionFlagsBits.EmbedLinks],
       ['Manage Threads (needed for private threads)', PermissionFlagsBits.ManageThreads]
     ]) {
       console.log(`  ${permissions && permissions.has(flag) ? '✔' : '✖'} ${label}`);
@@ -84,8 +85,11 @@ client.once('ready', async () => {
 
     if (send) {
       threads.setCharacterThreadsClient(client);
-      const ok = await threads.postToCharacterThread(character.id, { content: '🪙 *Grimbold taps the ledger.* Just checking this page is yours. (test message)' });
-      console.log(ok ? '\n✔ Test message posted.' : '\n✖ Test message NOT posted (see the warning above).');
+      // The same kind of note as a real purse change (an embed, or text without Embed Links).
+      const result = await threads.postToCharacterThread(character.id, threads.goldChangeMessage({
+        character_name: character.name, old_cp: 100, new_cp: 100, reason: 'Test note from check-character-thread', changed_by_admin: 1, changed_by_tag: 'test'
+      }));
+      console.log(result.ok ? `\n✔ Test note posted in "${result.thread}".` : `\n✖ Test note NOT posted: ${result.reason}`);
     }
   } finally {
     client.destroy();

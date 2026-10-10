@@ -227,7 +227,7 @@ function registerAdventureThreads(discordClient) {
   client.on('threadUpdate', (oldThread, newThread) => {
     renameAdventureThread(oldThread, newThread).catch(error => console.error('[ERROR] Renaming an adventure from a thread:', error));
   });
-  client.once('ready', () => {
+  client.once('clientReady', () => {
     catchUpAdventureThreads()
       .then(opened => { if (opened) console.log(`📜 Opened ${opened} adventure(s) from threads started while offline.`); })
       .catch(error => console.error('[ERROR] Catching up adventure threads:', error));

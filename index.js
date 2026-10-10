@@ -149,7 +149,7 @@ for (const file of commandFiles) {
 
 // ─── Ready ────────────────────────────────────────────────────────────────────
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`\n🏪  ${client.user.tag} is open for business! (SQLite Backend Active)\n`);
 });
 

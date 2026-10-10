@@ -85,7 +85,7 @@ test("Grimbold's notes go to the character's thread and are remembered", async (
   threads.setCharacterThreadsClient({ channels: { fetch: async channelId => (channelId === thread.id ? thread : channelId === '1505600851039752414' ? channel : null) } });
 
   const change = db.setCharacterPurse({ characterId: id, user: player(owner), coins: { gp: 42 }, reason: 'Found a hoard' });
-  assert.equal(await threads.postToCharacterThread(id, threads.goldChangeMessage(change)), true);
+  assert.equal((await threads.postToCharacterThread(id, threads.goldChangeMessage(change))).ok, true);
   assert.equal(db.getCharacterById(id).discord_thread_id, thread.id, 'the thread is remembered');
   const fields = Object.fromEntries(sent[0].embeds[0].fields.map(field => [field.name, field.value]));
   assert.equal(fields.Before, '50 gp');
@@ -97,7 +97,7 @@ test("Grimbold's notes go to the character's thread and are remembered", async (
     item: { name: 'Potion of Healing' }, quantity: 2, finalUnitPriceCp: 4500, totalCostCp: 9000, discountPercent: -10,
     character: { id, name: 'Brunhilda Stonefist', gold_cp: 1200 }
   }, 'brunhilda#1');
-  assert.equal(await threads.postToCharacterThread(id, receipt), true);
+  assert.equal((await threads.postToCharacterThread(id, receipt)).ok, true);
   const receiptFields = Object.fromEntries(sent[1].embeds[0].fields.map(field => [field.name, field.value]));
   assert.equal(receiptFields.Item, '**Potion of Healing** ×2');
   assert.match(receiptFields.Cost, /90 gp\*\* \(45 gp each\) — 10% off/);
@@ -105,7 +105,22 @@ test("Grimbold's notes go to the character's thread and are remembered", async (
 
   // No thread and no client: nothing is posted, nothing breaks.
   const lonely = addCharacter(createPlayer(), 'Nobody Knows');
-  assert.equal(await threads.postToCharacterThread(lonely, receipt), false);
+  const missing = await threads.postToCharacterThread(lonely, receipt);
+  assert.equal(missing.ok, false);
+  assert.match(missing.reason, /No Discord thread found/);
+
+  // Without Embed Links the same note goes out as plain text.
+  thread.permissionsFor = () => ({ has: () => false });
+  threads.setCharacterThreadsClient({ user: { id: 'bot' }, channels: { fetch: async channelId => (channelId === thread.id ? thread : null) } });
+  assert.equal((await threads.postToCharacterThread(id, threads.goldChangeMessage(change))).ok, true);
+  assert.equal(sent[2].embeds, undefined);
+  assert.ok(sent[2].content.includes('50 gp → **42 gp** (−8 gp). Reason: Found a hoard.'), sent[2].content);
+
+  // Discord refusing: the reason comes back for the panel to show.
+  thread.send = async () => { throw new Error('Missing Permissions'); };
+  const refused = await threads.postToCharacterThread(id, receipt);
+  assert.deepEqual(refused, { ok: false, reason: 'Discord refused the message: Missing Permissions' });
+
   threads.setCharacterThreadsClient(null);
-  assert.equal(await threads.postToCharacterThread(id, receipt), false);
+  assert.equal((await threads.postToCharacterThread(id, receipt)).reason, 'The Discord bot is not connected.');
 });

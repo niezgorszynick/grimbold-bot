@@ -676,8 +676,9 @@ module.exports = function renderPlayersTab(ctx) {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Could not update the purse.');
-            goldModalFeedback.textContent = 'Purse set to ' + data.formatted + '. Grimbold notes it in the character thread.';
-            window.setTimeout(() => window.location.reload(), 700);
+            const note = data.note || {};
+            goldModalFeedback.textContent = 'Purse set to ' + data.formatted + '. ' + (note.ok ? 'Grimbold noted it in the character thread.' : note.ok === null ? note.reason : 'Not posted to Discord: ' + (note.reason || 'unknown reason') + '.');
+            window.setTimeout(() => window.location.reload(), note.ok ? 1500 : 4000);
           } catch (error) {
             goldModalFeedback.textContent = error.message;
             goldModalSave.disabled = false;

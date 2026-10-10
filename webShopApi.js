@@ -771,14 +771,16 @@ router.get('/characters/:id/gold', (req, res) => {
 });
 
 // { gp, sp, cp, reason }
-router.post('/characters/:id/gold', (req, res) => {
+router.post('/characters/:id/gold', async (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
     const change = db.setCharacterPurse({ characterId: req.params.id, user, coins: { gp: body.gp, sp: body.sp, cp: body.cp }, reason: body.reason });
-    require('./characterThreads').announceGoldChange(change);
-    return res.json({ ...db.getCharacterPurse({ characterId: req.params.id, user }), formatted: formatCp(change.new_cp) });
+    // Wait a moment for Grimbold's note, so the panel can say whether it went out.
+    const threads = require('./characterThreads');
+    const note = await threads.withinTime(threads.announceGoldChange(change));
+    return res.json({ ...db.getCharacterPurse({ characterId: req.params.id, user }), formatted: formatCp(change.new_cp), note });
   } catch (error) {
     if (error instanceof TypeError) {
       console.error('Purse update failed:', error);
