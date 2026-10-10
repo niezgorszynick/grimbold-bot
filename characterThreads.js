@@ -77,7 +77,10 @@ async function threadForCharacter(characterId) {
 }
 
 async function postToCharacterThread(characterId, message) {
-  if (!client) return false;
+  if (!client || (typeof client.isReady === 'function' && !client.isReady())) {
+    console.warn(`Discord bot is not connected; no note posted for character ${characterId}.`);
+    return false;
+  }
   try {
     const thread = await threadForCharacter(characterId);
     if (!thread) return false;
