@@ -11,6 +11,9 @@ module.exports = function renderAnalyticsTab(ctx) {
   const analytics = db.getCharacterAnalytics();
   const analyticsJson = JSON.stringify(analytics).replace(/</g, '\\u003c');
   const diceStats = db.getDiceAnalytics();
+  // d4–d12 and d100 rolled in the panel, one chart each.
+  const otherDice = db.getOtherDiceAnalytics();
+  const otherDiceJson = JSON.stringify(otherDice).replace(/</g, '\\u003c');
   const diceStatsJson = JSON.stringify(diceStats.distribution).replace(/</g, '\\u003c');
   const levelEntries = Object.entries(analytics.levelCount)
     .sort((left, right) => Number(left[0].replace(/\D/g, '')) - Number(right[0].replace(/\D/g, '')));
@@ -78,6 +81,24 @@ module.exports = function renderAnalyticsTab(ctx) {
       <div class="analytics-dice-chart-wrap">
         <canvas id="diceBarChart" aria-label="d20 roll distribution bar chart" role="img"></canvas>
       </div>
+    </section>
+
+    <section class="analytics-other-dice" aria-label="Other dice">
+      ${otherDice.map(die => `
+        <div class="card analytics-dice">
+          <div class="analytics-card-header">
+            <strong>d${die.sides} Distribution</strong>
+            <div class="analytics-dice-stats">
+              <span class="analytics-badge">Dice: ${die.totalRolls}</span>
+              <span class="analytics-badge primary">Avg: ${die.averageRoll} (Exp: ${die.expectedAverage})</span>
+              <span class="analytics-badge dice-success">${die.sides}s: ${die.maxCount}</span>
+              <span class="analytics-badge fallen">1s: ${die.minCount}</span>
+            </div>
+          </div>
+          ${die.totalRolls
+            ? `<div class="analytics-dice-chart-wrap small-chart"><canvas id="diceChart-d${die.sides}" aria-label="d${die.sides} roll distribution bar chart" role="img"></canvas></div>`
+            : `<p class="muted small">No d${die.sides} rolled on character sheets yet. <a href="/admin?tab=rolls&die=${die.sides}">See d${die.sides} rolls</a></p>`}
+        </div>`).join('')}
     </section>
 
     <section class="card analytics-graveyard">
@@ -232,6 +253,61 @@ module.exports = function renderAnalyticsTab(ctx) {
             }
           });
         }
+
+        // One bar chart per other die: the highest face green, 1 red.
+        const otherDice = ${otherDiceJson};
+        otherDice.forEach(die => {
+          const chartCanvas = document.getElementById('diceChart-d' + die.sides);
+          if (!chartCanvas) return;
+          let faceLabels = Object.keys(die.distribution);
+          let counts = Object.values(die.distribution);
+          let colors = faceLabels.map(face => (face === '1' ? '#ef4444' : face === String(die.sides) ? '#10b981' : '#3b82f6'));
+          // A d100 reads better in ranges of ten: 1–10, 11–20, ...
+          if (die.sides === 100) {
+            faceLabels = Array.from({ length: 10 }, (_, index) => (index * 10 + 1) + '–' + (index * 10 + 10));
+            counts = faceLabels.map((_, index) => counts.slice(index * 10, index * 10 + 10).reduce((sum, value) => sum + value, 0));
+            colors = faceLabels.map(() => '#3b82f6');
+          }
+          new Chart(chartCanvas, {
+            type: 'bar',
+            data: {
+              labels: faceLabels,
+              datasets: [{
+                label: 'Roll Count',
+                data: counts,
+                backgroundColor: colors,
+                borderRadius: 3,
+                borderWidth: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  grid: { color: '#334155' },
+                  ticks: { color: '#94a3b8' },
+                  title: { display: true, text: die.sides === 100 ? 'd100 result (in ranges of ten)' : 'd' + die.sides + ' Face Value', color: '#cbd5e1' }
+                },
+                y: {
+                  grid: { color: '#334155' },
+                  ticks: { color: '#94a3b8', precision: 0 },
+                  beginAtZero: true,
+                  title: { display: true, text: 'Frequency', color: '#cbd5e1' }
+                }
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    title: items => 'd' + die.sides + ': ' + items[0].label,
+                    label: context => 'Rolled ' + context.parsed.y + ' times'
+                  }
+                }
+              }
+            }
+          });
+        });
       });
     </script>
   `;

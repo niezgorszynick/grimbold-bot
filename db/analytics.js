@@ -98,7 +98,32 @@ function getDiceAnalytics() {
   };
 }
 
+// The other dice rolled in the panel (damage, custom formulas, crits): one
+// distribution per die, with the average against the expected one.
+function getOtherDiceAnalytics() {
+  const { TRACKED_DICE, getSheetDieFaces } = require('./dice');
+  return TRACKED_DICE.filter(sides => sides !== 20).map(sides => {
+    const faces = getSheetDieFaces(sides);
+    const distribution = Object.fromEntries(Array.from({ length: sides }, (_, index) => [index + 1, 0]));
+    let sum = 0;
+    for (const value of faces) {
+      distribution[value] += 1;
+      sum += value;
+    }
+    return {
+      sides,
+      totalRolls: faces.length,
+      averageRoll: faces.length ? Number((sum / faces.length).toFixed(2)) : 0,
+      expectedAverage: (sides + 1) / 2,
+      maxCount: distribution[sides],
+      minCount: distribution[1],
+      distribution
+    };
+  });
+}
+
 module.exports = {
+  getOtherDiceAnalytics,
   getCharacterAnalytics,
   getDiceAnalytics
 };

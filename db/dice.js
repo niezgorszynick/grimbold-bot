@@ -184,10 +184,14 @@ function getCharacterRolls({ characterId, user, limit }) {
   return getRecentRolls({ characterIds: [character.id], limit, showPrivate: true });
 }
 
-// ─── d20 history and stats ─────────────────────────────────────────────────
+// ─── Roll history and stats per die ────────────────────────────────────────
 
-// The d20s in a logged roll: [{ value, kept }] (both dice for advantage).
-function d20Faces(detailJson) {
+// The dice the Rolls History and Analytics tabs follow.
+const TRACKED_DICE = [20, 4, 6, 8, 10, 12, 100];
+
+// The faces of one die size in a logged roll: [{ value, kept }]
+// ("4d6kh3" or advantage: the dropped dice have kept: false).
+function dieFaces(detailJson, sides) {
   let detail;
   try {
     detail = JSON.parse(detailJson);
@@ -196,17 +200,18 @@ function d20Faces(detailJson) {
   }
   const faces = [];
   for (const part of detail.parts || []) {
-    if (!/d20$/.test(String(part.dice || ''))) continue;
+    const match = String(part.dice || '').match(/^\d+d(\d+)$/);
+    if (!match || Number(match[1]) !== sides) continue;
     (part.rolls || []).forEach((value, index) => faces.push({ value, kept: (part.kept || []).includes(index) }));
   }
   return faces;
 }
 
-// Panel rolls that included a d20, newest first, for the Rolls History tab.
+// Panel rolls that included the die, newest first, for the Rolls History tab.
 // Private rolls show their numbers only to admins (showPrivate) and the roller.
-function getSheetD20Rolls({ limit = 100, showPrivate = false, viewerId = null } = {}) {
-  return db.prepare(`${ROLL_QUERY} ORDER BY r.id DESC LIMIT 1000`).all()
-    .map(row => ({ row, faces: d20Faces(row.detail) }))
+function getSheetRollsByDie({ sides = 20, limit = 100, showPrivate = false, viewerId = null } = {}) {
+  return db.prepare(`${ROLL_QUERY} ORDER BY r.id DESC LIMIT 2000`).all()
+    .map(row => ({ row, faces: dieFaces(row.detail, sides) }))
     .filter(entry => entry.faces.length)
     .slice(0, limit)
     .map(({ row, faces }) => {
@@ -217,6 +222,7 @@ function getSheetD20Rolls({ limit = 100, showPrivate = false, viewerId = null } 
         character: row.character_name,
         player: row.player_tag,
         label: row.label,
+        formula: hidden ? '' : row.formula,
         mode: row.mode,
         private: Boolean(row.private),
         faces: hidden ? [] : faces,
@@ -225,12 +231,15 @@ function getSheetD20Rolls({ limit = 100, showPrivate = false, viewerId = null } 
     });
 }
 
-// Every d20 face rolled in the panel (dropped advantage dice too), for stats.
-function getSheetD20Faces() {
-  return db.prepare("SELECT detail FROM dice_rolls WHERE detail LIKE '%d20%'").all()
-    .flatMap(row => d20Faces(row.detail).map(face => face.value))
-    .filter(value => Number.isInteger(value) && value >= 1 && value <= 20);
+// Every face of the die rolled in the panel (dropped dice too), for stats.
+function getSheetDieFaces(sides) {
+  return db.prepare('SELECT detail FROM dice_rolls WHERE detail LIKE ?').all(`%d${sides}"%`)
+    .flatMap(row => dieFaces(row.detail, sides).map(face => face.value))
+    .filter(value => Number.isInteger(value) && value >= 1 && value <= sides);
 }
+
+const getSheetD20Rolls = options => getSheetRollsByDie({ ...options, sides: 20 });
+const getSheetD20Faces = () => getSheetDieFaces(20);
 
 // ─── Owlbear Rodeo keys ─────────────────────────────────────────────────────
 
@@ -268,6 +277,9 @@ module.exports = {
   getCharacterRolls,
   getVttKey,
   getVttRolls,
+  TRACKED_DICE,
+  getSheetRollsByDie,
+  getSheetDieFaces,
   getSheetD20Rolls,
   getSheetD20Faces,
   canRollFor

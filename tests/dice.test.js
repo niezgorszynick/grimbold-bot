@@ -164,3 +164,30 @@ test('panel d20 rolls show in the roll history and count towards the d20 stats',
   assert.equal(after.totalRolls - before.totalRolls, 3);
   assert.equal(Object.values(after.distribution).reduce((sum, count) => sum + count, 0), after.totalRolls);
 });
+
+test('every die rolled in the panel has its own history and distribution', () => {
+  const owner = createPlayer();
+  const id = fighter(owner);
+  const user = { id: owner, role: 'player' };
+  const count = sides => db.getOtherDiceAnalytics().find(die => die.sides === sides).totalRolls;
+  const before = { d6: count(6), d4: count(4), d100: count(100) };
+
+  const greatsword = [...db.rollOptions(db.getCharacterById(id)).values()].find(option => option.label.startsWith('Greatsword damage'));
+  const damage = db.rollForCharacter({ characterId: id, user, request: { roll: greatsword.id, critical: true } });
+  assert.equal(damage.formula, '4d6+3');
+  const custom = db.rollForCharacter({ characterId: id, user, request: { formula: '1d4+1d100', label: 'Wild magic' } });
+
+  assert.equal(count(6) - before.d6, 4, 'every d6 of the crit counts');
+  assert.equal(count(4) - before.d4, 1);
+  assert.equal(count(100) - before.d100, 1);
+  const d6 = db.getOtherDiceAnalytics().find(die => die.sides === 6);
+  assert.equal(d6.expectedAverage, 3.5);
+  assert.equal(Object.keys(d6.distribution).length, 6);
+
+  const sixes = db.getSheetRollsByDie({ sides: 6 });
+  assert.equal(sixes[0].id, damage.id);
+  assert.equal(sixes[0].faces.length, 4);
+  assert.ok(!sixes.some(roll => roll.id === custom.id));
+  assert.equal(db.getSheetRollsByDie({ sides: 100 })[0].id, custom.id);
+  assert.ok(!db.getSheetD20Rolls().some(roll => roll.id === damage.id), 'no d20 in a damage roll');
+});
