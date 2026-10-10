@@ -7,6 +7,7 @@
 const { db } = require('./connection');
 const { updateCharacterProgression } = require('./characters');
 const { getCharacterSnapshots } = require('./roster');
+const { getRecentRolls } = require('./dice');
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 4000;
@@ -124,6 +125,8 @@ function getAdventureTable({ adventureId, user }) {
     },
     canManage: access.manage,
     party: getCharacterSnapshots(ids),
+    // The party's latest rolls; private ones only for the DM (and the roller).
+    rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.manage, viewerId: Number(user && user.id) || null }),
     candidates,
     dmCharacters
   };

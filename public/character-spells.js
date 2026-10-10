@@ -203,7 +203,7 @@
   }
 
   function renderSource(source) {
-    const headerBits = [ABILITY[source.ability] || '', 'Save DC ' + source.saveDc, 'Spell attack ' + signed(source.attackBonus)];
+    const headerBits = [ABILITY[source.ability] || '', 'Save DC ' + source.saveDc];
     const choosable = Boolean(source.cantripLimit || source.preparedLimit);
     const counts = [];
     if (source.cantripLimit) counts.push('Cantrips ' + source.chosenCantrips.length + '/' + source.cantripLimit);
@@ -237,7 +237,8 @@
 
     return el('div', { className: 'spell-source' }, [
       el('div', { className: 'spell-source-header' }, [
-        el('div', {}, [el('strong', { text: source.label }), el('span', { className: 'muted', text: ' · ' + headerBits.join(' · ') })]),
+        el('div', {}, [el('strong', { text: source.label }), el('span', { className: 'muted', text: ' · ' + headerBits.join(' · ') + ' · ' }),
+          el('button', { type: 'button', className: 'roll-link', 'data-roll': 'spell:' + source.key, title: 'Roll a spell attack', text: 'Spell attack ' + signed(source.attackBonus) })]),
         choosable ? button(editing === source.key ? 'Close' : 'Choose spells', () => { editing = editing === source.key ? null : source.key; render(); }) : null
       ]),
       counts.length ? el('p', { className: 'muted small', text: counts.join(' · ') + (missing > 0 ? ' — ' + missing + ' still to choose' : '') }) : null,

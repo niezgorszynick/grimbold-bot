@@ -101,8 +101,9 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     hitDice: vitals ? vitals.view.hitDice : [],
     exhaustion: vitals ? vitals.view.exhaustion : 0,
     concentration: concentration ? concentration.spell : null,
-    attacks: combat ? combat.attacks.filter(attack => !attack.needsType).slice(0, 4)
-      .map(attack => ({ name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage })) : []
+    // index: the attack's place in the character's roll list (db/dice.js).
+    attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType }))
+      .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => attack) : []
   };
 }
 

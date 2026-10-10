@@ -369,6 +369,61 @@ router.post('/characters/:id/combat', (req, res) => {
   }
 });
 
+// ─── Dice ───────────────────────────────────────────────────────────────────
+
+function diceErrorStatus(message) {
+  if (message === 'Forbidden.') return 403;
+  if (message === 'Character not found.') return 404;
+  return 400;
+}
+
+// { roll: 'skill:Stealth' } or { formula: '2d6+3', label }; mode; critical; private
+router.post('/characters/:id/roll', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.rollForCharacter({ characterId: req.params.id, user, request: body }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Roll failed:', error);
+      return res.status(500).json({ error: 'Could not roll.' });
+    }
+    return res.status(diceErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+router.get('/characters/:id/rolls', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ rolls: db.getCharacterRolls({ characterId: req.params.id, user, limit: req.query.limit }) });
+  } catch (error) {
+    return res.status(diceErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// The player's key for the Owlbear Rodeo extension ({ regenerate: true } for a new one).
+router.get('/vtt/key', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ key: db.getVttKey({ playerId: user.id }) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/vtt/key', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ key: db.getVttKey({ playerId: user.id, regenerate: true }) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 // ─── Adventure table (running adventures) ───────────────────────────────────
 
 function adventureErrorStatus(message) {

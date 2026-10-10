@@ -92,10 +92,18 @@
   }
 
   function renderAttacks() {
-    const rows = view.attacks.map(attack => el('tr', { className: attack.needsType ? 'needs-type' : null }, [
+    // Attack bonus and damage roll on click (public/dice.js); the index matches
+    // the server's list of rolls for this character.
+    const rollButton = (id, text, title) => el('button', { type: 'button', className: 'roll-link', 'data-roll': id, title, text });
+    const damageCell = (attack, index) => {
+      const match = String(attack.damage).match(/^(.*?)\s*\((\S+) two-handed\)$/);
+      if (!match) return [rollButton('attack:' + index + ':damage', attack.damage, 'Roll damage')];
+      return [rollButton('attack:' + index + ':damage', match[1], 'Roll damage'), ' ', rollButton('attack:' + index + ':damage2', '(' + match[2] + ' two-handed)', 'Roll two-handed damage')];
+    };
+    const rows = view.attacks.map((attack, index) => el('tr', { className: attack.needsType ? 'needs-type' : null }, [
       el('td', { 'data-label': 'Name' }, [el('strong', { text: attack.name }), attack.weapon && attack.weapon !== attack.name ? el('span', { className: 'muted small', text: ' ' + attack.weapon }) : null]),
-      el('td', { 'data-label': 'Attack', text: attack.attackBonus }),
-      el('td', { 'data-label': 'Damage', text: attack.damage }),
+      el('td', { 'data-label': 'Attack' }, attack.needsType ? attack.attackBonus : rollButton('attack:' + index + ':hit', attack.attackBonus, 'Roll to hit')),
+      el('td', { 'data-label': 'Damage' }, attack.needsType ? attack.damage : damageCell(attack, index)),
       el('td', { 'data-label': 'Notes', className: 'muted small', text: attack.notes.join(' · ') })
     ]));
     root.replaceChildren(...[

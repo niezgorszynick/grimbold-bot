@@ -20,6 +20,7 @@ module.exports = {
   ...require('./magicItems'),
   ...require('./weapons'),
   ...require('./combat'),
+  ...require('./dice'),
   ...require('./spellbook'),
   ...require('./levelUp'),
   ...require('./vitals'),

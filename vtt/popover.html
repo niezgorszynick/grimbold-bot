@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grimbold's Dice</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 12px; font: 13px/1.4 system-ui, sans-serif; color: #e6e6e6; background: transparent; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    p { margin: 4px 0; }
+    .muted { color: #a3a3a3; font-size: 12px; }
+    .status { padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, .06); margin-bottom: 10px; }
+    .status.ok { border-left: 3px solid #23a55a; }
+    .status.bad { border-left: 3px solid #f23f43; }
+    form { display: flex; gap: 6px; margin: 6px 0 10px; }
+    input[type=password], input[type=text] { flex: 1; min-width: 0; padding: 6px; border-radius: 4px; border: 1px solid #555; background: #222; color: #eee; }
+    button { padding: 5px 9px; border: 0; border-radius: 4px; background: #5865f2; color: #fff; cursor: pointer; font: inherit; }
+    button.secondary { background: #4e5058; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+    li { padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, .05); }
+    li.private { background: rgba(240, 178, 50, .12); }
+    .total { font-size: 18px; font-weight: bold; float: right; margin-left: 8px; }
+    .nat20 .total { color: #23a55a; }
+    .nat1 .total { color: #f23f43; }
+    .detail { color: #a3a3a3; font-size: 11px; }
+    s { opacity: .6; }
+  </style>
+</head>
+<body>
+  <h1>🎲 Grimbold's Dice</h1>
+  <div id="app"></div>
+  <script type="module" src="/vtt/popover.js"></script>
+</body>
+</html>

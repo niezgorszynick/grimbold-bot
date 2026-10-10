@@ -100,6 +100,8 @@ app.get('/logout', (req, res) => {
 });
 
 // DM Panel route
+// The Owlbear Rodeo extension (public, works without a panel login).
+app.use('/vtt', require('./vtt'));
 app.use('/api', webShopApiRouter);
 app.use('/admin', adminRouter);
 

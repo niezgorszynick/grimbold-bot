@@ -103,7 +103,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
       ? `
         <section id="cs_levelup" class="sheet-card levelup" data-character-id="${Number(characterToEdit.id)}" hidden></section>
         <script src="/admin/assets/character-levelup.js" defer></script>
-        <section id="fullCharacterSheetContainer" class="character-sheet-full">
+        <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
           <header class="sheet-header">
             <div class="sheet-identity">
               <h2 id="cs_header_name">Character Sheet</h2>
@@ -151,7 +151,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <div class="sheet-col">
               <div class="sheet-combat-stats">
                 <label class="sheet-stat"><span>Armor Class</span><input type="number" id="cs_ac" min="0" max="100"></label>
-                <label class="sheet-stat"><span>Initiative</span><input type="text" id="cs_initiative" maxlength="20"></label>
+                <div class="sheet-stat"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative"></div>
                 <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
                 <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
               </div>
@@ -191,6 +191,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
           </section>
           <section id="cs_spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-spells.js" defer></script>
+          <script src="/admin/assets/dice.js" defer></script>
           <section id="cs_magic_items" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-magic-items.js" defer></script>
         </section>
@@ -292,6 +293,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
           const modifier = document.createElement('span');
           modifier.className = 'sheet-ability-modifier';
           modifier.dataset.modifier = ability;
+          // Click to roll an ability check (public/dice.js).
+          modifier.dataset.roll = 'check:' + ability;
+          modifier.title = 'Roll a ' + ability.toUpperCase() + ' check';
           row.append(name, score, modifier);
           abilityContainer.appendChild(row);
         });
@@ -302,14 +306,16 @@ module.exports = function renderCharacterSheetTab(ctx) {
           const row = document.createElement('label');
           row.className = 'sheet-check-row';
           row.innerHTML = '<input type="checkbox" data-save="' + ability + '"><span>' +
-            ability.toUpperCase() + '</span><strong class="sheet-check-modifier"></strong>';
+            ability.toUpperCase() + '</span><strong class="sheet-check-modifier" data-roll="save:' + ability +
+            '" title="Roll a ' + ability.toUpperCase() + ' save"></strong>';
           savesContainer.appendChild(row);
         });
         skills.forEach(([skill, ability]) => {
           const row = document.createElement('label');
           row.className = 'sheet-check-row';
           row.innerHTML = '<input type="checkbox" data-skill="' + skill + '"><span>' + skill +
-            '</span><small>' + ability.toUpperCase() + '</small><strong class="sheet-check-modifier"></strong>';
+            '</span><small>' + ability.toUpperCase() + '</small><strong class="sheet-check-modifier" data-roll="skill:' + skill +
+            '" title="Roll ' + skill + '"></strong>';
           skillsContainer.appendChild(row);
         });
 

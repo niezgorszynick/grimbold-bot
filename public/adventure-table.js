@@ -100,9 +100,15 @@
     ]);
   }
 
-  function stat(label, value, title) {
-    return el('div', { className: 'party-stat', title }, [el('span', { text: label }), el('strong', { text: value === null || value === undefined ? '—' : String(value) })]);
+  // roll: a roll id (public/dice.js), clickable only for those who run the adventure.
+  function stat(label, value, title, roll) {
+    const rollable = roll && data.canManage;
+    return el('div', { className: 'party-stat' + (rollable ? ' is-rollable' : ''), title: rollable ? title + ' — click to roll' : title, 'data-roll': rollable ? roll : null },
+      [el('span', { text: label }), el('strong', { text: value === null || value === undefined ? '—' : String(value) })]);
   }
+  const rollIf = (roll, text, title) => (data.canManage
+    ? el('button', { type: 'button', className: 'roll-link', 'data-roll': roll, title, text })
+    : document.createTextNode(text));
 
   function slotsLine(member) {
     const parts = member.spellSlots.map(slot => {
@@ -135,7 +141,7 @@
       ? el('a', { className: 'roster-name', href: '/admin?tab=character-sheet&edit_char=' + member.id, target: '_blank', rel: 'noopener', text: member.name })
       : el('strong', { text: member.name });
     const casting = member.spellcasting.map(source => source.label + ' DC ' + source.saveDc + ' · ' + signed(source.attackBonus));
-    return el('article', { className: 'party-card' + (member.hp && member.hp.current === 0 ? ' is-down' : '') }, [
+    return el('article', { className: 'party-card' + (member.hp && member.hp.current === 0 ? ' is-down' : ''), 'data-roll-character': data.canManage ? String(member.id) : null }, [
       el('header', { className: 'party-card-header' }, [
         el('div', {}, [nameNode, el('div', { className: 'muted small', text: member.player + ' · ' + (member.species || '') + ' · ' + classes })]),
         remove
@@ -143,15 +149,15 @@
       hpBlock(member.hp),
       el('div', { className: 'party-stats' }, [
         stat('AC', member.armorClass, 'Armor Class'),
-        stat('Init', signed(member.initiative), 'Initiative'),
+        stat('Init', signed(member.initiative), 'Initiative', 'initiative'),
         stat('Speed', member.speed),
-        stat('PP', member.passivePerception, 'Passive Perception'),
+        stat('PP', member.passivePerception, 'Passive Perception', 'skill:Perception'),
         stat('Prof', signed(member.proficiencyBonus), 'Proficiency Bonus')
       ]),
       flags.length ? el('div', { className: 'party-flags' }, flags) : null,
       member.saves ? el('div', { className: 'party-line' }, [
         el('span', { className: 'party-label', text: 'Saves' }),
-        ...ABILITIES.map(ability => el('span', { className: 'party-save' }, [el('small', { text: ability.toUpperCase() + ' ' }), signed(member.saves[ability])]))
+        ...ABILITIES.map(ability => el('span', { className: 'party-save' }, [el('small', { text: ability.toUpperCase() + ' ' }), rollIf('save:' + ability, signed(member.saves[ability]), ability.toUpperCase() + ' save')]))
       ]) : null,
       casting.length ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Spells' }), casting.join(' / ')]) : null,
       slotsLine(member),
@@ -161,7 +167,10 @@
       ]) : null,
       member.attacks.length ? el('div', { className: 'party-line party-attacks' }, [
         el('span', { className: 'party-label', text: 'Attacks' }),
-        el('span', {}, member.attacks.map(attack => el('span', { className: 'party-attack' }, [el('strong', { text: attack.name }), ' ' + attack.attackBonus + ', ' + attack.damage])))
+        el('span', {}, member.attacks.map(attack => el('span', { className: 'party-attack' }, [
+          el('strong', { text: attack.name }), ' ', rollIf('attack:' + attack.index + ':hit', attack.attackBonus, 'Roll to hit'), ', ',
+          rollIf('attack:' + attack.index + ':damage', attack.damage, 'Roll damage')
+        ])))
       ]) : null
     ]);
   }
@@ -218,6 +227,22 @@
     ]);
   }
 
+  // The party's latest rolls (made on their sheets or here by the DM).
+  function rollLog() {
+    const rolls = data.rolls || [];
+    if (!rolls.length) return el('p', { className: 'muted small', text: 'No rolls yet. Rolls made on the party\'s character sheets show up here.' });
+    return el('section', { className: 'sheet-card roll-log' }, [
+      el('h4', { text: 'Latest rolls' }),
+      el('ol', {}, rolls.map(roll => el('li', { className: roll.natural === 20 ? 'nat20' : roll.natural === 1 ? 'nat1' : null }, [
+        el('span', { className: 'roll-log-total', text: roll.total === null ? '🔒' : String(roll.total) }),
+        el('strong', { text: roll.character }), ' — ' + roll.label,
+        roll.mode && roll.mode !== 'normal' ? el('span', { className: 'muted small', text: ' (' + roll.mode + ')' }) : null,
+        roll.private ? el('span', { className: 'tag gold', text: 'GM only' }) : null,
+        el('span', { className: 'muted small', text: ' ' + (roll.text || '').replace(/~~(\d+)~~/g, '($1)') + ' · ' + String(roll.createdAt || '').slice(11, 16) })
+      ])))
+    ]);
+  }
+
   function render() {
     if (!data) return;
     const adventure = data.adventure;
@@ -257,10 +282,13 @@
       data.party.length
         ? el('div', { className: 'party-grid' }, data.party.map(memberCard))
         : el('p', { className: 'muted', text: data.canManage && active ? 'No one in the party yet: add the characters taking part above.' : 'No characters in this adventure.' }),
-      !active && adventure.notes ? el('div', { className: 'card' }, [el('h4', { text: 'Notes' }), el('p', { text: adventure.notes })]) : null
+      !active && adventure.notes ? el('div', { className: 'card' }, [el('h4', { text: 'Notes' }), el('p', { text: adventure.notes })]) : null,
+      rollLog()
     ].filter(Boolean));
   }
 
+  // A roll made here shows in the log straight away.
+  document.addEventListener('grimbold-roll', () => load());
   load();
   // Live updates while the adventure runs and the page is visible.
   setInterval(() => {

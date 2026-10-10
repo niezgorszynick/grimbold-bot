@@ -264,6 +264,37 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 5,
+    name: 'Dice rolls from the character sheet, and Owlbear Rodeo keys',
+    up(db) {
+      db.exec(`
+        -- Rolls made from the panel (the old "rolls" table holds weekly shop rolls).
+        CREATE TABLE IF NOT EXISTS dice_rolls (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+          label TEXT NOT NULL,
+          formula TEXT NOT NULL,
+          mode TEXT NOT NULL DEFAULT 'normal',
+          total INTEGER NOT NULL,
+          detail TEXT NOT NULL,
+          private INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS dice_rolls_character ON dice_rolls (character_id, id);
+        CREATE INDEX IF NOT EXISTS dice_rolls_player ON dice_rolls (player_id, id);
+
+        -- The key a player pastes into the Owlbear Rodeo extension.
+        CREATE TABLE IF NOT EXISTS vtt_keys (
+          player_id INTEGER PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+          key TEXT NOT NULL UNIQUE,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_used_at DATETIME
+        );
+      `);
+    }
   }
 ];
 

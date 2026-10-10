@@ -461,3 +461,33 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .party-slot.is-empty { color: #6b7280; }
 .party-attacks > span:last-child { display: grid; gap: 2px; }
 .adventure-table-header a, .roster-table a.muted { color: #00a8fc; }
+/* Dice: clickable rolls and the dice bar (public/dice.js) */
+[data-roll] { cursor: pointer; }
+.roll-link { padding: 0; border: 0; background: none; font: inherit; color: #8ea1ff; cursor: pointer; border-bottom: 1px dotted #8ea1ff; text-align: left; }
+.roll-link:hover, .sheet-check-modifier[data-roll]:hover, .sheet-ability-modifier[data-roll]:hover { color: #f1c40f; border-color: #f1c40f; }
+.sheet-check-modifier[data-roll], .sheet-ability-modifier[data-roll] { border-bottom: 1px dotted #6b7280; }
+.roll-button { padding: 0 2px; border: 0; background: none; cursor: pointer; font-size: 12px; }
+.party-stat.is-rollable:hover { border-color: #f1c40f; }
+.dice-bar { position: fixed; right: 16px; bottom: 16px; z-index: 50; width: min(360px, calc(100vw - 32px)); display: grid; gap: 8px; padding: 10px 12px; background: #111214; border: 1px solid #3f4147; border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.dice-bar.is-rolling { opacity: .75; }
+.dice-bar.is-collapsed { width: auto; }
+.dice-bar.is-collapsed > :not(:first-child), .dice-bar.is-collapsed .dice-toggles, .dice-bar.is-collapsed strong { display: none; }
+.dice-bar-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.dice-toggles { display: flex; gap: 3px; flex-wrap: wrap; }
+.dice-toggle { padding: 3px 7px; border: 1px solid #3f4147; border-radius: 4px; background: #2b2d31; color: #dbdee1; font-size: 11px; cursor: pointer; }
+.dice-toggle.is-on { background: #5865f2; border-color: #5865f2; color: #fff; }
+.dice-collapse { border: 0; background: none; color: #949ba4; cursor: pointer; font-size: 14px; }
+.dice-result { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.dice-total { font-size: 30px; font-weight: bold; color: #f2f3f5; min-width: 44px; text-align: center; }
+.dice-total.nat20 { color: #23a55a; }
+.dice-total.nat1 { color: #f23f43; }
+.dice-custom { display: flex; gap: 6px; flex: 1; }
+.dice-formula { flex: 1; min-width: 0; padding: 5px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.dice-key { display: grid; gap: 6px; border-top: 1px solid #3f4147; padding-top: 8px; }
+.dice-key code { word-break: break-all; color: #f1c40f; }
+.dice-steps { margin: 0; padding-left: 18px; }
+.roll-log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.roll-log li { padding: 4px 6px; border-bottom: 1px solid #2b2d31; font-size: 13px; }
+.roll-log-total { display: inline-block; min-width: 34px; font-weight: bold; color: #f2f3f5; }
+.roll-log li.nat20 .roll-log-total { color: #23a55a; }
+.roll-log li.nat1 .roll-log-total { color: #f23f43; }
