@@ -251,6 +251,60 @@ router.post('/characters/:id/spells', (req, res) => {
   }
 });
 
+function magicItemErrorStatus(message) {
+  if (message === 'Forbidden.' || /^Only a DM/.test(message)) return 403;
+  if (message === 'Character not found.') return 404;
+  return 400;
+}
+
+router.get('/rules/magic-items', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  res.set('Cache-Control', 'private, max-age=3600');
+  const items = Object.values(rules.getMagicItemCatalog()).map(item => ({
+    name: item.name,
+    kind: item.kind,
+    baseItem: item.baseItem,
+    rarity: item.rarity,
+    variants: item.variants.map(variant => ({ label: variant.label, name: variant.name, rarity: variant.rarity, priceGp: variant.priceGp })),
+    attunement: { required: item.attunement.required, by: item.attunement.by },
+    consumable: item.consumable,
+    charges: item.charges,
+    priceGp: item.priceGp,
+    description: item.description
+  }));
+  return res.json({ items });
+});
+
+router.get('/characters/:id/magic-items', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterMagicItems({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { action: 'grant', name, variant, quantity } (DM) | { action: 'remove', uid } (DM)
+// { action: 'equip' | 'unequip' | 'attune' | 'unattune' | 'consume', uid }
+// { action: 'useCharges' | 'restoreCharges', uid, count }
+router.post('/characters/:id/magic-items', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.changeCharacterMagicItems({
+      id: req.params.id, player_id: user.id, is_admin: isAdmin(user), action: body.action, params: body
+    }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Magic item action failed:', error);
+      return res.status(500).json({ error: 'Could not update magic items.' });
+    }
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);
@@ -286,14 +340,18 @@ router.post('/characters/:id/vitals', (req, res) => {
         context
       );
       const spellEffects = db.spellEffectsOfVitals(character, sheetData, body.action, body, outcome);
-      const nextSheet = { ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax, spellcasting: spellEffects.spellcasting };
+      const itemEffects = db.magicItemEffectsOfVitals(sheetData, body.action);
+      const nextSheet = {
+        ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax, spellcasting: spellEffects.spellcasting, magicItems: itemEffects.magicItems
+      };
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), characterId);
       return {
         vitals: rules.buildVitalsView(outcome.vitals, context, outcome.hpMax),
         events: outcome.events,
         rolls: outcome.rolls || (outcome.roll ? [{ die: 'd20', roll: outcome.roll }] : []),
         healed: outcome.healed,
-        concentration: spellEffects.concentration
+        concentration: spellEffects.concentration,
+        magicItemsRegained: itemEffects.regained
       };
     })();
     if (result.error) return res.status(result.status).json({ error: result.error });

@@ -13,6 +13,7 @@ module.exports = {
   ...require('./db/shop'),
   ...require('./db/analytics'),
   ...require('./db/spells'),
+  ...require('./db/magicItems'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),

@@ -6,6 +6,7 @@
 const db = require('./db');
 const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
 const { formatCp } = require('./currency');
+const rules = require('./rules');
 
 // A purchase that was refused for a reason the buyer should see.
 class PurchaseError extends Error {}
@@ -35,8 +36,9 @@ function findPlayerByDiscordId(discordId) {
   return db.prepare('SELECT id, discord_id, discord_tag FROM players WHERE discord_id = ?').get(String(discordId)) || null;
 }
 
-// Adds the item to the sheet's inventory and notes it in the equipment text
-// that the sheet editor shows.
+// Adds the item to the sheet — magic items to the Magic Items list, anything
+// else to the inventory — and notes it in the equipment text that the sheet
+// editor shows.
 function addToSheet(sheetJson, itemName, quantity) {
   let sheet = {};
   try {
@@ -44,13 +46,19 @@ function addToSheet(sheetJson, itemName, quantity) {
   } catch {
     sheet = {};
   }
+  const line = `Bought: ${itemName}${quantity > 1 ? ` ×${quantity}` : ''}`;
+  const text = typeof sheet.equipmentText === 'string' ? sheet.equipmentText.trimEnd() : '';
+  const equipmentText = text ? `${text}\n${line}` : line;
+  const magic = rules.matchMagicItem(itemName);
+  if (magic && (magic.variant || !magic.item.variants.length)) {
+    const magicItems = rules.grantMagicItem(sheet, { name: itemName, quantity, source: 'shop' });
+    return JSON.stringify({ ...sheet, magicItems, equipmentText });
+  }
   const inventory = Array.isArray(sheet.inventory) ? sheet.inventory.map(row => ({ ...row })) : [];
   const existing = inventory.find(row => row.name === itemName);
   if (existing) existing.quantity += quantity;
   else inventory.push({ name: itemName, quantity, source: 'shop' });
-  const line = `Bought: ${itemName}${quantity > 1 ? ` ×${quantity}` : ''}`;
-  const text = typeof sheet.equipmentText === 'string' ? sheet.equipmentText.trimEnd() : '';
-  return JSON.stringify({ ...sheet, inventory, equipmentText: text ? `${text}\n${line}` : line });
+  return JSON.stringify({ ...sheet, inventory, equipmentText });
 }
 
 function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag, buyerDiscordId }) {

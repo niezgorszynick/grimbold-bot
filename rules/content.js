@@ -21,7 +21,7 @@ const path = require('path');
 
 // RULES_CONTENT_DIR lets tests use fixture content instead of the local files.
 const CONTENT_DIR = process.env.RULES_CONTENT_DIR || path.join(__dirname, 'content');
-const CATEGORIES = ['backgrounds', 'species', 'classes', 'subclasses', 'feats', 'spells', 'invocations', 'items'];
+const CATEGORIES = ['backgrounds', 'species', 'classes', 'subclasses', 'feats', 'spells', 'invocations', 'items', 'magic_items'];
 
 function camelCase(key) {
   return key

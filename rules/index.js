@@ -17,6 +17,7 @@ module.exports = {
   ...require('./creation'),
   ...require('./spells'),
   ...require('./invocations'),
+  ...require('./magicItems'),
   ...require('./spellbook'),
   ...require('./levelUp'),
   ...require('./vitals'),

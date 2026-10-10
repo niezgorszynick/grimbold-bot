@@ -14,6 +14,7 @@ const { abilityModifier } = require('./util');
 const { calculateMaxHp, getHitDicePool } = require('./hitPoints');
 const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
+const { effectiveAbilityScore } = require('./magicItems');
 
 const MAX_EXHAUSTION = 6;
 
@@ -226,10 +227,9 @@ function setMaxHpBonus(vitals, bonus) {
 
 // ─── Character-level helpers ────────────────────────────────────────────────
 
+// Includes magic items such as an Amulet of Health.
 function abilityScore(sheetData, ability) {
-  const value = ((sheetData || {}).abilities || {})[ability];
-  const score = value && typeof value === 'object' ? (value.score ?? value.total) : value;
-  return Number.isInteger(score) ? score : 10;
+  return effectiveAbilityScore(sheetData, ability);
 }
 
 // classRows: [{ className, subclassName, level }], starting class first.

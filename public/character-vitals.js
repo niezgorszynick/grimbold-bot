@@ -67,9 +67,14 @@
           ? 'Concentration on ' + result.concentration.spell + ' ended.'
           : 'Concentration check for ' + result.concentration.spell + ': Constitution save DC ' + result.concentration.dc + '.');
       }
+      (result.magicItemsRegained || []).forEach(item => {
+        parts.push(item.name + ' regained ' + item.restored + ' charge' + (item.restored === 1 ? '' : 's') + ' (' + item.roll + ').');
+      });
       lastMessage = parts.filter(Boolean).join(' ');
       // Rests restore slots and spell-change windows; damage can end concentration.
       if (window.refreshCharacterSpells) window.refreshCharacterSpells();
+      // A Long Rest is the dawn when magic items regain charges.
+      if (window.refreshCharacterMagicItems) window.refreshCharacterMagicItems();
       lastIsError = false;
     } catch (error) {
       lastMessage = error.message;

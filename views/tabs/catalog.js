@@ -5,6 +5,10 @@
 const db = require('../../db');
 const { formatCp } = require('../../currency');
 const { escapeHtml, decomposeCp } = require('../helpers');
+const rules = require('../../rules');
+
+const MAGIC_PRICES = rules.MAGIC_ITEM_PRICE_GP;
+const MIN_LEVELS = rules.MAGIC_ITEM_MIN_PARTY_LEVEL;
 
 module.exports = function renderCatalogTab(ctx) {
   const { req, catalogItems } = ctx;
@@ -222,8 +226,26 @@ module.exports = function renderCatalogTab(ctx) {
     `;
   }
 
+  // Magic items from rules/content/magic_items.md, priced by rarity.
+  const magicCatalog = rules.getMagicItemCatalog();
+  const magicCount = Object.keys(magicCatalog).length;
+  const magicImportHtml = `
+    <div class="card">
+      <h3>Import Magic Items</h3>
+      ${magicCount ? `
+        <p class="muted">Adds the magic items of the chosen rarities (${magicCount} items in the magic item list) to the catalog with the <em>magic</em> tier, at Dungeon Master's Guide prices: Common ${MAGIC_PRICES.Common} GP, Uncommon ${MAGIC_PRICES.Uncommon} GP, Rare ${MAGIC_PRICES.Rare} GP, Very Rare ${MAGIC_PRICES['Very Rare']} GP, Legendary ${MAGIC_PRICES.Legendary} GP; potions, scrolls and ammunition cost half. The weekly restock offers each rarity from party level ${MIN_LEVELS.Uncommon} (Uncommon), ${MIN_LEVELS.Rare} (Rare), ${MIN_LEVELS['Very Rare']} (Very Rare) and ${MIN_LEVELS.Legendary} (Legendary). Items already in the catalog keep their current price and settings; artifacts are never imported.</p>
+        <form method="POST" action="/admin/catalog/import-magic-items" onsubmit="return confirm('Add these magic items to the Master Catalog? The weekly restock will start offering them.');">
+          <div class="vitals-actions">
+            ${['Common', 'Uncommon', 'Rare', 'Very Rare', 'Legendary'].map(rarity => `<label class="creator-check"><input type="checkbox" name="rarities" value="${rarity}"${['Common', 'Uncommon'].includes(rarity) ? ' checked' : ''}> ${rarity}</label>`).join('')}
+          </div>
+          <button type="submit" class="btn btn-gold">Import into catalog</button>
+        </form>`
+      : '<p class="muted">The magic item list (rules/content/magic_items.md) has not been provided on this server.</p>'}
+    </div>`;
+
   contentHtml = `
     ${formSectionHtml}
+    ${magicImportHtml}
     <div class="card">
       <h3>Master Catalog (${catalogItems.length} items)</h3>
       <table>

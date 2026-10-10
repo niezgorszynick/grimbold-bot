@@ -4,13 +4,15 @@ Descriptive text for the rules engine. Mechanics (numbers, tables, choices) live
 `rules/*.js`; these files supply the readable text shown on character sheets.
 
 One file per category: `backgrounds.md`, `species.md`, `classes.md`, `subclasses.md`,
-`feats.md`, `spells.md`, `items.md`. Missing files are simply treated as empty.
+`feats.md`, `spells.md`, `invocations.md`, `magic_items.md`, `items.md`. Missing files are
+simply treated as empty.
 
 ## Book text stays out of Git
 
 Text copied from the D&D books can't be published, and this repository is public.
-`spells.md` is listed in `.gitignore`: keep it locally and copy it to the server
-yourself (for example `scp rules/content/spells.md vps:~/grimbold-bot/rules/content/`).
+`spells.md`, `feats.md`, `invocations.md` and `magic_items.md` are listed in
+`.gitignore`: keep them locally and copy them to the server yourself (for example
+`scp rules/content/magic_items.md vps:/var/www/grimbold-bot/rules/content/`).
 Add other book-text files to `.gitignore` the same way.
 
 A committed `<category>.fallback.md` (e.g. `spells.fallback.md`) holds short
@@ -77,3 +79,33 @@ If you use Reckless Attack while your Rage is active...
 ```
 
 Class and subclass features use `### Level N: Feature Name` headings, the same as the book.
+
+### Magic item example (the format of magic_items.md)
+
+```markdown
+# Wand of Magic Missiles
+
+- **Type**: Wand
+- **Rarity**: Uncommon
+- **Attunement**: None
+- **Source**: Dungeon Master's Guide 2024
+
+### Description
+
+This wand has 7 charges...
+
+**Regaining Charges**. The wand regains 1d6 + 1 expended charges daily at dawn.
+
+---
+```
+
+- `Type` is the kind of item, optionally with the base item in parentheses
+  (`Weapon (Longsword)`). Items in several versions list them in `Type` and `Rarity`:
+  `Weapon (Any Simple or Martial), Uncommon (+1), Rare (+2)` with `Or Very Rare (+3)`.
+- "Rarity Varies" items get their versions from `VARIANT_TABLES` in `rules/magicItems.js`.
+- `Requires Attunement by a Wizard` (or a list of classes, "a Spellcaster", "a Dwarf")
+  is enforced when attuning.
+- "has N charges" and "regains X expended charges daily at dawn" are tracked;
+  dawn happens with the Long Rest.
+- Image lines (`![...](...)`) are ignored. Tables copied from web pages lose their
+  column breaks; they still show, just run together.

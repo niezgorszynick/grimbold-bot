@@ -30,6 +30,7 @@ const { getClass, SUBCLASS_SPELLCASTING } = require('./classes');
 const { getSpellSlots } = require('./spellcasting');
 const { getSpellCatalog, findSpell, spellListName } = require('./spells');
 const { collectCharacterFeats, featName, featGrants } = require('./feats');
+const { effectiveAbilityScore, magicItemEffects } = require('./magicItems');
 const {
   INVOCATIONS, INVOCATION_NAMES, invocationLimit, readInvocations, eligibleCantrips,
   invocationIneligibility, validateInvocations
@@ -69,10 +70,9 @@ function readSpellcasting(sheetData) {
   return { ...emptyState(), ...stored };
 }
 
+// Includes magic items such as a Headband of Intellect.
 function scoreOf(sheetData, ability) {
-  const value = ((sheetData || {}).abilities || {})[ability];
-  const score = value && typeof value === 'object' ? (value.score ?? value.total) : value;
-  return Number.isInteger(score) ? score : 10;
+  return effectiveAbilityScore(sheetData, ability);
 }
 
 // Highest spell level a class can prepare: its own table at its own level.
@@ -124,6 +124,7 @@ function getSpellSources(character) {
     const mod = abilityModifier(scoreOf(sheetData, ability));
     return { ability, saveDc: 8 + pb + mod, attackBonus: pb + mod };
   };
+  const itemEffects = magicItemEffects(sheetData);
 
   for (const feat of collectCharacterFeats(sheetData)) {
     const name = featName(feat);
@@ -216,6 +217,13 @@ function getSpellSources(character) {
       alwaysPrepared: data.spells.filter(([level]) => totalLevel >= level).map(([, spell]) => spell),
       freeUses: data.freeUses === 'proficiency' ? pb : 1
     });
+  }
+  // Magic items: e.g. Robe of the Archmagi for every source, Rod of the Pact
+  // Keeper for Warlock spells only.
+  for (const source of sources) {
+    const own = (source.kind === 'class' && itemEffects.classBonuses[source.key]) || { spellAttack: 0, spellDc: 0 };
+    source.saveDc += itemEffects.spellDc + own.spellDc;
+    source.attackBonus += itemEffects.spellAttack + own.spellAttack;
   }
   return sources;
 }

@@ -19,7 +19,7 @@ const RULES_KEYS = [
   'levelHistory', 'classFeatures', 'pendingChoices', 'inventory', 'languages',
   'toolProficiencies', 'weaponProficiencies', 'armorTraining', 'startingEquipment',
   'generationMethod', 'baseScores', 'backgroundBonuses', 'hpMax', 'hpBreakdown',
-  'hitDice', 'spellSlots', 'spellcasting'
+  'hitDice', 'spellSlots', 'spellcasting', 'magicItems'
 ];
 
 // For characters built by the rules engine these come from creation and
