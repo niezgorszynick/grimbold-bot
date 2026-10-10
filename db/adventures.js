@@ -26,6 +26,10 @@ module.exports = {
       if (!oldAdv) {
         throw new Error(`Adventure #${advId} not found.`);
       }
+      // Running adventures award XP when they are finished, not here.
+      if (oldAdv.status && oldAdv.status !== 'completed') {
+        throw new Error('This adventure is still running: finish it from its adventure table.');
+      }
 
       const oldXp = oldAdv.xp_awarded || 0;
       const diffXp = newXp - oldXp;
@@ -132,7 +136,8 @@ module.exports = {
     SELECT a.*, p.discord_tag AS dm_name 
     FROM adventures a
     LEFT JOIN players p ON a.dm_player_id = p.id
-    ORDER BY a.created_at DESC
+    WHERE a.status = 'completed'
+    ORDER BY COALESCE(a.completed_at, a.created_at) DESC
   `).all(),
 recordAdventure: ({ title, description, xp_awarded, dm_player_id, dm_character_id, character_ids }) => {
     const run = db.transaction(() => {

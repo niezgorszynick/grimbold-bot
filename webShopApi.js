@@ -369,6 +369,56 @@ router.post('/characters/:id/combat', (req, res) => {
   }
 });
 
+// ─── Adventure table (running adventures) ───────────────────────────────────
+
+function adventureErrorStatus(message) {
+  if (message === 'Forbidden.') return 403;
+  if (message === 'Adventure not found.' || message === 'Character not found.') return 404;
+  return 400;
+}
+
+function adventureRoute(handler) {
+  return (req, res) => {
+    const user = getSessionApiUser(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    try {
+      return res.json(handler({ adventureId: Number(req.params.id), user, body }));
+    } catch (error) {
+      if (error instanceof TypeError) {
+        console.error('Adventure action failed:', error);
+        return res.status(500).json({ error: 'Could not update the adventure.' });
+      }
+      return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+    }
+  };
+}
+
+router.get('/adventures/:id/table', adventureRoute(({ adventureId, user }) => db.getAdventureTable({ adventureId, user })));
+
+// { characterId, inParty }
+router.post('/adventures/:id/party', adventureRoute(({ adventureId, user, body }) =>
+  db.setPartyMember({ adventureId, user, characterId: body.characterId, inParty: Boolean(body.inParty) })));
+
+// Grimbrandt tags the Discord thread and has his say (in the background).
+function announceAdventureEnd(adventureId) {
+  require('./adventureThreads').announceAdventureEnd(adventureId)
+    .catch(error => console.error('[ERROR] Announcing the end of an adventure:', error));
+}
+
+// { xp, dmCharacterId, notes, title }
+router.post('/adventures/:id/finish', adventureRoute(({ adventureId, user, body }) => {
+  const result = db.finishAdventure({ adventureId, user, xp: body.xp, dmCharacterId: body.dmCharacterId || null, notes: body.notes, title: body.title });
+  announceAdventureEnd(adventureId);
+  return result;
+}));
+
+router.post('/adventures/:id/cancel', adventureRoute(({ adventureId, user }) => {
+  db.cancelAdventure({ adventureId, user });
+  announceAdventureEnd(adventureId);
+  return { cancelled: true };
+}));
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);

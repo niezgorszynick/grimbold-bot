@@ -5,9 +5,59 @@
 const db = require('../../db');
 const { escapeHtml } = require('../helpers');
 
+// The live table of one adventure's party (filled in by adventure-table.js).
+function renderAdventureTable(adventureId, isAdmin) {
+  return `
+    <div class="adventure-table-page">
+      <a href="/admin?tab=adventures" class="btn btn-small btn-secondary">← All adventures</a>
+      <section id="adventure-table" data-adventure-id="${adventureId}" data-is-admin="${isAdmin ? 'true' : 'false'}" aria-live="polite">Loading adventure…</section>
+      <script src="/admin/assets/adventure-table.js" defer></script>
+    </div>`;
+}
+
+// Adventures that are running, from Discord threads or started by hand.
+function renderActiveAdventures({ isAdmin, currentUser, allPlayers }) {
+  const active = isAdmin ? db.getActiveAdventures() : db.getAdventuresForUser(currentUser);
+  if (!isAdmin && !active.length) return '';
+  const date = text => escapeHtml(String(text || '').slice(0, 16));
+  return `
+    <div class="card">
+      <div class="roster-heading">
+        <h3>Active Adventures (${active.length})</h3>
+        <p class="muted small">Grimbrandt writes every new thread in ❗┆zlecenia into his chronicle. Its DM puts the party together here and finishes the adventure to award XP; the thread is then marked [ZAMKNIĘTE].</p>
+      </div>
+      ${active.length ? `
+        <table class="roster-table">
+          <thead><tr><th>Adventure</th><th>DM</th><th>Started</th><th>Party</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody>
+            ${active.map(adventure => `
+              <tr>
+                <td><a class="roster-name" href="/admin?tab=adventures&table=${adventure.id}">${escapeHtml(adventure.title)}</a>
+                  ${adventure.thread_url ? ` <a class="muted small" href="${escapeHtml(adventure.thread_url)}" target="_blank" rel="noopener">Discord thread ↗</a>` : ''}</td>
+                <td>${adventure.dm_name ? escapeHtml(adventure.dm_name) : '<span class="muted">Unknown — not linked to a player</span>'}</td>
+                <td>${date(adventure.created_at)}</td>
+                <td>${adventure.party_size}</td>
+                <td class="roster-actions"><a class="btn btn-small btn-gold" href="/admin?tab=adventures&table=${adventure.id}">Open table</a></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>` : '<p class="muted">No adventures running right now.</p>'}
+      ${isAdmin ? `
+        <form method="POST" action="/admin/adventures/start" class="table-filter adventure-start">
+          <input type="text" name="title" maxlength="200" placeholder="Start an adventure by hand: title…" required aria-label="Adventure title">
+          <select name="dm_player_id" aria-label="Dungeon Master">
+            <option value="">-- DM --</option>
+            ${allPlayers.map(player => `<option value="${player.id}">${escapeHtml(player.discord_tag)}</option>`).join('')}
+          </select>
+          <button type="submit" class="btn btn-small btn-green">Start adventure</button>
+        </form>` : ''}
+    </div>`;
+}
+
 module.exports = function renderAdventuresTab(ctx) {
-  const { req, isAdmin } = ctx;
+  const { req, isAdmin, currentUser } = ctx;
   let contentHtml = '';
+  const tableId = Number.parseInt(req.query.table, 10);
+  if (Number.isSafeInteger(tableId) && tableId > 0) return renderAdventureTable(tableId, isAdmin);
   const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
   const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
   const editAdvId = isAdmin && req.query.edit_adv ? Number(req.query.edit_adv) : null;
@@ -73,6 +123,7 @@ module.exports = function renderAdventuresTab(ctx) {
   const adventureFormAction = editingAdventure ? '/admin/adventures/edit' : '/admin/adventures/add';
 
   contentHtml = `
+    ${renderActiveAdventures({ isAdmin, currentUser, allPlayers })}
     <div class="adventure-layout" style="${isAdmin ? '' : 'grid-template-columns: minmax(0, 1fr);'}">
       
       ${isAdmin ? `

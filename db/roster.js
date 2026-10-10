@@ -1,11 +1,14 @@
-// db/roster.js — The campaign roster for DMs: every character with the
-// numbers a DM looks up during play (HP, AC, Passive Perception, spell DC).
+// db/roster.js — Character snapshots for DMs: the campaign roster (every
+// character) and the adventure table (the party of one adventure), with the
+// numbers looked up during play.
 
 'use strict';
 
 const { db } = require('./connection');
 const rules = require('../rules');
 const { buildCharacterCombat } = require('./combat');
+
+const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
 function readSheet(raw) {
   try {
@@ -16,7 +19,7 @@ function readSheet(raw) {
   }
 }
 
-// Each part on its own, so one odd sheet never hides the whole roster.
+// Each part on its own, so one odd sheet never hides the whole list.
 function attempt(fn) {
   try {
     return fn();
@@ -25,69 +28,103 @@ function attempt(fn) {
   }
 }
 
-function passivePerception(sheetData) {
-  const wis = rules.abilityModifier(rules.effectiveAbilityScore(sheetData, 'wis'));
+function classRowsBy() {
+  const rows = db.prepare('SELECT * FROM character_classes ORDER BY character_id, id').all();
+  const byCharacter = new Map();
+  for (const row of rows) {
+    if (!byCharacter.has(row.character_id)) byCharacter.set(row.character_id, []);
+    byCharacter.get(row.character_id).push({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level });
+  }
+  return byCharacter;
+}
+
+// character: a characters row with player_tag. detail: also slots, saves, etc.
+function snapshot(character, storedClasses, { detail = false } = {}) {
+  const sheetData = readSheet(character.sheet_data);
+  const classes = storedClasses.length
+    ? storedClasses
+    : [{ className: character.class, subclassName: character.subclass || null, level: character.level }];
+  const appliedLevel = classes.reduce((sum, row) => sum + row.level, 0);
+  const totalLevel = storedClasses.length ? appliedLevel : character.level;
+  const pb = rules.proficiencyBonus(Math.max(1, totalLevel));
+  const mod = ability => rules.abilityModifier(rules.effectiveAbilityScore(sheetData, ability));
+
+  const vitals = attempt(() => {
+    const context = rules.deriveVitalsContext({ species: character.race, sheetData, classRows: classes });
+    const view = rules.buildVitalsView(rules.normalizeVitals(sheetData, context.hpMax), context);
+    return { context, view };
+  });
+  const combat = attempt(() => buildCharacterCombat(character, sheetData));
   const skills = Array.isArray(sheetData.skillProficiencies) ? sheetData.skillProficiencies : [];
   const expertise = Array.isArray(sheetData.expertise) ? sheetData.expertise : [];
-  return { wis, proficient: skills.includes('Perception'), expert: expertise.includes('Perception') };
+  const spellSources = attempt(() => rules.getSpellSources({ classes, species: character.race, sheetData })
+    .filter(source => source.kind === 'class')) || [];
+
+  const row = {
+    id: character.id,
+    name: character.name,
+    species: character.race,
+    playerId: character.player_id,
+    player: character.player_tag,
+    status: character.status,
+    xp: character.xp,
+    goldCp: character.gold_cp,
+    level: totalLevel,
+    pendingLevels: character.status === 'alive' && storedClasses.length ? Math.max(0, character.level - appliedLevel) : 0,
+    classes,
+    hp: vitals ? {
+      current: vitals.view.hpCurrent,
+      max: vitals.view.hpMax,
+      temp: vitals.view.hpTemp,
+      stable: vitals.view.stable,
+      deathSaves: vitals.view.deathSaves
+    } : null,
+    armorClass: combat ? combat.armorClass.value : (Number.isInteger(sheetData.armorClass) ? sheetData.armorClass : null),
+    passivePerception: attempt(() => 10 + mod('wis') + (skills.includes('Perception') ? pb : 0) + (expertise.includes('Perception') ? pb : 0)),
+    spellDc: spellSources.length ? Math.max(...spellSources.map(source => source.saveDc)) : null
+  };
+  if (!detail) return row;
+
+  const feats = attempt(() => rules.collectCharacterFeats(sheetData).map(rules.featName)) || [];
+  const saveBonus = attempt(() => rules.magicItemEffects(sheetData).saves) || 0;
+  const saves = Array.isArray(sheetData.savingProficiencies) ? sheetData.savingProficiencies : [];
+  const concentration = sheetData.spellcasting && sheetData.spellcasting.concentration;
+  return {
+    ...row,
+    initiative: attempt(() => mod('dex') + (feats.includes('Alert') ? pb : 0)),
+    speed: typeof sheetData.speed === 'string' && sheetData.speed.trim() ? sheetData.speed : '30 ft.',
+    proficiencyBonus: pb,
+    saves: attempt(() => Object.fromEntries(ABILITIES.map(ability => [ability, mod(ability) + (saves.includes(ability) ? pb : 0) + saveBonus]))),
+    spellcasting: spellSources.map(source => ({ label: source.label, ability: source.ability, saveDc: source.saveDc, attackBonus: source.attackBonus })),
+    spellSlots: vitals ? vitals.view.spellSlots.filter(slot => slot.total > 0) : [],
+    pact: vitals ? vitals.view.pact : null,
+    hitDice: vitals ? vitals.view.hitDice : [],
+    exhaustion: vitals ? vitals.view.exhaustion : 0,
+    concentration: concentration ? concentration.spell : null,
+    attacks: combat ? combat.attacks.filter(attack => !attack.needsType).slice(0, 4)
+      .map(attack => ({ name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage })) : []
+  };
 }
+
+const CHARACTER_QUERY = `
+  SELECT c.*, p.discord_tag AS player_tag
+  FROM characters c JOIN players p ON p.id = c.player_id
+`;
 
 function getCampaignRoster() {
-  const characters = db.prepare(`
-    SELECT c.*, p.discord_tag AS player_tag
-    FROM characters c JOIN players p ON p.id = c.player_id
-    ORDER BY p.discord_tag COLLATE NOCASE, c.name COLLATE NOCASE
-  `).all();
-  const classRows = db.prepare('SELECT * FROM character_classes ORDER BY character_id, id').all();
-  const classesBy = new Map();
-  for (const row of classRows) {
-    if (!classesBy.has(row.character_id)) classesBy.set(row.character_id, []);
-    classesBy.get(row.character_id).push({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level });
-  }
-
-  return characters.map(character => {
-    const sheetData = readSheet(character.sheet_data);
-    const stored = classesBy.get(character.id) || [];
-    const classes = stored.length
-      ? stored
-      : [{ className: character.class, subclassName: character.subclass || null, level: character.level }];
-    const appliedLevel = classes.reduce((sum, row) => sum + row.level, 0);
-    const totalLevel = stored.length ? appliedLevel : character.level;
-    const pb = rules.proficiencyBonus(Math.max(1, totalLevel));
-
-    const vitals = attempt(() => {
-      const context = rules.deriveVitalsContext({ species: character.race, sheetData, classRows: classes });
-      const current = rules.normalizeVitals(sheetData, context.hpMax);
-      return { current: current.hpCurrent, max: context.hpMax, temp: current.hpTemp, stable: current.stable };
-    });
-    const combat = attempt(() => buildCharacterCombat(character, sheetData));
-    const perception = attempt(() => passivePerception(sheetData));
-    const spellDc = attempt(() => {
-      const dcs = rules.getSpellSources({ classes, species: character.race, sheetData })
-        .filter(source => source.kind === 'class').map(source => source.saveDc);
-      return dcs.length ? Math.max(...dcs) : null;
-    });
-
-    return {
-      id: character.id,
-      name: character.name,
-      species: character.race,
-      playerId: character.player_id,
-      player: character.player_tag,
-      status: character.status,
-      xp: character.xp,
-      goldCp: character.gold_cp,
-      level: totalLevel,
-      pendingLevels: character.status === 'alive' && stored.length ? Math.max(0, character.level - appliedLevel) : 0,
-      classes,
-      hp: vitals,
-      armorClass: combat ? combat.armorClass.value : (Number.isInteger(sheetData.armorClass) ? sheetData.armorClass : null),
-      passivePerception: perception
-        ? 10 + perception.wis + (perception.proficient ? pb : 0) + (perception.expert ? pb : 0)
-        : null,
-      spellDc
-    };
-  });
+  const characters = db.prepare(`${CHARACTER_QUERY} ORDER BY p.discord_tag COLLATE NOCASE, c.name COLLATE NOCASE`).all();
+  const classes = classRowsBy();
+  return characters.map(character => snapshot(character, classes.get(character.id) || []));
 }
 
-module.exports = { getCampaignRoster };
+// Detailed snapshots of the given characters, in the order given.
+function getCharacterSnapshots(characterIds) {
+  const ids = [...new Set(characterIds.map(Number))].filter(Number.isSafeInteger);
+  if (!ids.length) return [];
+  const rows = db.prepare(`${CHARACTER_QUERY} WHERE c.id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  const byId = new Map(rows.map(row => [row.id, row]));
+  const classes = classRowsBy();
+  return ids.filter(id => byId.has(id)).map(id => snapshot(byId.get(id), classes.get(id) || [], { detail: true }));
+}
+
+module.exports = { getCampaignRoster, getCharacterSnapshots };

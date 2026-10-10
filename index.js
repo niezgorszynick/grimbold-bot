@@ -125,6 +125,9 @@ const client = new Client({
 
 client.commands = new Collection();
 
+// New threads in the adventures channel open adventures in the panel.
+require('./adventureThreads').registerAdventureThreads(client);
+
 // ─── Load all commands from /commands folder ──────────────────────────────────
 
 const commandsDir   = path.join(__dirname, 'commands');

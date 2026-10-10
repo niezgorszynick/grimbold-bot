@@ -237,6 +237,33 @@ const MIGRATIONS = [
         db.exec('ALTER TABLE sales ADD COLUMN character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL;');
       }
     }
+  },
+  {
+    version: 4,
+    name: 'Active adventures from Discord threads, with their party',
+    up(db) {
+      // Adventures recorded so far were entered after the session: completed.
+      const advCols = db.prepare('PRAGMA table_info(adventures)').all().map(c => c.name);
+      if (!advCols.includes('status')) {
+        db.exec("ALTER TABLE adventures ADD COLUMN status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('active', 'completed', 'cancelled'));");
+      }
+      if (!advCols.includes('discord_thread_id')) db.exec('ALTER TABLE adventures ADD COLUMN discord_thread_id TEXT;');
+      if (!advCols.includes('discord_guild_id')) db.exec('ALTER TABLE adventures ADD COLUMN discord_guild_id TEXT;');
+      if (!advCols.includes('completed_at')) db.exec('ALTER TABLE adventures ADD COLUMN completed_at DATETIME;');
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS adventures_discord_thread ON adventures (discord_thread_id)
+          WHERE discord_thread_id IS NOT NULL;
+
+        -- Characters taking part in an adventure that is still running. XP is
+        -- only awarded (in adventure_rewards) when the adventure is finished.
+        CREATE TABLE IF NOT EXISTS adventure_party (
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (adventure_id, character_id)
+        );
+      `);
+    }
   }
 ];
 

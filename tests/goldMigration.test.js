@@ -26,7 +26,8 @@ test('gold_gp values are converted to gold_cp on startup', () => {
     if (file === path.resolve(__dirname, '../db.js') || file.startsWith(path.resolve(__dirname, '../db') + path.sep)) delete require.cache[file];
   }
   const db = require('../db');
-  assert.equal(db.db.pragma('user_version', { simple: true }), 3);
+  const { MIGRATIONS } = require('../db/migrations');
+  assert.equal(db.db.pragma('user_version', { simple: true }), MIGRATIONS[MIGRATIONS.length - 1].version);
   const rows = db.prepare('SELECT name, gold_cp, gold_gp FROM characters ORDER BY name').all();
   assert.deepEqual(rows.map(row => [row.name, row.gold_cp]), [['Broke', 0], ['Old Timer', 1237]]);
 

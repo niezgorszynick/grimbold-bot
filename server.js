@@ -51,7 +51,8 @@ const ADMIN_ASSETS = {
   'character-spells.js': path.join(__dirname, 'public', 'character-spells.js'),
   'character-magic-items.js': path.join(__dirname, 'public', 'character-magic-items.js'),
   'character-inventory.js': path.join(__dirname, 'public', 'character-inventory.js'),
-  'character-combat.js': path.join(__dirname, 'public', 'character-combat.js')
+  'character-combat.js': path.join(__dirname, 'public', 'character-combat.js'),
+  'adventure-table.js': path.join(__dirname, 'public', 'adventure-table.js')
 };
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
@@ -199,6 +200,16 @@ router.post('/items/update', (req, res) => {
 });
 
 // ─── POST ENDPOINTS: CATALOG ────────────────────────────────────────────────
+
+// POST /admin/adventures/start — open an adventure by hand (no Discord thread)
+router.post('/adventures/start', (req, res) => {
+  try {
+    const id = db.startAdventure({ title: req.body.title, dmPlayerId: req.body.dm_player_id || null });
+    res.redirect(`/admin?tab=adventures&table=${id}`);
+  } catch (err) {
+    res.redirect(`/admin?tab=adventures&err=${encodeURIComponent(err.message)}`);
+  }
+});
 
 // POST /admin/catalog/add — add a catalog item (price in gp/sp/cp)
 router.post('/catalog/add', (req, res) => {
