@@ -49,6 +49,8 @@ module.exports = {
       const userTag = interaction.user.tag || interaction.user.username;
       setUserRoll(interaction.user.id, userTag, roll);
       const modifier = getDiscount(roll);
+      // Natural 1s and 20s also go to the nat-rolls channel, in the background.
+      require('../naturalRolls').announceWeeklyRoll(roll, userTag);
 
       const isNat20 = roll === 20;
       const isNat1  = roll === 1;

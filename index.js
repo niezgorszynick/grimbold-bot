@@ -131,6 +131,8 @@ client.commands = new Collection();
 require('./adventureThreads').registerAdventureThreads(client);
 // Grimbold's notes (purchases, purse changes) in each character's thread.
 require('./characterThreads').setCharacterThreadsClient(client);
+// Natural 1s and 20s from every source, in one channel (NAT_ROLLS_CHANNEL_ID).
+require('./naturalRolls').setNaturalRollsClient(client);
 
 // ─── Load all commands from /commands folder ──────────────────────────────────
 

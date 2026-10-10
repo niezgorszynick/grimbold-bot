@@ -383,7 +383,10 @@ router.post('/characters/:id/roll', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
-    return res.json(db.rollForCharacter({ characterId: req.params.id, user, request: body }));
+    const roll = db.rollForCharacter({ characterId: req.params.id, user, request: body });
+    // Natural 1s and 20s also go to the nat-rolls channel, in the background.
+    require('./naturalRolls').announcePanelRoll(roll);
+    return res.json(roll);
   } catch (error) {
     if (error instanceof TypeError) {
       console.error('Roll failed:', error);
