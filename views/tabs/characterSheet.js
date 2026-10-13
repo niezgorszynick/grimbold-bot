@@ -160,7 +160,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
               <section class="sheet-card">
                 <h4>Hit Points &amp; Vitality</h4>
-                <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}"${isAdmin ? ' data-dm="1"' : ''} aria-live="polite">Loading hit points...</div>
+                <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
                 <script src="/admin/assets/character-vitals.js" defer></script>
               </section>
               <section class="sheet-card">

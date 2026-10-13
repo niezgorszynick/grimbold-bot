@@ -126,6 +126,61 @@
     return parts.length ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Slots' }), ...parts]) : null;
   }
 
+  // DM: damage, healing and temporary HP for a party member, through the same
+  // route as the character sheet (so the sheet shows it too).
+  const HP_EVENTS = {
+    droppedToZero: 'drops to 0 HP: unconscious and dying.',
+    instantDeath: 'dies outright from massive damage.',
+    dead: 'has died.',
+    revived: 'is back on their feet.'
+  };
+  async function changeHp(member, action, params) {
+    try {
+      const response = await fetch('/api/characters/' + member.id + '/vitals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action }, params))
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not change Hit Points.');
+      const verb = { damage: 'takes ' + params.amount + ' damage', heal: 'heals ' + params.amount + ' HP', tempHp: 'gains ' + params.amount + ' temporary HP' }[action];
+      const parts = [member.name + ' ' + verb + ': ' + result.vitals.hpCurrent + ' / ' + result.vitals.hpMax + ' HP.'];
+      (result.events || []).forEach(event => { if (HP_EVENTS[event]) parts.push(member.name + ' ' + HP_EVENTS[event]); });
+      if (result.concentration) {
+        parts.push(result.concentration.ended
+          ? 'Concentration on ' + result.concentration.spell + ' ended.'
+          : 'Concentration check for ' + result.concentration.spell + ': Constitution save DC ' + result.concentration.dc + '.');
+      }
+      message = parts.join(' ');
+      isError = false;
+    } catch (error) {
+      message = member.name + ': ' + error.message;
+      isError = true;
+    }
+    await load();
+  }
+
+  function hpActions(member) {
+    const amount = el('input', { type: 'number', min: '1', max: '10000', inputmode: 'numeric', placeholder: 'HP', 'aria-label': 'Amount for ' + member.name });
+    const read = () => {
+      const value = Number(amount.value);
+      if (Number.isInteger(value) && value > 0) return value;
+      message = 'Enter a positive whole number for ' + member.name + ' first.';
+      isError = true;
+      render();
+      return null;
+    };
+    amount.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { const value = read(); if (value !== null) changeHp(member, 'damage', { amount: value }); }
+    });
+    return el('div', { className: 'party-hp-actions' }, [
+      amount,
+      button('Damage', () => { const value = read(); if (value !== null) changeHp(member, 'damage', { amount: value }); }, 'btn btn-small btn-red'),
+      button('Heal', () => { const value = read(); if (value !== null) changeHp(member, 'heal', { amount: value }); }, 'btn btn-small btn-green'),
+      button('Temp HP', () => { const value = read(); if (value !== null) changeHp(member, 'tempHp', { amount: value }); })
+    ]);
+  }
+
   function memberCard(member) {
     const classes = member.classes.map(row => row.className + ' ' + row.level + (row.subclassName ? ' (' + row.subclassName + ')' : '')).join(' / ');
     const flags = [];
@@ -147,6 +202,7 @@
         remove
       ]),
       hpBlock(member.hp),
+      data.canManage && data.adventure.status === 'active' && member.hp && member.status === 'alive' ? hpActions(member) : null,
       el('div', { className: 'party-stats' }, [
         stat('AC', member.armorClass, 'Armor Class'),
         stat('Init', signed(member.initiative), 'Initiative', 'initiative'),
@@ -292,6 +348,8 @@
   load();
   // Live updates while the adventure runs and the page is visible.
   setInterval(() => {
-    if (document.visibilityState === 'visible' && data && data.adventure.status === 'active') load();
+    // Not while the DM is typing (e.g. a damage amount): a refresh rebuilds the cards.
+    const typing = root.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+    if (document.visibilityState === 'visible' && data && data.adventure.status === 'active' && !typing) load();
   }, REFRESH_MS);
 })();

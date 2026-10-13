@@ -508,6 +508,9 @@ router.post('/adventures/:id/cancel', adventureRoute(({ adventureId, user }) => 
   return { cancelled: true };
 }));
 
+// What an adventure's DM may do to a party member's Hit Points.
+const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'deathSave', 'stabilize'];
+
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
   const user = getSessionApiUser(req);
@@ -525,8 +528,12 @@ router.post('/characters/:id/vitals', (req, res) => {
     const result = db.transaction(() => {
       const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
       if (!character) return { status: 404, error: 'Character not found.' };
-      if (!isAdmin(user) && character.player_id !== user.id) return { status: 403, error: 'Forbidden.' };
-      if (body.action === 'setMaxHp' && !isAdmin(user)) return { status: 403, error: 'Only the DM can set max HP.' };
+      // The owner and admins; the DM of a running adventure with this character
+      // in the party can change Hit Points from the adventure table.
+      const ownsOrAdmin = isAdmin(user) || character.player_id === user.id;
+      if (!ownsOrAdmin && !(DM_VITALS_ACTIONS.includes(body.action) && db.canRollFor(character, user))) {
+        return { status: 403, error: 'Forbidden.' };
+      }
 
       let sheetData = {};
       try {

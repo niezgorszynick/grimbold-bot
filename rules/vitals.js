@@ -225,16 +225,29 @@ function setMaxHpBonus(vitals, bonus) {
   return { vitals: { ...vitals, hpMaxBonus: value }, events: [] };
 }
 
-// The DM sets the HP maximum outright; it is stored as the adjustment from the
-// rules value. A higher maximum raises current HP by the same amount.
-function setMaxHp(vitals, total, context) {
-  const value = Number(total);
-  if (!Number.isInteger(value) || value < 1 || value > 5000) {
-    throw new Error('Max HP must be a whole number from 1 to 5000.');
-  }
+// Sets current and/or max HP outright (e.g. Aid raises both). The maximum is
+// stored as the adjustment from the rules value. Without a new current HP, a
+// higher maximum raises current HP by the same amount.
+function setHp(vitals, { current, max }, context) {
+  let next = { ...vitals };
   const oldMax = Math.max(1, context.baseHpMax + vitals.hpMaxBonus);
-  const gain = Math.max(0, value - oldMax);
-  return { vitals: { ...vitals, hpMaxBonus: value - context.baseHpMax, hpCurrent: vitals.hpCurrent + gain }, events: [] };
+  let hpMax = oldMax;
+  if (max !== undefined && max !== null && max !== '') {
+    const value = Number(max);
+    if (!Number.isInteger(value) || value < 1 || value > 5000) throw new Error('Max HP must be a whole number from 1 to 5000.');
+    hpMax = value;
+    next.hpMaxBonus = value - context.baseHpMax;
+    if (current === undefined || current === null || current === '') next.hpCurrent += Math.max(0, value - oldMax);
+  }
+  if (current !== undefined && current !== null && current !== '') {
+    const value = Number(current);
+    if (!Number.isInteger(value) || value < 0) throw new Error('Current HP must be a whole number of at least 0.');
+    if (value > hpMax) throw new Error(`Current HP can't be above the maximum (${hpMax}).`);
+    const wasDown = vitals.hpCurrent === 0;
+    next.hpCurrent = value;
+    if (wasDown && value > 0) return { vitals: resetDying(next), events: ['revived'] };
+  }
+  return { vitals: next, events: [] };
 }
 
 // ─── Character-level helpers ────────────────────────────────────────────────
@@ -275,8 +288,7 @@ const ACTIONS = {
   spendSlot: (vitals, params, context) => changeSlot(vitals, params.level, 1, context),
   restoreSlot: (vitals, params, context) => changeSlot(vitals, params.level, -1, context),
   maxHpBonus: (vitals, params) => setMaxHpBonus(vitals, params.bonus),
-  // DM only (checked by the route).
-  setMaxHp: (vitals, params, context) => setMaxHp(vitals, params.total, context)
+  setHp: (vitals, params, context) => setHp(vitals, params, context)
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
 

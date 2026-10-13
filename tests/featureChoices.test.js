@@ -116,12 +116,12 @@ test('characters made before these choices can make them on the sheet', () => {
 test('the DM sets max HP outright; it is kept as an adjustment to the rules value', () => {
   const context = { baseHpMax: 24 };
   const vitals = rules.normalizeVitals({ hpCurrent: 20, hpMaxBonus: 0 }, 24);
-  const raised = rules.applyVitalsAction(vitals, 'setMaxHp', { total: 30 }, context);
+  const raised = rules.applyVitalsAction(vitals, 'setHp', { max: 30 }, context);
   assert.equal(raised.hpMax, 30);
   assert.equal(raised.vitals.hpMaxBonus, 6);
   assert.equal(raised.vitals.hpCurrent, 26, 'current HP rises with the maximum');
-  const lowered = rules.applyVitalsAction(raised.vitals, 'setMaxHp', { total: 18 }, context);
+  const lowered = rules.applyVitalsAction(raised.vitals, 'setHp', { max: 18 }, context);
   assert.equal(lowered.hpMax, 18);
   assert.equal(lowered.vitals.hpCurrent, 18, 'and is capped when it falls');
-  assert.throws(() => rules.applyVitalsAction(vitals, 'setMaxHp', { total: 0 }, context), /1 to 5000/);
+  assert.throws(() => rules.applyVitalsAction(vitals, 'setHp', { max: 0 }, context), /1 to 5000/);
 });

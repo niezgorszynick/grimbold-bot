@@ -518,5 +518,13 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .feature-selects { display: flex; flex-wrap: wrap; gap: 8px; }
 .feature-selects select { min-width: 180px; }
 .feature-choices-card { border: 1px solid #d4af37; }
-.vitals-dm-max input { width: 90px; margin-left: 6px; }
+/* Click the HP numbers to set current and max HP. */
+.vitals-hp-edit { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.vitals-hp-pencil { margin-left: 4px; font-size: 14px; color: #949ba4; opacity: 0.5; }
+.vitals-hp-edit:hover .vitals-hp-pencil, .vitals-hp-edit:focus-visible .vitals-hp-pencil { opacity: 1; }
+.vitals-hp-editor { align-items: center; flex-wrap: wrap; }
+.vitals-hp-editor input { width: 80px; font-size: 18px; }
+/* Damage and healing on the adventure table (DM). */
+.party-hp-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.party-hp-actions input { width: 70px; }
 .sheet-check-row.has-expertise > span::after { content: ' ★'; color: #f1c40f; }

@@ -6,8 +6,6 @@
   const root = document.getElementById('cs_vitals');
   if (!root) return;
   const characterId = Number(root.dataset.characterId);
-  // Admins can set the HP maximum directly (the server checks too).
-  const isDm = root.dataset.dm === '1';
 
   const EVENT_MESSAGES = {
     droppedToZero: 'Dropped to 0 Hit Points: unconscious and dying.',
@@ -44,6 +42,7 @@
   let busy = false;
   let lastMessage = '';
   let lastIsError = false;
+  let editingHp = false;
 
   async function send(action, params) {
     if (busy) return;
@@ -103,21 +102,44 @@
     return value;
   }
 
-  // DM only: type the HP maximum outright (stored as the adjustment from the rules value).
-  function renderDmMaxHp() {
-    const total = el('input', { type: 'number', min: '1', max: '5000', value: String(vitals.hpMax), 'aria-label': 'Max HP' });
-    return el('div', { className: 'vitals-actions vitals-dm-max' }, [
-      el('label', { className: 'vitals-inline' }, [el('strong', { text: 'DM: Max HP ' }), total]),
-      button('Set max HP', () => {
-        const value = Number(total.value);
-        if (!Number.isInteger(value) || value < 1) {
-          lastMessage = 'Max HP must be a whole number of at least 1.';
-          lastIsError = true;
-          render();
-          return;
-        }
-        send('setMaxHp', { total: value });
-      })
+  // Clicking the HP numbers opens this: set current and max HP directly
+  // (e.g. the Aid spell raises both). Max is stored as an adjustment to the rules value.
+  function renderHpEditor() {
+    const current = el('input', { type: 'number', min: '0', max: '5000', value: String(vitals.hpCurrent), 'aria-label': 'Current HP' });
+    const max = el('input', { type: 'number', min: '1', max: '5000', value: String(vitals.hpMax), 'aria-label': 'Max HP' });
+    // Raising the maximum raises current HP too, unless current was typed in.
+    let currentTouched = false;
+    let lastMax = vitals.hpMax;
+    current.addEventListener('input', () => { currentTouched = true; });
+    max.addEventListener('input', () => {
+      const value = Number(max.value);
+      if (!currentTouched && Number.isInteger(value)) current.value = String(Math.max(0, Number(current.value) + value - lastMax));
+      if (Number.isInteger(value)) lastMax = value;
+    });
+    const save = () => {
+      const currentValue = Number(current.value);
+      const maxValue = Number(max.value);
+      if (!Number.isInteger(currentValue) || !Number.isInteger(maxValue) || currentValue < 0 || maxValue < 1) {
+        lastMessage = 'Enter whole numbers: current HP 0 or more, max HP 1 or more.';
+        lastIsError = true;
+        render();
+        return;
+      }
+      editingHp = false;
+      send('setHp', { current: currentValue, max: maxValue });
+    };
+    [current, max].forEach(input => input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') save();
+      if (event.key === 'Escape') { editingHp = false; render(); }
+    }));
+    setTimeout(() => current.focus(), 0);
+    return el('div', { className: 'vitals-hp-numbers vitals-hp-editor' }, [
+      current,
+      el('span', { className: 'muted', text: ' / ' }),
+      max,
+      el('span', { className: 'muted', text: ' HP ' }),
+      button('Save', save, 'btn btn-small btn-green'),
+      button('Cancel', () => { editingHp = false; render(); }, 'btn btn-small btn-secondary')
     ]);
   }
 
@@ -136,14 +158,21 @@
 
     const amount = amountInput();
     const critical = el('input', { type: 'checkbox' });
-    const bonusInput = el('input', { type: 'number', min: '-1000', max: '1000', value: String(vitals.hpMaxBonus), 'aria-label': 'Max HP adjustment' });
 
     return el('div', { className: 'vitals-hp ' + state }, [
-      el('div', { className: 'vitals-hp-numbers' }, [
-        el('strong', { className: 'vitals-hp-current', text: String(vitals.hpCurrent) }),
-        el('span', { className: 'muted', text: ' / ' + vitals.hpMax + ' HP' }),
-        vitals.hpTemp ? el('span', { className: 'vitals-temp', text: '+' + vitals.hpTemp + ' temp' }) : null
-      ]),
+      editingHp
+        ? renderHpEditor()
+        : el('button', {
+          type: 'button',
+          className: 'vitals-hp-numbers vitals-hp-edit',
+          title: 'Click to set current and max HP',
+          onclick: () => { editingHp = true; render(); }
+        }, [
+          el('strong', { className: 'vitals-hp-current', text: String(vitals.hpCurrent) }),
+          el('span', { className: 'muted', text: ' / ' + vitals.hpMax + ' HP' }),
+          vitals.hpTemp ? el('span', { className: 'vitals-temp', text: '+' + vitals.hpTemp + ' temp' }) : null,
+          el('span', { className: 'vitals-hp-pencil', 'aria-hidden': 'true', text: '✎' })
+        ]),
       el('div', { className: 'vitals-bar', role: 'presentation' }, el('span', { style: 'width:' + Math.max(0, Math.min(100, percent)) + '%' })),
       el('div', { className: 'vitals-actions' }, [
         amount,
@@ -153,18 +182,7 @@
         vitals.hpTemp ? button('Clear Temp', () => send('clearTempHp')) : null,
         el('label', { className: 'vitals-inline' }, [critical, ' Critical hit'])
       ]),
-      isDm ? renderDmMaxHp() : null,
-      el('details', { className: 'vitals-breakdown' }, [
-        el('summary', { text: 'Max HP: ' + breakdown }),
-        el('p', { className: 'muted small', text: 'Max HP follows the average-HP rule and updates with level and Constitution. Use an adjustment for effects such as the Aid spell.' }),
-        el('div', { className: 'vitals-actions' }, [
-          bonusInput,
-          button('Set adjustment', () => {
-            const value = Number(bonusInput.value);
-            if (Number.isInteger(value)) send('maxHpBonus', { bonus: value });
-          })
-        ])
-      ])
+      el('p', { className: 'muted small vitals-breakdown', title: 'Max HP follows the average-HP rule and updates with level and Constitution; click the HP to adjust it (e.g. Aid).' }, 'Max HP: ' + breakdown)
     ]);
   }
 
