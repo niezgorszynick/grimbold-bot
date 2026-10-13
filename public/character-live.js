@@ -4,8 +4,9 @@
 // refresh at once. The main form (name, ability scores, notes) isn't
 // reloaded, so nothing typed there is lost.
 //
-// While the player is in the middle of something in those sections (typing,
-// the spell picker or HP editor open), the refresh waits until they're done.
+// Each section waits only while the player is in the middle of something in
+// it (typing there, or its picker/editor open), so an open spell picker never
+// holds back the HP.
 
 (function () {
   const container = document.getElementById('fullCharacterSheetContainer');
@@ -13,42 +14,45 @@
   const characterId = Number(container.dataset.rollCharacter);
   if (!characterId) return;
 
-  const LIVE_SECTIONS = ['cs_vitals', 'cs_spells', 'cs_magic_items', 'cs_inventory', 'cs_purse'];
-  // .spell-picker: spell, invocation and magic item pickers.
-  const OPEN_EDITORS = '.spell-picker, .vitals-hp-editor';
+  // Section root id → its refresh function and the editors that mean "busy".
+  // (The DM's always-visible "give a magic item" form is not an open editor.)
+  const SECTIONS = [
+    { id: 'cs_vitals', refresh: () => window.refreshCharacterVitals, editors: '.vitals-hp-editor' },
+    { id: 'cs_spells', refresh: () => window.reloadCharacterSpells, editors: '.spell-picker' },
+    { id: 'cs_magic_items', refresh: () => window.refreshCharacterMagicItems, editors: '.spell-picker:not(.magic-item-grant)' },
+    { id: 'cs_inventory', refresh: () => window.refreshCharacterInventory, editors: null },
+    { id: 'cs_purse', refresh: () => window.refreshCharacterPurse, editors: null },
+    { id: 'cs_attacks_auto', refresh: () => window.refreshCharacterCombat, editors: null }
+  ];
 
-  function busy() {
+  function busy(section) {
+    const root = document.getElementById(section.id);
+    if (!root) return false;
     const active = document.activeElement;
-    const typing = active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName) &&
-      LIVE_SECTIONS.some(id => { const section = document.getElementById(id); return section && section.contains(active); });
-    return typing || Boolean(document.querySelector(OPEN_EDITORS));
+    const typing = active && root.contains(active) && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName);
+    return typing || Boolean(section.editors && root.querySelector(section.editors));
   }
 
-  function refreshAll() {
-    if (window.refreshCharacterVitals) window.refreshCharacterVitals();
-    if (window.reloadCharacterSpells) window.reloadCharacterSpells();
-    if (window.refreshCharacterMagicItems) window.refreshCharacterMagicItems();
-    if (window.refreshCharacterInventory) window.refreshCharacterInventory();
-    if (window.refreshCharacterPurse) window.refreshCharacterPurse();
-    if (window.refreshCharacterCombat) window.refreshCharacterCombat();
+  // Sections with a change they haven't shown yet.
+  const waiting = new Set();
+  function flush() {
+    for (const section of SECTIONS) {
+      if (!waiting.has(section) || busy(section)) continue;
+      waiting.delete(section);
+      const refresh = section.refresh();
+      if (refresh) refresh();
+    }
   }
 
   let timer = null;
-  let waiting = false;
   function refreshSoon() {
+    SECTIONS.forEach(section => waiting.add(section));
     clearTimeout(timer);
     // Several changes at once (a long rest) make one refresh.
-    timer = setTimeout(() => {
-      if (busy()) {
-        waiting = true;
-        return;
-      }
-      waiting = false;
-      refreshAll();
-    }, 300);
+    timer = setTimeout(flush, 300);
   }
-  // A refresh held back while the player was busy goes out once they're done.
-  setInterval(() => { if (waiting && !busy()) { waiting = false; refreshAll(); } }, 1000);
+  // Sections held back while the player was busy catch up once they're done.
+  setInterval(() => { if (waiting.size) flush(); }, 1000);
 
   const source = new EventSource('/api/characters/' + characterId + '/live');
   source.onmessage = refreshSoon;

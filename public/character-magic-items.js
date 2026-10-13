@@ -193,7 +193,7 @@
       const ok = await act({ action: 'grant', name: name.value.trim(), quantity: Number(quantity.value) || 1 });
       if (ok) name.value = '';
     }, 'btn btn-small btn-green');
-    return el('div', { className: 'spell-picker' }, [
+    return el('div', { className: 'spell-picker magic-item-grant' }, [
       el('p', { className: 'muted small', text: 'DM: give this character a magic item (for example adventure loot). Items with versions need the full name, e.g. "Weapon +1" or "Belt of Giant Strength (Hill)". Name the base weapon or armor where the item allows several, e.g. "+1 Longsword", "Frost Brand (Longsword)" or "Elven Chain (Chain Shirt)", so it shows in AC and attacks.' }),
       el('div', { className: 'vitals-actions' }, [name, quantity, give]),
       datalist
