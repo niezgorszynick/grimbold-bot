@@ -155,6 +155,8 @@
       spell.ritual ? 'Ritual' : null,
       spell.concentration ? 'Concentration' : null,
       spell.castingTime ? spell.castingTime.split(',')[0] : null,
+      // Domain, oath, circle, patron and origin spells.
+      source.kind === 'class' && (source.alwaysPrepared || []).includes(name) ? 'Always prepared (' + source.alwaysPreparedLabel + ')' : null,
       extraTag
     ].filter(Boolean);
     const controls = el('span', { className: 'spell-cast' });
@@ -268,7 +270,9 @@
 
   function renderPicker(source) {
     const filter = source.filter || {};
-    const all = Object.values(catalog).filter(spell => source.list === 'any' || spell.classes.includes(source.list));
+    // Spells that are always prepared aren't picked: they're on the sheet already.
+    const all = Object.values(catalog).filter(spell => (source.list === 'any' || spell.classes.includes(source.list)) &&
+      !(source.alwaysPrepared || []).includes(spell.name));
     const fitsFilter = spell => (!filter.ritual || spell.ritual) && (!filter.schools || filter.schools.includes(spell.school));
     const bookNames = source.spellbook ? source.spellbook.map(entry => entry.name) : null;
     const search = el('input', { type: 'search', placeholder: 'Search spells…', 'aria-label': 'Search spells' });

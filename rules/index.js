@@ -23,6 +23,7 @@ module.exports = {
   ...require('./dice'),
   ...require('./spellbook'),
   ...require('./featureChoices'),
+  ...require('./subclassSpells'),
   ...require('./levelUp'),
   ...require('./vitals'),
   ...require('./content')

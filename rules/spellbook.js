@@ -32,6 +32,7 @@ const { getSpellCatalog, findSpell, spellListName } = require('./spells');
 const { collectCharacterFeats, featName, featGrants } = require('./feats');
 const { effectiveAbilityScore, magicItemEffects } = require('./magicItems');
 const { extraCantrips } = require('./featureChoices');
+const { subclassSpellsFor } = require('./subclassSpells');
 const {
   INVOCATIONS, INVOCATION_NAMES, invocationLimit, readInvocations, eligibleCantrips,
   invocationIneligibility, validateInvocations
@@ -118,7 +119,10 @@ function getSpellSources(character) {
       spellbook: row.className === 'Wizard'
         ? { freeLimit: WIZARD_STARTING_SPELLBOOK + WIZARD_SPELLS_PER_LEVEL * (row.level - 1) }
         : null,
-      classLevel: row.level
+      classLevel: row.level,
+      // Domain, oath, circle, patron and origin spells.
+      alwaysPrepared: subclassSpellsFor(row, sheetData),
+      alwaysPreparedLabel: row.subclassName || null
     });
   }
 
@@ -249,9 +253,11 @@ function listOf(state, source) {
   const catalog = getSpellCatalog();
   const always = source.alwaysPrepared || [];
   const isCantrip = name => (findSpell(name, catalog) || {}).level === 0;
+  // A spell chosen before it became always prepared is listed once.
+  const notAlways = name => !always.includes(name);
   return {
-    cantrips: [...always.filter(isCantrip), ...chosen.cantrips],
-    prepared: [...always.filter(name => !isCantrip(name)), ...chosen.prepared],
+    cantrips: [...always.filter(isCantrip), ...chosen.cantrips.filter(notAlways)],
+    prepared: [...always.filter(name => !isCantrip(name)), ...chosen.prepared.filter(notAlways)],
     spellbook: chosen.spellbook
   };
 }
@@ -311,6 +317,10 @@ function chooseSpells(state, source, request, catalog = getSpellCatalog()) {
   let prepared = Array.isArray(body.prepared) ? body.prepared.map(name => requireSpell(name, source, { cantrip: false }, catalog)) : current.prepared;
   unique(cantrips, 'Cantrips');
   unique(prepared, 'Prepared spells');
+  const always = source.alwaysPrepared || [];
+  const fixed = [...cantrips, ...prepared].find(name => always.includes(name) &&
+    !current.cantrips.includes(name) && !current.prepared.includes(name));
+  if (fixed) throw new Error(`${fixed} is always prepared for you (${source.alwaysPreparedLabel || source.label}); choose another spell.`);
   if (source.minSpellLevel) {
     prepared.forEach(name => {
       if (findSpell(name, catalog).level !== source.minSpellLevel) throw new Error(`${name} must be a level ${source.minSpellLevel} spell.`);
@@ -350,8 +360,9 @@ function chooseSpells(state, source, request, catalog = getSpellCatalog()) {
 
   // Strict change rules: replacing or dropping existing choices needs an allowance.
   const allowance = allowanceFor(state, source);
-  const removedCantrips = current.cantrips.filter(name => !cantrips.includes(name));
-  const removedPrepared = current.prepared.filter(name => !prepared.includes(name));
+  const removedCantrips = current.cantrips.filter(name => !cantrips.includes(name) && !always.includes(name));
+  // Dropping a spell that is now always prepared anyway is free.
+  const removedPrepared = current.prepared.filter(name => !prepared.includes(name) && !always.includes(name));
   const overLimit = Math.max(0, current.prepared.length - source.preparedLimit);
   const changes = { ...(state.changes[source.key] || {}) };
   if (removedCantrips.length > allowance.cantripSwaps) {
@@ -566,8 +577,9 @@ function buildSpellsView(character, state) {
         changeRuleText: CHANGE_RULE_TEXT[source.changeRule] || '',
         cantrips: lists.cantrips,
         prepared: lists.prepared,
-        chosenCantrips: chosen.cantrips,
-        chosenPrepared: chosen.prepared,
+        // Without spells that are always prepared anyway, so they free up a pick.
+        chosenCantrips: chosen.cantrips.filter(name => !(source.alwaysPrepared || []).includes(name)),
+        chosenPrepared: chosen.prepared.filter(name => !(source.alwaysPrepared || []).includes(name)),
         spellbook: source.spellbook ? lists.spellbook : null,
         spellbookFreeLeft: source.spellbook
           ? Math.max(0, source.spellbook.freeLimit - lists.spellbook.filter(entry => entry.source === 'level').length)

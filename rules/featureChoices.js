@@ -80,6 +80,19 @@ const CLASS_FEATURES = {
 
 // subclassName → level → features.
 const SUBCLASS_FEATURES = {
+  // The land decides the Circle Spells (rules/subclassSpells.js).
+  'Circle of the Land': {
+    3: [{
+      name: 'Circle Spells (Land)',
+      kind: 'option',
+      options: {
+        Arid: { text: 'Blur, Burning Hands, Fire Bolt; later Fireball, Blight, Wall of Stone.' },
+        Polar: { text: 'Fog Cloud, Hold Person, Ray of Frost; later Sleet Storm, Ice Storm, Cone of Cold.' },
+        Temperate: { text: 'Misty Step, Shocking Grasp, Sleep; later Lightning Bolt, Freedom of Movement, Tree Stride.' },
+        Tropical: { text: 'Acid Splash, Ray of Sickness, Web; later Stinking Cloud, Polymorph, Insect Plague.' }
+      }
+    }]
+  },
   'College of Lore': { 3: [{ name: 'Bonus Proficiencies', kind: 'skills', count: 3, options: () => SKILL_NAMES }] },
   'College of Valor': { 3: [{ name: 'Martial Training', kind: 'grant', weapons: ['Martial weapons'], armor: ['Medium armor', 'Shields'] }] },
   'Battle Master': {
