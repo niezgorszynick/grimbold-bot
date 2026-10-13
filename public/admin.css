@@ -155,6 +155,14 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .creator-score { display: grid; gap: 4px; justify-items: stretch; text-align: center; color: #949ba4; font-size: 11px; }
 .creator-score input, .creator-score select { min-width: 0; width: 100%; }
 .creator-final-score { color: #dbdee1; font-size: 13px; }
+/* Background bonuses: the pickers the background allows stand out in gold;
+   until a valid +2/+1 or +1/+1/+1 is chosen they get a red outline. */
+.creator-score select:not(:disabled) { border: 1px solid #d4af37; background: #2b2410; color: #f1c40f; font-weight: 700; }
+.creator-score select:disabled { opacity: 0.35; }
+.creator-bonus-missing .creator-score select:not(:disabled) { outline: 2px solid #f23f43; outline-offset: 2px; }
+.creator-bonus-status { font-size: 13px; font-weight: 600; }
+.creator-bonus-status.is-missing { color: #f23f43; }
+.creator-bonus-status.is-done { color: #23a55a; }
 .creator-summary { padding: 10px; background: #232428; border-radius: 4px; font-size: 13px; }
 .creator-summary-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .character-sheet-full { max-width: 1200px; margin: 0 auto; color: #dbdee1; }
@@ -502,3 +510,13 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .analytics-other-dice { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .analytics-other-dice .analytics-dice { margin-bottom: 0; }
 .analytics-dice-chart-wrap.small-chart { height: 200px; }
+
+/* Class feature choices (Divine Order, Expertise, ...): creator, level-up and sheet card. */
+.feature-choice { display: grid; gap: 6px; padding: 10px; margin-bottom: 8px; border: 1px solid #3f4147; border-radius: 6px; background: #232428; }
+.feature-choice p { margin: 0; }
+.feature-option { display: block; font-size: 13px; cursor: pointer; }
+.feature-selects { display: flex; flex-wrap: wrap; gap: 8px; }
+.feature-selects select { min-width: 180px; }
+.feature-choices-card { border: 1px solid #d4af37; }
+.vitals-dm-max input { width: 90px; margin-left: 6px; }
+.sheet-check-row.has-expertise > span::after { content: ' ★'; color: #f1c40f; }

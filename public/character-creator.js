@@ -128,10 +128,11 @@
     const classSkillsBox = el('div');
     const classToolsBox = el('div');
     const fightingStyleBox = el('div');
+    const featureChoicesBox = el('div');
     const classEquipmentBox = el('div');
     classSection.body.append(
       el('div', { className: 'character-editor-fields' }, [field('Class', classSelect), field('Subclass', subclassSelect)]),
-      classDetails, classSkillsBox, classToolsBox, fightingStyleBox, classEquipmentBox
+      classDetails, classSkillsBox, classToolsBox, fightingStyleBox, featureChoicesBox, classEquipmentBox
     );
 
     // ── Background ──
@@ -177,11 +178,13 @@
         finalScores[ability]
       ]));
     });
+    const bonusStatus = el('p', { className: 'creator-bonus-status', 'aria-live': 'polite' });
     abilitySection.body.append(
       el('div', { className: 'character-editor-fields' }, [field('Method', methodSelect), el('div', { className: 'creator-field' }, [el('span', { text: ' ' }), suggestionButton])]),
       pointsDisplay,
-      el('p', { className: 'muted small', text: 'Each column: base score, background bonus, final score.' }),
-      scoreGrid
+      el('p', { className: 'muted small', text: 'Each column: base score, background bonus (gold), final score.' }),
+      scoreGrid,
+      bonusStatus
     );
 
     // ── Equipment choices and summary ──
@@ -230,6 +233,20 @@
       return group;
     }
 
+    // Class and subclass features with a choice up to level 3 (Divine Order, Expertise, ...).
+    function renderFeatureChoices() {
+      const previous = window.FeatureChoices.collect(widgets.features || []);
+      const features = [
+        ...((R.classFeatureChoices || {})[classSelect.value] || []),
+        ...((R.subclassFeatureChoices || {})[subclassSelect.value] || [])
+      ];
+      widgets.features = features.map(feature => window.FeatureChoices.widget(feature));
+      window.FeatureChoices.restore(widgets.features, previous);
+      featureChoicesBox.replaceChildren(...(features.length
+        ? [el('h5', { text: 'Class Feature Choices' }), ...widgets.features.map(item => item.element)]
+        : []));
+    }
+
     function renderClass() {
       const className = classSelect.value;
       const data = R.classes[className];
@@ -245,8 +262,10 @@
         fightingStyleBox.replaceChildren();
         classEquipmentBox.replaceChildren();
         widgets.classSkills = widgets.classTools = widgets.fightingStyle = null;
+        renderFeatureChoices();
         return;
       }
+      renderFeatureChoices();
       const features = Object.entries(data.featuresByLevel)
         .map(([level, names]) => 'Level ' + level + ': ' + names.join(', '));
       classDetails.replaceChildren(
@@ -434,6 +453,27 @@
       renderScores();
     }
 
+    // Background bonuses are +2/+1 or +1/+1/+1 on the background's abilities.
+    // Returns null when they are complete, otherwise what is still missing.
+    function missingBonuses() {
+      const background = R.backgrounds[backgroundSelect.value];
+      if (!background) return 'Choose a background first.';
+      const picked = R.abilities.map(ability => Number(bonusSelects[ability].value)).filter(Boolean).sort().join(',');
+      if (picked === '1,2' || picked === '1,1,1') return null;
+      return 'Background bonus not chosen: give +2 and +1, or +1 three times, among ' +
+        background.abilityBoosts.map(ability => ability.toUpperCase()).join(', ') + '.';
+    }
+
+    function renderBonusStatus() {
+      const missing = missingBonuses();
+      scoreGrid.classList.toggle('creator-bonus-missing', Boolean(missing) && Boolean(R.backgrounds[backgroundSelect.value]));
+      bonusStatus.classList.toggle('is-missing', Boolean(missing));
+      bonusStatus.classList.toggle('is-done', !missing);
+      bonusStatus.textContent = missing || 'Background bonus: ' + R.abilities
+        .filter(ability => Number(bonusSelects[ability].value))
+        .map(ability => ability.toUpperCase() + ' +' + bonusSelects[ability].value).join(', ') + '.';
+    }
+
     function renderScores() {
       const method = methodSelect.value;
       const [min, max] = method === 'Point Buy' ? [8, 15] : method === 'Standard Array' ? [8, 15] : [3, 18];
@@ -452,6 +492,7 @@
         : method === 'Standard Array'
           ? 'Assign ' + R.standardArray.join(', ') + ' once each.'
           : 'Enter rolled scores (4d6, drop the lowest): 3 to 18.';
+      renderBonusStatus();
     }
 
     // Selects for equipment items marked "choose" (e.g. a Bard's instrument).
@@ -495,6 +536,7 @@
         classSkills: widgets.classSkills ? widgets.classSkills.value() : [],
         classTools: widgets.classTools ? widgets.classTools.value() : [],
         fightingStyle: value(widgets.fightingStyle),
+        featureChoices: window.FeatureChoices.collect(widgets.features || []),
         backgroundTool: value(widgets.backgroundTool),
         originFeatChoices: widgets.backgroundFeat ? widgets.backgroundFeat.value() : {},
         versatileFeat: widgets.versatile
@@ -563,7 +605,11 @@
         const result = await response.json();
         if (sequence !== previewSequence) return;
         if (!response.ok) {
-          summaryBox.replaceChildren(el('p', { className: 'muted', text: 'Still to do: ' + (result.error || 'complete the choices above.') }));
+          // The server names one problem at a time; the bonuses are easy to miss, so name them too.
+          const bonuses = missingBonuses();
+          const todo = [result.error || 'complete the choices above.'];
+          if (bonuses && R.backgrounds[backgroundSelect.value] && !/background bonus/i.test(todo[0])) todo.push(bonuses);
+          summaryBox.replaceChildren(...todo.map(text => el('p', { className: 'muted', text: 'Still to do: ' + text })));
           submitButton.disabled = true;
           return;
         }
@@ -576,6 +622,7 @@
 
     // ─── Wiring ────────────────────────────────────────────────────────────
     classSelect.addEventListener('change', () => { renderClass(); renderEquipmentChoices(); });
+    subclassSelect.addEventListener('change', renderFeatureChoices);
     backgroundSelect.addEventListener('change', () => { renderBackground(); renderClassSkills(); renderEquipmentChoices(); });
     speciesSelect.addEventListener('change', () => { renderSpecies(); renderClassSkills(); });
     methodSelect.addEventListener('change', renderScores);
