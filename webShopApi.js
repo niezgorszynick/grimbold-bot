@@ -612,6 +612,30 @@ router.post('/characters/create', (req, res) => {
   }
 });
 
+// Resets an existing character to a new build from the creator (owner or admin).
+router.post('/characters/:id/rebuild', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  let character;
+  try {
+    character = buildCharacterFromBody(req.body);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  try {
+    const characterId = db.rebuildCharacter({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), character });
+    return res.json({ success: true, characterId });
+  } catch (error) {
+    if (error.message === 'Forbidden.') return res.status(403).json({ error: error.message });
+    if (error.message === 'Character not found.') return res.status(404).json({ error: error.message });
+    if (error.message === 'Invalid character ID.') return res.status(400).json({ error: error.message });
+    console.error('Character reset failed:', error);
+    return res.status(500).json({ error: 'Could not reset the character.' });
+  }
+});
+
 router.post('/characters/:id/abilities', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });

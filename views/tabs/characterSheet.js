@@ -197,6 +197,40 @@ module.exports = function renderCharacterSheetTab(ctx) {
           <section id="cs_magic_items" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-magic-items.js" defer></script>
         </section>
+        <section class="card sheet-reset">
+          <div class="sheet-section-heading">
+            <h4>Reset Character</h4>
+            <button id="open-character-reset" class="btn btn-red btn-small" type="button" data-name="${escapeHtml(characterToEdit.name)}">Reset Character…</button>
+          </div>
+          <p class="muted small">Build this character again in the character creator. Keeps XP, level, adventures, purse, magic items and bought items; species, class, abilities, skills, spells and starting gear are chosen again. The sheet is only replaced when you finish the creator.</p>
+          <div id="character-reset-view" hidden>
+            <div class="sheet-section-heading"><span></span><button id="close-character-reset" class="btn btn-secondary" type="button">Cancel</button></div>
+            <div id="character-creator-root" data-rebuild-id="${Number(characterToEdit.id)}" data-rebuild-name="${escapeHtml(characterToEdit.name)}"></div>
+          </div>
+          <script>
+            (() => {
+              const open = document.getElementById('open-character-reset');
+              const view = document.getElementById('character-reset-view');
+              open.addEventListener('click', () => {
+                const sure = window.confirm('Are you sure you want to reset ' + open.dataset.name + '?\\n\\nYou will build the character again in the creator. When you finish, species, class, abilities, skills, spells and starting gear are replaced. XP, level, adventures, purse, magic items and bought items are kept.');
+                if (!sure) return;
+                view.hidden = false;
+                open.disabled = true;
+                if (!document.getElementById('character-creator-script')) {
+                  const script = document.createElement('script');
+                  script.id = 'character-creator-script';
+                  script.src = '/admin/assets/character-creator.js';
+                  document.body.append(script);
+                }
+                view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              });
+              document.getElementById('close-character-reset').addEventListener('click', () => {
+                view.hidden = true;
+                open.disabled = false;
+              });
+            })();
+          </script>
+        </section>
       `
       : '<div class="alert red">Character not found or you do not have permission to edit it.</div>'
     : '';

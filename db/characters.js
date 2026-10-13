@@ -316,6 +316,38 @@ function insertStartingCharacter(playerId, character) {
   })();
 }
 
+// Resets a character to a new build from the character creator (the owner or
+// an admin). Kept: the character itself (XP, level, adventures, purse, thread,
+// roll history), its magic items and the items bought or given since creation.
+// Everything else comes from the new build at level 3; the Level Up button
+// then brings the character back to its XP level. The creator's starting
+// gold is not added: the purse stays as it is.
+function rebuildCharacter({ id, player_id, is_admin, character }) {
+  return db.transaction(() => {
+    const stored = loadOwnedCharacter(id, player_id, is_admin);
+    const oldSheet = readSheetData(stored.sheet_data);
+    const keptItems = (Array.isArray(oldSheet.inventory) ? oldSheet.inventory : [])
+      .filter(row => row && row.source !== 'class' && row.source !== 'background');
+    const keptMagicItems = (Array.isArray(oldSheet.magicItems) ? oldSheet.magicItems : [])
+      .filter(item => item && item.source !== 'creation');
+    const sheetData = {
+      ...character.sheetData,
+      inventory: [...character.sheetData.inventory, ...keptItems],
+      ...(keptMagicItems.length ? { magicItems: keptMagicItems } : {})
+    };
+    const level = Math.max(character.level, Number(stored.level) || 0);
+    db.prepare(`
+      UPDATE characters SET name = ?, race = ?, class = ?, subclass = ?, level = ?, sheet_data = ? WHERE id = ?
+    `).run(character.name, character.species, character.className, character.subclass, level, JSON.stringify(sheetData), stored.id);
+    db.prepare('DELETE FROM character_classes WHERE character_id = ?').run(stored.id);
+    db.prepare(`
+      INSERT INTO character_classes (character_id, class_name, subclass_name, class_level, is_primary)
+      VALUES (?, ?, ?, ?, 1)
+    `).run(stored.id, character.className, character.subclass, character.level);
+    return stored.id;
+  })();
+}
+
 // Sets a character's purse (DM edit). gold is in gp, e.g. 12.37.
 function updateCharacterGold(characterId, gold) {
   const id = Number(characterId);
@@ -344,6 +376,7 @@ module.exports = {
   getCharacterLevelUpOptions,
   levelUpCharacter,
   insertStartingCharacter,
+  rebuildCharacter,
   updateCharacterProgression,
 getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
 updateCharacterSheet: ({ id, player_id, is_admin, name, race, class_name, subclass, sheet_data }) => {

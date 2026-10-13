@@ -7,6 +7,8 @@
 (function () {
   const root = document.getElementById('character-creator-root');
   if (!root) return;
+  // Resetting an existing character: the new build replaces its sheet.
+  const rebuildId = root.dataset.rebuildId || '';
 
   const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
   const SPELL_ABILITIES = ['int', 'wis', 'cha'];
@@ -116,7 +118,7 @@
     const widgets = {};
 
     const form = el('form', { className: 'character-creator', novalidate: true });
-    const nameInput = el('input', { type: 'text', maxlength: '100', required: true });
+    const nameInput = el('input', { type: 'text', maxlength: '100', required: true, value: root.dataset.rebuildName || '' });
 
     // ── Class ──
     const classSection = section('1. Class', 'Characters start at level ' + R.startingLevel + ', so a subclass is required.');
@@ -191,7 +193,7 @@
     const summaryBox = el('div', { className: 'creator-summary', 'aria-live': 'polite' });
     summarySection.body.append(summaryBox);
 
-    const submitButton = el('button', { type: 'submit', className: 'btn btn-green', text: 'Create Character' });
+    const submitButton = el('button', { type: 'submit', className: 'btn btn-green', text: rebuildId ? 'Reset Character' : 'Create Character' });
     const message = el('p', { className: 'sheet-message', role: 'status', 'aria-live': 'polite' });
 
     form.append(
@@ -600,9 +602,9 @@
       event.preventDefault();
       submitButton.disabled = true;
       message.classList.remove('is-error');
-      message.textContent = 'Creating character...';
+      message.textContent = rebuildId ? 'Resetting character...' : 'Creating character...';
       try {
-        const response = await fetch('/api/characters/create', {
+        const response = await fetch(rebuildId ? '/api/characters/' + encodeURIComponent(rebuildId) + '/rebuild' : '/api/characters/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildRequest())
