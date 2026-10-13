@@ -538,3 +538,76 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-dm-skill-grid { display: grid; gap: 2px; }
 .sheet-dm-skill { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
 .sheet-dm-skill label { display: inline-flex; align-items: center; gap: 3px; }
+
+/* ─── Phones and tablets ──────────────────────────────────────────────────── */
+
+/* Phones and tablets in portrait: the character sheet becomes one column in
+   table order — what's used in a fight first, editing last — and its sections
+   fold (public/sheet-sections.js). Tablets in landscape keep the desktop layout. */
+@media (max-width: 900px) {
+  body { padding-bottom: 96px; }
+  .character-sheet-full { display: flex; flex-direction: column; gap: 12px; }
+  .character-sheet-full > .sheet-layout, .character-sheet-full .sheet-col { display: contents; }
+  .character-sheet-full > * { margin: 0; }
+  .character-sheet-full > .sheet-header { order: 1; }
+  .character-sheet-full > #cs_message { order: 2; }
+  .character-sheet-full .sheet-combat-stats { order: 3; }
+  .character-sheet-full .ac-details { order: 4; }
+  .character-sheet-full .sheet-vitals-card { order: 5; }
+  .character-sheet-full .sheet-attacks-card { order: 6; }
+  .character-sheet-full > #cs_spells { order: 7; }
+  .character-sheet-full .sheet-saves-card { order: 8; }
+  .character-sheet-full .sheet-skills-card { order: 9; }
+  .character-sheet-full > .point-buy-card { order: 10; }
+  .character-sheet-full .sheet-features-card { order: 11; }
+  .character-sheet-full > .sheet-equipment { order: 12; }
+  .character-sheet-full > #cs_magic_items { order: 13; }
+
+  .sheet-fold-title { cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; }
+  .sheet-fold-title::after { content: '▾'; color: #949ba4; font-size: 14px; }
+  .is-folded .sheet-fold-title::after { content: '▸'; }
+  .sheet-card.is-folded > :not(:first-child) { display: none; }
+  .point-buy-card.is-folded > :not(.point-buy-header) { display: none; }
+  .sheet-header.is-folded .sheet-identity-fields { display: none; }
+
+  /* Dice: a slim bar along the bottom; Adv/Dis stay visible when it's folded. */
+  .dice-bar { left: 8px; right: 8px; bottom: 8px; width: auto; }
+  .dice-bar.is-collapsed { width: auto; }
+  .dice-bar.is-collapsed .dice-toggles { display: flex; }
+  .dice-bar.is-collapsed .dice-bar-row:first-child { justify-content: space-between; }
+  .dice-bar.is-collapsed .dice-bar-row:first-child { flex-wrap: nowrap; }
+  .dice-bar.is-collapsed .dice-toggles { flex-wrap: nowrap; }
+}
+
+/* Phones: a compact header, the tabs in one scrolling row, a one-line dice bar. */
+@media (max-width: 600px) {
+  body { padding: 10px 8px 88px; }
+  .header { flex-wrap: wrap; gap: 8px; }
+  .header h2 { font-size: 18px; margin: 0; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+  .tab-btn { flex: 0 0 auto; white-space: nowrap; }
+  .dice-bar { padding: 6px 8px; }
+  .dice-toggle { padding: 6px 9px !important; font-size: 13px !important; }
+}
+
+/* Touchscreens (any device with one, mouse plugged in or not): bigger targets,
+   and 16px text in fields so iPads don't zoom in when a field is tapped. */
+@media (any-pointer: coarse) {
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; min-height: 40px; }
+  .btn, button.btn { min-height: 40px; padding: 8px 14px; }
+  .btn-small { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+  input[type=checkbox], input[type=radio] { width: 22px; height: 22px; }
+  .sheet-check-row { min-height: 36px; grid-template-columns: 24px 1fr auto; }
+  .sheet-skills .sheet-check-row { grid-template-columns: 24px minmax(0, 1fr) 30px auto; }
+  .vitals-slot-boxes { gap: 8px; }
+  .vitals-actions { gap: 8px; }
+  /* Rolls look like buttons. */
+  .sheet-check-modifier[data-roll], .sheet-ability-modifier[data-roll], .roll-link {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 32px; min-width: 44px; padding: 2px 10px;
+    border: 1px solid #5865f2; border-radius: 16px; background: #23264a; color: #c9cdfb; text-decoration: none;
+  }
+  .roll-button { font-size: 18px; padding: 4px 8px; }
+  .dice-toggle { padding: 8px 12px; font-size: 14px; }
+  .dice-collapse { font-size: 20px; padding: 4px 10px; }
+  .tab-btn { padding: 10px 14px; }
+}

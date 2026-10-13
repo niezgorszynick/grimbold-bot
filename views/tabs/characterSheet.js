@@ -105,9 +105,10 @@ module.exports = function renderCharacterSheetTab(ctx) {
         <section id="cs_feature_choices" class="sheet-card feature-choices-card" data-character-id="${Number(characterToEdit.id)}" hidden></section>
         <script src="/admin/assets/character-features.js" defer></script>
         <script src="/admin/assets/character-live.js" defer></script>
+        <script src="/admin/assets/sheet-sections.js" defer></script>
         <script src="/admin/assets/character-levelup.js" defer></script>
         <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
-          <header class="sheet-header">
+          <header class="sheet-header" data-collapse="details">
             <div class="sheet-identity">
               <h2 id="cs_header_name">Character Sheet</h2>
               <span id="cs_header_sub">Loading character...</span>
@@ -125,7 +126,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
           </header>
           <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
-          <section class="sheet-card point-buy-card">
+          <section class="sheet-card point-buy-card" data-collapse="abilities">
             <div class="point-buy-header">
               <div>
               <h3>Ability Scores</h3>
@@ -140,11 +141,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
           </section>
           <div class="sheet-layout">
             <div class="sheet-col">
-              <section class="sheet-card">
+              <section class="sheet-card sheet-saves-card" data-collapse="saves">
                 <h4>Saving Throws</h4>
                 <div id="cs_saves_container" class="sheet-check-list"></div>
               </section>
-              <section class="sheet-card">
+              <section class="sheet-card sheet-skills-card" data-collapse="skills">
                 <h4>Skills</h4>
                 <p id="cs_skill_guidance" class="muted small" aria-live="polite"></p>
                 <div id="cs_species_skill_choices"></div>
@@ -160,12 +161,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
               </div>
               <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
-              <section class="sheet-card">
+              <section class="sheet-card sheet-vitals-card" data-collapse="vitals">
                 <h4>Hit Points &amp; Vitality</h4>
                 <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
                 <script src="/admin/assets/character-vitals.js" defer></script>
               </section>
-              <section class="sheet-card">
+              <section class="sheet-card sheet-attacks-card" data-collapse="attacks">
                 <h4>Weapons &amp; Attacks</h4>
                 <div id="cs_attacks_auto" data-character-id="${Number(characterToEdit.id)}">Loading attacks...</div>
                 <script src="/admin/assets/character-combat.js" defer></script>
@@ -180,14 +181,14 @@ module.exports = function renderCharacterSheetTab(ctx) {
                   </table>
                 </div>
               </section>
-              <section class="sheet-card">
+              <section class="sheet-card sheet-features-card" data-collapse="features">
                 <h4>Class Features &amp; Species Traits</h4>
                 <div id="cs_auto_features" class="sheet-auto-features" aria-live="polite"></div>
                 <label class="sheet-notes-label">Additional notes<textarea id="cs_features" rows="5" maxlength="10000" placeholder="Record additional features, choices, or reminders..."></textarea></label>
               </section>
             </div>
           </div>
-          <section class="sheet-card sheet-equipment">
+          <section class="sheet-card sheet-equipment" data-collapse="equipment">
             <h4>Equipment &amp; Items</h4>
             <div id="cs_purse" class="purse" data-character-id="${Number(characterToEdit.id)}"></div>
             <script src="/admin/assets/character-purse.js" defer></script>
@@ -195,10 +196,10 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <script src="/admin/assets/character-inventory.js" defer></script>
             <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>
           </section>
-          <section id="cs_spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+          <section id="cs_spells" data-collapse="spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-spells.js" defer></script>
           <script src="/admin/assets/dice.js" defer></script>
-          <section id="cs_magic_items" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+          <section id="cs_magic_items" data-collapse="magicItems" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-magic-items.js" defer></script>
         </section>
         <section class="card sheet-reset">

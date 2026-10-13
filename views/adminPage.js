@@ -113,6 +113,8 @@ module.exports = function renderAdminPage(req) {
     <html>
     <head>
       <meta charset="utf-8">
+      <!-- Without this, phones and tablets lay the page out as a ~980px desktop and shrink it. -->
+      <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>Grimbold Admin Panel</title>
       ${currentTab === 'analytics' ? '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>' : ''}
       <link rel="stylesheet" href="/admin/assets/admin.css">

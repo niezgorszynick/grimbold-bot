@@ -56,6 +56,11 @@
     el('div', { className: 'dice-bar-row' }, [singleCharacter ? customForm : null, keyButton])
   ]);
   document.body.append(bar);
+  // Phones: start as the slim bottom bar (a roll opens it to show the result).
+  if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
+    bar.classList.add('is-collapsed');
+    collapse.textContent = '🎲';
+  }
 
   function sync() {
     modeButtons.forEach(button => button.classList.toggle('is-on', button.dataset.mode === mode));
