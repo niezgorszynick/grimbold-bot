@@ -104,6 +104,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
         <section id="cs_levelup" class="sheet-card levelup" data-character-id="${Number(characterToEdit.id)}" hidden></section>
         <section id="cs_feature_choices" class="sheet-card feature-choices-card" data-character-id="${Number(characterToEdit.id)}" hidden></section>
         <script src="/admin/assets/character-features.js" defer></script>
+        <script src="/admin/assets/character-live.js" defer></script>
         <script src="/admin/assets/character-levelup.js" defer></script>
         <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
           <header class="sheet-header">

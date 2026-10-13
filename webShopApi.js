@@ -557,6 +557,39 @@ router.post('/adventures/:id/cancel', adventureRoute(({ adventureId, user }) => 
   return { cancelled: true };
 }));
 
+// Server-Sent Events for one character's sheet: a message whenever the
+// character changes or rolls (e.g. the DM deals damage from the adventure
+// table), so the sheet's HP, spells and items refresh at once.
+// data: { character: bool, rolls: bool }
+router.get('/characters/:id/live', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const character = db.getCharacterById(Number(req.params.id));
+  if (!character) return res.status(404).json({ error: 'Character not found.' });
+  if (!db.canRollFor(character, user)) return res.status(403).json({ error: 'Forbidden.' });
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // nginx: send each message straight away.
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  const unsubscribe = require('./liveUpdates').subscribe(changes => {
+    const changed = changes.some(change => change.kind === 'character' && change.refId === character.id);
+    const rolls = changes.some(change => change.kind === 'roll' && change.refId === character.id);
+    if (changed || rolls) res.write('data: ' + JSON.stringify({ character: changed, rolls }) + '\n\n');
+  });
+  // Keeps proxies from closing a quiet connection.
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+  return undefined;
+});
+
 // What an adventure's DM may do to a party member's Hit Points.
 const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize'];
 

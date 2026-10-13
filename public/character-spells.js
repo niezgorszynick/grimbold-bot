@@ -612,6 +612,8 @@
   }
 
   window.refreshCharacterSpells = () => { abilityDeltas = {}; return load(); };
+  // Live updates: same data, keeping the preview of unsaved ability scores.
+  window.reloadCharacterSpells = load;
   // The sheet shows a typed-in ability score's effect before it's saved.
   window.previewCharacterAbilities = deltas => {
     abilityDeltas = deltas || {};

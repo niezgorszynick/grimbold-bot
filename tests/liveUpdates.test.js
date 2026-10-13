@@ -74,3 +74,35 @@ test('the adventure table hears about party changes at once, and only those', as
     server.close();
   }
 });
+
+test("a character sheet hears about changes to its own character, e.g. the DM's damage", async () => {
+  const owner = createPlayer();
+  const stranger = createPlayer();
+  for (const id of [owner, stranger]) db.prepare("UPDATE players SET password_hash = 'x' WHERE id = ?").run(id);
+  const mine = addCharacter(owner, 'Sheet');
+  const other = addCharacter(owner, 'Other sheet');
+
+  const app = express();
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')) } }; next(); });
+  app.use('/api', require('../webShopApi'));
+  const server = app.listen(0);
+  const url = `http://127.0.0.1:${server.address().port}/api/characters/${mine}/live`;
+  const controller = new AbortController();
+  try {
+    assert.equal((await fetch(url, { headers: { 'x-user': String(stranger) } })).status, 403);
+    const response = await fetch(url, { headers: { 'x-user': String(owner) }, signal: controller.signal });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    db.prepare("UPDATE characters SET sheet_data = '{\"hpCurrent\":2}' WHERE id = ?").run(other);
+    db.prepare("UPDATE characters SET sheet_data = '{\"hpCurrent\":4}' WHERE id = ?").run(mine);
+    let buffer = '';
+    const deadline = Date.now() + 3000;
+    while (!/data: /.test(buffer) && Date.now() < deadline) buffer += decoder.decode((await reader.read()).value);
+    assert.deepEqual(JSON.parse(buffer.match(/data: (.*)\n\n/)[1]), { character: true, rolls: false });
+    assert.equal((buffer.match(/data: /g) || []).length, 1, "the other character's change isn't sent");
+  } finally {
+    controller.abort();
+    server.close();
+  }
+});
