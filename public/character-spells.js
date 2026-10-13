@@ -54,6 +54,8 @@
   let message = '';
   let isError = false;
   let editing = null; // source key being edited
+  // Picks from a save the server refused: kept so the player can fix them.
+  let draft = null; // { key, cantrips, prepared, book, error }
   let editingInvocations = false;
   let invocationTexts = {};
   let creationRules = null; // origin feats, skills and tools for Lessons of the First Ones
@@ -241,7 +243,7 @@
       el('div', { className: 'spell-source-header' }, [
         el('div', {}, [el('strong', { text: source.label }), el('span', { className: 'muted', text: ' · ' + headerBits.join(' · ') + ' · ' }),
           el('button', { type: 'button', className: 'roll-link', 'data-roll': 'spell:' + source.key, title: 'Roll a spell attack', text: 'Spell attack ' + signed(source.attackBonus) })]),
-        choosable ? button(editing === source.key ? 'Close' : 'Choose spells', () => { editing = editing === source.key ? null : source.key; render(); }) : null
+        choosable ? button(editing === source.key ? 'Close' : 'Choose spells', () => { editing = editing === source.key ? null : source.key; draft = null; render(); }) : null
       ]),
       counts.length ? el('p', { className: 'muted small', text: counts.join(' · ') + (missing > 0 ? ' — ' + missing + ' still to choose' : '') }) : null,
       source.changeRuleText ? el('p', { className: 'muted small', text: source.changeRuleText }) : null,
@@ -270,9 +272,13 @@
 
   function renderPicker(source) {
     const filter = source.filter || {};
-    // Spells that are always prepared aren't picked: they're on the sheet already.
+    // Spells that are always prepared (here or from another source, e.g. a
+    // High Elf's Detect Magic) aren't picked: they're on the sheet already.
+    const elsewhere = source.preparedElsewhere || [];
+    const fixedNames = [...(source.alwaysPrepared || []), ...elsewhere.map(entry => entry.name)];
     const all = Object.values(catalog).filter(spell => (source.list === 'any' || spell.classes.includes(source.list)) &&
-      !(source.alwaysPrepared || []).includes(spell.name));
+      !fixedNames.includes(spell.name));
+    const pending = draft && draft.key === source.key ? draft : null;
     const fitsFilter = spell => (!filter.ritual || spell.ritual) && (!filter.schools || filter.schools.includes(spell.school));
     const bookNames = source.spellbook ? source.spellbook.map(entry => entry.name) : null;
     const search = el('input', { type: 'search', placeholder: 'Search spells…', 'aria-label': 'Search spells' });
@@ -319,12 +325,12 @@
     }
 
     const cantrips = source.cantripLimit
-      ? group('Cantrips', all.filter(spell => spell.level === 0), source.chosenCantrips, source.cantripLimit)
+      ? group('Cantrips', all.filter(spell => spell.level === 0), pending ? pending.cantrips : source.chosenCantrips, source.cantripLimit)
       : null;
     const preparable = all.filter(spell => spell.level >= (source.minSpellLevel || 1) && spell.level <= source.maxSpellLevel &&
       fitsFilter(spell) && (!bookNames || bookNames.includes(spell.name)));
     const prepared = source.preparedLimit
-      ? group(preparedTitle(source), preparable, source.chosenPrepared, source.preparedLimit)
+      ? group(preparedTitle(source), preparable, pending ? pending.prepared : source.chosenPrepared, source.preparedLimit)
       : null;
     const book = source.spellbook
       ? group('Add to spellbook', all.filter(spell => spell.level >= 1 && spell.level <= source.maxSpellLevel && !bookNames.includes(spell.name)), [], null)
@@ -358,8 +364,10 @@
           body.copyAddedSpells = true;
         }
       }
+      // Kept if the server says no (e.g. no change window), so the ticks survive.
+      draft = { key: source.key, cantrips: body.cantrips || source.chosenCantrips, prepared: body.prepared || source.chosenPrepared };
       const ok = await act(body, result => (result.copyCostGp ? 'Saved. Paid ' + result.copyCostGp + ' GP for copying.' : 'Spells saved.'));
-      if (ok) { editing = null; render(); }
+      if (ok) { draft = null; editing = null; render(); } else { draft.error = message; render(); }
     }, 'btn btn-small btn-green');
 
     return el('div', { className: 'spell-picker' }, [
@@ -372,7 +380,11 @@
       cantrips ? cantrips.element : null,
       book ? book.element : null,
       prepared ? prepared.element : null,
+      elsewhere.length
+        ? el('p', { className: 'muted small', text: 'Already prepared from elsewhere, so not listed: ' + elsewhere.map(entry => entry.name + ' (' + entry.from + ')').join(', ') + '.' })
+        : null,
       el('div', { className: 'vitals-actions' }, [save]),
+      pending && pending.error ? el('p', { className: 'sheet-message is-error', role: 'alert', text: pending.error }) : null,
       book ? el('p', { className: 'muted small', text: 'Tip: save new spellbook spells first, then prepare them.' }) : null
     ]);
   }

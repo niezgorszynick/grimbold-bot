@@ -231,7 +231,20 @@ function getSpellSources(character) {
     source.saveDc += itemEffects.spellDc + own.spellDc;
     source.attackBonus += itemEffects.spellAttack + own.spellAttack;
   }
+  // Spells another source already has prepared (e.g. a High Elf's Detect Magic
+  // for a Cleric): not worth a pick here, and free to drop.
+  for (const source of sources) {
+    source.preparedElsewhere = sources
+      .filter(other => other !== source)
+      .flatMap(other => (other.alwaysPrepared || []).map(name => ({ name, from: other.alwaysPreparedLabel || other.label })))
+      .filter((entry, index, list) => !(source.alwaysPrepared || []).includes(entry.name) && list.findIndex(item => item.name === entry.name) === index);
+  }
   return sources;
+}
+
+// Names a source needn't (and can't) pick: its own fixed spells and those prepared elsewhere.
+function alreadyPrepared(source) {
+  return [...(source.alwaysPrepared || []), ...(source.preparedElsewhere || []).map(entry => entry.name)];
 }
 
 // What the player chose for a source (fixed spells excluded).
@@ -253,8 +266,9 @@ function listOf(state, source) {
   const catalog = getSpellCatalog();
   const always = source.alwaysPrepared || [];
   const isCantrip = name => (findSpell(name, catalog) || {}).level === 0;
-  // A spell chosen before it became always prepared is listed once.
-  const notAlways = name => !always.includes(name);
+  // A spell chosen before it became always prepared (here or elsewhere) is listed once.
+  const fixed = alreadyPrepared(source);
+  const notAlways = name => !fixed.includes(name);
   return {
     cantrips: [...always.filter(isCantrip), ...chosen.cantrips.filter(notAlways)],
     prepared: [...always.filter(name => !isCantrip(name)), ...chosen.prepared.filter(notAlways)],
@@ -317,10 +331,13 @@ function chooseSpells(state, source, request, catalog = getSpellCatalog()) {
   let prepared = Array.isArray(body.prepared) ? body.prepared.map(name => requireSpell(name, source, { cantrip: false }, catalog)) : current.prepared;
   unique(cantrips, 'Cantrips');
   unique(prepared, 'Prepared spells');
-  const always = source.alwaysPrepared || [];
+  const always = alreadyPrepared(source);
   const fixed = [...cantrips, ...prepared].find(name => always.includes(name) &&
     !current.cantrips.includes(name) && !current.prepared.includes(name));
-  if (fixed) throw new Error(`${fixed} is always prepared for you (${source.alwaysPreparedLabel || source.label}); choose another spell.`);
+  if (fixed) {
+    const elsewhere = (source.preparedElsewhere || []).find(entry => entry.name === fixed);
+    throw new Error(`${fixed} is always prepared for you (${elsewhere ? elsewhere.from : source.alwaysPreparedLabel || source.label}); choose another spell.`);
+  }
   if (source.minSpellLevel) {
     prepared.forEach(name => {
       if (findSpell(name, catalog).level !== source.minSpellLevel) throw new Error(`${name} must be a level ${source.minSpellLevel} spell.`);
@@ -578,8 +595,8 @@ function buildSpellsView(character, state) {
         cantrips: lists.cantrips,
         prepared: lists.prepared,
         // Without spells that are always prepared anyway, so they free up a pick.
-        chosenCantrips: chosen.cantrips.filter(name => !(source.alwaysPrepared || []).includes(name)),
-        chosenPrepared: chosen.prepared.filter(name => !(source.alwaysPrepared || []).includes(name)),
+        chosenCantrips: chosen.cantrips.filter(name => !alreadyPrepared(source).includes(name)),
+        chosenPrepared: chosen.prepared.filter(name => !alreadyPrepared(source).includes(name)),
         spellbook: source.spellbook ? lists.spellbook : null,
         spellbookFreeLeft: source.spellbook
           ? Math.max(0, source.spellbook.freeLimit - lists.spellbook.filter(entry => entry.source === 'level').length)

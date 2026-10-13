@@ -63,3 +63,25 @@ test('Circle of the Land spells follow the chosen land', () => {
   const choice = rules.featuresAtLevel('Druid', 'Circle of the Land', 3).find(feature => feature.name === 'Circle Spells (Land)');
   assert.deepEqual(choice.options.map(option => option.name), ['Arid', 'Polar', 'Temperate', 'Tropical']);
 });
+
+test("a spell another source already prepares (a High Elf's Detect Magic) is free to swap for a Cleric", () => {
+  const built = rules.buildStartingCharacter({
+    name: 'Aelar', species: 'Elf', speciesOption: 'High Elf', speciesSpellAbility: 'wis', className: 'Cleric', subclass: 'Life Domain',
+    background: 'Acolyte', generationMethod: 'Standard Array',
+    baseScores: { str: 13, dex: 10, con: 14, int: 8, wis: 15, cha: 12 }, backgroundBonuses: { wis: 2, cha: 1 },
+    speciesSkills: ['Perception'], classSkills: ['Medicine', 'Persuasion'],
+    originFeatChoices: { spellList: 'Cleric', spellAbility: 'wis' },
+    languages: ['Dwarvish', 'Orc'], classEquipment: 'A', backgroundEquipment: 'A',
+    featureChoices: { 'Cleric:1:Divine Order': 'Protector' }
+  });
+  const character = { classes: built.classes, species: 'Elf', sheetData: built.sheetData };
+  const source = clericSource(character);
+  assert.deepEqual(source.preparedElsewhere.find(entry => entry.name === 'Detect Magic'), { name: 'Detect Magic', from: 'Elf — High Elf' });
+
+  // Detect Magic prepared as a Cleric spell too; no Long Rest change window open.
+  const state = { ...rules.readSpellcasting(built.sheetData), classes: { Cleric: { cantrips: [], prepared: ['Detect Magic', 'Bane'] } }, changes: {} };
+  const after = rules.chooseSpells(state, source, { prepared: ['Bane', 'Purify Food and Drink'] }).state;
+  assert.deepEqual(after.classes.Cleric.prepared, ['Bane', 'Purify Food and Drink']);
+  assert.throws(() => rules.chooseSpells(after, source, { prepared: ['Bane', 'Purify Food and Drink', 'Detect Magic'] }),
+    /Detect Magic is always prepared for you \(Elf — High Elf\)/);
+});
