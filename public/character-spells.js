@@ -54,6 +54,9 @@
   let message = '';
   let isError = false;
   let editing = null; // source key being edited
+  // Unsaved ability changes on the sheet, as modifier changes: { wis: 1 }.
+  let abilityDeltas = {};
+  const shift = source => abilityDeltas[source.ability] || 0;
   // Picks from a save the server refused: kept so the player can fix them.
   let draft = null; // { key, cantrips, prepared, book, error }
   let editingInvocations = false;
@@ -207,7 +210,7 @@
   }
 
   function renderSource(source) {
-    const headerBits = [ABILITY[source.ability] || '', 'Save DC ' + source.saveDc];
+    const headerBits = [ABILITY[source.ability] || '', 'Save DC ' + (source.saveDc + shift(source))];
     const choosable = Boolean(source.cantripLimit || source.preparedLimit);
     const counts = [];
     if (source.cantripLimit) counts.push('Cantrips ' + source.chosenCantrips.length + '/' + source.cantripLimit);
@@ -242,7 +245,7 @@
     return el('div', { className: 'spell-source' }, [
       el('div', { className: 'spell-source-header' }, [
         el('div', {}, [el('strong', { text: source.label }), el('span', { className: 'muted', text: ' · ' + headerBits.join(' · ') + ' · ' }),
-          el('button', { type: 'button', className: 'roll-link', 'data-roll': 'spell:' + source.key, title: 'Roll a spell attack', text: 'Spell attack ' + signed(source.attackBonus) })]),
+          el('button', { type: 'button', className: 'roll-link', 'data-roll': 'spell:' + source.key, title: 'Roll a spell attack', text: 'Spell attack ' + signed(source.attackBonus + shift(source)) })]),
         choosable ? button(editing === source.key ? 'Close' : 'Choose spells', () => { editing = editing === source.key ? null : source.key; draft = null; render(); }) : null
       ]),
       counts.length ? el('p', { className: 'muted small', text: counts.join(' · ') + (missing > 0 ? ' — ' + missing + ' still to choose' : '') }) : null,
@@ -608,6 +611,11 @@
     }
   }
 
-  window.refreshCharacterSpells = load;
+  window.refreshCharacterSpells = () => { abilityDeltas = {}; return load(); };
+  // The sheet shows a typed-in ability score's effect before it's saved.
+  window.previewCharacterAbilities = deltas => {
+    abilityDeltas = deltas || {};
+    render();
+  };
   load();
 })();

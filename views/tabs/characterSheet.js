@@ -511,6 +511,14 @@ module.exports = function renderCharacterSheetTab(ctx) {
         let sheetCheckBonuses = { skills: {}, checks: {} };
         // Initiative from the server: { total, parts: [{ label, value }], advantage }.
         let sheetInitiative = null;
+        // Ability modifiers as last loaded or saved, to preview unsaved changes elsewhere (spell DC).
+        let loadedModifiers = null;
+        function currentModifiers() {
+          return Object.fromEntries(abilities.map(ability => {
+            const score = Number(abilityContainer.querySelector('[data-ability="' + ability + '"]').value);
+            return [ability, Number.isInteger(score) && score >= 1 && score <= 30 ? Math.floor((score - 10) / 2) : 0];
+          }));
+        }
 
         function updateDerivedStats(level) {
           const bonus = Math.ceil(Math.max(1, Number(level) || 1) / 4) + 1;
@@ -665,6 +673,10 @@ module.exports = function renderCharacterSheetTab(ctx) {
           if (event.target.matches('[data-ability]')) {
             updateAbilityValidation();
             updateDerivedStats(sheetCharacterLevel);
+            if (loadedModifiers && window.previewCharacterAbilities) {
+              const now = currentModifiers();
+              window.previewCharacterAbilities(Object.fromEntries(abilities.map(ability => [ability, now[ability] - loadedModifiers[ability]])));
+            }
           }
         });
         savesContainer.addEventListener('change', () => updateDerivedStats(sheetCharacterLevel));
@@ -812,6 +824,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             syncAttacksTable();
             updateAbilityValidation();
             updateDerivedStats(character.level);
+            loadedModifiers = currentModifiers();
             lockRuleOwnedFields(character, data);
             autosizeNotes();
             // Worn armor sets the Armor Class; the combat panel fills it in.
@@ -883,6 +896,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
             if (!response.ok) throw new Error(result.error || 'Could not save character sheet.');
             // Ability changes (CON) can change max HP and hit point recovery.
             if (window.refreshCharacterVitals) window.refreshCharacterVitals();
+            // Spell save DC and attack follow the saved ability scores.
+            if (window.refreshCharacterSpells) window.refreshCharacterSpells();
+            loadedModifiers = currentModifiers();
             // Ability changes move Armor Class and attack bonuses.
             if (window.refreshCharacterCombat) window.refreshCharacterCombat();
             document.getElementById('cs_header_name').textContent =
