@@ -153,7 +153,7 @@ module.exports = function renderPlayersTab(ctx) {
             <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: flex-end;">
               <div>
                 <label style="font-size: 12px;">Adventure XP (Override):</label><br>
-                <input type="number" name="xp" min="0" value="${charToEdit.xp}" required style="width: 100%; margin-top: 4px;">
+                <input type="number" id="editCharXp" name="xp" min="0" value="${charToEdit.xp}" required style="width: 100%; margin-top: 4px;">
               </div>
               <div>
                 <label style="font-size: 12px;">Purse:</label><br>
@@ -173,11 +173,11 @@ module.exports = function renderPlayersTab(ctx) {
               </div>
               <div>
                 <label style="font-size: 12px; cursor: pointer;">
-                  <input type="checkbox" id="overrideLvlCheck" name="override_level" value="1" onchange="toggleLevelInput(this)">
+                  <input type="checkbox" id="overrideLvlCheck" name="override_level" value="1" onchange="toggleLevelInput(this)"${charToEdit.level !== db.calculateLevelFromXp(charToEdit.xp) ? ' checked' : ''}>
                   <strong>Override auto level calculation</strong>
                 </label>
                 <div style="font-size: 11px; color: #949ba4; margin-top: 4px;">
-                  Unchecked = auto-calculates level from XP ($0$–$2 = 3$, $3 = 4$, $+4$ per level).
+                  Unchecked = level from XP (0–2 XP = 3, 3 XP = 4, then +1 level per 4 XP). Untick and save to go back to it.
                 </div>
               </div>
               <div>
@@ -268,17 +268,26 @@ module.exports = function renderPlayersTab(ctx) {
 
       <script>
         const multiclassNames = ${classNamesJson};
+        // Same formula as calculateLevelFromXp in db/characters.js.
+        function levelFromXp(xp) {
+          const points = Math.max(0, parseInt(xp, 10) || 0);
+          return points < 3 ? 3 : Math.min(20, 4 + Math.floor((points - 3) / 4));
+        }
+        // Unticked: the level follows the XP and can't be typed in.
         function toggleLevelInput(cb) {
           const input = document.getElementById('editCharLevel');
-          if (!cb.checked) {
-            input.style.opacity = '0.6';
-          } else {
-            input.style.opacity = '1';
-          }
+          const xpInput = document.getElementById('editCharXp');
+          input.readOnly = !cb.checked;
+          input.style.opacity = cb.checked ? '1' : '0.6';
+          if (!cb.checked && xpInput) input.value = levelFromXp(xpInput.value);
         }
         document.addEventListener('DOMContentLoaded', () => {
           const cb = document.getElementById('overrideLvlCheck');
-          if (cb) toggleLevelInput(cb);
+          if (cb) {
+            toggleLevelInput(cb);
+            const xpInput = document.getElementById('editCharXp');
+            if (xpInput) xpInput.addEventListener('input', () => toggleLevelInput(cb));
+          }
 
           const characterStatus = document.getElementById('char-status-select');
           const deathDetails = document.getElementById('cause-of-death-box');

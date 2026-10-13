@@ -54,11 +54,27 @@ test('the character sheet editor and creator scripts parse', () => {
   for (const user of [users.admin, users.player]) {
     const html = renderAdminPage({ session: { user }, query: { tab: 'character-sheet', edit_char: String(characterId) } });
     assert.match(html, /id="cs_name"/, 'the editor is on the page');
+    assert.match(html, /id="open-character-reset"/, 'the owner and admins can reset the character');
+    assert.match(html, new RegExp(`data-rebuild-id="${characterId}"`));
     assert.ok(assertScriptsParse(html, `${user.role} sheet editor`) > 0);
   }
   const list = renderAdminPage({ session: { user: users.player }, query: { tab: 'character-sheet' } });
   assert.match(list, /id="open-character-creator"/);
   assertScriptsParse(list, 'character list');
+});
+
+test('the level override box shows whether the level was set by hand', () => {
+  const overrideBox = () => {
+    const html = renderAdminPage({ session: { user: users.admin }, query: { tab: 'players', edit_char: String(characterId) } });
+    assertScriptsParse(html, 'players editor');
+    return html.match(/<input type="checkbox" id="overrideLvlCheck"[^>]*>/)[0];
+  };
+  const { xp } = db.getCharacterById(characterId);
+  db.prepare('UPDATE characters SET level = ? WHERE id = ?').run(db.calculateLevelFromXp(xp), characterId);
+  assert.doesNotMatch(overrideBox(), /checked/, 'level from XP: unticked');
+  db.prepare('UPDATE characters SET level = ? WHERE id = ?').run(db.calculateLevelFromXp(xp) + 1, characterId);
+  assert.match(overrideBox(), /checked/, 'level set by hand: ticked, so unticking restores the XP level');
+  db.prepare('UPDATE characters SET level = ? WHERE id = ?').run(db.calculateLevelFromXp(xp), characterId);
 });
 
 test('browser scripts in public/ parse', () => {
