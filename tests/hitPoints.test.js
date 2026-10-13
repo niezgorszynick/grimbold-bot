@@ -64,3 +64,16 @@ test("the adventure's DM can damage and heal party members; the sheet shows it",
     server.close();
   }
 });
+
+test('reset HP: back to the rules maximum, without adjustments or temporary HP', () => {
+  const context = { baseHpMax: 24 };
+  const buffed = rules.normalizeVitals({ hpCurrent: 29, hpMaxBonus: 5, hpTemp: 8 }, 29);
+  const reset = rules.applyVitalsAction(buffed, 'resetHp', {}, context);
+  assert.equal(reset.hpMax, 24);
+  assert.equal(reset.vitals.hpMaxBonus, 0);
+  assert.equal(reset.vitals.hpTemp, 0);
+  assert.equal(reset.vitals.hpCurrent, 24, 'capped at the new maximum');
+
+  const hurtAndCursed = rules.normalizeVitals({ hpCurrent: 10, hpMaxBonus: -6 }, 18);
+  assert.equal(rules.applyVitalsAction(hurtAndCursed, 'resetHp', {}, context).vitals.hpCurrent, 10, 'no free healing');
+});

@@ -250,6 +250,12 @@ function setHp(vitals, { current, max }, context) {
   return { vitals: next, events: [] };
 }
 
+// Back to the rules maximum: adjustments (Aid, curses) and temporary HP go.
+// Current HP never rises; it only drops to the new maximum if it's above it.
+function resetHp(vitals) {
+  return { vitals: { ...vitals, hpMaxBonus: 0, hpTemp: 0 }, events: [] };
+}
+
 // ─── Character-level helpers ────────────────────────────────────────────────
 
 // Includes magic items such as an Amulet of Health.
@@ -288,7 +294,8 @@ const ACTIONS = {
   spendSlot: (vitals, params, context) => changeSlot(vitals, params.level, 1, context),
   restoreSlot: (vitals, params, context) => changeSlot(vitals, params.level, -1, context),
   maxHpBonus: (vitals, params) => setMaxHpBonus(vitals, params.bonus),
-  setHp: (vitals, params, context) => setHp(vitals, params, context)
+  setHp: (vitals, params, context) => setHp(vitals, params, context),
+  resetHp: vitals => resetHp(vitals)
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
 

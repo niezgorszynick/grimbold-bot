@@ -35,8 +35,8 @@
     return node;
   }
 
-  const button = (text, onclick, className = 'btn btn-small') =>
-    el('button', { type: 'button', className, text, onclick });
+  const button = (text, onclick, className = 'btn btn-small', extra = {}) =>
+    el('button', Object.assign({ type: 'button', className, text, onclick }, extra));
 
   let vitals = null;
   let busy = false;
@@ -139,7 +139,14 @@
       max,
       el('span', { className: 'muted', text: ' HP ' }),
       button('Save', save, 'btn btn-small btn-green'),
-      button('Cancel', () => { editingHp = false; render(); }, 'btn btn-small btn-secondary')
+      button('Cancel', () => { editingHp = false; render(); }, 'btn btn-small btn-secondary'),
+      // Rules maximum again: no adjustments, no temporary HP.
+      vitals.hpMaxBonus || vitals.hpTemp
+        ? button('Reset to ' + (vitals.hpMax - vitals.hpMaxBonus) + ' max', () => {
+          editingHp = false;
+          send('resetHp');
+        }, 'btn btn-small btn-gold', { title: 'Remove HP adjustments (e.g. Aid) and temporary HP; current HP only drops if above the new max.' })
+        : null
     ]);
   }
 
