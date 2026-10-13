@@ -146,6 +146,20 @@ const FIGHTING_STYLE_FEATS = {
 };
 const FIGHTING_STYLE_NAMES = Object.keys(FIGHTING_STYLE_FEATS);
 
+// 2024: instead of a Fighting Style feat, a Paladin may take Blessed Warrior
+// and a Ranger Druidic Warrior — two cantrips from another class's list that
+// count as their own class's spells. One can be replaced on each level in that class.
+const CLASS_FIGHTING_STYLE_OPTIONS = {
+  Paladin: { name: 'Blessed Warrior', list: 'Cleric', ability: 'cha', cantrips: 2 },
+  Ranger: { name: 'Druidic Warrior', list: 'Druid', ability: 'wis', cantrips: 2 }
+};
+
+// The Fighting Style choices for a class: the feats, plus its own option.
+function fightingStyleChoices(className) {
+  const own = CLASS_FIGHTING_STYLE_OPTIONS[className];
+  return own ? [...FIGHTING_STYLE_NAMES, own.name] : FIGHTING_STYLE_NAMES;
+}
+
 // Classes whose Fighting Style feature lets them take Fighting Style feats.
 const FIGHTING_STYLE_FEATURE_LEVELS = { Fighter: 1, Paladin: 2, Ranger: 2 };
 
@@ -218,6 +232,8 @@ module.exports = {
   GENERAL_FEAT_LEVEL,
   FIGHTING_STYLE_FEATS,
   FIGHTING_STYLE_NAMES,
+  CLASS_FIGHTING_STYLE_OPTIONS,
+  fightingStyleChoices,
   FIGHTING_STYLE_FEATURE_LEVELS,
   hasFightingStyleFeature,
   EPIC_BOONS,

@@ -478,6 +478,8 @@ updateCharacterSheet: ({ id, player_id, is_admin, name, race, class_name, subcla
       if (isRulesManaged(storedSheetData) && !is_admin) {
         keepStored(nextSheetData, storedSheetData, RULES_MANAGED_KEYS);
       }
+      // Expertise comes from feats, class features and the DM, never a player's save.
+      if (!is_admin) keepStored(nextSheetData, storedSheetData, ['expertise']);
       if (
         nextSheetData.abilities &&
         typeof nextSheetData.abilities === 'object' &&

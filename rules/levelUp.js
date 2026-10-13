@@ -12,7 +12,7 @@ const { getClass, ALL_CLASSES } = require('./classes');
 const { DND_CLASSES_AND_SUBCLASSES } = require('./subclasses');
 const {
   ORIGIN_FEATS, GENERAL_FEATS, GENERAL_FEAT_LEVEL, EPIC_BOONS, EPIC_BOON_LEVEL_REQUIREMENT, featName, featGrants,
-  FIGHTING_STYLE_FEATS, FIGHTING_STYLE_NAMES, collectCharacterFeats, hasFightingStyleFeature
+  FIGHTING_STYLE_FEATS, FIGHTING_STYLE_NAMES, fightingStyleChoices, collectCharacterFeats, hasFightingStyleFeature
 } = require('./feats');
 const { TOOL_CATEGORIES } = require('./equipment');
 const { planLevelUp } = require('./progression');
@@ -158,7 +158,7 @@ function getLevelUpOptions(state) {
       classSkillOptions: getClass(className).skillChoices.options === 'any' ? SKILL_NAMES : getClass(className).skillChoices.options,
       feats: needsImprovement ? listFeats(nextContext, { allowBoons: plan.choices.includes('epicBoon') }) : null,
       fightingStyles: plan.features.includes('Fighting Style')
-        ? FIGHTING_STYLE_NAMES.map(name => ({
+        ? fightingStyleChoices(className).map(name => ({
           name,
           unavailable: feats.some(feat => featName(feat) === name) ? 'Already taken.' : null
         }))
@@ -283,10 +283,12 @@ function resolveImprovement(improvement, context, { allowBoons }) {
   return result;
 }
 
-// A Fighting Style feat the character doesn't already have.
-function resolveFightingStyle(name, sheetData) {
-  if (!FIGHTING_STYLE_NAMES.includes(name)) {
-    throw new Error(`Choose a Fighting Style: ${FIGHTING_STYLE_NAMES.join(', ')}.`);
+// A Fighting Style feat (or the class's own option, e.g. Blessed Warrior) the
+// character doesn't already have.
+function resolveFightingStyle(name, sheetData, className) {
+  const choices = fightingStyleChoices(className);
+  if (!choices.includes(name)) {
+    throw new Error(`Choose a Fighting Style: ${choices.join(', ')}.`);
   }
   if (collectCharacterFeats(sheetData).some(feat => featName(feat) === name)) {
     throw new Error(`You already have the ${name} Fighting Style.`);
@@ -385,7 +387,7 @@ function applyLevelUp(state, request) {
 
   // The Fighting Style feature (Fighter 1, Paladin 2, Ranger 2) grants a Fighting Style feat.
   if (plan.features.includes('Fighting Style')) {
-    entry.fightingStyle = { name: resolveFightingStyle(body.fightingStyle, sheetData) };
+    entry.fightingStyle = { name: resolveFightingStyle(body.fightingStyle, sheetData, plan.className) };
   }
 
   const nextScores = { ...scores };

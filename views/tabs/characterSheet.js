@@ -149,6 +149,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <p id="cs_skill_guidance" class="muted small" aria-live="polite"></p>
                 <div id="cs_species_skill_choices"></div>
                 <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
+                ${isAdmin ? '<details id="cs_dm_skills" class="sheet-dm-skills"><summary>DM: extra skill proficiencies &amp; Expertise</summary><p class="muted small">For feats or features the sheet doesn&#39;t apply by itself. Save the sheet afterwards.</p><div class="sheet-dm-skill-grid"></div></details>' : ''}
               </section>
             </div>
             <div class="sheet-col">
@@ -359,6 +360,49 @@ module.exports = function renderCharacterSheetTab(ctx) {
           skillsContainer.appendChild(row);
         });
 
+        // DM only: extra proficiencies (from feats or features) and Expertise.
+        const dmSkills = document.getElementById('cs_dm_skills');
+        function renderDmSkills() {
+          if (!dmSkills) return;
+          const grid = dmSkills.querySelector('.sheet-dm-skill-grid');
+          grid.replaceChildren(...skills.map(([skill]) => {
+            const box = skillsContainer.querySelector('[data-skill="' + skill + '"]');
+            const fromRules = box.checked && !savedSpeciesSkills.includes(skill);
+            const proficient = document.createElement('input');
+            proficient.type = 'checkbox';
+            proficient.checked = box.checked;
+            proficient.disabled = fromRules;
+            proficient.title = fromRules ? 'From class, background or species' : 'Extra proficiency';
+            proficient.addEventListener('change', () => {
+              savedSpeciesSkills = proficient.checked
+                ? [...new Set([...savedSpeciesSkills, skill])]
+                : savedSpeciesSkills.filter(item => item !== skill);
+              if (!proficient.checked) sheetExpertise = sheetExpertise.filter(item => item !== skill);
+              updateRuleDrivenFields();
+              updateDerivedStats(sheetCharacterLevel);
+            });
+            const expert = document.createElement('input');
+            expert.type = 'checkbox';
+            expert.checked = sheetExpertise.includes(skill);
+            expert.disabled = !box.checked;
+            expert.title = box.checked ? 'Expertise' : 'Needs proficiency first';
+            expert.addEventListener('change', () => {
+              sheetExpertise = expert.checked ? [...new Set([...sheetExpertise, skill])] : sheetExpertise.filter(item => item !== skill);
+              updateDerivedStats(sheetCharacterLevel);
+            });
+            const row = document.createElement('div');
+            row.className = 'sheet-dm-skill';
+            const name = document.createElement('span');
+            name.textContent = skill;
+            const profLabel = document.createElement('label');
+            profLabel.append(proficient, ' Prof');
+            const expertLabel = document.createElement('label');
+            expertLabel.append(expert, ' ★');
+            row.append(name, profLabel, expertLabel);
+            return row;
+          }));
+        }
+
         const message = document.getElementById('cs_message');
         const pointBuyError = document.getElementById('cs_point_buy_error');
         const abilityScores = [...abilityContainer.querySelectorAll('[data-ability]')];
@@ -444,6 +488,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
           skills.forEach(([skill]) => {
             const checkbox = skillsContainer.querySelector('[data-skill="' + skill + '"]');
             const automatic = fixedSkills.has(skill);
+            const extra = savedSpeciesSkills.includes(skill) && !(speciesData.skillProficiencies || []).includes(skill) && !(backgroundData.skillProficiencies || []).includes(skill);
             checkbox.checked = automatic || selectedClassSkills.includes(skill);
             checkbox.disabled = automatic || !classOptions.has(skill);
             const row = checkbox.closest('.sheet-check-row');
@@ -452,10 +497,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
               ? 'Background'
               : (speciesData.skillProficiencies || []).includes(skill)
                 ? 'Species'
-                : 'Character feature';
+                : extra ? 'a feat, class feature or the DM' : 'Character feature';
             row.title = automatic
               ? 'Granted by ' + source
               : classOptions.has(skill) ? 'Choose as a class proficiency' : 'Not available from this class';
+            row.dataset.sourceTitle = row.title;
           });
           abilities.forEach(ability => {
             const checkbox = savesContainer.querySelector('[data-save="' + ability + '"]');
@@ -495,6 +541,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
           }
           updateDerivedStats(sheetCharacterLevel);
           updateAbilityValidation();
+          renderDmSkills();
         }
 
         function updateSubclasses(selected = subclassSelect.value) {
@@ -570,7 +617,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             const total = modifier + (proficient ? bonus : 0) + (expert ? bonus : 0) +
               Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0);
             skillRow.classList.toggle('has-expertise', expert);
-            skillRow.title = expert ? 'Expertise: proficiency bonus counts twice' : '';
+            skillRow.title = expert ? 'Expertise: proficiency bonus counts twice' : (skillRow.dataset.sourceTitle || '');
             skillRow.querySelector('.sheet-check-modifier').textContent =
               (total >= 0 ? '+' : '') + total;
           });
@@ -751,16 +798,18 @@ module.exports = function renderCharacterSheetTab(ctx) {
             selectedSpeciesSkills = Array.isArray(data.speciesSkillChoices)
               ? data.speciesSkillChoices
               : savedSpeciesChoices.slice(0, ((sheetSpecies[speciesSelect.value] || {}).skillChoiceCount || 0));
-            savedSpeciesSkills = savedSkills.filter(skill =>
-              !classSkillOptions.includes(skill) &&
-              !backgroundSkills.includes(skill) &&
-              !speciesSkills.includes(skill) &&
-              !selectedSpeciesSkills.includes(skill)
-            );
-            selectedClassSkills = savedSkills.filter(skill =>
+            // Class picks as stored at creation (older sheets: the class options they have).
+            selectedClassSkills = (Array.isArray(data.classSkillChoices) ? data.classSkillChoices : savedSkills).filter(skill =>
               classSkillOptions.includes(skill) &&
               !backgroundSkills.includes(skill) &&
               !speciesSkills.includes(skill)
+            );
+            // Everything else (feats, class features, the DM) is kept as it is.
+            savedSpeciesSkills = savedSkills.filter(skill =>
+              !selectedClassSkills.includes(skill) &&
+              !backgroundSkills.includes(skill) &&
+              !speciesSkills.includes(skill) &&
+              !selectedSpeciesSkills.includes(skill)
             );
             savedSaves = Array.isArray(data.savingProficiencies) ? data.savingProficiencies : [];
             updateRuleDrivenFields();
@@ -867,6 +916,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
             ])],
             classSkillChoices: selectedClassSkills,
             speciesSkillChoices: selectedSpeciesSkills,
+            // Only an admin's save changes Expertise (the server checks too).
+            ...(sheetViewerIsAdmin ? { expertise: sheetExpertise.filter(skill => skillsContainer.querySelector('[data-skill="' + skill + '"]').checked) } : {}),
             background: backgroundSelect.value,
             armorClass: document.getElementById('cs_ac').value === ''
               ? null : Number(document.getElementById('cs_ac').value),

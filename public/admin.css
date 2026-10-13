@@ -532,3 +532,9 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .vitals-resource { padding: 2px 0 4px; }
 .vitals-resource-text { margin: 0 0 0 4px; }
 .vitals-resources input[type=number] { width: 70px; }
+/* DM: extra skill proficiencies and Expertise. */
+.sheet-dm-skills { margin-top: 8px; font-size: 12px; }
+.sheet-dm-skills summary { cursor: pointer; color: #d4af37; }
+.sheet-dm-skill-grid { display: grid; gap: 2px; }
+.sheet-dm-skill { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.sheet-dm-skill label { display: inline-flex; align-items: center; gap: 3px; }

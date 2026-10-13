@@ -690,6 +690,8 @@ router.get('/rules/creation', (req, res) => {
     standardArray: rules.STANDARD_ARRAY,
     standardArraySuggestions: rules.STANDARD_ARRAY_SUGGESTIONS,
     fightingStyles: rules.FIGHTING_STYLE_NAMES,
+    // Blessed Warrior (Paladin), Druidic Warrior (Ranger): instead of a Fighting Style feat.
+    classFightingStyles: rules.CLASS_FIGHTING_STYLE_OPTIONS,
     // Choices from class features up to the starting level, and the subclass's at level 3.
     classFeatureChoices: Object.fromEntries(Object.keys(rules.ALL_CLASSES).map(name => [name,
       Array.from({ length: rules.STARTING_LEVEL }, (_, index) => rules.featuresAtLevel(name, null, index + 1)).flat()])),

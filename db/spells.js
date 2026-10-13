@@ -101,6 +101,12 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
       const outcome = rules.applyVitalsAction(vitals, 'spendSlot', { level: result.slotChange.level }, context);
       nextSheet = { ...nextSheet, ...outcome.vitals };
     }
+    // A spell paid with a class feature (Darkness: 1 Focus Point).
+    if (result.resourceCost) {
+      const { context } = vitalsFor(spellChar);
+      const outcome = rules.applyVitalsAction(rules.normalizeVitals(nextSheet, context.hpMax), 'useResource', result.resourceCost, context);
+      nextSheet = { ...nextSheet, ...outcome.vitals };
+    }
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return { spell: result.spell.name, events: result.events, slotChange: result.slotChange, spells: buildView(character, nextSheet) };
   })();

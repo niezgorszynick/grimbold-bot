@@ -288,7 +288,8 @@
       const previousStyle = widgets.fightingStyle ? widgets.fightingStyle.value : undefined;
       const styleLevel = (R.fightingStyleClasses || {})[className];
       if (styleLevel && styleLevel <= R.startingLevel) {
-        widgets.fightingStyle = selectBox(R.fightingStyles || [], { placeholder: '-- Choose Fighting Style --', value: previousStyle, required: true });
+        const ownStyle = (R.classFightingStyles || {})[className];
+        widgets.fightingStyle = selectBox([...(R.fightingStyles || []), ...(ownStyle ? [ownStyle.name] : [])], { placeholder: '-- Choose Fighting Style --', value: previousStyle, required: true });
         fightingStyleBox.replaceChildren(el('h5', { text: 'Fighting Style' }),
           field('Fighting Style feat', widgets.fightingStyle, 'Granted by the ' + className + ' Fighting Style feature (level ' + styleLevel + ').'));
       } else {

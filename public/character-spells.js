@@ -127,7 +127,9 @@
   function castOptions(source, spell) {
     const options = [];
     const free = source.freeLeft[spell.name];
-    if (free === 'atWill') options.push({ label: 'At will (no slot)', value: { free: true } });
+    const cost = source.resourceCosts && source.resourceCosts[spell.name];
+    if (cost) options.push({ label: 'For ' + cost.label, value: { free: true } });
+    else if (free === 'atWill') options.push({ label: 'At will (no slot)', value: { free: true } });
     else if (free > 0) options.push({ label: 'Free (' + free + ' left until Long Rest)', value: { free: true } });
     // Invocation spells are only ever cast without a slot.
     if (source.slotless) return options;

@@ -29,7 +29,7 @@ const { atLevel, abilityModifier, proficiencyBonus } = require('./util');
 const { getClass, SUBCLASS_SPELLCASTING } = require('./classes');
 const { getSpellSlots } = require('./spellcasting');
 const { getSpellCatalog, findSpell, spellListName } = require('./spells');
-const { collectCharacterFeats, featName, featGrants } = require('./feats');
+const { collectCharacterFeats, featName, featGrants, CLASS_FIGHTING_STYLE_OPTIONS } = require('./feats');
 const { effectiveAbilityScore, magicItemEffects } = require('./magicItems');
 const { extraCantrips } = require('./featureChoices');
 const { subclassSpellsFor } = require('./subclassSpells');
@@ -169,6 +169,41 @@ function getSpellSources(character) {
       changeRule: 'never',
       freeEach: spells.freeEach || 0
     });
+  }
+
+  // Blessed Warrior (Paladin) / Druidic Warrior (Ranger): two cantrips from the
+  // Cleric / Druid list; one may be replaced on each level in that class.
+  for (const [className, option] of Object.entries(CLASS_FIGHTING_STYLE_OPTIONS)) {
+    if (!collectCharacterFeats(sheetData).some(feat => featName(feat) === option.name)) continue;
+    sources.push({
+      kind: 'feat',
+      key: option.name,
+      label: `${option.name} (${option.list} cantrips)`,
+      list: option.list,
+      ...castingNumbers(option.ability),
+      cantripLimit: option.cantrips,
+      preparedLimit: 0,
+      maxSpellLevel: 0,
+      changeRule: 'classLevelCantrip',
+      swapClass: className
+    });
+  }
+
+  // Monk subclasses with spells, cast with Wisdom: Warrior of Shadow (Shadow
+  // Arts: Minor Illusion, and Darkness for 1 Focus Point) and Warrior of the
+  // Elements (Manipulate Elements: Elementalism).
+  for (const row of classes) {
+    if (row.className !== 'Monk' || row.level < 3) continue;
+    if (row.subclassName === 'Warrior of Shadow') {
+      sources.push({
+        kind: 'subclass', key: 'Shadow Arts', label: 'Shadow Arts (Warrior of Shadow)', ...castingNumbers('wis'),
+        alwaysPrepared: ['Minor Illusion', 'Darkness'], slotless: true,
+        freeUsesBySpell: { Darkness: 'atWill' }, resourceCosts: { Darkness: { key: 'focusPoints', amount: 1, label: '1 Focus Point' } }
+      });
+    }
+    if (row.subclassName === 'Warrior of the Elements') {
+      sources.push({ kind: 'subclass', key: 'Manipulate Elements', label: 'Manipulate Elements (Warrior of the Elements)', ...castingNumbers('wis'), alwaysPrepared: ['Elementalism'] });
+    }
   }
 
   // Warlock invocations: spells cast without a slot, and the Book of Shadows.
@@ -451,6 +486,8 @@ function onLevelUp(state, sources, className) {
       if (source.changeRule === 'levelUpOne') entry.swaps = (entry.swaps || 0) + 1;
       if (source.cantripLimit > 0) entry.cantripSwaps = (entry.cantripSwaps || 0) + 1;
     }
+    // Blessed / Druidic Warrior: one cantrip on each Paladin / Ranger level.
+    if (source.swapClass && source.swapClass === className) entry.cantripSwaps = (entry.cantripSwaps || 0) + 1;
     if (source.changeRule === 'featLevelUp') {
       entry.swaps = (entry.swaps || 0) + 1;
       entry.cantripSwaps = (entry.cantripSwaps || 0) + 1;
@@ -489,6 +526,7 @@ function castSpell(state, sources, { source: sourceKey, spell: spellName, slotLe
   const lists = listOf(state, source);
   const events = [];
   let slotChange = null;
+  let resourceCost = null;
   let nextState = { ...state };
 
   if (spell.level === 0) {
@@ -512,6 +550,8 @@ function castSpell(state, sources, { source: sourceKey, spell: spellName, slotLe
         if (uses !== 'atWill' && used >= uses) throw new Error(`You've used the free casting of ${spell.name}; it returns after a Long Rest.`);
         if (uses !== 'atWill') nextState.freeCastsUsed = { ...state.freeCastsUsed, [key]: used + 1 };
         events.push(uses === 'atWill' ? 'atWill' : 'freeCast');
+        // E.g. Shadow Arts' Darkness costs a Focus Point (spent by the caller).
+        if (source.resourceCosts && source.resourceCosts[spell.name]) resourceCost = source.resourceCosts[spell.name];
       } else if (pact) {
         slotChange = { level: 'pact' };
       } else {
@@ -531,7 +571,7 @@ function castSpell(state, sources, { source: sourceKey, spell: spellName, slotLe
     nextState.concentration = { spell: spell.name, source: source.key };
     events.push('concentrating');
   }
-  return { state: nextState, slotChange, events, spell };
+  return { state: nextState, slotChange, resourceCost, events, spell };
 }
 
 // Concentration after taking damage: DC max(10, half the damage) up to 30;
@@ -547,6 +587,7 @@ const CHANGE_RULE_TEXT = {
   longRestOne: 'Replace one prepared spell after a Long Rest.',
   levelUpOne: 'Replace one spell when you gain a level in this class.',
   featLevelUp: 'Replace one spell when you gain a level.',
+  classLevelCantrip: 'Replace one of these cantrips when you gain a level in that class.',
   restAll: 'Choose new Book of Shadows spells after a Short or Long Rest.',
   never: 'Chosen once; the choice is permanent.'
 };

@@ -10,7 +10,7 @@ const { DND_CLASSES_AND_SUBCLASSES } = require('./subclasses');
 const { ALL_CLASSES } = require('./classes');
 const { BACKGROUNDS } = require('./backgrounds');
 const {
-  ORIGIN_FEATS, ORIGIN_FEAT_NAMES, FIGHTING_STYLE_NAMES, featGrants, hasFightingStyleFeature
+  ORIGIN_FEATS, ORIGIN_FEAT_NAMES, fightingStyleChoices, featGrants, hasFightingStyleFeature
 } = require('./feats');
 const { TOOL_CATEGORIES, STANDARD_LANGUAGES, STARTING_LANGUAGE_CHOICES } = require('./equipment');
 const { generateAbilityScores } = require('./abilities');
@@ -256,7 +256,7 @@ function buildStartingCharacter(input) {
   // Fighters, Paladins and Rangers have the Fighting Style feature by level 3.
   const fightingStyles = [];
   if (hasFightingStyleFeature([{ className, level: STARTING_LEVEL }])) {
-    if (!FIGHTING_STYLE_NAMES.includes(request.fightingStyle)) {
+    if (!fightingStyleChoices(className).includes(request.fightingStyle)) {
       throw new Error(`Choose a Fighting Style for your ${className}.`);
     }
     fightingStyles.push({ name: request.fightingStyle, source: className });
