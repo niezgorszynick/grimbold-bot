@@ -7,7 +7,7 @@ const { WEAPONS } = require('./weapons');
 const { abilityModifier, proficiencyBonus } = require('./util');
 const { getClass } = require('./classes');
 const { collectCharacterFeats, featName } = require('./feats');
-const { readMagicItems, magicItemEntryInfo, effectiveAbilityScore } = require('./magicItems');
+const { readMagicItems, magicItemEntryInfo, effectiveAbilityScore, magicItemEffects } = require('./magicItems');
 
 const ABILITY_LABELS = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
 const MAX_AC_ADJUSTMENT = 10;
@@ -454,6 +454,22 @@ function unarmedStrike(ctx, armorState, holdsWeapon) {
 }
 
 // character: { classes: [{ className, subclassName, level }], species, sheetData }
+// Initiative (2024): a Dexterity check — DEX modifier, plus Proficiency Bonus
+// with Alert, plus magic items that add to ability checks. Jack of All Trades
+// doesn't apply (it's for skill checks only). Some features give Advantage.
+// character: { classes, sheetData }. Returns { total, parts, advantage }.
+function initiativeOf(character) {
+  const ctx = context(character);
+  const parts = [{ label: 'DEX', value: ctx.mods.dex }];
+  if (ctx.feats.has('Alert')) parts.push({ label: 'Alert', value: ctx.pb });
+  const items = magicItemEffects(ctx.sheetData).checks || 0;
+  if (items) parts.push({ label: 'Magic items', value: items });
+  const advantage = [];
+  if (ctx.classes.some(row => row.className === 'Fighter' && row.subclassName === 'Champion' && row.level >= 3)) advantage.push('Remarkable Athlete');
+  if (ctx.levelOf('Barbarian') >= 7) advantage.push('Feral Instinct');
+  return { total: parts.reduce((sum, part) => sum + part.value, 0), parts, advantage };
+}
+
 function calculateCombat(character) {
   const ctx = context(character);
   const armorClass = calculateArmor(ctx);
@@ -505,6 +521,7 @@ module.exports = {
   setWorn,
   isWornByDefault: isWorn,
   calculateCombat,
+  initiativeOf,
   describeGear,
   validateAcAdjustment
 };

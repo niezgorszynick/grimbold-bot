@@ -60,7 +60,6 @@ function rollOptions(character) {
   const saves = Array.isArray(sheetData.savingProficiencies) ? sheetData.savingProficiencies : [];
   const skills = Array.isArray(sheetData.skillProficiencies) ? sheetData.skillProficiencies : [];
   const expertise = Array.isArray(sheetData.expertise) ? sheetData.expertise : [];
-  const feats = rules.collectCharacterFeats(sheetData).map(rules.featName);
   // Jack of All Trades: half proficiency on checks that don't already add it.
   const jack = hasFeature(classes, 'Jack of All Trades') ? Math.floor(pb / 2) : 0;
   // Thaumaturge, Magician, Otherworldly Glamour: a bonus to some checks.
@@ -69,7 +68,8 @@ function rollOptions(character) {
   const add = (id, label, formula, kind) => options.set(id, { id, label, formula, kind });
 
   for (const [ability, name] of Object.entries(ABILITY_NAMES)) {
-    add(`check:${ability}`, `${name} check`, d20(mod(ability) + jack + items.checks + (featureBonus.checks[ability] || 0)), 'check');
+    // Jack of All Trades (2024) is for skill checks only, not plain ability checks.
+    add(`check:${ability}`, `${name} check`, d20(mod(ability) + items.checks + (featureBonus.checks[ability] || 0)), 'check');
     add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves), 'save');
   }
   for (const [skill, ability] of Object.entries(rules.SKILLS)) {
@@ -78,7 +78,7 @@ function rollOptions(character) {
       Math.max(featureBonus.skills[skill] || 0, featureBonus.checks[ability] || 0);
     add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus), 'check');
   }
-  add('initiative', 'Initiative', d20(mod('dex') + (feats.includes('Alert') ? pb : jack) + items.checks), 'initiative');
+  add('initiative', 'Initiative', d20(rules.initiativeOf({ classes, sheetData }).total), 'initiative');
 
   const combat = buildCharacterCombat(character, sheetData);
   combat.attacks.forEach((attack, index) => {

@@ -123,6 +123,16 @@ router.get('/characters/:id', (req, res) => {
     sheetData,
     classes: db.getCharacterClasses(characterId),
     vitals: vitalsViewFor(character, sheetData),
+    // DEX + Alert + items; the sheet adds a changed DEX live.
+    initiative: (() => {
+      try {
+        const classes = db.getCharacterClasses(characterId)
+          .map(row => ({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level }));
+        return rules.initiativeOf({ classes, sheetData });
+      } catch {
+        return null;
+      }
+    })(),
     // Thaumaturge, Magician, Otherworldly Glamour: bonuses the skill list adds.
     checkBonuses: rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability))
   });

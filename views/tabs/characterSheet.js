@@ -153,7 +153,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <div class="sheet-col">
               <div class="sheet-combat-stats">
                 <label class="sheet-stat"><span>Armor Class</span><input type="number" id="cs_ac" min="0" max="100"></label>
-                <div class="sheet-stat"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative"></div>
+                <div class="sheet-stat"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative" readonly title="DEX modifier, plus Proficiency Bonus with Alert, plus magic items"></div>
                 <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
                 <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
               </div>
@@ -509,6 +509,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
         // Expertise and feature check bonuses (Thaumaturge, ...) from the loaded sheet.
         let sheetExpertise = [];
         let sheetCheckBonuses = { skills: {}, checks: {} };
+        // Initiative from the server: { total, parts: [{ label, value }], advantage }.
+        let sheetInitiative = null;
 
         function updateDerivedStats(level) {
           const bonus = Math.ceil(Math.max(1, Number(level) || 1) / 4) + 1;
@@ -535,6 +537,18 @@ module.exports = function renderCharacterSheetTab(ctx) {
             saveRow.querySelector('.sheet-check-modifier').textContent =
               (saveTotal >= 0 ? '+' : '') + saveTotal;
           });
+          // Initiative: the DEX on the sheet now, plus Alert and items from the server.
+          if (sheetInitiative) {
+            const dexScore = Number(abilityContainer.querySelector('[data-ability="dex"]').value);
+            const dexMod = Number.isInteger(dexScore) && dexScore >= 1 && dexScore <= 30 ? Math.floor((dexScore - 10) / 2) : 0;
+            const others = sheetInitiative.parts.filter(part => part.label !== 'DEX');
+            const total = dexMod + others.reduce((sum, part) => sum + part.value, 0);
+            const initiativeInput = document.getElementById('cs_initiative');
+            initiativeInput.value = (total >= 0 ? '+' : '') + total;
+            initiativeInput.title = [{ label: 'DEX', value: dexMod }, ...others]
+              .map(part => part.label + ' ' + (part.value >= 0 ? '+' : '') + part.value).join(', ') +
+              (sheetInitiative.advantage.length ? '. Advantage: ' + sheetInitiative.advantage.join(', ') : '');
+          }
           skills.forEach(([skill, ability]) => {
             const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
             const score = Number(scoreInput.value);
@@ -691,6 +705,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             const data = result.sheetData || {};
             sheetExpertise = Array.isArray(data.expertise) ? data.expertise : [];
             sheetCheckBonuses = result.checkBonuses || sheetCheckBonuses;
+            sheetInitiative = result.initiative || null;
             sheetCharacterLevel = character.level || 1;
             const classRows = Array.isArray(result.classes) ? result.classes : [];
             classLevels = Object.fromEntries(classRows.map(classRow => [

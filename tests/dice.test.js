@@ -191,3 +191,28 @@ test('every die rolled in the panel has its own history and distribution', () =>
   assert.equal(db.getSheetRollsByDie({ sides: 100 })[0].id, custom.id);
   assert.ok(!db.getSheetD20Rolls().some(roll => roll.id === damage.id), 'no d20 in a damage roll');
 });
+
+test('initiative is a DEX check: DEX, Alert and items, but not Jack of All Trades', () => {
+  const sheet = (extra = {}) => ({ abilities: { dex: { score: 16 }, cha: { score: 14 } }, originFeats: [], ...extra });
+  const bard = [{ className: 'Bard', subclassName: 'College of Lore', level: 5 }];
+  assert.deepEqual(rules.initiativeOf({ classes: bard, sheetData: sheet() }), { total: 3, parts: [{ label: 'DEX', value: 3 }], advantage: [] });
+  const alert = rules.initiativeOf({ classes: bard, sheetData: sheet({ originFeats: [{ name: 'Alert' }] }) });
+  assert.equal(alert.total, 6, 'DEX +3 and Alert +3 at level 5');
+  const champion = rules.initiativeOf({ classes: [{ className: 'Fighter', subclassName: 'Champion', level: 3 }], sheetData: sheet() });
+  assert.deepEqual(champion.advantage, ['Remarkable Athlete']);
+
+  // The roller agrees, and Jack of All Trades only helps skills.
+  const owner = createPlayer();
+  const id = db.insertStartingCharacter(owner, rules.buildStartingCharacter({
+    name: 'Lyra', species: 'Human', size: 'Medium', className: 'Bard', subclass: 'College of Valor', background: 'Entertainer',
+    generationMethod: 'Standard Array', baseScores: { str: 8, dex: 14, con: 13, int: 10, wis: 12, cha: 15 }, backgroundBonuses: { cha: 2, dex: 1 },
+    versatileFeat: { name: 'Tough' }, speciesSkills: ['Insight'], classSkills: ['Persuasion', 'History', 'Arcana'],
+    classTools: ['Lute', 'Flute', 'Drum'], equipmentChoices: { instrument: 'Lute' }, backgroundTool: 'Horn',
+    originFeatChoices: { picks: ['Bagpipes', 'Lyre', 'Viol'] }, languages: ['Elvish', 'Giant'], classEquipment: 'A', backgroundEquipment: 'A',
+    featureChoices: { 'Bard:2:Expertise': ['Persuasion', 'Performance'] }
+  }));
+  const options = db.rollOptions(db.getCharacterById(id));
+  assert.equal(options.get('initiative').formula, '1d20+2', 'DEX 15 → +2, no Jack of All Trades');
+  assert.equal(options.get('check:dex').formula, '1d20+2');
+  assert.equal(options.get('skill:Stealth').formula, '1d20+3', 'DEX +2 and Jack of All Trades +1');
+});

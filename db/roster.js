@@ -85,13 +85,12 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
   };
   if (!detail) return row;
 
-  const feats = attempt(() => rules.collectCharacterFeats(sheetData).map(rules.featName)) || [];
   const saveBonus = attempt(() => rules.magicItemEffects(sheetData).saves) || 0;
   const saves = Array.isArray(sheetData.savingProficiencies) ? sheetData.savingProficiencies : [];
   const concentration = sheetData.spellcasting && sheetData.spellcasting.concentration;
   return {
     ...row,
-    initiative: attempt(() => mod('dex') + (feats.includes('Alert') ? pb : 0)),
+    initiative: attempt(() => rules.initiativeOf({ classes, sheetData }).total),
     speed: typeof sheetData.speed === 'string' && sheetData.speed.trim() ? sheetData.speed : '30 ft.',
     proficiencyBonus: pb,
     saves: attempt(() => Object.fromEntries(ABILITIES.map(ability => [ability, mod(ability) + (saves.includes(ability) ? pb : 0) + saveBonus]))),
