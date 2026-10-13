@@ -8,6 +8,7 @@ const { db } = require('./connection');
 const { updateCharacterProgression } = require('./characters');
 const { getCharacterSnapshots } = require('./roster');
 const { getRecentRolls } = require('./dice');
+const { getAdventureNpcs } = require('./npcs');
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 4000;
@@ -74,7 +75,11 @@ function partyIds(adventureId) {
 function getAdventureLiveScope({ adventureId, user }) {
   const adventure = loadAdventure(adventureId);
   if (!accessTo(adventure, user).view) throw new Error('Forbidden.');
-  return { adventureId: adventure.id, characterIds: () => new Set(partyIds(adventure.id)) };
+  return {
+    adventureId: adventure.id,
+    characterIds: () => new Set(partyIds(adventure.id)),
+    npcIds: () => new Set(db.prepare('SELECT npc_id FROM adventure_npcs WHERE adventure_id = ?').all(adventure.id).map(row => row.npc_id))
+  };
 }
 
 // Admins and the adventure's own DM run it; players with a character in the
@@ -135,8 +140,53 @@ function getAdventureTable({ adventureId, user }) {
     // The party's latest rolls; private ones only for the DM (and the roller).
     rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.manage, viewerId: Number(user && user.id) || null }),
     candidates,
-    dmCharacters
+    dmCharacters,
+    // Notable NPCs with the party; stats and HP only for the DM.
+    npcs: getAdventureNpcs(adventure.id, { showStats: access.manage }),
+    npcCandidates: access.manage && adventure.status === 'active'
+      ? db.prepare("SELECT id, name, affiliation FROM npcs WHERE status != 'dead' AND id NOT IN (SELECT npc_id FROM adventure_npcs WHERE adventure_id = ?) ORDER BY name COLLATE NOCASE").all(adventure.id)
+      : []
   };
+}
+
+// Adds an NPC to the adventure's table, or takes them off it (the DM).
+function setAdventureNpc({ adventureId, user, npcId, inAdventure }) {
+  const adventure = loadAdventure(adventureId);
+  requireManage(adventure, user);
+  const npc = db.prepare('SELECT id FROM npcs WHERE id = ?').get(Number(npcId));
+  if (!npc) throw new Error('NPC not found.');
+  if (inAdventure) db.prepare('INSERT OR IGNORE INTO adventure_npcs (adventure_id, npc_id) VALUES (?, ?)').run(adventure.id, npc.id);
+  else db.prepare('DELETE FROM adventure_npcs WHERE adventure_id = ? AND npc_id = ?').run(adventure.id, npc.id);
+  return getAdventureTable({ adventureId: adventure.id, user });
+}
+
+// Damage, healing or temporary HP for an NPC on the table (the DM).
+// Damage takes temporary HP first; HP never go below 0 or above the maximum.
+function changeNpcHp({ adventureId, user, npcId, action, amount }) {
+  const adventure = loadAdventure(adventureId);
+  requireManage(adventure, user);
+  const npc = db.prepare(`
+    SELECT n.* FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id WHERE an.adventure_id = ? AND n.id = ?
+  `).get(adventure.id, Number(npcId));
+  if (!npc) throw new Error('That NPC is not in this adventure.');
+  if (!Number.isInteger(npc.hp_max)) throw new Error(`${npc.name} has no Hit Points set: add them on the Notable NPCs tab.`);
+  const value = Number(amount);
+  if (!Number.isInteger(value) || value < 0 || value > 10000) throw new Error('Enter a whole number from 0 to 10000.');
+  let current = Number.isInteger(npc.hp_current) ? npc.hp_current : npc.hp_max;
+  let temp = npc.hp_temp || 0;
+  if (action === 'damage') {
+    const absorbed = Math.min(temp, value);
+    temp -= absorbed;
+    current = Math.max(0, current - (value - absorbed));
+  } else if (action === 'heal') {
+    current = Math.min(npc.hp_max, current + value);
+  } else if (action === 'tempHp') {
+    temp = Math.max(temp, value);
+  } else {
+    throw new Error('Unknown action.');
+  }
+  db.prepare('UPDATE npcs SET hp_current = ?, hp_temp = ? WHERE id = ?').run(current, temp, npc.id);
+  return { npc: { id: npc.id, name: npc.name, hpCurrent: current, hpMax: npc.hp_max, hpTemp: temp } };
 }
 
 function setPartyMember({ adventureId, user, characterId, inParty }) {
@@ -217,6 +267,8 @@ module.exports = {
   getAdventuresForUser,
   getAdventureTable,
   getAdventureLiveScope,
+  setAdventureNpc,
+  changeNpcHp,
   setPartyMember,
   finishAdventure,
   cancelAdventure,

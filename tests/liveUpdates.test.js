@@ -64,7 +64,7 @@ test('the adventure table hears about party changes at once, and only those', as
     db.prepare("UPDATE characters SET sheet_data = '{\"hpCurrent\":1}' WHERE id = ?").run(outsider);
     db.prepare("UPDATE characters SET sheet_data = '{\"hpCurrent\":9}' WHERE id = ?").run(member);
     const started = Date.now();
-    assert.deepEqual(await nextEvent(), { characters: [member], adventure: false, rolls: false });
+    assert.deepEqual(await nextEvent(), { characters: [member], adventure: false, rolls: false, npcs: false });
     assert.ok(Date.now() - started < 1500, 'within about half a second');
 
     db.setPartyMember({ adventureId: adventure.id, user: { id: dm, role: 'player' }, characterId: outsider, inParty: true });

@@ -259,6 +259,94 @@
     return select;
   }
 
+  // ─── Notable NPCs on the table ─────────────────────────────────────────────
+  function npcPicker() {
+    const select = el('select', { 'aria-label': 'NPC to add to the adventure' });
+    select.add(new Option('Add a notable NPC…', ''));
+    data.npcCandidates.forEach(npc => select.add(new Option(npc.name + (npc.affiliation ? ' (' + npc.affiliation + ')' : ''), String(npc.id))));
+    select.addEventListener('change', () => {
+      if (!select.value) return;
+      const chosen = data.npcCandidates.find(npc => String(npc.id) === select.value);
+      act('/npcs', { npcId: Number(select.value), inAdventure: true }, (chosen ? chosen.name : 'NPC') + ' joined the table.');
+    });
+    return select;
+  }
+
+  async function changeNpcHp(npc, action, amount) {
+    try {
+      const result = await api('/npcs/' + npc.id + '/hp', { action, amount });
+      const verb = { damage: 'takes ' + amount + ' damage', heal: 'heals ' + amount + ' HP', tempHp: 'gains ' + amount + ' temporary HP' }[action];
+      message = npc.name + ' ' + verb + ': ' + result.npc.hpCurrent + ' / ' + result.npc.hpMax + ' HP.' + (result.npc.hpCurrent === 0 ? ' ' + npc.name + ' is down.' : '');
+      isError = false;
+    } catch (error) {
+      message = npc.name + ': ' + error.message;
+      isError = true;
+    }
+    await load();
+  }
+
+  function npcCard(npc) {
+    const manage = data.canManage && data.adventure.status === 'active';
+    const stats = npc.stats;
+    const hp = stats && Number.isInteger(stats.hpMax)
+      ? { current: Number.isInteger(stats.hpCurrent) ? stats.hpCurrent : stats.hpMax, max: stats.hpMax, temp: stats.hpTemp }
+      : null;
+    let actions = null;
+    if (manage && hp) {
+      const amount = el('input', { type: 'number', min: '1', max: '10000', inputmode: 'numeric', placeholder: 'HP', 'aria-label': 'Amount for ' + npc.name });
+      const read = () => {
+        const value = Number(amount.value);
+        if (Number.isInteger(value) && value > 0) return value;
+        message = 'Enter a positive whole number for ' + npc.name + ' first.';
+        isError = true;
+        render();
+        return null;
+      };
+      amount.addEventListener('keydown', event => { if (event.key === 'Enter') { const value = read(); if (value !== null) changeNpcHp(npc, 'damage', value); } });
+      actions = el('div', { className: 'party-hp-actions' }, [
+        amount,
+        button('Damage', () => { const value = read(); if (value !== null) changeNpcHp(npc, 'damage', value); }, 'btn btn-small btn-red'),
+        button('Heal', () => { const value = read(); if (value !== null) changeNpcHp(npc, 'heal', value); }, 'btn btn-small btn-green'),
+        button('Temp HP', () => { const value = read(); if (value !== null) changeNpcHp(npc, 'tempHp', value); })
+      ]);
+    }
+    const remove = manage
+      ? button('✕', () => {
+        if (window.confirm('Take ' + npc.name + ' off the table? They stay in the NPC list.')) act('/npcs', { npcId: npc.id, inAdventure: false }, npc.name + ' left the table.');
+      }, 'btn btn-small btn-secondary party-remove', { title: 'Remove from the adventure', 'aria-label': 'Remove ' + npc.name + ' from the adventure' })
+      : null;
+    const abilities = stats ? ABILITIES.filter(ability => stats.abilities[ability]) : [];
+    return el('article', { className: 'party-card npc-table-card' + (hp && hp.current === 0 ? ' is-down' : '') }, [
+      el('header', { className: 'party-card-header' }, [
+        el('div', {}, [
+          el('a', { className: 'roster-name', href: '/admin?tab=npcs#npc-' + npc.id, target: '_blank', rel: 'noopener', text: npc.name }),
+          el('div', { className: 'muted small', text: ['NPC', npc.affiliation].filter(Boolean).join(' · ') })
+        ]),
+        remove
+      ]),
+      stats ? hpBlock(hp) : (npc.description ? el('p', { className: 'muted small npc-table-description', text: npc.description }) : null),
+      actions,
+      stats ? el('div', { className: 'party-stats' }, [
+        stat('AC', stats.armorClass ?? '—', 'Armor Class'),
+        stats.speed ? stat('Speed', stats.speed) : null
+      ].filter(Boolean)) : null,
+      abilities.length ? el('div', { className: 'party-line' }, [
+        el('span', { className: 'party-label', text: 'Scores' }),
+        abilities.map(ability => ability.toUpperCase() + ' ' + stats.abilities[ability].score + ' (' + signed(stats.abilities[ability].modifier) + ')').join(' · ')
+      ]) : null,
+      npc.sheetUrl ? el('div', { className: 'party-line' }, [el('a', { href: npc.sheetUrl, target: '_blank', rel: 'noopener', text: 'Sheet ↗' })]) : null
+    ]);
+  }
+
+  function npcSection() {
+    const manage = data.canManage && data.adventure.status === 'active';
+    if (!data.npcs.length && !(manage && data.npcCandidates.length)) return null;
+    return el('section', { className: 'adventure-npcs' }, [
+      el('div', { className: 'sheet-section-heading' }, [el('h3', { text: 'Notable NPCs' }), manage && data.npcCandidates.length ? npcPicker() : null]),
+      data.npcs.length ? el('div', { className: 'party-grid' }, data.npcs.map(npcCard)) : el('p', { className: 'muted small', text: 'No NPCs at the table.' })
+    ]);
+  }
+
   function finishForm() {
     const xp = el('input', { type: 'number', min: '1', max: '20', value: String(data.adventure.xp || 1), className: 'inventory-qty', 'aria-label': 'XP for each party member' });
     const reward = el('select', { 'aria-label': 'DM reward' });
@@ -344,6 +432,7 @@
       data.party.length
         ? el('div', { className: 'party-grid' }, data.party.map(memberCard))
         : el('p', { className: 'muted', text: data.canManage && active ? 'No one in the party yet: add the characters taking part above.' : 'No characters in this adventure.' }),
+      npcSection(),
       !active && adventure.notes ? el('div', { className: 'card' }, [el('h4', { text: 'Notes' }), el('p', { text: adventure.notes })]) : null,
       rollLog()
     ].filter(Boolean));

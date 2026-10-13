@@ -17,14 +17,15 @@ const TAB_RENDERERS = {
   'auctions': require('./tabs/auctions'),
   'character-sheet': require('./tabs/characterSheet'),
   'rolls': require('./tabs/rolls'),
-  'players': require('./tabs/players')
+  'players': require('./tabs/players'),
+  'npcs': require('./tabs/npcs')
 };
 
 module.exports = function renderAdminPage(req) {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
-  const playerAllowedTabs = ['items', 'players', 'adventures', 'rolls', 'analytics', 'auctions', 'character-sheet'];
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet'];
   const tabLabels = {
     items: 'Shop Items',
     catalog: 'Master Catalog',
@@ -33,6 +34,7 @@ module.exports = function renderAdminPage(req) {
     rolls: 'Rolls History',
     players: 'Players',
     adventures: 'Adventures',
+    npcs: 'Notable NPCs',
     analytics: 'Analytics',
     auctions: 'Auctions',
     'character-sheet': 'Character Sheet'

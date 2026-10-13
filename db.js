@@ -20,6 +20,7 @@ module.exports = {
   ...require('./db/activeAdventures'),
   ...require('./db/dice'),
   ...require('./db/gold'),
+  ...require('./db/npcs'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),

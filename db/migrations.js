@@ -351,6 +351,45 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('roll', NEW.character_id); END;
       `);
     }
+  },
+  {
+    version: 8,
+    name: 'Notable NPCs and the adventures they appear in',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS npcs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          affiliation TEXT NOT NULL DEFAULT '',
+          description TEXT NOT NULL DEFAULT '',  -- lore everyone can read
+          sheet_url TEXT NOT NULL DEFAULT '',    -- link to a sheet or statblock
+          status TEXT NOT NULL DEFAULT 'alive',  -- 'alive' | 'dead' | 'unknown'
+          dm_notes TEXT NOT NULL DEFAULT '',     -- DMs only, like the stats below
+          armor_class INTEGER,
+          hp_max INTEGER,
+          hp_current INTEGER,
+          hp_temp INTEGER NOT NULL DEFAULT 0,
+          speed TEXT NOT NULL DEFAULT '',
+          abilities TEXT NOT NULL DEFAULT '{}',  -- { str: 10, ... }
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        -- Every adventure an NPC appeared in (kept after the adventure ends).
+        CREATE TABLE IF NOT EXISTS adventure_npcs (
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          npc_id INTEGER NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (adventure_id, npc_id)
+        );
+        CREATE INDEX IF NOT EXISTS adventure_npcs_npc ON adventure_npcs (npc_id);
+        -- Live adventure tables (see liveUpdates.js).
+        CREATE TRIGGER IF NOT EXISTS change_log_npc_update AFTER UPDATE ON npcs
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('npc', NEW.id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_adventure_npc_insert AFTER INSERT ON adventure_npcs
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_adventure_npc_delete AFTER DELETE ON adventure_npcs
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', OLD.adventure_id); END;
+      `);
+    }
   }
 ];
 

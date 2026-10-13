@@ -363,6 +363,23 @@ router.post('/characters/add', (req, res) => {
   }
 });
 
+// Notable NPCs (admins): create or update, and delete.
+router.post('/npcs/save', (req, res) => {
+  try {
+    const adventureIds = req.body.adventure_ids === undefined ? [] : [].concat(req.body.adventure_ids);
+    const id = db.saveNpc({ ...req.body, adventure_ids: adventureIds });
+    res.redirect(`/admin?tab=npcs&status=npc_saved#npc-${id}`);
+  } catch (err) {
+    const back = req.body.id ? `&edit_npc=${encodeURIComponent(req.body.id)}` : '&new_npc=1';
+    res.redirect(`/admin?tab=npcs${back}&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+router.post('/npcs/delete', (req, res) => {
+  db.deleteNpc(req.body.id);
+  res.redirect('/admin?tab=npcs&status=npc_deleted');
+});
+
 router.post('/characters/update', (req, res) => {
   try {
     const {

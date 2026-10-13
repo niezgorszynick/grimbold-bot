@@ -472,7 +472,7 @@ router.post('/vtt/key', (req, res) => {
 
 function adventureErrorStatus(message) {
   if (message === 'Forbidden.') return 403;
-  if (message === 'Adventure not found.' || message === 'Character not found.') return 404;
+  if (message === 'Adventure not found.' || message === 'Character not found.' || message === 'NPC not found.') return 404;
   return 400;
 }
 
@@ -494,6 +494,12 @@ function adventureRoute(handler) {
 }
 
 router.get('/adventures/:id/table', adventureRoute(({ adventureId, user }) => db.getAdventureTable({ adventureId, user })));
+
+// Notable NPCs on the table: { npcId, inAdventure }, and their HP: { action, amount }.
+router.post('/adventures/:id/npcs', adventureRoute(({ adventureId, user, body }) =>
+  db.setAdventureNpc({ adventureId, user, npcId: body.npcId, inAdventure: body.inAdventure !== false })));
+router.post('/adventures/:id/npcs/:npcId/hp', (req, res) => adventureRoute(({ adventureId, user, body }) =>
+  db.changeNpcHp({ adventureId, user, npcId: req.params.npcId, action: body.action, amount: body.amount }))(req, res));
 
 // Server-Sent Events: a message whenever a party member, the party or the
 // adventure changes, so the table reloads at once instead of waiting to poll.
@@ -521,8 +527,10 @@ router.get('/adventures/:id/live', (req, res) => {
     const characters = changes.filter(change => change.kind === 'character' && party.has(change.refId)).map(change => change.refId);
     const rolls = changes.some(change => change.kind === 'roll' && party.has(change.refId));
     const adventure = changes.some(change => change.kind === 'adventure' && change.refId === scope.adventureId);
-    if (characters.length || rolls || adventure) {
-      res.write('data: ' + JSON.stringify({ characters, adventure, rolls }) + '\n\n');
+    const npcIds = scope.npcIds();
+    const npcs = changes.some(change => change.kind === 'npc' && npcIds.has(change.refId));
+    if (characters.length || rolls || adventure || npcs) {
+      res.write('data: ' + JSON.stringify({ characters, adventure, rolls, npcs }) + '\n\n');
     }
   });
   // Keeps proxies from closing a quiet connection.
