@@ -8,7 +8,8 @@
   if (!root) return;
   const adventureId = Number(root.dataset.adventureId);
   const viewerIsAdmin = root.dataset.isAdmin === 'true';
-  const REFRESH_MS = 15000;
+  // Changes arrive at once over /live; this poll is only a safety net.
+  const REFRESH_MS = 60000;
   const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
   function el(tag, attrs, children) {
@@ -34,6 +35,7 @@
   let isError = false;
   let updatedAt = null;
   let finishing = false;
+  let live = false;
 
   async function api(path, body) {
     const response = await fetch('/api/adventures/' + adventureId + path, {
@@ -327,7 +329,7 @@
           ])
         ]),
         el('div', { className: 'muted small adventure-refresh' }, [
-          active ? 'Updates every ' + (REFRESH_MS / 1000) + ' s' : '',
+          active ? (live ? '● Live' : 'Reconnecting… (checks every ' + (REFRESH_MS / 1000) + ' s)') : '',
           updatedAt ? ' · ' + updatedAt.toLocaleTimeString() : '',
           ' ', button('Refresh', load, 'btn btn-small btn-secondary')
         ])
@@ -346,10 +348,30 @@
   // A roll made here shows in the log straight away.
   document.addEventListener('grimbold-roll', () => load());
   load();
-  // Live updates while the adventure runs and the page is visible.
+  // Not while the DM is typing (e.g. a damage amount): a reload rebuilds the
+  // cards, so it waits until they leave the field.
+  const typing = () => root.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  let reloadTimer = null;
+  let reloadWaiting = false;
+  function reloadSoon() {
+    if (typing()) { reloadWaiting = true; return; }
+    clearTimeout(reloadTimer);
+    // Several changes at once (a long rest, a level-up) make one reload.
+    reloadTimer = setTimeout(load, 250);
+  }
+  root.addEventListener('focusout', () => {
+    setTimeout(() => { if (reloadWaiting && !typing()) { reloadWaiting = false; load(); } }, 0);
+  });
+
+  // Live updates: the server says when a party member, the party or the adventure changes.
+  if (window.EventSource) {
+    const source = new EventSource('/api/adventures/' + adventureId + '/live');
+    source.onopen = () => { live = true; render(); };
+    source.onerror = () => { live = false; render(); };
+    source.onmessage = () => reloadSoon();
+  }
+  // Safety net while the adventure runs and the page is visible.
   setInterval(() => {
-    // Not while the DM is typing (e.g. a damage amount): a refresh rebuilds the cards.
-    const typing = root.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
-    if (document.visibilityState === 'visible' && data && data.adventure.status === 'active' && !typing) load();
+    if (document.visibilityState === 'visible' && data && data.adventure.status === 'active') reloadSoon();
   }, REFRESH_MS);
 })();

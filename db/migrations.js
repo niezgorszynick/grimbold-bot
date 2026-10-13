@@ -318,6 +318,39 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS gold_changes_character ON gold_changes (character_id, id);
       `);
     }
+  },
+  {
+    version: 7,
+    name: 'A change log for live updates of the adventure table',
+    up(db) {
+      // Triggers note every write, whatever code made it (sheet, shop, bot,
+      // DM forms); liveUpdates.js reads new rows and pushes them to open
+      // adventure tables. Old rows are pruned.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS change_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,            -- 'character' | 'adventure' | 'roll'
+          ref_id INTEGER NOT NULL,       -- character or adventure id
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TRIGGER IF NOT EXISTS change_log_character_update AFTER UPDATE ON characters
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', NEW.id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_class_insert AFTER INSERT ON character_classes
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', NEW.character_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_class_update AFTER UPDATE ON character_classes
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', NEW.character_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_class_delete AFTER DELETE ON character_classes
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', OLD.character_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_party_insert AFTER INSERT ON adventure_party
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_party_delete AFTER DELETE ON adventure_party
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', OLD.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_adventure_update AFTER UPDATE ON adventures
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_roll_insert AFTER INSERT ON dice_rolls
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('roll', NEW.character_id); END;
+      `);
+    }
   }
 ];
 

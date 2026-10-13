@@ -70,6 +70,13 @@ function partyIds(adventureId) {
     .all(Number(adventureId)).map(row => row.character_id);
 }
 
+// For live updates: who may follow this table, and which characters it shows now.
+function getAdventureLiveScope({ adventureId, user }) {
+  const adventure = loadAdventure(adventureId);
+  if (!accessTo(adventure, user).view) throw new Error('Forbidden.');
+  return { adventureId: adventure.id, characterIds: () => new Set(partyIds(adventure.id)) };
+}
+
 // Admins and the adventure's own DM run it; players with a character in the
 // party may look at the table.
 function accessTo(adventure, user) {
@@ -209,6 +216,7 @@ module.exports = {
   getActiveAdventures,
   getAdventuresForUser,
   getAdventureTable,
+  getAdventureLiveScope,
   setPartyMember,
   finishAdventure,
   cancelAdventure,

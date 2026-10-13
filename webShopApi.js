@@ -495,6 +495,45 @@ function adventureRoute(handler) {
 
 router.get('/adventures/:id/table', adventureRoute(({ adventureId, user }) => db.getAdventureTable({ adventureId, user })));
 
+// Server-Sent Events: a message whenever a party member, the party or the
+// adventure changes, so the table reloads at once instead of waiting to poll.
+// data: { characters: [ids], adventure: bool, rolls: bool }
+router.get('/adventures/:id/live', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  let scope;
+  try {
+    scope = db.getAdventureLiveScope({ adventureId: Number(req.params.id), user });
+  } catch (error) {
+    return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+  }
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // nginx: send each message straight away.
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  const unsubscribe = require('./liveUpdates').subscribe(changes => {
+    const party = scope.characterIds();
+    const characters = changes.filter(change => change.kind === 'character' && party.has(change.refId)).map(change => change.refId);
+    const rolls = changes.some(change => change.kind === 'roll' && party.has(change.refId));
+    const adventure = changes.some(change => change.kind === 'adventure' && change.refId === scope.adventureId);
+    if (characters.length || rolls || adventure) {
+      res.write('data: ' + JSON.stringify({ characters, adventure, rolls }) + '\n\n');
+    }
+  });
+  // Keeps proxies from closing a quiet connection.
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+  return undefined;
+});
+
 // { characterId, inParty }
 router.post('/adventures/:id/party', adventureRoute(({ adventureId, user, body }) =>
   db.setPartyMember({ adventureId, user, characterId: body.characterId, inParty: Boolean(body.inParty) })));
