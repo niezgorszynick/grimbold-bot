@@ -242,7 +242,7 @@
           send('shortRest', { hitDice });
         }),
         button('Long Rest', () => {
-          if (window.confirm('Finish a Long Rest? This restores HP, all Hit Point Dice and spell slots.')) send('longRest');
+          if (window.confirm('Finish a Long Rest? This restores HP, all Hit Point Dice, spell slots and class feature uses.')) send('longRest');
         })
       ])
     ]);
@@ -278,6 +278,49 @@
     ]);
   }
 
+  // Limited-use class features: Channel Divinity, Rage, Second Wind, ...
+  const RECOVERY_TEXT = {
+    short: 'Back on a Short or Long Rest',
+    shortOne: 'One back on a Short Rest, all on a Long Rest',
+    long: 'Back on a Long Rest'
+  };
+  function renderResources() {
+    if (!vitals.resources || !vitals.resources.length) return null;
+    const rows = vitals.resources.map(resource => {
+      const left = resource.max - resource.used;
+      let control;
+      if (resource.pool) {
+        const amount = el('input', { type: 'number', min: '1', max: String(resource.max), value: '1', 'aria-label': resource.name + ' amount' });
+        const read = () => Number(amount.value) || 1;
+        control = el('span', { className: 'vitals-inline' }, [
+          amount,
+          button('Use', () => send('useResource', { key: resource.key, amount: read() }), 'btn btn-small', { disabled: left === 0 ? true : null }),
+          button('Restore', () => send('restoreResource', { key: resource.key, amount: read() }), 'btn btn-small btn-secondary', { disabled: resource.used === 0 ? true : null })
+        ]);
+      } else {
+        control = el('span', { className: 'vitals-slot-boxes' }, Array.from({ length: resource.max }, (_, i) => {
+          const box = el('input', { type: 'checkbox', 'aria-label': resource.name + ' use ' + (i + 1) });
+          box.checked = i < resource.used;
+          box.addEventListener('change', () => send(box.checked ? 'useResource' : 'restoreResource', { key: resource.key }));
+          return box;
+        }));
+      }
+      return el('div', { className: 'vitals-resource' }, [
+        el('div', { className: 'vitals-slot-row' }, [
+          el('span', { className: 'vitals-slot-label' }, [el('strong', { text: resource.name })]),
+          control,
+          el('span', { className: 'muted small', text: left + ' / ' + resource.max + ' left' })
+        ]),
+        el('p', { className: 'muted small vitals-resource-text', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' })
+      ]);
+    });
+    return el('div', { className: 'vitals-slots vitals-resources' }, [
+      el('h5', { text: 'Class Features' }),
+      el('p', { className: 'muted small', text: 'Tick a box to spend a use; rests bring them back.' }),
+      ...rows
+    ]);
+  }
+
   function renderSlots() {
     const rows = vitals.spellSlots.map(slot => slotRow('Level ' + slot.level, slot.total, slot.spent, slot.level));
     if (vitals.pact) rows.push(slotRow('Pact (level ' + vitals.pact.slotLevel + ')', vitals.pact.count, vitals.pact.spent, 'pact'));
@@ -297,6 +340,7 @@
       renderDying(),
       renderExhaustion(),
       renderRests(),
+      renderResources(),
       renderSlots(),
       el('p', { className: 'sheet-message' + (lastIsError ? ' is-error' : ''), role: 'status', text: lastMessage })
     ].filter(Boolean));

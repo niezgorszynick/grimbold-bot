@@ -97,6 +97,8 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     spellcasting: spellSources.map(source => ({ label: source.label, ability: source.ability, saveDc: source.saveDc, attackBonus: source.attackBonus })),
     spellSlots: vitals ? vitals.view.spellSlots.filter(slot => slot.total > 0) : [],
     pact: vitals ? vitals.view.pact : null,
+    // Channel Divinity, Rage, ...: uses left.
+    resources: vitals ? vitals.view.resources.map(({ key, name, max, used }) => ({ key, name, max, left: max - used })) : [],
     hitDice: vitals ? vitals.view.hitDice : [],
     exhaustion: vitals ? vitals.view.exhaustion : 0,
     concentration: concentration ? concentration.spell : null,

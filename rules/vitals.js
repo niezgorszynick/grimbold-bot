@@ -5,7 +5,7 @@
 // Stored vitals (inside sheet_data):
 //   hpCurrent, hpTemp, hpMaxBonus, hitDiceSpent { d8: 1 }, deathSaves
 //   { successes, failures }, exhaustion 0–6, spellSlotsSpent [per level],
-//   pactSlotsSpent.
+//   pactSlotsSpent, resourcesUsed { channelDivinityCleric: 1 } (class features).
 // Derived values (hpMax, hit dice pool, slot totals) are passed in by the
 // caller from the character's classes so they always follow the rules.
 
@@ -15,6 +15,7 @@ const { calculateMaxHp, getHitDicePool } = require('./hitPoints');
 const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
+const { classResources, recoverResources } = require('./classResources');
 
 const MAX_EXHAUSTION = 6;
 
@@ -51,7 +52,10 @@ function normalizeVitals(sheetData, hpMax) {
     stable: Boolean(data.stable),
     exhaustion: Math.min(MAX_EXHAUSTION, toCount(data.exhaustion)),
     spellSlotsSpent: Array.isArray(data.spellSlotsSpent) ? data.spellSlotsSpent.map(toCount) : [],
-    pactSlotsSpent: toCount(data.pactSlotsSpent)
+    pactSlotsSpent: toCount(data.pactSlotsSpent),
+    resourcesUsed: Object.fromEntries(
+      Object.entries(data.resourcesUsed || {}).map(([key, count]) => [key, toCount(count)]).filter(([, count]) => count > 0)
+    )
   };
 }
 
@@ -216,6 +220,21 @@ function changeSlot(vitals, level, delta, { slots, pact }) {
   return { vitals: { ...vitals, spellSlotsSpent: spentList }, events: [] };
 }
 
+// Spends (delta > 0) or gives back (delta < 0) uses of a class feature such as
+// Channel Divinity. Pools (Lay On Hands) spend several at a time.
+function changeResource(vitals, key, delta, { resources }) {
+  const resource = (resources || []).find(item => item.key === key);
+  if (!resource) throw new Error('This character has no such feature to use.');
+  const amount = Number(delta);
+  if (!Number.isInteger(amount) || amount === 0) throw new Error('Enter a whole number.');
+  const used = Math.min(resource.max, vitals.resourcesUsed[key] || 0) + amount;
+  if (used > resource.max) throw new Error(`${resource.name}: only ${resource.max - (used - amount)} left.`);
+  if (used < 0) throw new Error(`${resource.name} is already full.`);
+  const resourcesUsed = { ...vitals.resourcesUsed, [key]: used };
+  if (!used) delete resourcesUsed[key];
+  return { vitals: { ...vitals, resourcesUsed }, events: [] };
+}
+
 // Manual adjustment to the HP maximum (e.g. the Aid spell or a curse).
 function setMaxHpBonus(vitals, bonus) {
   const value = Number(bonus);
@@ -277,7 +296,9 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     hitDicePool: getHitDicePool(classRows),
     conModifier: abilityModifier(constitution),
     slots: spellSlots.slots,
-    pact: spellSlots.pact
+    pact: spellSlots.pact,
+    // Channel Divinity, Rage, Second Wind, ...
+    resources: classResources(classRows, ability => abilityScore(sheetData, ability))
   };
 }
 
@@ -288,8 +309,10 @@ const ACTIONS = {
   clearTempHp: vitals => clearTempHp(vitals),
   deathSave: (vitals, params, context) => deathSave(vitals, { roll: params.roll, rng: context.rng }),
   stabilize: vitals => stabilize(vitals),
-  shortRest: (vitals, params, context) => shortRest(vitals, params.hitDice, context),
-  longRest: (vitals, params, context) => longRest(vitals, context),
+  shortRest: (vitals, params, context) => withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short'),
+  longRest: (vitals, params, context) => withRecovery(longRest(vitals, context), vitals, context, 'long'),
+  useResource: (vitals, params, context) => changeResource(vitals, params.key, params.amount === undefined ? 1 : Number(params.amount), context),
+  restoreResource: (vitals, params, context) => changeResource(vitals, params.key, -(params.amount === undefined ? 1 : Number(params.amount)), context),
   exhaustion: (vitals, params) => setExhaustion(vitals, params.level),
   spendSlot: (vitals, params, context) => changeSlot(vitals, params.level, 1, context),
   restoreSlot: (vitals, params, context) => changeSlot(vitals, params.level, -1, context),
@@ -298,6 +321,11 @@ const ACTIONS = {
   resetHp: vitals => resetHp(vitals)
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
+
+// Rests also bring back class feature uses (Channel Divinity: one on a Short Rest).
+function withRecovery(result, before, context, kind) {
+  return { ...result, vitals: { ...result.vitals, resourcesUsed: recoverResources(before.resourcesUsed, context.resources || [], kind) } };
+}
 
 // Applies one action and returns the updated vitals plus anything to report
 // (events, dice rolls). hpMax is re-derived when the bonus changes.
@@ -333,7 +361,8 @@ function buildVitalsView(vitals, context, hpMax = context.hpMax) {
       total,
       spent: Math.min(total, vitals.spellSlotsSpent[index] || 0)
     })),
-    pact: context.pact ? { ...context.pact, spent: Math.min(context.pact.count, vitals.pactSlotsSpent) } : null
+    pact: context.pact ? { ...context.pact, spent: Math.min(context.pact.count, vitals.pactSlotsSpent) } : null,
+    resources: (context.resources || []).map(resource => ({ ...resource, used: Math.min(resource.max, vitals.resourcesUsed[resource.key] || 0) }))
   };
 }
 

@@ -219,6 +219,10 @@
       ]) : null,
       casting.length ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Spells' }), casting.join(' / ')]) : null,
       slotsLine(member),
+      member.resources && member.resources.length ? el('div', { className: 'party-line' }, [
+        el('span', { className: 'party-label', text: 'Features' }),
+        member.resources.map(resource => resource.name + ' ' + resource.left + '/' + resource.max).join(' · ')
+      ]) : null,
       member.hitDice.length ? el('div', { className: 'party-line' }, [
         el('span', { className: 'party-label', text: 'Hit Dice' }),
         member.hitDice.map(dice => (dice.total - dice.spent) + '/' + dice.total + ' ' + dice.die).join(', ')

@@ -528,3 +528,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .party-hp-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .party-hp-actions input { width: 70px; }
 .sheet-check-row.has-expertise > span::after { content: ' ★'; color: #f1c40f; }
+/* Class features with limited uses (Channel Divinity, ...). */
+.vitals-resource { padding: 2px 0 4px; }
+.vitals-resource-text { margin: 0 0 0 4px; }
+.vitals-resources input[type=number] { width: 70px; }
