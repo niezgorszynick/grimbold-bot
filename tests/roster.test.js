@@ -11,7 +11,8 @@ test('the campaign roster shows each character with player, HP, AC, Passive Perc
     background: 'Sage', generationMethod: 'Standard Array',
     baseScores: { str: 8, dex: 14, con: 13, int: 15, wis: 12, cha: 10 }, backgroundBonuses: { int: 2, con: 1 },
     versatileFeat: { name: 'Alert' }, speciesSkills: ['Perception'], classSkills: ['Investigation', 'Medicine'],
-    originFeatChoices: { spellAbility: 'int' }, languages: ['Elvish', 'Draconic'], classEquipment: 'A', backgroundEquipment: 'A'
+    originFeatChoices: { spellAbility: 'int' }, languages: ['Elvish', 'Draconic'], classEquipment: 'A', backgroundEquipment: 'A',
+    featureChoices: { 'Wizard:2:Scholar': ['Investigation'] }
   });
   const id = db.insertStartingCharacter(player, wizard);
   db.prepare("UPDATE characters SET level = 4 WHERE id = ?").run(id);

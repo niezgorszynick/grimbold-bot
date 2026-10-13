@@ -31,6 +31,7 @@ const { getSpellSlots } = require('./spellcasting');
 const { getSpellCatalog, findSpell, spellListName } = require('./spells');
 const { collectCharacterFeats, featName, featGrants } = require('./feats');
 const { effectiveAbilityScore, magicItemEffects } = require('./magicItems');
+const { extraCantrips } = require('./featureChoices');
 const {
   INVOCATIONS, INVOCATION_NAMES, invocationLimit, readInvocations, eligibleCantrips,
   invocationIneligibility, validateInvocations
@@ -109,7 +110,8 @@ function getSpellSources(character) {
       ability: spellcasting.ability,
       saveDc: 8 + pb + mod,
       attackBonus: pb + mod,
-      cantripLimit: atLevel(spellcasting.cantrips, row.level),
+      // Plus Thaumaturge / Magician cantrips.
+      cantripLimit: atLevel(spellcasting.cantrips, row.level) + extraCantrips(sheetData, row.className),
       preparedLimit: atLevel(spellcasting.prepared, row.level),
       maxSpellLevel: maxSpellLevelFor(spellcasting, row.level),
       changeRule: CHANGE_RULES[ruleKey] || 'longRestAll',

@@ -21,6 +21,7 @@ const { getSpellSlots, getSpellsKnown, spellcastingFor } = require('./spellcasti
 const { MULTICLASS_PROFICIENCIES } = require('./multiclass');
 const spellbook = require('./spellbook');
 const { invocationLimit } = require('./invocations');
+const { featuresAtLevel, applyFeatureChoices, removeFeatureChoices } = require('./featureChoices');
 
 const STANDARD_SCORE_CAP = 20;
 const EPIC_BOON_SCORE_CAP = 30;
@@ -147,6 +148,12 @@ function getLevelUpOptions(state) {
       spells: plan.spells,
       spellSlots: plan.spellSlots,
       subclassOptions: plan.choices.includes('subclass') ? DND_CLASSES_AND_SUBCLASSES[className] : null,
+      // Divine Order, Expertise, ...; a subclass picked at this level adds its own.
+      featureChoices: featuresAtLevel(className, (plan.classes.find(row => row.className === className) || {}).subclassName, plan.classLevel),
+      subclassFeatureChoices: plan.choices.includes('subclass')
+        ? Object.fromEntries(DND_CLASSES_AND_SUBCLASSES[className].map(subclass => [subclass,
+          featuresAtLevel(className, subclass, plan.classLevel).filter(feature => feature.source === subclass)]))
+        : null,
       multiclassProficiencies: plan.multiclassProficiencies,
       classSkillOptions: getClass(className).skillChoices.options === 'any' ? SKILL_NAMES : getClass(className).skillChoices.options,
       feats: needsImprovement ? listFeats(nextContext, { allowBoons: plan.choices.includes('epicBoon') }) : null,
@@ -408,6 +415,15 @@ function applyLevelUp(state, request) {
     levelHistory: [...(sheetData.levelHistory || []), entry]
   };
 
+  // Class and subclass features with choices (Expertise, Primal Knowledge, ...).
+  const subclassName = (nextClasses.find(row => row.className === plan.className) || {}).subclassName;
+  const features = featuresAtLevel(plan.className, subclassName, plan.classLevel);
+  if (features.length) {
+    const applied = applyFeatureChoices(nextSheet, features, body.featureChoices);
+    Object.assign(nextSheet, applied.sheetData);
+    entry.featureChoices = applied.added.ids;
+  }
+
   // Current HP rises by however much the maximum rose (CON or Tough can add retroactively).
   const before = hpMaxFor(classes, sheetData, species);
   const after = hpMaxFor(nextClasses, nextSheet, species);
@@ -465,6 +481,8 @@ function revertLastLevel(state) {
     spellSlots: getSpellSlots(classes),
     levelHistory: history.slice(0, -1)
   };
+  // Choices made for this level's features (Expertise, ...) are undone too.
+  if (entry.featureChoices) Object.assign(revertedSheet, removeFeatureChoices(revertedSheet, entry.featureChoices));
   // Fewer Warlock levels can mean fewer invocations: drop the newest ones.
   const invocationCap = invocationLimit(classes);
   const invocations = Array.isArray(sheetData.invocations) ? sheetData.invocations : [];

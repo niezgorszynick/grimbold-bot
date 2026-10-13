@@ -37,6 +37,7 @@ const humanWizard = overrides => ({
   languages: ['Elvish', 'Draconic'],
   classEquipment: 'B',
   backgroundEquipment: 'B',
+  featureChoices: { 'Wizard:2:Scholar': ['Investigation'] },
   ...overrides
 });
 
@@ -142,7 +143,11 @@ test('equipment choices are validated', () => {
     subclass: 'College of Lore',
     classSkills: ['Performance', 'Persuasion', 'History'],
     classTools: ['Lute', 'Flute', 'Drum'],
-    equipmentChoices: { instrument: 'Lute' }
+    equipmentChoices: { instrument: 'Lute' },
+    featureChoices: {
+      'Bard:2:Expertise': ['Performance', 'Persuasion'],
+      'College of Lore:3:Bonus Proficiencies': ['Arcana', 'Nature', 'Religion']
+    }
   }));
   assert.ok(bard.sheetData.inventory.some(item => item.name === 'Lute'));
   assert.throws(

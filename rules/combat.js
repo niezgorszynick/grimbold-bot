@@ -316,6 +316,10 @@ function calculateArmor(ctx) {
     if (classes.some(row => row.className === 'Sorcerer' && row.subclassName === 'Draconic Sorcery' && row.level >= 3)) {
       options.push({ label: 'Draconic Resilience', value: 10, extra: [['DEX', mods.dex], ['CHA', mods.cha]] });
     }
+    // College of Dance (Dazzling Footwork): no armor and no Shield.
+    if (!shield && classes.some(row => row.className === 'Bard' && row.subclassName === 'College of Dance' && row.level >= 3)) {
+      options.push({ label: 'Dazzling Footwork', value: 10, extra: [['DEX', mods.dex], ['CHA', mods.cha]] });
+    }
     const robe = readMagicItems(sheetData).map(entry => magicItemEntryInfo(entry))
       .find(info => info.active && info.item && info.item.name === 'Robe of the Archmagi');
     if (robe) options.push({ label: 'Robe of the Archmagi', value: 15, extra: [['DEX', mods.dex]] });

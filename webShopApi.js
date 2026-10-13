@@ -122,7 +122,9 @@ router.get('/characters/:id', (req, res) => {
     character,
     sheetData,
     classes: db.getCharacterClasses(characterId),
-    vitals: vitalsViewFor(character, sheetData)
+    vitals: vitalsViewFor(character, sheetData),
+    // Thaumaturge, Magician, Otherworldly Glamour: bonuses the skill list adds.
+    checkBonuses: rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability))
   });
 });
 
@@ -176,6 +178,35 @@ router.post('/characters/:id/level-up', (req, res) => {
     if (status === 400 && error instanceof TypeError) {
       console.error('Level-up failed:', error);
       return res.status(500).json({ error: 'Could not apply the level-up.' });
+    }
+    return res.status(status).json({ error: error.message });
+  }
+});
+
+// Class choices the character hasn't made yet (Divine Order, Expertise, ...).
+router.get('/characters/:id/feature-choices', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ missing: db.getMissingFeatureChoices({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }) });
+  } catch (error) {
+    return res.status(levelUpErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { picks: { [feature id]: choice } }
+router.post('/characters/:id/feature-choices', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const missing = db.chooseMissingFeatures({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), picks: body.picks });
+    return res.json({ success: true, missing });
+  } catch (error) {
+    const status = levelUpErrorStatus(error.message);
+    if (status === 400 && error instanceof TypeError) {
+      console.error('Feature choices failed:', error);
+      return res.status(500).json({ error: 'Could not save the choices.' });
     }
     return res.status(status).json({ error: error.message });
   }
@@ -495,6 +526,7 @@ router.post('/characters/:id/vitals', (req, res) => {
       const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
       if (!character) return { status: 404, error: 'Character not found.' };
       if (!isAdmin(user) && character.player_id !== user.id) return { status: 403, error: 'Forbidden.' };
+      if (body.action === 'setMaxHp' && !isAdmin(user)) return { status: 403, error: 'Only the DM can set max HP.' };
 
       let sheetData = {};
       try {
@@ -569,6 +601,11 @@ router.get('/rules/creation', (req, res) => {
     standardArray: rules.STANDARD_ARRAY,
     standardArraySuggestions: rules.STANDARD_ARRAY_SUGGESTIONS,
     fightingStyles: rules.FIGHTING_STYLE_NAMES,
+    // Choices from class features up to the starting level, and the subclass's at level 3.
+    classFeatureChoices: Object.fromEntries(Object.keys(rules.ALL_CLASSES).map(name => [name,
+      Array.from({ length: rules.STARTING_LEVEL }, (_, index) => rules.featuresAtLevel(name, null, index + 1)).flat()])),
+    subclassFeatureChoices: Object.fromEntries(Object.entries(rules.DND_CLASSES_AND_SUBCLASSES).flatMap(([name, subclasses]) =>
+      subclasses.map(subclass => [subclass, rules.featuresAtLevel(name, subclass, rules.STARTING_LEVEL).filter(feature => feature.source === subclass)]))),
     fightingStyleClasses: rules.FIGHTING_STYLE_FEATURE_LEVELS
   });
 });

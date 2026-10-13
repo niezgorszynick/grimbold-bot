@@ -225,6 +225,18 @@ function setMaxHpBonus(vitals, bonus) {
   return { vitals: { ...vitals, hpMaxBonus: value }, events: [] };
 }
 
+// The DM sets the HP maximum outright; it is stored as the adjustment from the
+// rules value. A higher maximum raises current HP by the same amount.
+function setMaxHp(vitals, total, context) {
+  const value = Number(total);
+  if (!Number.isInteger(value) || value < 1 || value > 5000) {
+    throw new Error('Max HP must be a whole number from 1 to 5000.');
+  }
+  const oldMax = Math.max(1, context.baseHpMax + vitals.hpMaxBonus);
+  const gain = Math.max(0, value - oldMax);
+  return { vitals: { ...vitals, hpMaxBonus: value - context.baseHpMax, hpCurrent: vitals.hpCurrent + gain }, events: [] };
+}
+
 // ─── Character-level helpers ────────────────────────────────────────────────
 
 // Includes magic items such as an Amulet of Health.
@@ -262,7 +274,9 @@ const ACTIONS = {
   exhaustion: (vitals, params) => setExhaustion(vitals, params.level),
   spendSlot: (vitals, params, context) => changeSlot(vitals, params.level, 1, context),
   restoreSlot: (vitals, params, context) => changeSlot(vitals, params.level, -1, context),
-  maxHpBonus: (vitals, params) => setMaxHpBonus(vitals, params.bonus)
+  maxHpBonus: (vitals, params) => setMaxHpBonus(vitals, params.bonus),
+  // DM only (checked by the route).
+  setMaxHp: (vitals, params, context) => setMaxHp(vitals, params.total, context)
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
 

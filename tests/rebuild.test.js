@@ -15,7 +15,8 @@ const wizard = name => rules.buildStartingCharacter({
   background: 'Sage', generationMethod: 'Standard Array',
   baseScores: { str: 8, dex: 14, con: 13, int: 15, wis: 12, cha: 10 }, backgroundBonuses: { int: 2, con: 1 },
   speciesSkills: ['Perception'], classSkills: ['Investigation', 'Medicine'], speciesSpellAbility: 'int',
-  originFeatChoices: { spellAbility: 'int' }, languages: ['Draconic', 'Dwarvish'], classEquipment: 'A', backgroundEquipment: 'A'
+  originFeatChoices: { spellAbility: 'int' }, languages: ['Draconic', 'Dwarvish'], classEquipment: 'A', backgroundEquipment: 'A',
+  featureChoices: { 'Wizard:2:Scholar': ['Investigation'] }
 });
 
 test('a reset rebuilds the character from the creator and keeps its progress', () => {

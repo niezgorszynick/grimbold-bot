@@ -102,6 +102,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
     ? canEditRequestedCharacter
       ? `
         <section id="cs_levelup" class="sheet-card levelup" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+        <section id="cs_feature_choices" class="sheet-card feature-choices-card" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+        <script src="/admin/assets/character-features.js" defer></script>
         <script src="/admin/assets/character-levelup.js" defer></script>
         <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
           <header class="sheet-header">
@@ -158,7 +160,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
               <section class="sheet-card">
                 <h4>Hit Points &amp; Vitality</h4>
-                <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
+                <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}"${isAdmin ? ' data-dm="1"' : ''} aria-live="polite">Loading hit points...</div>
                 <script src="/admin/assets/character-vitals.js" defer></script>
               </section>
               <section class="sheet-card">
@@ -235,6 +237,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
       : '<div class="alert red">Character not found or you do not have permission to edit it.</div>'
     : '';
   contentHtml = `
+    <script src="/admin/assets/feature-choices.js"></script>
     <section class="card">
       <h3>${isAdmin ? 'Campaign Characters' : 'Your Characters'}</h3>
       ${canManageOwnCharacters
@@ -503,6 +506,10 @@ module.exports = function renderCharacterSheetTab(ctx) {
           }
         }
 
+        // Expertise and feature check bonuses (Thaumaturge, ...) from the loaded sheet.
+        let sheetExpertise = [];
+        let sheetCheckBonuses = { skills: {}, checks: {} };
+
         function updateDerivedStats(level) {
           const bonus = Math.ceil(Math.max(1, Number(level) || 1) / 4) + 1;
           proficiencyBonus.textContent = '+' + bonus;
@@ -535,7 +542,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
               ? Math.floor((score - 10) / 2)
               : 0;
             const skillRow = skillsContainer.querySelector('[data-skill="' + skill + '"]').closest('.sheet-check-row');
-            const total = modifier + (skillRow.querySelector('input').checked ? bonus : 0);
+            const proficient = skillRow.querySelector('input').checked;
+            const expert = proficient && sheetExpertise.includes(skill);
+            const total = modifier + (proficient ? bonus : 0) + (expert ? bonus : 0) +
+              Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0);
+            skillRow.classList.toggle('has-expertise', expert);
+            skillRow.title = expert ? 'Expertise: proficiency bonus counts twice' : '';
             skillRow.querySelector('.sheet-check-modifier').textContent =
               (total >= 0 ? '+' : '') + total;
           });
@@ -677,6 +689,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
             if (!response.ok) throw new Error(result.error || 'Could not load character sheet.');
             const character = result.character;
             const data = result.sheetData || {};
+            sheetExpertise = Array.isArray(data.expertise) ? data.expertise : [];
+            sheetCheckBonuses = result.checkBonuses || sheetCheckBonuses;
             sheetCharacterLevel = character.level || 1;
             const classRows = Array.isArray(result.classes) ? result.classes : [];
             classLevels = Object.fromEntries(classRows.map(classRow => [

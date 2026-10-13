@@ -50,7 +50,7 @@ test('lowering adventure XP undoes the newest level-ups', () => {
   const id = createFighter(player, 'Reverted Rhea');
   const adventureId = adventure([id], 7); // level 5
   db.levelUpCharacter({ id, player_id: player, is_admin: false, request: { className: 'Fighter', improvement: { type: 'asi', increases: { str: 1, con: 1 } } } });
-  db.levelUpCharacter({ id, player_id: player, is_admin: false, request: { className: 'Rogue', multiclassSkills: ['Stealth'] } });
+  db.levelUpCharacter({ id, player_id: player, is_admin: false, request: { className: 'Rogue', multiclassSkills: ['Stealth'], featureChoices: { 'Rogue:1:Expertise': ['Stealth', 'Survival'], "Rogue:1:Thieves' Cant (Language)": ['Giant'] } } });
   assert.equal(classLevels(id), 'Fighter 4, Rogue 1');
 
   const update = xp => db.updateAdventure({

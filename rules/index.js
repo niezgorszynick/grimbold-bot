@@ -22,6 +22,7 @@ module.exports = {
   ...require('./combat'),
   ...require('./dice'),
   ...require('./spellbook'),
+  ...require('./featureChoices'),
   ...require('./levelUp'),
   ...require('./vitals'),
   ...require('./content')

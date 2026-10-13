@@ -6,6 +6,8 @@
   const root = document.getElementById('cs_vitals');
   if (!root) return;
   const characterId = Number(root.dataset.characterId);
+  // Admins can set the HP maximum directly (the server checks too).
+  const isDm = root.dataset.dm === '1';
 
   const EVENT_MESSAGES = {
     droppedToZero: 'Dropped to 0 Hit Points: unconscious and dying.',
@@ -101,6 +103,24 @@
     return value;
   }
 
+  // DM only: type the HP maximum outright (stored as the adjustment from the rules value).
+  function renderDmMaxHp() {
+    const total = el('input', { type: 'number', min: '1', max: '5000', value: String(vitals.hpMax), 'aria-label': 'Max HP' });
+    return el('div', { className: 'vitals-actions vitals-dm-max' }, [
+      el('label', { className: 'vitals-inline' }, [el('strong', { text: 'DM: Max HP ' }), total]),
+      button('Set max HP', () => {
+        const value = Number(total.value);
+        if (!Number.isInteger(value) || value < 1) {
+          lastMessage = 'Max HP must be a whole number of at least 1.';
+          lastIsError = true;
+          render();
+          return;
+        }
+        send('setMaxHp', { total: value });
+      })
+    ]);
+  }
+
   function renderHitPoints() {
     const percent = Math.round((vitals.hpCurrent / vitals.hpMax) * 100);
     const state = vitals.hpCurrent === 0 ? 'is-down' : percent <= 50 ? 'is-bloodied' : '';
@@ -133,6 +153,7 @@
         vitals.hpTemp ? button('Clear Temp', () => send('clearTempHp')) : null,
         el('label', { className: 'vitals-inline' }, [critical, ' Critical hit'])
       ]),
+      isDm ? renderDmMaxHp() : null,
       el('details', { className: 'vitals-breakdown' }, [
         el('summary', { text: 'Max HP: ' + breakdown }),
         el('p', { className: 'muted small', text: 'Max HP follows the average-HP rule and updates with level and Constitution. Use an adjustment for effects such as the Aid spell.' }),

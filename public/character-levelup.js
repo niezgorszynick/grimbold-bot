@@ -183,11 +183,29 @@
           : null
       ]));
 
+      // Class feature choices (Expertise, ...), plus the chosen subclass's own at this level.
+      const featureBox = el('div');
+      let featureWidgets = [];
+      const renderFeatures = subclassName => {
+        const features = [
+          ...(option.featureChoices || []),
+          ...((option.subclassFeatureChoices || {})[subclassName] || [])
+        ];
+        const previous = window.FeatureChoices ? window.FeatureChoices.collect(featureWidgets) : {};
+        featureWidgets = window.FeatureChoices ? features.map(feature => window.FeatureChoices.widget(feature)) : [];
+        if (window.FeatureChoices) window.FeatureChoices.restore(featureWidgets, previous);
+        featureBox.replaceChildren(...(featureWidgets.length ? [el('h5', { text: 'Class Feature Choices' }), ...featureWidgets.map(item => item.element)] : []));
+      };
+      getters.featureChoices = () => (window.FeatureChoices ? window.FeatureChoices.collect(featureWidgets) : {});
+
       if (option.subclassOptions) {
         const subclass = selectBox(option.subclassOptions, { placeholder: '-- Choose Subclass --' });
         parts.push(field(option.className + ' Subclass', subclass));
         getters.subclass = () => subclass.value;
+        subclass.addEventListener('change', () => renderFeatures(subclass.value));
       }
+      renderFeatures(null);
+      parts.push(featureBox);
 
       if (option.fightingStyles) {
         const reasons = Object.fromEntries(option.fightingStyles.filter(s => s.unavailable).map(s => [s.name, s.unavailable]));

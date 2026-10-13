@@ -46,7 +46,8 @@ test('Fighting Style: required at creation, Defense adds AC in armor', () => {
   assert.deepEqual(defense.sheetData.fightingStyles, [{ name: 'Defense', source: 'Fighter' }]);
   const wizard = rules.buildStartingCharacter(baseFighter({
     className: 'Wizard', subclass: 'Evoker', classSkills: ['Investigation', 'Medicine'], fightingStyle: undefined,
-    background: 'Sage', backgroundBonuses: { int: 2, con: 1 }, backgroundTool: undefined, originFeatChoices: { spellAbility: 'int' }
+    background: 'Sage', backgroundBonuses: { int: 2, con: 1 }, backgroundTool: undefined, originFeatChoices: { spellAbility: 'int' },
+    featureChoices: { 'Wizard:2:Scholar': ['Investigation'] }
   }));
   assert.equal(wizard.sheetData.fightingStyles.length, 0);
 });

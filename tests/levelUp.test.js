@@ -92,7 +92,7 @@ test('feats: ability increase, Resilient save, ineligible feats', () => {
 test('multiclassing adds proficiencies and a level 1 class row', () => {
   const state = fighter(4, { baseScores: { str: 15, dex: 14, con: 13, int: 8, wis: 12, cha: 10 }, backgroundBonuses: { str: 2, dex: 1 } });
   assert.throws(() => rules.applyLevelUp(state, { className: 'Rogue' }), /Rogue skill/);
-  const { classes, sheetData, entry } = rules.applyLevelUp(state, { className: 'Rogue', multiclassSkills: ['Stealth'] });
+  const { classes, sheetData, entry } = rules.applyLevelUp(state, { className: 'Rogue', multiclassSkills: ['Stealth'], featureChoices: { 'Rogue:1:Expertise': ['Stealth', 'Survival'], "Rogue:1:Thieves' Cant (Language)": ['Giant'] } });
   assert.deepEqual(classes.map(row => [row.className, row.level]), [['Fighter', 3], ['Rogue', 1]]);
   assert.ok(sheetData.skillProficiencies.includes('Stealth'));
   assert.ok(sheetData.toolProficiencies.includes("Thieves' Tools"));
@@ -102,7 +102,7 @@ test('multiclassing adds proficiencies and a level 1 class row', () => {
 
 test('subclass is chosen at class level 3 of a new class', () => {
   let state = fighter(6, { baseScores: { str: 15, dex: 14, con: 13, int: 8, wis: 12, cha: 10 }, backgroundBonuses: { str: 2, dex: 1 } });
-  state = { ...state, ...rules.applyLevelUp(state, { className: 'Rogue', multiclassSkills: ['Stealth'] }) };
+  state = { ...state, ...rules.applyLevelUp(state, { className: 'Rogue', multiclassSkills: ['Stealth'], featureChoices: { 'Rogue:1:Expertise': ['Stealth', 'Survival'], "Rogue:1:Thieves' Cant (Language)": ['Giant'] } }) };
   state = { ...state, ...rules.applyLevelUp(state, { className: 'Rogue' }) };
   assert.throws(() => rules.applyLevelUp(state, { className: 'Rogue' }), /Rogue subclass/);
   const result = rules.applyLevelUp(state, { className: 'Rogue', subclass: 'Arcane Trickster' });
@@ -117,7 +117,8 @@ test('spellcasters accumulate spells to choose', () => {
     className: 'Wizard', subclass: 'Evoker', background: 'Sage', generationMethod: 'Standard Array',
     baseScores: { str: 8, dex: 14, con: 13, int: 15, wis: 12, cha: 10 }, backgroundBonuses: { int: 2, con: 1 },
     originFeatChoices: { spellAbility: 'int' }, classSkills: ['Investigation', 'Medicine'],
-    languages: ['Elvish', 'Draconic'], classEquipment: 'B', backgroundEquipment: 'B'
+    languages: ['Elvish', 'Draconic'], classEquipment: 'B', backgroundEquipment: 'B',
+    featureChoices: { 'Wizard:2:Scholar': ['Investigation'] }
   });
   const state = { classes: wizard.classes, earnedLevel: 4, species: 'Elf', sheetData: wizard.sheetData };
   const result = rules.applyLevelUp(state, { className: 'Wizard', improvement: { type: 'feat', name: 'War Caster', ability: 'int' } });
@@ -128,7 +129,7 @@ test('spellcasters accumulate spells to choose', () => {
 test('reverting the last level restores the previous state exactly', () => {
   const state = fighter(5, { baseScores: { str: 15, dex: 14, con: 13, int: 8, wis: 12, cha: 10 }, backgroundBonuses: { str: 2, dex: 1 } });
   const four = rules.applyLevelUp(state, { className: 'Fighter', improvement: { type: 'feat', name: 'Resilient', ability: 'wis' } });
-  const five = rules.applyLevelUp({ ...state, ...four }, { className: 'Rogue', multiclassSkills: ['Stealth'] });
+  const five = rules.applyLevelUp({ ...state, ...four }, { className: 'Rogue', multiclassSkills: ['Stealth'], featureChoices: { 'Rogue:1:Expertise': ['Stealth', 'Survival'], "Rogue:1:Thieves' Cant (Language)": ['Giant'] } });
 
   const backToFour = rules.revertLastLevel({ ...state, ...five });
   assert.deepEqual(backToFour.classes, four.classes);

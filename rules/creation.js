@@ -18,6 +18,7 @@ const { calculateMaxHp, getHitDicePool, formatHitDicePool } = require('./hitPoin
 const { getSpellSlots } = require('./spellcasting');
 const { planStartingLevels } = require('./progression');
 const { calculateArmorClass } = require('./armor');
+const { featuresAtLevel, applyFeatureChoices } = require('./featureChoices');
 
 // House rule: characters start at level 3.
 const STARTING_LEVEL = 3;
@@ -362,6 +363,20 @@ function buildStartingCharacter(input) {
     features: ''
   };
 
+  // Class and subclass features with choices (Divine Order, Expertise, ...).
+  const features = steps.flatMap(step => featuresAtLevel(className, step.classLevel >= 3 ? subclass : null, step.classLevel));
+  const withFeatures = applyFeatureChoices(sheetData, features, request.featureChoices).sheetData;
+  // Training from those features (e.g. Protector's Heavy armor) can change the AC.
+  const trainedArmor = calculateArmorClass({
+    itemNames: inventory.map(item => item.name),
+    modifiers: abilities.modifiers,
+    armorTraining: withFeatures.armorTraining,
+    classNames: [className],
+    armoredBonus: fightingStyles.reduce((sum, style) => sum + (featGrants(style).armoredAcBonus || 0), 0)
+  });
+  withFeatures.armorClass = trainedArmor.ac;
+  withFeatures.armorClassSource = trainedArmor.source;
+
   return {
     name,
     species,
@@ -370,7 +385,7 @@ function buildStartingCharacter(input) {
     level: STARTING_LEVEL,
     goldGp,
     classes,
-    sheetData
+    sheetData: withFeatures
   };
 }
 

@@ -290,6 +290,28 @@ function levelUpCharacter({ id, player_id, is_admin, request }) {
   })();
 }
 
+// Class and subclass choices the character should have made but hasn't
+// (characters made before these were part of creation and level-ups).
+function getMissingFeatureChoices({ id, player_id, is_admin }) {
+  const character = loadOwnedCharacter(id, player_id, is_admin);
+  const state = levelUpState(character);
+  return rules.missingFeatureChoices(rules.featuresForClasses(state.classes), state.sheetData);
+}
+
+// picks: { [feature id]: choice } for some or all of the missing features.
+function chooseMissingFeatures({ id, player_id, is_admin, picks }) {
+  return db.transaction(() => {
+    const character = loadOwnedCharacter(id, player_id, is_admin);
+    const state = levelUpState(character);
+    const missing = rules.missingFeatureChoices(rules.featuresForClasses(state.classes), state.sheetData);
+    const chosen = missing.filter(feature => picks && Object.hasOwn(picks, feature.id) || feature.kind === 'grant');
+    if (!chosen.length) throw new Error('Nothing to choose.');
+    const { sheetData } = rules.applyFeatureChoices(state.sheetData, chosen, picks);
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(sheetData), character.id);
+    return rules.missingFeatureChoices(rules.featuresForClasses(state.classes), sheetData);
+  })();
+}
+
 // Saves a character built by rules.buildStartingCharacter. Returns its ID.
 function insertStartingCharacter(playerId, character) {
   return db.transaction(() => {
@@ -377,6 +399,8 @@ module.exports = {
   levelUpCharacter,
   insertStartingCharacter,
   rebuildCharacter,
+  getMissingFeatureChoices,
+  chooseMissingFeatures,
   updateCharacterProgression,
 getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
 updateCharacterSheet: ({ id, player_id, is_admin, name, race, class_name, subclass, sheet_data }) => {

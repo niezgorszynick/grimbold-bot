@@ -63,16 +63,19 @@ function rollOptions(character) {
   const feats = rules.collectCharacterFeats(sheetData).map(rules.featName);
   // Jack of All Trades: half proficiency on checks that don't already add it.
   const jack = hasFeature(classes, 'Jack of All Trades') ? Math.floor(pb / 2) : 0;
+  // Thaumaturge, Magician, Otherworldly Glamour: a bonus to some checks.
+  const featureBonus = rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability));
   const options = new Map();
   const add = (id, label, formula, kind) => options.set(id, { id, label, formula, kind });
 
   for (const [ability, name] of Object.entries(ABILITY_NAMES)) {
-    add(`check:${ability}`, `${name} check`, d20(mod(ability) + jack + items.checks), 'check');
+    add(`check:${ability}`, `${name} check`, d20(mod(ability) + jack + items.checks + (featureBonus.checks[ability] || 0)), 'check');
     add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves), 'save');
   }
   for (const [skill, ability] of Object.entries(rules.SKILLS)) {
     const proficient = skills.includes(skill);
-    const bonus = mod(ability) + (proficient ? pb : jack) + (expertise.includes(skill) ? pb : 0) + items.checks;
+    const bonus = mod(ability) + (proficient ? pb : jack) + (expertise.includes(skill) ? pb : 0) + items.checks +
+      Math.max(featureBonus.skills[skill] || 0, featureBonus.checks[ability] || 0);
     add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus), 'check');
   }
   add('initiative', 'Initiative', d20(mod('dex') + (feats.includes('Alert') ? pb : jack) + items.checks), 'initiative');
