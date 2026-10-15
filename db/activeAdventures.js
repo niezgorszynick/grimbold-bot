@@ -143,8 +143,20 @@ function getAdventureTable({ adventureId, user }) {
     dmCharacters,
     // Notable NPCs with the party; stats and HP only for the DM.
     npcs: getAdventureNpcs(adventure.id, { showStats: access.manage }),
+    // reservedBy: another DM has long-term plans for this NPC (a warning, not a lock).
     npcCandidates: access.manage && adventure.status === 'active'
-      ? db.prepare("SELECT id, name, affiliation FROM npcs WHERE status != 'dead' AND id NOT IN (SELECT npc_id FROM adventure_npcs WHERE adventure_id = ?) ORDER BY name COLLATE NOCASE").all(adventure.id)
+      ? db.prepare(`
+        SELECT n.id, n.name, n.affiliation, n.plans, n.owner_player_id, p.discord_tag AS owner_tag FROM npcs n
+        LEFT JOIN players p ON p.id = n.owner_player_id
+        WHERE n.status != 'dead' AND n.id NOT IN (SELECT npc_id FROM adventure_npcs WHERE adventure_id = ?) ORDER BY n.name COLLATE NOCASE
+      `).all(adventure.id).map(row => ({
+        id: row.id,
+        name: row.name,
+        affiliation: row.affiliation,
+        reservedBy: row.plans === 'reserved' && row.owner_player_id !== Number(user && user.id)
+          ? (row.owner_player_id === 0 ? 'Root DM' : row.owner_tag || 'another DM')
+          : null
+      }))
       : []
   };
 }

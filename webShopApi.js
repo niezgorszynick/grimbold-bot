@@ -565,6 +565,39 @@ function adventureRoute(handler) {
 
 router.get('/adventures/:id/table', adventureRoute(({ adventureId, user }) => db.getAdventureTable({ adventureId, user })));
 
+// NPC portraits (everyone logged in) and statblocks (DMs) as uploaded.
+router.get('/npcs/:id/files/:kind', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const found = db.getNpcFile({ npcId: req.params.id, kind: req.params.kind, user, isAdmin: isAdmin(user) });
+  if (!found) return res.status(404).json({ error: 'No such file.' });
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline' });
+  return res.sendFile(found.file);
+});
+
+// Admins upload a portrait or statblock as the raw request body (5 MB at most).
+router.post('/npcs/:id/files/:kind', express.raw({ type: () => true, limit: db.NPC_FILE_MAX_BYTES }), (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM can upload NPC files.' });
+  try {
+    return res.json(db.saveNpcFile({ npcId: req.params.id, kind: req.params.kind, buffer: req.body }));
+  } catch (error) {
+    return res.status(error.message === 'NPC not found.' ? 404 : 400).json({ error: error.message });
+  }
+});
+
+router.delete('/npcs/:id/files/:kind', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM can remove NPC files.' });
+  try {
+    return res.json(db.removeNpcFile({ npcId: req.params.id, kind: req.params.kind }));
+  } catch (error) {
+    return res.status(error.message === 'NPC not found.' ? 404 : 400).json({ error: error.message });
+  }
+});
+
 // Notable NPCs on the table: { npcId, inAdventure }, and their HP: { action, amount }.
 router.post('/adventures/:id/npcs', adventureRoute(({ adventureId, user, body }) =>
   db.setAdventureNpc({ adventureId, user, npcId: body.npcId, inAdventure: body.inAdventure !== false })));

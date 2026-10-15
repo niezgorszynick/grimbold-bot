@@ -369,7 +369,8 @@ router.post('/characters/add', (req, res) => {
 router.post('/npcs/save', (req, res) => {
   try {
     const adventureIds = req.body.adventure_ids === undefined ? [] : [].concat(req.body.adventure_ids);
-    const id = db.saveNpc({ ...req.body, adventure_ids: adventureIds });
+    // A new NPC belongs to the DM who adds it, unless another owner is chosen.
+    const id = db.saveNpc({ ...req.body, adventure_ids: adventureIds, created_by: req.session.user.id });
     res.redirect(`/admin?tab=npcs&status=npc_saved#npc-${id}`);
   } catch (err) {
     const back = req.body.id ? `&edit_npc=${encodeURIComponent(req.body.id)}` : '&new_npc=1';

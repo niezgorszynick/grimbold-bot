@@ -665,6 +665,16 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .npc-card a:not(.btn), .npc-table-card a:not(.btn):not(.roster-name) { color: #8ea1ff; }
 .npc-adventures a.tag { color: #dbdee1; text-decoration: none; }
 .npc-adventures a.tag:hover { color: #f1c40f; }
+.npc-card-title { flex: 1; min-width: 0; }
+.npc-portrait { width: 64px; height: 64px; object-fit: cover; border-radius: 50%; border: 2px solid #3f4147; background: #1e1f22; flex: 0 0 auto; }
+.npc-portrait-small { width: 40px; height: 40px; }
+.npc-table-name { flex: 1; min-width: 0; }
+.npc-plans { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.npc-plans p { flex-basis: 100%; margin: 0; white-space: pre-wrap; }
+.npc-personality { margin: 0; font-size: 13px; white-space: pre-wrap; }
+.npc-files { display: grid; gap: 10px; }
+.npc-file { display: grid; gap: 6px; padding: 10px; border: 1px solid #3f4147; border-radius: 6px; background: #232428; }
+.npc-file input[type=file] { max-width: 100%; }
 /* Disabled buttons look disabled (they used to look clickable). */
 .btn:disabled, button.btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
 /* Item nicknames ("Ambassador"). */

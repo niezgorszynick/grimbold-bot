@@ -1,13 +1,24 @@
-// db/npcs.js — Notable NPCs (Kevah, Arleta, ...): lore everyone can read,
-// stats and notes for DMs, and the adventures each appeared in. Adding NPCs to
-// a running adventure and their HP there live in db/activeAdventures.js.
+// db/npcs.js — Notable NPCs (Kevah, Arleta, ...). Players see who they are:
+// name, role, portrait and the adventures they appeared in. DMs also see the
+// lore, personality, status, statblock, stats, notes, and which DM looks after
+// the NPC and whether they have plans for it. Adding NPCs to a running
+// adventure and their HP there live in db/activeAdventures.js; uploaded
+// portraits and statblocks in db/npcFiles.js.
 
 'use strict';
 
 const { db } = require('./connection');
+// The Root DM (auth.js ROOT_ADMIN) has no players row; auth.js loads db, so
+// it is not required here.
+const ROOT_ADMIN = { id: 0, discord_tag: 'Root DM' };
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 const STATUSES = ['alive', 'dead', 'unknown'];
+// 'reserved': the owning DM has long-term plans, ask them first.
+// 'free': a one-off, any DM may reuse them. '': not said.
+const PLANS = ['', 'reserved', 'free'];
+
+const NPC_QUERY = 'SELECT n.*, p.discord_tag AS owner_tag FROM npcs n LEFT JOIN players p ON p.id = n.owner_player_id';
 
 function readAbilities(json) {
   let data = {};
@@ -31,21 +42,40 @@ function appearances(npcIds) {
   return byNpc;
 }
 
-// Stats and DM notes only with showStats (DMs).
+// The browser URL of an uploaded file; the file name busts the cache on change.
+const fileUrl = (row, kind) => {
+  const file = row[`${kind}_file`];
+  return file ? `/api/npcs/${row.id}/files/${kind}?v=${encodeURIComponent(file)}` : null;
+};
+
+function ownerOf(row) {
+  if (row.owner_player_id === null || row.owner_player_id === undefined) return null;
+  if (row.owner_player_id === ROOT_ADMIN.id) return { id: ROOT_ADMIN.id, tag: ROOT_ADMIN.discord_tag };
+  return { id: row.owner_player_id, tag: row.owner_tag || 'a former DM' };
+}
+
+// Players: name, role (affiliation), portrait, adventures. DMs (showStats): the rest.
 function npcView(row, adventures, showStats) {
   const view = {
     id: row.id,
     name: row.name,
     affiliation: row.affiliation,
-    description: row.description,
-    sheetUrl: row.sheet_url,
-    status: row.status,
+    portraitUrl: fileUrl(row, 'portrait'),
     adventures: adventures || []
   };
   if (!showStats) return view;
   const abilities = readAbilities(row.abilities);
+  const statblockUrl = fileUrl(row, 'statblock');
   return {
     ...view,
+    status: row.status,
+    description: row.description,
+    personality: row.personality || '',
+    sheetUrl: row.sheet_url,
+    statblock: statblockUrl ? { url: statblockUrl, isPdf: /\.pdf$/i.test(row.statblock_file) } : null,
+    owner: ownerOf(row),
+    plans: row.plans || '',
+    plansNote: row.plans_note || '',
     dmNotes: row.dm_notes,
     stats: {
       armorClass: row.armor_class,
@@ -59,13 +89,13 @@ function npcView(row, adventures, showStats) {
 }
 
 function listNpcs({ showStats = false } = {}) {
-  const rows = db.prepare('SELECT * FROM npcs ORDER BY name COLLATE NOCASE').all();
+  const rows = db.prepare(`${NPC_QUERY} ORDER BY n.name COLLATE NOCASE`).all();
   const byNpc = appearances(rows.map(row => row.id));
   return rows.map(row => npcView(row, byNpc[row.id], showStats));
 }
 
 function getNpc(id, { showStats = false } = {}) {
-  const row = db.prepare('SELECT * FROM npcs WHERE id = ?').get(Number(id));
+  const row = db.prepare(`${NPC_QUERY} WHERE n.id = ?`).get(Number(id));
   if (!row) return null;
   return npcView(row, appearances([row.id])[row.id], showStats);
 }
@@ -73,11 +103,18 @@ function getNpc(id, { showStats = false } = {}) {
 // NPCs on an adventure's table.
 function getAdventureNpcs(adventureId, { showStats = false } = {}) {
   const rows = db.prepare(`
-    SELECT n.* FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id
+    SELECT n.*, p.discord_tag AS owner_tag FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id
+    LEFT JOIN players p ON p.id = n.owner_player_id
     WHERE an.adventure_id = ? ORDER BY an.added_at, n.name COLLATE NOCASE
   `).all(Number(adventureId));
   const byNpc = appearances(rows.map(row => row.id));
   return rows.map(row => npcView(row, byNpc[row.id], showStats));
+}
+
+// The DMs who can look after an NPC: the Root DM and every admin account.
+function listNpcOwners() {
+  const admins = db.prepare("SELECT id, discord_tag FROM players WHERE role = 'admin' ORDER BY discord_tag COLLATE NOCASE").all();
+  return [{ id: ROOT_ADMIN.id, tag: ROOT_ADMIN.discord_tag }, ...admins.filter(admin => admin.id !== ROOT_ADMIN.id).map(admin => ({ id: admin.id, tag: admin.discord_tag }))];
 }
 
 function cleanText(value, max, label) {
@@ -93,13 +130,23 @@ function optionalInt(value, min, max, label) {
   return number;
 }
 
+function readOwner(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const id = Number(value);
+  if (!listNpcOwners().some(owner => owner.id === id)) throw new Error('The owning DM must be a DM account.');
+  return id;
+}
+
 // Creates (no id) or updates an NPC (admins). fields: name, affiliation,
-// description, sheet_url, status, dm_notes, armor_class, hp_max, hp_current,
-// speed, str…cha, adventure_ids (the adventures they appeared in).
+// description, personality, sheet_url, status, dm_notes, owner_player_id,
+// plans, plans_note, armor_class, hp_max, hp_current, speed, str…cha,
+// adventure_ids (the adventures they appeared in). A new NPC without an owner
+// belongs to created_by (the DM adding it).
 function saveNpc(fields) {
   const name = cleanText(fields.name, 100, 'Name');
   if (!name) throw new Error('An NPC needs a name.');
   const status = STATUSES.includes(fields.status) ? fields.status : 'alive';
+  const plans = PLANS.includes(fields.plans) ? fields.plans : '';
   const sheetUrl = cleanText(fields.sheet_url, 500, 'Sheet link');
   if (sheetUrl && !/^https?:\/\//i.test(sheetUrl)) throw new Error('The sheet link must start with http:// or https://.');
   const hpMax = optionalInt(fields.hp_max, 1, 5000, 'Max HP');
@@ -111,13 +158,17 @@ function saveNpc(fields) {
     const score = optionalInt(fields[ability], 1, 30, ability.toUpperCase());
     if (score !== null) abilities[ability] = score;
   }
+  let owner = readOwner(fields.owner_player_id);
   const values = [
     name,
-    cleanText(fields.affiliation, 100, 'Affiliation'),
-    cleanText(fields.description, 5000, 'Description'),
+    cleanText(fields.affiliation, 100, 'Role'),
+    cleanText(fields.description, 5000, 'Lore'),
+    cleanText(fields.personality, 1000, 'Personality'),
     sheetUrl,
     status,
     cleanText(fields.dm_notes, 5000, 'DM notes'),
+    plans,
+    cleanText(fields.plans_note, 500, 'Plans note'),
     optionalInt(fields.armor_class, 0, 40, 'AC'),
     hpMax,
     hpCurrent,
@@ -129,15 +180,17 @@ function saveNpc(fields) {
     let id = Number(fields.id) || null;
     if (id) {
       const result = db.prepare(`
-        UPDATE npcs SET name = ?, affiliation = ?, description = ?, sheet_url = ?, status = ?, dm_notes = ?,
-          armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ? WHERE id = ?
-      `).run(...values, id);
+        UPDATE npcs SET name = ?, affiliation = ?, description = ?, personality = ?, sheet_url = ?, status = ?, dm_notes = ?,
+          plans = ?, plans_note = ?, armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ?, owner_player_id = ? WHERE id = ?
+      `).run(...values, owner, id);
       if (!result.changes) throw new Error('NPC not found.');
     } else {
+      if (owner === null && fields.created_by !== undefined && fields.created_by !== null) owner = Number(fields.created_by);
       id = Number(db.prepare(`
-        INSERT INTO npcs (name, affiliation, description, sheet_url, status, dm_notes, armor_class, hp_max, hp_current, speed, abilities)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(...values).lastInsertRowid);
+        INSERT INTO npcs (name, affiliation, description, personality, sheet_url, status, dm_notes, plans, plans_note,
+          armor_class, hp_max, hp_current, speed, abilities, owner_player_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(...values, owner).lastInsertRowid);
     }
     if (fields.adventure_ids !== undefined) {
       const known = new Set(db.prepare('SELECT adventure_id FROM adventure_npcs WHERE npc_id = ?').all(id).map(row => row.adventure_id));
@@ -150,7 +203,10 @@ function saveNpc(fields) {
 }
 
 function deleteNpc(id) {
-  return db.prepare('DELETE FROM npcs WHERE id = ?').run(Number(id)).changes > 0;
+  const row = db.prepare('SELECT portrait_file, statblock_file FROM npcs WHERE id = ?').get(Number(id));
+  const deleted = db.prepare('DELETE FROM npcs WHERE id = ?').run(Number(id)).changes > 0;
+  if (deleted && row) require('./npcFiles').removeNpcFiles([row.portrait_file, row.statblock_file]);
+  return deleted;
 }
 
-module.exports = { NPC_STATUSES: STATUSES, listNpcs, getNpc, getAdventureNpcs, saveNpc, deleteNpc };
+module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, listNpcs, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };

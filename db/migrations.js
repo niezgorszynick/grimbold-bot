@@ -390,6 +390,28 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', OLD.adventure_id); END;
       `);
     }
+  },
+  {
+    version: 9,
+    name: 'NPC owners, plans, personality, portrait and statblock files',
+    up(db) {
+      // Only the columns still missing, so the migration is safe to run again.
+      const existing = new Set(db.prepare('PRAGMA table_info(npcs)').all().map(column => column.name));
+      const columns = {
+        // The DM who looks after the NPC: a player id, or 0 for the Root DM.
+        owner_player_id: 'INTEGER',
+        // 'reserved' (long-term plans, ask the owner first), 'free' (a one-off) or ''.
+        plans: "TEXT NOT NULL DEFAULT ''",
+        plans_note: "TEXT NOT NULL DEFAULT ''",
+        personality: "TEXT NOT NULL DEFAULT ''",
+        // File names in the uploads folder (see db/npcFiles.js).
+        portrait_file: "TEXT NOT NULL DEFAULT ''",
+        statblock_file: "TEXT NOT NULL DEFAULT ''"
+      };
+      for (const [name, type] of Object.entries(columns)) {
+        if (!existing.has(name)) db.exec(`ALTER TABLE npcs ADD COLUMN ${name} ${type}`);
+      }
+    }
   }
 ];
 

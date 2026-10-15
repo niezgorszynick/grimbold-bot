@@ -21,6 +21,7 @@ module.exports = {
   ...require('./db/dice'),
   ...require('./db/gold'),
   ...require('./db/npcs'),
+  ...require('./db/npcFiles'),
   ...require('./db/proficiencies'),
   ...require('./db/wildShape'),
   // Direct database access for scripts (seed, restock, maintenance)

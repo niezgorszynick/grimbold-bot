@@ -295,10 +295,15 @@
   function npcPicker() {
     const select = el('select', { 'aria-label': 'NPC to add to the adventure' });
     select.add(new Option('Add a notable NPC…', ''));
-    data.npcCandidates.forEach(npc => select.add(new Option(npc.name + (npc.affiliation ? ' (' + npc.affiliation + ')' : ''), String(npc.id))));
+    data.npcCandidates.forEach(npc => select.add(new Option(npc.name + (npc.affiliation ? ' (' + npc.affiliation + ')' : '') + (npc.reservedBy ? ' 🔒 reserved by ' + npc.reservedBy : ''), String(npc.id))));
     select.addEventListener('change', () => {
       if (!select.value) return;
       const chosen = data.npcCandidates.find(npc => String(npc.id) === select.value);
+      // Reserved: the owning DM has long-term plans for this NPC.
+      if (chosen && chosen.reservedBy && !window.confirm(chosen.name + ' is reserved by ' + chosen.reservedBy + ', who has long-term plans for them. Check with them first. Add ' + chosen.name + ' anyway?')) {
+        select.value = '';
+        return;
+      }
       act('/npcs', { npcId: Number(select.value), inAdventure: true }, (chosen ? chosen.name : 'NPC') + ' joined the table.');
     });
     return select;
@@ -350,7 +355,8 @@
     const abilities = stats ? ABILITIES.filter(ability => stats.abilities[ability]) : [];
     return el('article', { className: 'party-card npc-table-card' + (hp && hp.current === 0 ? ' is-down' : '') }, [
       el('header', { className: 'party-card-header' }, [
-        el('div', {}, [
+        npc.portraitUrl ? el('img', { className: 'npc-portrait npc-portrait-small', src: npc.portraitUrl, alt: '', loading: 'lazy' }) : null,
+        el('div', { className: 'npc-table-name' }, [
           el('a', { className: 'roster-name', href: '/admin?tab=npcs#npc-' + npc.id, target: '_blank', rel: 'noopener', text: npc.name }),
           el('div', { className: 'muted small', text: ['NPC', npc.affiliation].filter(Boolean).join(' · ') })
         ]),
@@ -366,7 +372,12 @@
         el('span', { className: 'party-label', text: 'Scores' }),
         abilities.map(ability => ability.toUpperCase() + ' ' + stats.abilities[ability].score + ' (' + signed(stats.abilities[ability].modifier) + ')').join(' · ')
       ]) : null,
-      npc.sheetUrl ? el('div', { className: 'party-line' }, [el('a', { href: npc.sheetUrl, target: '_blank', rel: 'noopener', text: 'Sheet ↗' })]) : null
+      npc.personality ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Personality' }), npc.personality]) : null,
+      npc.sheetUrl || npc.statblock ? el('div', { className: 'party-line' }, [
+        npc.statblock ? el('a', { href: npc.statblock.url, target: '_blank', rel: 'noopener', text: npc.statblock.isPdf ? 'Statblock (PDF) ↗' : 'Statblock ↗' }) : null,
+        npc.statblock && npc.sheetUrl ? ' · ' : null,
+        npc.sheetUrl ? el('a', { href: npc.sheetUrl, target: '_blank', rel: 'noopener', text: 'Sheet ↗' }) : null
+      ]) : null
     ]);
   }
 
