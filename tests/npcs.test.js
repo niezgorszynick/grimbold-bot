@@ -11,10 +11,9 @@ const { db, createPlayer } = require('./helpers/tempDatabase');
 
 test('NPCs: players see name, role, portrait and adventures; the rest is for DMs', () => {
   assert.throws(() => db.saveNpc({ name: '  ' }), /needs a name/);
-  assert.throws(() => db.saveNpc({ name: 'Kevah', sheet_url: 'javascript:alert(1)' }), /http/);
   assert.throws(() => db.saveNpc({ name: 'Kevah', str: 40 }), /STR must be a whole number from 1 to 30/);
   const id = db.saveNpc({
-    name: 'Kevah', affiliation: 'Harpers', description: 'A wiry half-elf with a debt to pay.', sheet_url: 'https://example.com/kevah',
+    name: 'Kevah', affiliation: 'Harpers', description: 'A wiry half-elf with a debt to pay.',
     dm_notes: 'Secretly reports to the Zhentarim.', armor_class: '15', hp_max: '27', speed: '30 ft.', dex: '16', wis: '13'
   });
   const forPlayers = db.listNpcs().find(npc => npc.id === id);
@@ -85,31 +84,23 @@ test('NPC owners and plans: a new NPC belongs to its DM; reserved NPCs warn othe
   assert.equal(npc.owner, null);
 });
 
-test('NPC files: portraits for everyone, statblocks for DMs, real images and PDFs only', () => {
+test('NPC portraits: real images only, replaced and removed with the NPC', () => {
   const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
-  const pdf = Buffer.from('%PDF-1.7 made up');
   const id = db.saveNpc({ name: 'Mira' });
   assert.throws(() => db.saveNpcFile({ npcId: id, kind: 'portrait', buffer: Buffer.from('<svg onload="x">') }), /PNG, JPG, WebP or GIF/);
-  assert.throws(() => db.saveNpcFile({ npcId: id, kind: 'portrait', buffer: pdf }), /PNG, JPG, WebP or GIF/);
-  assert.throws(() => db.saveNpcFile({ npcId: id, kind: 'secrets', buffer: png }), /portrait or a statblock/);
+  assert.throws(() => db.saveNpcFile({ npcId: id, kind: 'portrait', buffer: Buffer.from('%PDF-1.7 made up') }), /PNG, JPG, WebP or GIF/);
+  assert.throws(() => db.saveNpcFile({ npcId: id, kind: 'statblock', buffer: png }), /Only portraits/);
 
   const portrait = db.saveNpcFile({ npcId: id, kind: 'portrait', buffer: png });
-  db.saveNpcFile({ npcId: id, kind: 'statblock', buffer: pdf });
   assert.equal(db.getNpc(id).portraitUrl, portrait.url, 'players get the portrait');
-  assert.equal(db.getNpc(id).statblock, undefined, 'but not the statblock');
-  assert.equal(db.getNpc(id, { showStats: true }).statblock.isPdf, true);
+  assert.equal(db.getNpcFile({ npcId: id, kind: 'portrait' }).contentType, 'image/png');
+  assert.equal(db.getNpcFile({ npcId: id, kind: 'statblock' }), null);
 
-  const player = { id: createPlayer(), role: 'player' };
-  assert.ok(db.getNpcFile({ npcId: id, kind: 'portrait', user: player, isAdmin: false }));
-  assert.equal(db.getNpcFile({ npcId: id, kind: 'statblock', user: player, isAdmin: false }), null);
-  const statblock = db.getNpcFile({ npcId: id, kind: 'statblock', user: { id: 0, role: 'admin' }, isAdmin: true });
-  assert.equal(statblock.contentType, 'application/pdf');
-
-  // A new portrait replaces the old file; deleting the NPC removes its files.
+  // A new portrait replaces the old file; deleting the NPC removes it.
   const first = path.join(process.env.UPLOADS_DIR, 'npcs', portrait.name);
   db.saveNpcFile({ npcId: id, kind: 'portrait', buffer: png });
   assert.equal(fs.existsSync(first), false);
-  assert.equal(fs.readdirSync(path.join(process.env.UPLOADS_DIR, 'npcs')).length, 2);
+  assert.equal(fs.readdirSync(path.join(process.env.UPLOADS_DIR, 'npcs')).length, 1);
   db.deleteNpc(id);
   assert.equal(fs.readdirSync(path.join(process.env.UPLOADS_DIR, 'npcs')).length, 0);
 });

@@ -1,7 +1,6 @@
-// db/npcFiles.js — Uploaded NPC files: a portrait/token (everyone sees it) and
-// a statblock image or PDF (DMs only: admins, and the DM of a running
-// adventure the NPC is in). Files are stored in the uploads folder next to the
-// database (see db/connection.js), named after the NPC, never by the uploader.
+// db/npcFiles.js — Uploaded NPC portraits/tokens (everyone logged in sees
+// them). Files are stored in the uploads folder next to the database (see
+// db/connection.js), named after the NPC, never by the uploader.
 
 'use strict';
 
@@ -12,10 +11,9 @@ const { db, uploadsDir } = require('./connection');
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const KINDS = {
-  portrait: ['png', 'jpg', 'webp', 'gif'],
-  statblock: ['png', 'jpg', 'webp', 'gif', 'pdf']
+  portrait: ['png', 'jpg', 'webp', 'gif']
 };
-const CONTENT_TYPES = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf' };
+const CONTENT_TYPES = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
 const dir = () => path.join(uploadsDir, 'npcs');
 
 // The file type from its first bytes (what the browser claims is not trusted).
@@ -25,12 +23,11 @@ function sniff(buffer) {
   if (starts([0xff, 0xd8, 0xff])) return 'jpg';
   if (starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8)) return 'webp';
   if (starts([0x47, 0x49, 0x46, 0x38])) return 'gif';
-  if (starts([0x25, 0x50, 0x44, 0x46, 0x2d])) return 'pdf';
   return null;
 }
 
 function checkKind(kind) {
-  if (!Object.hasOwn(KINDS, kind)) throw new Error('Upload a portrait or a statblock.');
+  if (!Object.hasOwn(KINDS, kind)) throw new Error('Only portraits can be uploaded.');
 }
 
 function removeNpcFiles(names) {
@@ -49,7 +46,7 @@ function saveNpcFile({ npcId, kind, buffer }) {
   if (buffer.length > MAX_BYTES) throw new Error('Files can be 5 MB at most.');
   const type = sniff(buffer);
   if (!type || !KINDS[kind].includes(type)) {
-    throw new Error(kind === 'portrait' ? 'A portrait must be a PNG, JPG, WebP or GIF image.' : 'A statblock must be an image (PNG, JPG, WebP, GIF) or a PDF.');
+    throw new Error('A portrait must be a PNG, JPG, WebP or GIF image.');
   }
   fs.mkdirSync(dir(), { recursive: true });
   const name = `npc-${npc.id}-${kind}-${crypto.randomBytes(6).toString('hex')}.${type}`;
@@ -68,26 +65,15 @@ function removeNpcFile({ npcId, kind }) {
   return { removed: Boolean(npc[`${kind}_file`]) };
 }
 
-// Admins, and the DM of a running adventure with this NPC on the table.
-function canSeeNpcSecrets(npcId, user, isAdmin) {
-  if (isAdmin) return true;
-  if (!user) return false;
-  return Boolean(db.prepare(`
-    SELECT 1 FROM adventure_npcs an JOIN adventures a ON a.id = an.adventure_id
-    WHERE an.npc_id = ? AND a.status = 'active' AND a.dm_player_id = ?
-  `).get(Number(npcId), Number(user.id)));
-}
-
-// { file, contentType } to send, or null when there is none or it's not theirs to see.
-function getNpcFile({ npcId, kind, user, isAdmin }) {
+// { file, contentType } to send, or null when there is none.
+function getNpcFile({ npcId, kind }) {
   if (!Object.hasOwn(KINDS, kind)) return null;
   const npc = db.prepare('SELECT * FROM npcs WHERE id = ?').get(Number(npcId));
   const name = npc && npc[`${kind}_file`];
   if (!name || name !== path.basename(name)) return null;
-  if (kind === 'statblock' && !canSeeNpcSecrets(npc.id, user, isAdmin)) return null;
   const file = path.join(dir(), name);
   if (!fs.existsSync(file)) return null;
   return { file, contentType: CONTENT_TYPES[path.extname(name).slice(1)] || 'application/octet-stream' };
 }
 
-module.exports = { NPC_FILE_MAX_BYTES: MAX_BYTES, saveNpcFile, removeNpcFile, removeNpcFiles, getNpcFile, canSeeNpcSecrets };
+module.exports = { NPC_FILE_MAX_BYTES: MAX_BYTES, saveNpcFile, removeNpcFile, removeNpcFiles, getNpcFile };

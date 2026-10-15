@@ -656,7 +656,6 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .npc-form textarea { width: 100%; box-sizing: border-box; }
 .npc-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .npc-form-abilities { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
-.npc-adventure-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; margin-top: 6px; }
 .npc-delete { margin-top: 10px; }
 #npc-search { width: 100%; box-sizing: border-box; margin-top: 8px; }
 .adventure-npcs { margin-top: 20px; }
@@ -675,6 +674,12 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .npc-files { display: grid; gap: 10px; }
 .npc-file { display: grid; gap: 6px; padding: 10px; border: 1px solid #3f4147; border-radius: 6px; background: #232428; }
 .npc-file input[type=file] { max-width: 100%; }
+.npc-adventure-picker { display: grid; gap: 6px; font-size: 13px; }
+.npc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.npc-chip { display: inline-flex; align-items: center; gap: 4px; }
+.npc-chip-remove { border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+.npc-chip-remove:hover { color: #f23f43; }
+.npc-add-adventure { max-width: 360px; }
 /* Disabled buttons look disabled (they used to look clickable). */
 .btn:disabled, button.btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
 /* Item nicknames ("Ambassador"). */

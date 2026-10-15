@@ -1,6 +1,6 @@
 // views/tabs/npcs.js — "Notable NPCs" tab: Kevah, Arleta and the rest. Players
 // see who they are (name, role, portrait, adventures); DMs also see the lore,
-// personality, status, statblock, stats, notes, and which DM looks after each
+// personality, status, stats, notes, and which DM looks after each
 // NPC and whether they have plans for them. DMs add and edit NPCs here.
 
 'use strict';
@@ -40,10 +40,6 @@ function plansHtml(npc) {
 }
 
 function npcCard(npc, isAdmin) {
-  const links = isAdmin ? [
-    npc.statblock ? `<a href="${escapeHtml(npc.statblock.url)}" target="_blank" rel="noopener">${npc.statblock.isPdf ? 'Statblock (PDF)' : 'Statblock'} ↗</a>` : '',
-    npc.sheetUrl ? `<a href="${escapeHtml(npc.sheetUrl)}" target="_blank" rel="noopener">Sheet ↗</a>` : ''
-  ].filter(Boolean) : [];
   return `
     <article class="card npc-card" id="npc-${npc.id}" data-search="${escapeHtml(`${npc.name} ${npc.affiliation}`.toLowerCase())}">
       <header class="npc-card-header">
@@ -57,7 +53,6 @@ function npcCard(npc, isAdmin) {
       ${isAdmin ? plansHtml(npc) : ''}
       ${isAdmin && npc.personality ? `<p class="npc-personality"><strong>Personality:</strong> ${escapeHtml(npc.personality)}</p>` : ''}
       ${isAdmin && npc.description ? `<details class="npc-dm-notes"><summary>Lore</summary><p class="npc-description">${escapeHtml(npc.description)}</p></details>` : ''}
-      ${links.length ? `<p>${links.join(' · ')}</p>` : ''}
       ${isAdmin && npc.stats && hasStats(npc.stats) ? statsHtml(npc.stats) : ''}
       ${isAdmin && npc.dmNotes ? `<details class="npc-dm-notes"><summary>DM notes</summary><p>${escapeHtml(npc.dmNotes)}</p></details>` : ''}
       <div class="npc-adventures">
@@ -69,9 +64,9 @@ function npcCard(npc, isAdmin) {
     </article>`;
 }
 
-// Portrait and statblock uploads (an existing NPC only: they need its id).
+// Portrait upload (an existing NPC only: it needs its id).
 function filesHtml(npc) {
-  if (!npc) return '<p class="muted small">Save the NPC first, then add a portrait and a statblock.</p>';
+  if (!npc) return '<p class="muted small">Save the NPC first, then add a portrait.</p>';
   const slot = (kind, title, hint, accept, current) => `
     <div class="npc-file" data-kind="${kind}">
       <strong>${title}</strong> <span class="muted small">${hint}</span>
@@ -86,8 +81,6 @@ function filesHtml(npc) {
     <div class="npc-files" data-npc-id="${npc.id}">
       ${slot('portrait', 'Portrait / token', '(players see it; PNG, JPG, WebP or GIF, up to 5 MB)', 'image/png,image/jpeg,image/webp,image/gif',
     npc.portraitUrl ? `<img class="npc-portrait" src="${escapeHtml(npc.portraitUrl)}" alt="Current portrait">` : '')}
-      ${slot('statblock', 'Statblock', '(DMs only; an image or a PDF, up to 5 MB)', 'image/png,image/jpeg,image/webp,image/gif,application/pdf',
-    npc.statblock ? `<a href="${escapeHtml(npc.statblock.url)}" target="_blank" rel="noopener">Current statblock${npc.statblock.isPdf ? ' (PDF)' : ''} ↗</a>` : '')}
       <p class="sheet-message" role="status" data-file-message></p>
     </div>
     <script>
@@ -117,6 +110,58 @@ function filesHtml(npc) {
             if (!confirm('Remove this file?')) return;
             try { await send('DELETE'); } catch (error) { report(error.message, true); }
           });
+        });
+      })();
+    </script>`;
+}
+
+// The adventures an NPC appeared in: chips to remove, a dropdown (newest first,
+// type to jump) to add. Each chip carries a hidden adventure_ids input.
+function adventurePicker(adventures, appeared) {
+  const chip = adventure => `<span class="tag npc-chip" data-id="${adventure.id}">${escapeHtml(adventure.title)}<input type="hidden" name="adventure_ids" value="${adventure.id}"><button type="button" class="npc-chip-remove" aria-label="Remove ${escapeHtml(adventure.title)}">×</button></span>`;
+  return `
+    <div class="npc-adventure-picker">
+      <span class="npc-picker-label">Adventures they appeared in</span>
+      <div class="npc-chips">${adventures.filter(adventure => appeared.has(adventure.id)).map(chip).join('') || '<span class="muted small npc-chips-empty">None yet.</span>'}</div>
+      ${adventures.length ? `<select class="npc-add-adventure" aria-label="Add an adventure">
+        <option value="">+ Add an adventure…</option>
+        ${adventures.map(adventure => `<option value="${adventure.id}" ${appeared.has(adventure.id) ? 'hidden disabled' : ''}>${escapeHtml(adventure.title)}</option>`).join('')}
+      </select>` : '<span class="muted small">No adventures yet.</span>'}
+    </div>
+    <script>
+      (() => {
+        const picker = document.querySelector('.npc-adventure-picker');
+        const select = picker && picker.querySelector('.npc-add-adventure');
+        if (!select) return;
+        const chips = picker.querySelector('.npc-chips');
+        const option = id => select.querySelector('option[value="' + id + '"]');
+        const removeChip = chipNode => {
+          const entry = option(chipNode.dataset.id);
+          if (entry) { entry.hidden = false; entry.disabled = false; }
+          chipNode.remove();
+        };
+        chips.addEventListener('click', event => {
+          const button = event.target.closest('.npc-chip-remove');
+          if (button) removeChip(button.closest('.npc-chip'));
+        });
+        select.addEventListener('change', () => {
+          const entry = option(select.value);
+          if (!entry) return;
+          const empty = chips.querySelector('.npc-chips-empty');
+          if (empty) empty.remove();
+          const chipNode = document.createElement('span');
+          chipNode.className = 'tag npc-chip';
+          chipNode.dataset.id = entry.value;
+          const hidden = document.createElement('input');
+          Object.assign(hidden, { type: 'hidden', name: 'adventure_ids', value: entry.value });
+          const remove = document.createElement('button');
+          Object.assign(remove, { type: 'button', className: 'npc-chip-remove', textContent: '×' });
+          remove.setAttribute('aria-label', 'Remove ' + entry.textContent);
+          chipNode.append(entry.textContent, hidden, remove);
+          chips.append(chipNode);
+          entry.hidden = true;
+          entry.disabled = true;
+          select.value = '';
         });
       })();
     </script>`;
@@ -152,7 +197,6 @@ function npcForm(npc, adventures, owners, currentUserId) {
           <label>Plans<select name="plans">
             ${Object.entries(PLAN_LABELS).map(([plan, label]) => `<option value="${plan}" ${(npc ? npc.plans : '') === plan ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
           </select></label>
-          <label>Sheet link<input name="sheet_url" type="url" maxlength="500" placeholder="https://…" value="${value('sheetUrl')}"></label>
         </div>
         <label>Plans note<input name="plans_note" maxlength="500" placeholder="e.g. Becomes the villain of the Ashfall arc, keep them alive" value="${value('plansNote')}"></label>
         <label>Personality (short)<textarea name="personality" rows="2" maxlength="1000" placeholder="Gruff, loyal to a fault, hates elves">${value('personality')}</textarea></label>
@@ -168,18 +212,12 @@ function npcForm(npc, adventures, owners, currentUserId) {
           ${ABILITIES.map(ability => `<label>${ability.toUpperCase()}<input name="${ability}" type="number" min="1" max="30" value="${stats.abilities[ability] ? stats.abilities[ability].score : ''}"></label>`).join('')}
         </div>
         <label>DM notes<textarea name="dm_notes" rows="3" maxlength="5000">${npc && npc.dmNotes ? escapeHtml(npc.dmNotes) : ''}</textarea></label>
-        <details class="npc-form-adventures" ${appeared.size ? 'open' : ''}>
-          <summary>Adventures they appeared in (${appeared.size})</summary>
-          <div class="npc-adventure-list">
-            ${adventures.map(adventure => `<label class="creator-check"><input type="checkbox" name="adventure_ids" value="${adventure.id}" ${appeared.has(adventure.id) ? 'checked' : ''}> ${escapeHtml(adventure.title)}</label>`).join('') || '<span class="muted small">No adventures yet.</span>'}
-          </div>
-        </details>
+        ${adventurePicker(adventures, appeared)}
         <div class="vitals-actions">
           <button type="submit" class="btn btn-green">${npc ? 'Save NPC' : 'Add NPC'}</button>
           <a class="btn btn-secondary" href="/admin?tab=npcs">Cancel</a>
         </div>
       </form>
-      <h4>Portrait and statblock</h4>
       ${filesHtml(npc)}
       ${npc ? `
         <form method="POST" action="/admin/npcs/delete" data-name="${escapeHtml(npc.name)}" onsubmit="return confirm('Delete ' + this.dataset.name + ' for good? Their adventure history goes too.');" class="npc-delete">

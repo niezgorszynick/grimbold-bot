@@ -1,9 +1,9 @@
 // db/npcs.js — Notable NPCs (Kevah, Arleta, ...). Players see who they are:
 // name, role, portrait and the adventures they appeared in. DMs also see the
-// lore, personality, status, statblock, stats, notes, and which DM looks after
-// the NPC and whether they have plans for it. Adding NPCs to a running
-// adventure and their HP there live in db/activeAdventures.js; uploaded
-// portraits and statblocks in db/npcFiles.js.
+// lore, personality, status, stats, notes, and which DM looks after the NPC
+// and whether they have plans for it. Adding NPCs to a running adventure and
+// their HP there live in db/activeAdventures.js; uploaded portraits in
+// db/npcFiles.js.
 
 'use strict';
 
@@ -65,14 +65,11 @@ function npcView(row, adventures, showStats) {
   };
   if (!showStats) return view;
   const abilities = readAbilities(row.abilities);
-  const statblockUrl = fileUrl(row, 'statblock');
   return {
     ...view,
     status: row.status,
     description: row.description,
     personality: row.personality || '',
-    sheetUrl: row.sheet_url,
-    statblock: statblockUrl ? { url: statblockUrl, isPdf: /\.pdf$/i.test(row.statblock_file) } : null,
     owner: ownerOf(row),
     plans: row.plans || '',
     plansNote: row.plans_note || '',
@@ -138,7 +135,7 @@ function readOwner(value) {
 }
 
 // Creates (no id) or updates an NPC (admins). fields: name, affiliation,
-// description, personality, sheet_url, status, dm_notes, owner_player_id,
+// description, personality, status, dm_notes, owner_player_id,
 // plans, plans_note, armor_class, hp_max, hp_current, speed, str…cha,
 // adventure_ids (the adventures they appeared in). A new NPC without an owner
 // belongs to created_by (the DM adding it).
@@ -147,8 +144,6 @@ function saveNpc(fields) {
   if (!name) throw new Error('An NPC needs a name.');
   const status = STATUSES.includes(fields.status) ? fields.status : 'alive';
   const plans = PLANS.includes(fields.plans) ? fields.plans : '';
-  const sheetUrl = cleanText(fields.sheet_url, 500, 'Sheet link');
-  if (sheetUrl && !/^https?:\/\//i.test(sheetUrl)) throw new Error('The sheet link must start with http:// or https://.');
   const hpMax = optionalInt(fields.hp_max, 1, 5000, 'Max HP');
   let hpCurrent = optionalInt(fields.hp_current, 0, 5000, 'Current HP');
   if (hpCurrent === null) hpCurrent = hpMax;
@@ -164,7 +159,6 @@ function saveNpc(fields) {
     cleanText(fields.affiliation, 100, 'Role'),
     cleanText(fields.description, 5000, 'Lore'),
     cleanText(fields.personality, 1000, 'Personality'),
-    sheetUrl,
     status,
     cleanText(fields.dm_notes, 5000, 'DM notes'),
     plans,
@@ -180,16 +174,16 @@ function saveNpc(fields) {
     let id = Number(fields.id) || null;
     if (id) {
       const result = db.prepare(`
-        UPDATE npcs SET name = ?, affiliation = ?, description = ?, personality = ?, sheet_url = ?, status = ?, dm_notes = ?,
+        UPDATE npcs SET name = ?, affiliation = ?, description = ?, personality = ?, status = ?, dm_notes = ?,
           plans = ?, plans_note = ?, armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ?, owner_player_id = ? WHERE id = ?
       `).run(...values, owner, id);
       if (!result.changes) throw new Error('NPC not found.');
     } else {
       if (owner === null && fields.created_by !== undefined && fields.created_by !== null) owner = Number(fields.created_by);
       id = Number(db.prepare(`
-        INSERT INTO npcs (name, affiliation, description, personality, sheet_url, status, dm_notes, plans, plans_note,
+        INSERT INTO npcs (name, affiliation, description, personality, status, dm_notes, plans, plans_note,
           armor_class, hp_max, hp_current, speed, abilities, owner_player_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(...values, owner).lastInsertRowid);
     }
     if (fields.adventure_ids !== undefined) {

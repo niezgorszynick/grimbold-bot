@@ -16,7 +16,7 @@ db.pragma('journal_mode = WAL');
 
 runMigrations(db);
 
-// Uploaded files (NPC portraits and statblocks) live next to the database,
+// Uploaded files (NPC portraits) live next to the database,
 // outside the repository. UPLOADS_DIR can point elsewhere.
 const uploadsDir = process.env.UPLOADS_DIR
   ? path.resolve(__dirname, '..', process.env.UPLOADS_DIR)

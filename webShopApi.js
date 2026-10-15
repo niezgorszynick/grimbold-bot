@@ -565,17 +565,17 @@ function adventureRoute(handler) {
 
 router.get('/adventures/:id/table', adventureRoute(({ adventureId, user }) => db.getAdventureTable({ adventureId, user })));
 
-// NPC portraits (everyone logged in) and statblocks (DMs) as uploaded.
+// NPC portraits as uploaded (everyone logged in).
 router.get('/npcs/:id/files/:kind', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const found = db.getNpcFile({ npcId: req.params.id, kind: req.params.kind, user, isAdmin: isAdmin(user) });
+  const found = db.getNpcFile({ npcId: req.params.id, kind: req.params.kind });
   if (!found) return res.status(404).json({ error: 'No such file.' });
   res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline' });
   return res.sendFile(found.file);
 });
 
-// Admins upload a portrait or statblock as the raw request body (5 MB at most).
+// Admins upload a portrait as the raw request body (5 MB at most).
 router.post('/npcs/:id/files/:kind', express.raw({ type: () => true, limit: db.NPC_FILE_MAX_BYTES }), (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });

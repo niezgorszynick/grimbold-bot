@@ -372,12 +372,7 @@
         el('span', { className: 'party-label', text: 'Scores' }),
         abilities.map(ability => ability.toUpperCase() + ' ' + stats.abilities[ability].score + ' (' + signed(stats.abilities[ability].modifier) + ')').join(' · ')
       ]) : null,
-      npc.personality ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Personality' }), npc.personality]) : null,
-      npc.sheetUrl || npc.statblock ? el('div', { className: 'party-line' }, [
-        npc.statblock ? el('a', { href: npc.statblock.url, target: '_blank', rel: 'noopener', text: npc.statblock.isPdf ? 'Statblock (PDF) ↗' : 'Statblock ↗' }) : null,
-        npc.statblock && npc.sheetUrl ? ' · ' : null,
-        npc.sheetUrl ? el('a', { href: npc.sheetUrl, target: '_blank', rel: 'noopener', text: 'Sheet ↗' }) : null
-      ]) : null
+      npc.personality ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Personality' }), npc.personality]) : null
     ]);
   }
 
