@@ -9,6 +9,10 @@
 //
 // Stored: sheetData.wildShape.known (learned form names) and the vitals key
 // wildShapeForm (the form the druid is in now, or null).
+//
+// Circle of the Stars: Starry Form spends a Wild Shape use too, but keeps the
+// druid's own statistics and adds a constellation (vitals key starryForm).
+// Cosmic Omen (level 6) is rolled after each Long Rest (vitals key cosmicOmen).
 
 const { loadContent } = require('./content');
 const { SKILLS, abilityModifier, proficiencyBonus } = require('./util');
@@ -279,7 +283,55 @@ function wildShapeBlock(beast, { classes, sheetData, status, initiative = null }
   };
 }
 
+// ─── Circle of the Stars ─────────────────────────────────────────────────────
+
+const CONSTELLATIONS = ['Archer', 'Chalice', 'Dragon'];
+
+// null unless a Circle of the Stars druid of level 3+.
+function starryFormRules(classRows) {
+  const druid = (classRows || []).find(row => row.className === 'Druid' && row.subclassName === 'Circle of the Stars');
+  if (!druid || druid.level < 3) return null;
+  const level = druid.level;
+  return {
+    druidLevel: level,
+    dice: level >= 10 ? '2d8' : '1d8',
+    // Twinkling Constellations: switch at the start of each turn; Dragon flies.
+    canSwitch: level >= 10,
+    dragonFlies: level >= 10,
+    // Full of Stars.
+    resistance: level >= 14,
+    cosmicOmen: level >= 6
+  };
+}
+
+// What each constellation does for this druid. wisMod: Wisdom modifier;
+// spellAttack: the Druid spell attack bonus.
+function constellations(status, { wisMod, spellAttack }) {
+  const bonus = wisMod ? (wisMod > 0 ? '+' + wisMod : String(wisMod)) : '';
+  const formula = status.dice + bonus;
+  return [
+    {
+      name: 'Archer',
+      text: 'When you take this form, and as a Bonus Action on later turns, make a ranged spell attack at a creature within 60 ft.: ' + formula + ' Radiant damage on a hit.',
+      attack: { name: 'Luminous Arrow', attackBonus: spellAttack, damage: { formula, type: 'Radiant' } }
+    },
+    {
+      name: 'Chalice',
+      text: 'When you cast a spell with a spell slot that restores Hit Points, you or another creature within 30 ft. also regains ' + formula + ' HP.',
+      healing: formula
+    },
+    {
+      name: 'Dragon',
+      text: 'On Intelligence and Wisdom checks, and Constitution saves to keep Concentration, treat a d20 roll of 9 or lower as a 10.' +
+        (status.dragonFlies ? ' You have a Fly Speed of 20 ft. and can hover.' : '')
+    }
+  ];
+}
+
 module.exports = {
+  CONSTELLATIONS,
+  starryFormRules,
+  constellations,
   parseBeast,
   loadBeasts,
   getBeast,

@@ -44,6 +44,23 @@ function activeWildShape(character, sheetData) {
   return rules.wildShapeBlock(beast, { classes, sheetData, status: rules.wildShapeRules(classes), initiative });
 }
 
+// Circle of the Stars: Starry Form (the constellation now, if any), what each
+// constellation does, and the Cosmic Omen rolled at the last Long Rest. null
+// for everyone else.
+function starryFormState(character, sheetData) {
+  const classes = classesOf(character);
+  const status = rules.starryFormRules(classes);
+  if (!status) return null;
+  const druid = rules.getSpellSources({ classes, species: character.race, sheetData }).find(source => source.key === 'Druid');
+  const wisMod = rules.abilityModifier(rules.effectiveAbilityScore(sheetData, 'wis'));
+  return {
+    rules: status,
+    active: rules.CONSTELLATIONS.includes(sheetData.starryForm) ? sheetData.starryForm : null,
+    cosmicOmen: status.cosmicOmen && ['weal', 'woe'].includes(sheetData.cosmicOmen) ? sheetData.cosmicOmen : null,
+    constellations: rules.constellations(status, { wisMod, spellAttack: druid ? druid.attackBonus : wisMod })
+  };
+}
+
 function beastSummary(beast) {
   return { name: beast.name, cr: rules.formatCr(beast.cr), crValue: beast.cr, size: beast.size, fly: beast.fly, swim: beast.swim };
 }
@@ -64,6 +81,7 @@ function view(character, sheetData) {
     rules: { ...status, maxCr: rules.formatCr(status.maxCr) },
     uses: uses ? { max: uses.max, left: uses.max - Math.min(uses.max, vitals.resourcesUsed.wildShape || 0) } : { max: 0, left: 0 },
     active: vitals.wildShapeForm,
+    starry: starryFormState(character, sheetData),
     hp: { current: vitals.hpCurrent, temp: vitals.hpTemp },
     known: known.map(name => {
       const beast = beasts[name];
@@ -98,4 +116,4 @@ function changeCharacterWildShapeForms({ id, player_id, is_admin, change }) {
   })();
 }
 
-module.exports = { getCharacterWildShape, changeCharacterWildShapeForms, activeWildShape };
+module.exports = { getCharacterWildShape, changeCharacterWildShapeForms, activeWildShape, starryFormState };

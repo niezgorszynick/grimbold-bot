@@ -7,7 +7,7 @@
 const { db } = require('./connection');
 const rules = require('../rules');
 const { buildCharacterCombat } = require('./combat');
-const { activeWildShape } = require('./wildShape');
+const { activeWildShape, starryFormState } = require('./wildShape');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
@@ -107,8 +107,21 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     // index: the attack's place in the character's roll list (db/dice.js).
     attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType }))
       .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => ({ ...attack, roll: `attack:${attack.index}` })) : [],
-    wildShape: null
+    wildShape: null,
+    starryForm: null,
+    cosmicOmen: null
   };
+  // Circle of the Stars: the constellation (and the Archer's arrow), the omen.
+  const starry = attempt(() => starryFormState(character, sheetData));
+  if (starry) {
+    detailed.starryForm = starry.active;
+    detailed.cosmicOmen = starry.cosmicOmen;
+    if (starry.active === 'Archer') {
+      const arrow = starry.constellations[0].attack;
+      const signedBonus = arrow.attackBonus >= 0 ? `+${arrow.attackBonus}` : `${arrow.attackBonus}`;
+      detailed.attacks = [{ index: 0, roll: 'starry:archer', name: arrow.name, attackBonus: signedBonus, damage: `${arrow.damage.formula} Radiant` }, ...detailed.attacks];
+    }
+  }
   // Wild Shape: the beast's AC, speed, physical saves and attacks.
   const form = attempt(() => activeWildShape(character, sheetData));
   if (!form) return detailed;

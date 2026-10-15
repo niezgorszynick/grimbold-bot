@@ -6,7 +6,9 @@
 //   hpCurrent, hpTemp, hpMaxBonus, hitDiceSpent { d8: 1 }, deathSaves
 //   { successes, failures }, exhaustion 0–6, spellSlotsSpent [per level],
 //   pactSlotsSpent, resourcesUsed { channelDivinityCleric: 1 } (class features),
-//   wildShapeForm (the beast a druid is in now, or null).
+//   wildShapeForm (the beast a druid is in now, or null), starryForm (the
+//   constellation of a Circle of the Stars druid's Starry Form, or null),
+//   cosmicOmen ('weal' | 'woe' | null, rolled after a Long Rest).
 // Derived values (hpMax, hit dice pool, slot totals) are passed in by the
 // caller from the character's classes so they always follow the rules.
 
@@ -17,7 +19,7 @@ const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
 const { classResources, recoverResources } = require('./classResources');
-const { wildShapeRules, knownForms } = require('./wildShape');
+const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS } = require('./wildShape');
 
 const MAX_EXHAUSTION = 6;
 
@@ -59,7 +61,9 @@ function normalizeVitals(sheetData, hpMax) {
     resourcesUsed: Object.fromEntries(
       Object.entries(data.resourcesUsed || {}).map(([key, count]) => [key, toCount(count)]).filter(([, count]) => count > 0)
     ),
-    wildShapeForm: typeof data.wildShapeForm === 'string' && data.wildShapeForm ? data.wildShapeForm : null
+    wildShapeForm: typeof data.wildShapeForm === 'string' && data.wildShapeForm ? data.wildShapeForm : null,
+    starryForm: CONSTELLATIONS.includes(data.starryForm) ? data.starryForm : null,
+    cosmicOmen: ['weal', 'woe'].includes(data.cosmicOmen) ? data.cosmicOmen : null
   };
 }
 
@@ -249,12 +253,34 @@ function takeWildShape(vitals, form, context) {
   if (vitals.hpCurrent === 0) throw new Error("You can't Wild Shape at 0 Hit Points.");
   const spent = changeResource(vitals, 'wildShape', 1, context).vitals;
   const withTemp = setTempHp(spent, status.tempHp).vitals;
-  return { vitals: { ...withTemp, wildShapeForm: form }, events: ['wildShape'] };
+  return { vitals: { ...withTemp, wildShapeForm: form, starryForm: null }, events: ['wildShape'] };
 }
 
 function revertWildShape(vitals) {
   if (!vitals.wildShapeForm) throw new Error('You are not in a Wild Shape form.');
   return { vitals: { ...vitals, wildShapeForm: null }, events: ['wildShapeEnded'] };
+}
+
+// Starry Form (Circle of the Stars): a Wild Shape use for 10 minutes in one
+// constellation. From level 10 (Twinkling Constellations) the constellation can
+// change at the start of each turn without a new use (switching: true).
+function takeStarryForm(vitals, constellation, switching, context) {
+  const status = context.starry;
+  if (!status) throw new Error('Only a Circle of the Stars druid of level 3 or higher has Starry Form.');
+  if (!CONSTELLATIONS.includes(constellation)) throw new Error('Choose a constellation: ' + CONSTELLATIONS.join(', ') + '.');
+  if (vitals.hpCurrent === 0) throw new Error("You can't take your Starry Form at 0 Hit Points.");
+  if (switching) {
+    if (!vitals.starryForm) throw new Error('You are not in your Starry Form.');
+    if (!status.canSwitch) throw new Error('Changing constellations comes at Druid level 10 (Twinkling Constellations).');
+    return { vitals: { ...vitals, starryForm: constellation }, events: [] };
+  }
+  const spent = changeResource(vitals, 'wildShape', 1, context).vitals;
+  return { vitals: { ...spent, starryForm: constellation, wildShapeForm: null }, events: ['starryForm'] };
+}
+
+function dismissStarryForm(vitals) {
+  if (!vitals.starryForm) throw new Error('You are not in your Starry Form.');
+  return { vitals: { ...vitals, starryForm: null }, events: ['starryFormEnded'] };
 }
 
 // Manual adjustment to the HP maximum (e.g. the Aid spell or a curse).
@@ -328,7 +354,9 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     wildShape: (() => {
       const status = wildShapeRules(classRows);
       return status ? { ...status, known: knownForms(sheetData) } : null;
-    })()
+    })(),
+    // Circle of the Stars: Starry Form and Cosmic Omen.
+    starry: starryFormRules(classRows)
   };
 }
 
@@ -342,7 +370,12 @@ const ACTIONS = {
   shortRest: (vitals, params, context) => withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short'),
   longRest: (vitals, params, context) => {
     // A Long Rest outlasts any Wild Shape.
-    const rested = withRecovery(longRest({ ...vitals, wildShapeForm: null }, context), vitals, context, 'long');
+    let rested = withRecovery(longRest({ ...vitals, wildShapeForm: null, starryForm: null }, context), vitals, context, 'long');
+    // Cosmic Omen: a die after every Long Rest; even is Weal, odd is Woe.
+    if (context.starry && context.starry.cosmicOmen) {
+      const omen = rollDie(6, context.rng) % 2 === 0 ? 'weal' : 'woe';
+      rested = { ...rested, vitals: { ...rested.vitals, cosmicOmen: omen }, events: [...rested.events, omen === 'weal' ? 'cosmicOmenWeal' : 'cosmicOmenWoe'] };
+    }
     return context.resourceful ? { ...rested, vitals: { ...rested.vitals, heroicInspiration: true } } : rested;
   },
   // Heroic Inspiration (2024): have it or not; the DM awards it, a reroll spends it.
@@ -356,7 +389,9 @@ const ACTIONS = {
   setHp: (vitals, params, context) => setHp(vitals, params, context),
   resetHp: vitals => resetHp(vitals),
   wildShape: (vitals, params, context) => takeWildShape(vitals, String(params.form || ''), context),
-  revertWildShape: vitals => revertWildShape(vitals)
+  revertWildShape: vitals => revertWildShape(vitals),
+  starryForm: (vitals, params, context) => takeStarryForm(vitals, String(params.constellation || ''), Boolean(params.switch), context),
+  dismissStarryForm: vitals => dismissStarryForm(vitals)
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
 
@@ -371,9 +406,12 @@ function applyVitalsAction(vitals, action, params, context) {
   const handler = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
   if (!handler) throw new Error(`Unknown action "${action}".`);
   let result = handler(vitals, params || {}, context);
-  // Dropping to 0 HP (Unconscious, so Incapacitated) ends Wild Shape.
+  // Dropping to 0 HP (Unconscious, so Incapacitated) ends Wild Shape and Starry Form.
   if (result.vitals.wildShapeForm && result.vitals.hpCurrent === 0) {
     result = { ...result, vitals: { ...result.vitals, wildShapeForm: null }, events: [...(result.events || []), 'wildShapeEnded'] };
+  }
+  if (result.vitals.starryForm && result.vitals.hpCurrent === 0) {
+    result = { ...result, vitals: { ...result.vitals, starryForm: null }, events: [...(result.events || []), 'starryFormEnded'] };
   }
   const hpMax = Math.max(1, context.baseHpMax + result.vitals.hpMaxBonus);
   return {
@@ -407,7 +445,9 @@ function buildVitalsView(vitals, context, hpMax = context.hpMax) {
     })),
     pact: context.pact ? { ...context.pact, spent: Math.min(context.pact.count, vitals.pactSlotsSpent) } : null,
     resources: (context.resources || []).map(resource => ({ ...resource, used: Math.min(resource.max, vitals.resourcesUsed[resource.key] || 0) })),
-    wildShapeForm: vitals.wildShapeForm
+    wildShapeForm: vitals.wildShapeForm,
+    starryForm: vitals.starryForm,
+    cosmicOmen: vitals.cosmicOmen
   };
 }
 

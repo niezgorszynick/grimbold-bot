@@ -124,3 +124,58 @@ test('Transform: a use, temporary HP and the beast\'s stats; it ends at 0 HP, on
   const rested = vitals(id, 'longRest');
   assert.equal(rested.vitals.resourcesUsed.wildShape, undefined, 'all uses back');
 });
+
+test('Circle of the Stars: Starry Form constellations, switching at level 10, Cosmic Omen after a Long Rest', () => {
+  const owner = createPlayer();
+  const id = addDruid(owner, { level: 6, subclass: 'Circle of the Stars', sheet: { wildShape: { known: ['Practice Hound'] } } });
+  assert.throws(() => vitals(addDruid(owner), 'starryForm', { constellation: 'Archer' }), /Circle of the Stars/);
+  assert.throws(() => vitals(id, 'starryForm', { constellation: 'Bear' }), /Choose a constellation/);
+
+  // Archer: a Wild Shape use; the arrow rolls with the Druid spell attack and WIS.
+  let outcome = vitals(id, 'starryForm', { constellation: 'Archer' });
+  assert.equal(outcome.vitals.starryForm, 'Archer');
+  assert.equal(outcome.vitals.resourcesUsed.wildShape, 1);
+  assert.equal(outcome.vitals.hpTemp, 0, 'no temporary HP: you keep your own statistics');
+  let options = db.rollOptions(db.getCharacterById(id));
+  assert.equal(options.get('starry:archer:hit').formula, '1d20+6', 'PB 3 + WIS 3');
+  assert.equal(options.get('starry:archer:damage').formula, '1d8+3');
+  assert.equal(options.has('starry:chalice:heal'), false);
+  const [snapshot] = db.getCharacterSnapshots([id]);
+  assert.equal(snapshot.starryForm, 'Archer');
+  assert.deepEqual(snapshot.attacks[0], { index: 0, roll: 'starry:archer', name: 'Luminous Arrow', attackBonus: '+6', damage: '1d8+3 Radiant' });
+
+  assert.throws(() => vitals(id, 'starryForm', { constellation: 'Chalice', switch: true }), /Druid level 10/);
+  outcome = vitals(id, 'starryForm', { constellation: 'Chalice' });
+  assert.equal(outcome.vitals.resourcesUsed.wildShape, 2, 'taking the form again spends another use');
+  assert.equal(db.rollOptions(db.getCharacterById(id)).get('starry:chalice:heal').formula, '1d8+3');
+
+  // A beast form replaces the Starry Form (both use Wild Shape).
+  db.prepare("UPDATE characters SET sheet_data = json_set(sheet_data, '$.resourcesUsed.wildShape', 0) WHERE id = ?").run(id);
+  outcome = vitals(id, 'wildShape', { form: 'Practice Hound' });
+  assert.equal(outcome.vitals.starryForm, null);
+
+  // Cosmic Omen: rolled on the Long Rest; even is Weal.
+  const character = db.getCharacterById(id);
+  const sheetData = JSON.parse(character.sheet_data);
+  const classRows = [{ className: 'Druid', subclassName: 'Circle of the Stars', level: 6 }];
+  const context = { ...rules.deriveVitalsContext({ species: 'Human', sheetData, classRows }), rng: () => 4 };
+  const rested = rules.applyVitalsAction(rules.normalizeVitals(sheetData, context.hpMax), 'longRest', {}, context);
+  assert.equal(rested.vitals.cosmicOmen, 'weal');
+  assert.ok(rested.events.includes('cosmicOmenWeal'));
+  assert.equal(rested.vitals.wildShapeForm, null);
+  db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify({ ...sheetData, ...rested.vitals }), id);
+  options = db.rollOptions(db.getCharacterById(id));
+  assert.equal(options.get('omen:d6').label, 'Cosmic Omen (Weal: add)');
+  assert.ok(context.resources.some(resource => resource.key === 'cosmicOmen' && resource.max === 3), 'uses: WIS modifier');
+
+  // Level 10: switch constellations without a new use; 0 HP ends the form.
+  const high = addDruid(owner, { level: 10, subclass: 'Circle of the Stars' });
+  vitals(high, 'starryForm', { constellation: 'Dragon' });
+  outcome = vitals(high, 'starryForm', { constellation: 'Archer', switch: true });
+  assert.equal(outcome.vitals.starryForm, 'Archer');
+  assert.equal(outcome.vitals.resourcesUsed.wildShape, 1);
+  assert.equal(db.rollOptions(db.getCharacterById(high)).get('starry:archer:damage').formula, '2d8+3');
+  assert.match(db.getCharacterWildShape({ id: high, player_id: owner, is_admin: false }).starry.constellations[2].text, /Fly Speed of 20 ft/);
+  outcome = vitals(high, 'damage', { amount: 500 });
+  assert.equal(outcome.vitals.starryForm, null);
+});

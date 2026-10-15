@@ -16,7 +16,11 @@
     deathSaveSucceeded: 'Death save succeeded.',
     deathSaveFailed: 'Death save failed.',
     shortRest: 'Short Rest finished.',
-    longRest: 'Long Rest finished: HP, Hit Point Dice and spell slots restored.'
+    longRest: 'Long Rest finished: HP, Hit Point Dice and spell slots restored.',
+    wildShapeEnded: 'Your Wild Shape ended.',
+    starryFormEnded: 'Your Starry Form ended.',
+    cosmicOmenWeal: 'Cosmic Omen: Weal (even) until your next Long Rest: add 1d6 to a D20 Test.',
+    cosmicOmenWoe: 'Cosmic Omen: Woe (odd) until your next Long Rest: subtract 1d6 from a D20 Test.'
   };
 
   function el(tag, attrs, children) {

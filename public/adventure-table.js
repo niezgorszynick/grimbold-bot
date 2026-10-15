@@ -135,7 +135,8 @@
     instantDeath: 'dies outright from massive damage.',
     dead: 'has died.',
     revived: 'is back on their feet.',
-    wildShapeEnded: 'is back in their true form.'
+    wildShapeEnded: 'is back in their true form.',
+    starryFormEnded: 'leaves their Starry Form.'
   };
   async function changeHp(member, action, params) {
     try {
@@ -148,7 +149,7 @@
       if (!response.ok) throw new Error(result.error || 'Could not change Hit Points.');
       const parts = action === 'inspiration'
         ? [member.name + (params.on ? ' gains Heroic Inspiration.' : ' no longer has Heroic Inspiration.')]
-        : action === 'revertWildShape'
+        : action === 'revertWildShape' || action === 'dismissStarryForm'
           ? []
           : [member.name + ' ' + { damage: 'takes ' + params.amount + ' damage', heal: 'heals ' + params.amount + ' HP', tempHp: 'gains ' + params.amount + ' temporary HP' }[action] +
           ': ' + result.vitals.hpCurrent + ' / ' + result.vitals.hpMax + ' HP.'];
@@ -198,6 +199,20 @@
     if (member.concentration) flags.push(el('span', { className: 'tag gold', text: 'Concentrating: ' + member.concentration }));
     if (member.exhaustion) flags.push(el('span', { className: 'tag red', text: 'Exhaustion ' + member.exhaustion }));
     if (member.heroicInspiration) flags.push(el('span', { className: 'tag gold', text: '★ Heroic Inspiration' }));
+    if (member.starryForm) {
+      flags.push(el('span', { className: 'tag gold' }, [
+        '✨ Starry Form: ' + member.starryForm,
+        data.canManage && data.adventure.status === 'active'
+          ? button('End', () => changeHp(member, 'dismissStarryForm', {}), 'link-button small', { title: 'End the Starry Form (e.g. Incapacitated)' })
+          : null
+      ]));
+    }
+    if (member.cosmicOmen) {
+      flags.push(el('span', { className: 'tag', title: 'Reaction: roll 1d6 and ' + (member.cosmicOmen === 'weal' ? 'add it to' : 'subtract it from') + ' a D20 Test of a creature within 30 ft.' }, [
+        'Cosmic Omen: ' + (member.cosmicOmen === 'weal' ? 'Weal (+1d6)' : 'Woe (−1d6)') + ' ',
+        rollIf('omen:d6', '🎲', 'Roll the omen d6')
+      ]));
+    }
     if (member.wildShape) {
       flags.push(el('span', { className: 'tag green' }, [
         '🐾 Wild Shape: ' + member.wildShape.name,

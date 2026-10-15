@@ -41,6 +41,8 @@ const RESOURCES = [
     text: () => 'Bonus Action: take a Beast form you have learned. Also fuels Wild Companion and Circle features.' },
   { key: 'starMap', name: 'Star Map: Guiding Bolt', subclass: 'Circle of the Stars', minLevel: 3, max: modMin1('wis'), recovery: 'long',
     text: () => 'Cast Guiding Bolt without a spell slot.' },
+  { key: 'cosmicOmen', name: 'Cosmic Omen', subclass: 'Circle of the Stars', minLevel: 6, max: modMin1('wis'), recovery: 'long',
+    text: () => 'Reaction: when a creature you can see within 30 ft. is about to make a D20 Test, roll 1d6 and add it (Weal, an even omen) or subtract it (Woe, an odd omen). The omen is rolled after each Long Rest.' },
   { key: 'secondWind', name: 'Second Wind', className: 'Fighter', minLevel: 1, max: ({ level }) => table('Fighter', 'secondWind')(level), recovery: 'shortOne',
     text: ({ level }) => `Bonus Action: regain 1d10 + ${level} HP.` },
   { key: 'actionSurge', name: 'Action Surge', className: 'Fighter', minLevel: 2, max: ({ level }) => table('Fighter', 'actionSurge')(level), recovery: 'short',

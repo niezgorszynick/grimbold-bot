@@ -2,6 +2,8 @@
 // beast forms learned (up to the druid's limit), Transform / Revert, and the
 // combined stat block of each form. In a form, the stat block's numbers roll
 // (public/dice.js); the server rolls STR, DEX and CON for the beast then.
+// Circle of the Stars druids also get Starry Form (Archer, Chalice, Dragon)
+// and their Cosmic Omen here.
 
 (function () {
   const root = document.getElementById('cs_wild_shape');
@@ -178,6 +180,63 @@
     return el('div', { className: 'vitals-actions' }, [select, learn]);
   }
 
+  // Circle of the Stars: Starry Form (a Wild Shape use, 10 minutes) and Cosmic Omen.
+  function starrySection() {
+    const starry = view.starry;
+    const r = starry.rules;
+    const roll = roller(true);
+    const notes = [r.resistance ? 'Full of Stars: Resistance to Bludgeoning, Piercing and Slashing damage.' : null, 'Bright Light 10 ft., Dim Light 10 ft. more.'].filter(Boolean);
+    const card = constellation => {
+      const active = starry.active === constellation.name;
+      const take = starry.active && !active && r.canSwitch
+        ? el('button', {
+          type: 'button', className: 'btn btn-small', text: 'Switch', title: 'Twinkling Constellations: change at the start of your turn (no use spent)',
+          onclick: () => act(() => vitals({ action: 'starryForm', constellation: constellation.name, switch: true }), 'The ' + constellation.name + ' now glimmers on you.')
+        })
+        : active ? null : el('button', {
+          type: 'button', className: 'btn btn-small btn-green', text: starry.active ? 'Take again' : 'Take form',
+          disabled: view.uses.left < 1 || view.hp.current === 0,
+          title: view.uses.left < 1 ? 'No Wild Shape uses left: one comes back on a Short Rest, all on a Long Rest.' : 'Bonus Action: spend one use of Wild Shape',
+          onclick: () => act(() => vitals({ action: 'starryForm', constellation: constellation.name }), 'You take your Starry Form: the ' + constellation.name + '.')
+        });
+      const rolls = active && constellation.attack
+        ? el('p', { className: 'beast-rolls' }, [el('strong', { text: constellation.attack.name + ' ' }),
+          roll('starry:archer:hit', signed(constellation.attack.attackBonus) + ' to hit', 'Roll the ranged spell attack'), ' · ',
+          roll('starry:archer:damage', constellation.attack.damage.formula + ' Radiant', 'Roll damage')])
+        : active && constellation.healing
+          ? el('p', { className: 'beast-rolls' }, [el('strong', { text: 'Healing ' }), roll('starry:chalice:heal', constellation.healing + ' HP', 'Roll the Chalice healing')])
+          : null;
+      return el('li', { className: 'beast-form' + (active ? ' is-active' : '') }, [
+        el('div', { className: 'beast-form-head' }, [
+          el('div', {}, [el('strong', { text: constellation.name }), active ? el('span', { className: 'muted small', text: ' · active' }) : null]),
+          el('div', { className: 'beast-form-buttons' }, [take])
+        ]),
+        el('p', { className: 'muted small', text: constellation.text }),
+        rolls
+      ]);
+    };
+    const omen = starry.cosmicOmen
+      ? el('p', { className: 'small' }, [
+        el('strong', { text: 'Cosmic Omen: ' + (starry.cosmicOmen === 'weal' ? 'Weal' : 'Woe') + '. ' }),
+        'Reaction, when a creature you can see within 30 ft. is about to make a D20 Test: ',
+        roll('omen:d6', (starry.cosmicOmen === 'weal' ? 'add' : 'subtract') + ' 1d6', 'Roll the omen d6'),
+        '. Rolled again after each Long Rest.'
+      ])
+      : r.cosmicOmen ? el('p', { className: 'muted small', text: 'Cosmic Omen: your omen is rolled when you finish a Long Rest.' }) : null;
+    return el('div', { className: 'starry-form' }, [
+      el('h5', { text: 'Starry Form' }),
+      el('p', { className: 'muted small', text: 'Instead of a beast: Bonus Action, spends a Wild Shape use, lasts 10 minutes; you keep your own statistics. ' +
+        (r.canSwitch ? 'At the start of each of your turns you can switch constellation. ' : '') + notes.join(' ') }),
+      starry.active
+        ? el('p', { className: 'beast-active' }, ['✨ The ', el('strong', { text: starry.active }), ' glimmers on you. ',
+          el('button', { type: 'button', className: 'btn btn-small btn-secondary', text: 'Dismiss', onclick: () => act(() => vitals({ action: 'dismissStarryForm' }), 'Your Starry Form fades.') })])
+        : null,
+      el('ul', { className: 'beast-forms' }, starry.constellations.map(card)),
+      omen,
+      el('h5', { text: 'Beast forms' })
+    ]);
+  }
+
   function render() {
     if (!view || !view.available) {
       root.hidden = true;
@@ -187,7 +246,7 @@
     const r = view.rules;
     const summary = el('p', { className: 'small' }, [
       el('strong', { text: 'Uses ' + view.uses.left + ' / ' + view.uses.max }),
-      ' · Bonus Action · up to ' + r.hours + (r.hours === 1 ? ' hour' : ' hours') + ' · ' + r.tempHp + ' temporary HP' +
+      ' · Bonus Action · a beast form lasts up to ' + r.hours + (r.hours === 1 ? ' hour' : ' hours') + ' and gives ' + r.tempHp + ' temporary HP' +
       ' · Forms ' + view.known.length + ' / ' + r.knownLimit + ' · Max CR ' + r.maxCr + (r.canFly ? '' : ' · no Fly Speed yet') +
       (r.moon ? ' · Circle Forms (AC at least 13 + WIS)' : '')
     ]);
@@ -196,6 +255,7 @@
       : null;
     body.replaceChildren(...[
       summary,
+      view.starry ? starrySection() : null,
       active,
       view.hasBeastList ? null : el('p', { className: 'sheet-message is-error', text: 'The beast list (rules/content/beasts.md) is not on this server yet. Ask the DM.' }),
       view.known.length ? el('ul', { className: 'beast-forms' }, view.known.map(formRow)) : el('p', { className: 'muted small', text: 'No forms learned yet.' }),

@@ -10,7 +10,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
 const { buildCharacterCombat } = require('./combat');
-const { activeWildShape } = require('./wildShape');
+const { activeWildShape, starryFormState } = require('./wildShape');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const MODES = ['normal', 'advantage', 'disadvantage'];
@@ -52,6 +52,8 @@ function parseDamage(text) {
 // "skill:Stealth", "initiative", "attack:0:hit", "attack:0:damage",
 // "attack:0:damage2" (two-handed), "spell:Wizard". In Wild Shape also the
 // beast's attacks: "beast:0:hit", "beast:0:damage", "beast:0:other:0".
+// Circle of the Stars: "starry:archer:hit", "starry:archer:damage",
+// "starry:chalice:heal" in Starry Form, and "omen:d6" (Cosmic Omen).
 function rollOptions(character) {
   const sheetData = readSheet(character.sheet_data);
   const classes = classesOf(character);
@@ -112,6 +114,16 @@ function rollOptions(character) {
         add(`beast:${index}:other:${otherIndex}`, `${form.name}: ${attack.name} ${other.kind === 'or' ? 'other' : 'extra'} damage (${other.type})`, other.formula, 'damage');
       });
     });
+  }
+  const starry = starryFormState(character, sheetData);
+  if (starry) {
+    const [archer, chalice] = starry.constellations;
+    if (starry.active === 'Archer') {
+      add('starry:archer:hit', 'Starry Form: Luminous Arrow attack', d20(archer.attack.attackBonus), 'attack');
+      add('starry:archer:damage', 'Starry Form: Luminous Arrow damage (Radiant)', archer.attack.damage.formula, 'damage');
+    }
+    if (starry.active === 'Chalice') add('starry:chalice:heal', 'Starry Form: Chalice healing', chalice.healing, 'damage');
+    if (starry.cosmicOmen) add('omen:d6', `Cosmic Omen (${starry.cosmicOmen === 'weal' ? 'Weal: add' : 'Woe: subtract'})`, '1d6', 'damage');
   }
   const sources = rules.getSpellSources({ classes, species: character.race, sheetData });
   for (const source of sources) {
