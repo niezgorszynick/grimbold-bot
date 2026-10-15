@@ -159,7 +159,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div class="sheet-stat"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative" readonly title="DEX modifier, plus Proficiency Bonus with Alert, plus magic items"></div>
                 <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
                 <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
+                <label class="sheet-stat sheet-inspiration" for="cs_inspiration" title="Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest."><span>Heroic Inspiration <button type="button" class="vitals-info" id="cs_inspiration_info" aria-label="What is Heroic Inspiration?" aria-expanded="false">ⓘ</button></span><input type="checkbox" id="cs_inspiration" aria-label="Heroic Inspiration" disabled></label>
               </div>
+              <p id="cs_inspiration_text" class="muted small sheet-inspiration-text" hidden>Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.</p>
               <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
               <section class="sheet-card sheet-vitals-card" data-collapse="vitals">
                 <h4>Hit Points &amp; Vitality</h4>

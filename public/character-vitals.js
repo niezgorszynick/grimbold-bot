@@ -248,24 +248,25 @@
     ]);
   }
 
-  // Heroic Inspiration (2024 rules): one at a time; spend it to reroll a die.
-  const INSPIRATION_TEXT = 'Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. ' +
-    'You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.';
-  let inspirationInfoOpen = false;
-  function renderInspiration() {
-    const box = el('input', { type: 'checkbox', 'aria-label': 'Heroic Inspiration' });
-    box.checked = Boolean(vitals.heroicInspiration);
-    box.addEventListener('change', () => send('inspiration', { on: box.checked }));
-    const info = el('button', {
-      type: 'button', className: 'vitals-info', 'aria-label': 'What is Heroic Inspiration?', 'aria-expanded': String(inspirationInfoOpen), title: INSPIRATION_TEXT, text: 'ⓘ',
-      onclick: () => { inspirationInfoOpen = !inspirationInfoOpen; render(); }
+  // Heroic Inspiration (2024 rules): the tile next to Proficiency Bonus, kept in
+  // step with the vitals. Ticking saves at once; ⓘ shows the rule (no hover on tablets).
+  const inspirationBox = document.getElementById('cs_inspiration');
+  const inspirationInfo = document.getElementById('cs_inspiration_info');
+  const inspirationText = document.getElementById('cs_inspiration_text');
+  if (inspirationBox) inspirationBox.addEventListener('change', () => send('inspiration', { on: inspirationBox.checked }));
+  if (inspirationInfo && inspirationText) {
+    inspirationInfo.addEventListener('click', event => {
+      event.preventDefault(); // inside the label: don't tick the box
+      inspirationText.hidden = !inspirationText.hidden;
+      inspirationInfo.setAttribute('aria-expanded', String(!inspirationText.hidden));
     });
-    return el('div', { className: 'vitals-inspiration' }, [
-      el('label', { className: 'vitals-inline', title: INSPIRATION_TEXT }, [box, ' ', el('strong', { text: 'Heroic Inspiration' })]),
-      info,
-      vitals.resourceful ? el('span', { className: 'muted small', text: 'Resourceful: back after each Long Rest' }) : null,
-      inspirationInfoOpen ? el('p', { className: 'muted small vitals-inspiration-text', text: INSPIRATION_TEXT }) : null
-    ]);
+  }
+  function syncInspiration() {
+    if (!inspirationBox) return;
+    inspirationBox.disabled = false;
+    inspirationBox.checked = Boolean(vitals.heroicInspiration);
+    inspirationBox.closest('.sheet-inspiration').classList.toggle('is-inspired', inspirationBox.checked);
+    if (inspirationText) inspirationText.dataset.resourceful = vitals.resourceful ? '1' : '';
   }
 
   function renderExhaustion() {
@@ -354,11 +355,11 @@
 
   function render() {
     if (!vitals) return;
+    syncInspiration();
     // Optional sections return null; replaceChildren would render that as text.
     root.replaceChildren(...[
       renderHitPoints(),
       renderDying(),
-      renderInspiration(),
       renderExhaustion(),
       renderRests(),
       renderResources(),

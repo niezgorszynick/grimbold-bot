@@ -224,7 +224,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-auto-features ul { margin: 0; padding-left: 18px; }
 .sheet-auto-features li { padding: 3px 0; font-size: 12px; line-height: 1.45; }
 .sheet-notes-label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
-.sheet-combat-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.sheet-combat-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .sheet-stat { display: grid; gap: 5px; align-content: center; min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 9px 6px; text-align: center; }
 .sheet-stat span { color: #949ba4; text-transform: uppercase; font-size: 10px; }
 .sheet-stat input { width: 100%; min-width: 0; padding: 3px; border: 0; background: transparent; color: #fff; text-align: center; font-size: 18px; font-weight: bold; }
@@ -376,6 +376,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .sheet-header-actions { width: 100%; }
   .sheet-header-actions > * { flex: 1; text-align: center; }
   .sheet-combat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sheet-combat-stats .sheet-inspiration { grid-column: 1 / -1; }
   .point-buy-card { padding: 12px; }
   .point-buy-header { align-items: flex-start; }
   .point-buy-header > div:first-child > span { display: block; }
@@ -660,8 +661,12 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .weapon-preview { display: grid; gap: 3px; padding: 8px 10px; background: #232428; border-radius: 6px; font-size: 13px; }
 .weapon-preview:empty { display: none; }
 
-/* Heroic Inspiration on the sheet. */
-.vitals-inspiration { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; }
+/* Heroic Inspiration: a tile next to Proficiency Bonus. */
 .vitals-info { border: 0; background: none; color: #949ba4; cursor: pointer; font-size: 15px; padding: 2px 4px; }
 .vitals-info:hover, .vitals-info[aria-expanded="true"] { color: #f1c40f; }
-.vitals-inspiration-text { flex-basis: 100%; margin: 0; }
+.sheet-inspiration { cursor: pointer; justify-items: center; }
+.sheet-inspiration span { display: inline-flex; align-items: center; gap: 2px; }
+.sheet-inspiration input[type=checkbox] { width: 24px; height: 24px; accent-color: #f1c40f; cursor: pointer; }
+.sheet-inspiration.is-inspired { border-color: #f1c40f; box-shadow: 0 0 0 1px #f1c40f inset; }
+.sheet-inspiration-text { margin: 6px 0 0; }
+.sheet-inspiration-text[data-resourceful="1"]::after { content: ' Resourceful: yours comes back after each Long Rest.'; color: #f1c40f; }
