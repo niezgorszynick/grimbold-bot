@@ -220,7 +220,6 @@ test('the DM chooses the type of a magic weapon that can be several', () => {
   assert.equal(sword.needsType, true);
   assert.match(sword.notes[0], /Weapon type not set/);
 
-  assert.throws(() => db.changeCharacterMagicItems({ ...asPlayer, action: 'setBase', params: { uid, base: 'Longsword' } }), /Only a DM can choose/);
   assert.throws(() => db.changeCharacterMagicItems({ ...asDm, action: 'setBase', params: { uid, base: 'Maul' } }), /can be: Glaive/);
   const chosen = db.changeCharacterMagicItems({ ...asDm, action: 'setBase', params: { uid, base: 'Longsword' } });
   assert.equal(chosen.message, 'Frost Brand is a Longsword.');

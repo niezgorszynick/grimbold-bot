@@ -349,11 +349,10 @@ router.post('/characters/:id/magic-items', (req, res) => {
 // Shop catalog items that can be put on a character sheet.
 router.get('/catalog/sheet-items', (req, res) => {
   if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
-  // Magic items are flagged: a DM can add any; a player only common potions and scrolls.
+  // Magic items are flagged: adding one puts it in Magic Items.
   const items = db.getCatalogForSheets().map(item => {
     const magic = rules.matchMagicItem(item.name);
-    const isMagic = Boolean(magic && (magic.variant || !magic.item.variants.length));
-    return { ...item, magic: isMagic, playerCanAdd: isMagic && rules.playerMayAddMagicItem(item.name) };
+    return { ...item, magic: Boolean(magic && (magic.variant || !magic.item.variants.length)) };
   });
   return res.json({ items });
 });

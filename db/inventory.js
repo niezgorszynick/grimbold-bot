@@ -75,7 +75,6 @@ function buildView(sheetData, isAdmin) {
         description: row.description || (known ? known.description : '')
       };
     }),
-    canAddMagicItems: Boolean(isAdmin)
   };
 }
 
@@ -115,10 +114,8 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
 
       const magic = rules.matchMagicItem(name);
       if (magic && (magic.variant || !magic.item.variants.length) && source === 'catalog') {
-        // Players may record common potions and scrolls; other magic items come from the shop or the DM.
-        const playerAdds = !is_admin && rules.playerMayAddMagicItem(name);
-        if (!is_admin && !playerAdds) throw new Error(`${name} is a magic item: buy it in the shop or ask your DM for it.`);
-        const magicItems = rules.grantMagicItem(sheetData, { name, quantity, source: playerAdds ? 'player' : 'dm' });
+        // Items a player adds are marked, so the DM can see where they came from.
+        const magicItems = rules.grantMagicItem(sheetData, { name, quantity, source: is_admin ? 'dm' : 'player' });
         nextSheet = { ...sheetData, magicItems };
         message = `${name} added to Magic Items.`;
       } else {

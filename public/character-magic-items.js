@@ -188,13 +188,13 @@
     const name = el('input', { type: 'text', list: listId, placeholder: 'Magic item name…', 'aria-label': 'Magic item to give' });
     const quantity = el('input', { type: 'number', min: '1', max: '99', value: '1', 'aria-label': 'Quantity', style: 'width: 5em' });
     const datalist = el('datalist', { id: listId }, (itemNames || []).map(option => el('option', { value: option })));
-    const give = button('Give item', async () => {
+    const give = button(view.isDm ? 'Give item' : 'Add item', async () => {
       if (!name.value.trim()) return;
       const ok = await act({ action: 'grant', name: name.value.trim(), quantity: Number(quantity.value) || 1 });
       if (ok) name.value = '';
     }, 'btn btn-small btn-green');
     return el('div', { className: 'spell-picker magic-item-grant' }, [
-      el('p', { className: 'muted small', text: 'DM: give this character a magic item (for example adventure loot). Items with versions need the full name, e.g. "Weapon +1" or "Belt of Giant Strength (Hill)". Name the base weapon or armor where the item allows several, e.g. "+1 Longsword", "Frost Brand (Longsword)" or "Elven Chain (Chain Shirt)", so it shows in AC and attacks.' }),
+      el('p', { className: 'muted small', text: (view.isDm ? 'DM: give this character a magic item (for example adventure loot).' : 'Add a magic item your character has (the DM sees it was added by you).') + ' Items with versions need the full name, e.g. "Weapon +1" or "Belt of Giant Strength (Hill)". Name the base weapon or armor where the item allows several, e.g. "+1 Longsword", "Frost Brand (Longsword)" or "Elven Chain (Chain Shirt)", so it shows in AC and attacks.' }),
       el('div', { className: 'vitals-actions' }, [name, quantity, give]),
       datalist
     ]);

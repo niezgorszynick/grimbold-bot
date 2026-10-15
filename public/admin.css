@@ -642,4 +642,3 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .npc-adventures a.tag:hover { color: #f1c40f; }
 /* Disabled buttons look disabled (they used to look clickable). */
 .btn:disabled, button.btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
-.inventory-blocked { white-space: nowrap; }

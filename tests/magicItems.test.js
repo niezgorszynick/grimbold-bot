@@ -163,11 +163,14 @@ function addCharacter(playerId, sheetData = {}) {
   `).run(playerId, JSON.stringify(sheetData)).lastInsertRowid);
 }
 
-test('only a DM gives items; attuning an Amulet of Health updates stored max HP', () => {
+test('players and DMs add magic items; attuning an Amulet of Health updates stored max HP', () => {
   const player = createPlayer();
   const id = addCharacter(player, { abilities: abilities({ con: 12 }) });
   const asPlayer = { id, player_id: player, is_admin: false };
-  assert.throws(() => db.changeCharacterMagicItems({ ...asPlayer, action: 'grant', params: { name: 'Amulet of Health' } }), /Only a DM/);
+  // A player's own addition is marked, whatever source they send.
+  const own = db.changeCharacterMagicItems({ ...asPlayer, action: 'grant', params: { name: 'Bag of Holding', source: 'dm' } });
+  assert.equal(own.magicItems.items[0].source, 'player');
+  db.changeCharacterMagicItems({ ...asPlayer, action: 'remove', params: { uid: own.magicItems.items[0].uid } });
 
   const granted = db.changeCharacterMagicItems({ id, player_id: 0, is_admin: true, action: 'grant', params: { name: 'Amulet of Health' } });
   assert.match(granted.message, /Tamsin received Amulet of Health/);
@@ -180,7 +183,6 @@ test('only a DM gives items; attuning an Amulet of Health updates stored max HP'
   assert.deepEqual(after.magicItems.effects.scores.map(s => [s.ability, s.from, s.to]), [['con', 12, 19]]);
   const sheet = JSON.parse(db.getCharacterById(id).sheet_data);
   assert.ok(sheet.hpMax > (before || 0));
-  assert.throws(() => db.changeCharacterMagicItems({ ...asPlayer, action: 'remove', params: { uid } }), /Only a DM/);
 
   const other = createPlayer();
   assert.throws(() => db.getCharacterMagicItems({ id, player_id: other, is_admin: false }), /Forbidden/);

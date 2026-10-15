@@ -11,7 +11,6 @@ const { combatWithArmorClass } = require('./combat');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 // Actions only an admin (DM) may take.
-const DM_ACTIONS = ['grant', 'remove', 'setBase'];
 
 function readSheet(raw) {
   try {
@@ -125,7 +124,9 @@ function buildView(character, sheetData, isAdmin) {
       classBonuses: totals.classBonuses,
       notes: totals.notes
     },
-    canGrant: Boolean(isAdmin)
+    // Owners and DMs both add, remove and set up magic items; isDm only changes wording.
+    canGrant: true,
+    isDm: Boolean(isAdmin)
   };
 }
 
@@ -149,9 +150,6 @@ function withHpMax(character, sheetData) {
 //       | equip | unequip | attune | unattune | consume { uid }
 //       | useCharges | restoreCharges { uid, count }
 function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {} }) {
-  if (DM_ACTIONS.includes(action) && !is_admin) {
-    throw new Error(action === 'setBase' ? 'Only a DM can choose what an item is.' : 'Only a DM can give or take away magic items.');
-  }
   return db.transaction(() => {
     const character = loadCharacter(id, player_id, is_admin);
     const sheetData = readSheet(character.sheet_data);
@@ -170,7 +168,8 @@ function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {
       entry.base = params.base;
       message = `${rules.magicItemDisplayName(entry)} is a ${params.base}.`;
     } else if (action === 'grant') {
-      magicItems = rules.grantMagicItem(sheetData, { ...params, source: params.source || 'dm' });
+      // Items a player adds are marked, so the DM can see where they came from.
+      magicItems = rules.grantMagicItem(sheetData, { ...params, source: is_admin ? (params.source || 'dm') : 'player' });
       const added = magicItems[magicItems.length - 1];
       message = `${character.name} received ${params.quantity > 1 ? `${params.quantity} × ` : ''}${rules.magicItemDisplayName(added)}.`;
     } else {

@@ -52,17 +52,17 @@ test('changing or removing an item checks the list has not changed meanwhile', (
   assert.throws(() => db.getCharacterInventory({ id, player_id: createPlayer(), is_admin: false }), /Forbidden/);
 });
 
-test('magic items from the catalog: only the DM adds them, into Magic Items', () => {
+test('magic items from the catalog go into Magic Items, marked when a player adds them', () => {
   const player = createPlayer();
   const id = addCharacter(player);
   const cloak = catalogId('Cloak of Protection');
-  assert.throws(() => db.changeCharacterInventory({ id, player_id: player, is_admin: false, action: 'add', params: { catalogId: cloak } }),
-    /magic item: buy it in the shop or ask your DM/);
   // A custom item may share a name; it is just a note on the player's list.
   db.changeCharacterInventory({ id, player_id: player, is_admin: false, action: 'add', params: { name: 'Cloak of Protection', description: 'A fake.' } });
   assert.equal((sheet(id).magicItems || []).length, 0);
 
   const result = db.changeCharacterInventory({ id, player_id: 0, is_admin: true, action: 'add', params: { catalogId: cloak } });
   assert.equal(result.message, 'Cloak of Protection added to Magic Items.');
-  assert.deepEqual(sheet(id).magicItems.map(entry => entry.name), ['Cloak of Protection']);
+  assert.deepEqual(sheet(id).magicItems.map(entry => [entry.name, entry.source]), [['Cloak of Protection', 'dm']]);
+  db.changeCharacterInventory({ id, player_id: player, is_admin: false, action: 'add', params: { catalogId: cloak } });
+  assert.deepEqual(sheet(id).magicItems.map(entry => entry.source), ['dm', 'player'], "a player's addition is marked");
 });
