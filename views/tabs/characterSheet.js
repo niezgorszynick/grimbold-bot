@@ -170,6 +170,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
                 <script src="/admin/assets/character-vitals.js" defer></script>
               </section>
+              <section id="cs_wild_shape" class="sheet-card sheet-wild-shape-card" data-collapse="wildShape" data-character-id="${Number(characterToEdit.id)}" hidden>
+                <h4>Wild Shape</h4>
+                <div id="cs_wild_shape_body" aria-live="polite"></div>
+              </section>
+              <script src="/admin/assets/character-wild-shape.js" defer></script>
               <section class="sheet-card sheet-attacks-card" data-collapse="attacks">
                 <h4>Weapons &amp; Attacks</h4>
                 <div id="cs_attacks_auto" data-character-id="${Number(characterToEdit.id)}">Loading attacks...</div>

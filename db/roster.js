@@ -7,6 +7,7 @@
 const { db } = require('./connection');
 const rules = require('../rules');
 const { buildCharacterCombat } = require('./combat');
+const { activeWildShape } = require('./wildShape');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
@@ -88,7 +89,7 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
   const saveBonus = attempt(() => rules.magicItemEffects(sheetData).saves) || 0;
   const saves = Array.isArray(sheetData.savingProficiencies) ? sheetData.savingProficiencies : [];
   const concentration = sheetData.spellcasting && sheetData.spellcasting.concentration;
-  return {
+  const detailed = {
     ...row,
     initiative: attempt(() => rules.initiativeOf({ classes, sheetData }).total),
     speed: typeof sheetData.speed === 'string' && sheetData.speed.trim() ? sheetData.speed : '30 ft.',
@@ -105,7 +106,25 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     concentration: concentration ? concentration.spell : null,
     // index: the attack's place in the character's roll list (db/dice.js).
     attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType }))
-      .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => attack) : []
+      .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => ({ ...attack, roll: `attack:${attack.index}` })) : [],
+    wildShape: null
+  };
+  // Wild Shape: the beast's AC, speed, physical saves and attacks.
+  const form = attempt(() => activeWildShape(character, sheetData));
+  if (!form) return detailed;
+  if (form.missing) return { ...detailed, wildShape: { name: form.name } };
+  const signedText = n => (n >= 0 ? `+${n}` : `${n}`);
+  return {
+    ...detailed,
+    wildShape: { name: form.name },
+    armorClass: form.armorClass,
+    speed: form.speed,
+    initiative: form.initiative,
+    passivePerception: form.passivePerception,
+    saves: { ...detailed.saves, str: form.saves.str, dex: form.saves.dex, con: form.saves.con },
+    attacks: form.attacks.map((attack, index) => ({
+      index, roll: `beast:${index}`, name: attack.name, attackBonus: signedText(attack.attackBonus), damage: `${attack.damage.formula} ${attack.damage.type}`
+    }))
   };
 }
 

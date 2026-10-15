@@ -5,7 +5,8 @@
 // Stored vitals (inside sheet_data):
 //   hpCurrent, hpTemp, hpMaxBonus, hitDiceSpent { d8: 1 }, deathSaves
 //   { successes, failures }, exhaustion 0–6, spellSlotsSpent [per level],
-//   pactSlotsSpent, resourcesUsed { channelDivinityCleric: 1 } (class features).
+//   pactSlotsSpent, resourcesUsed { channelDivinityCleric: 1 } (class features),
+//   wildShapeForm (the beast a druid is in now, or null).
 // Derived values (hpMax, hit dice pool, slot totals) are passed in by the
 // caller from the character's classes so they always follow the rules.
 
@@ -16,6 +17,7 @@ const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
 const { classResources, recoverResources } = require('./classResources');
+const { wildShapeRules, knownForms } = require('./wildShape');
 
 const MAX_EXHAUSTION = 6;
 
@@ -56,7 +58,8 @@ function normalizeVitals(sheetData, hpMax) {
     pactSlotsSpent: toCount(data.pactSlotsSpent),
     resourcesUsed: Object.fromEntries(
       Object.entries(data.resourcesUsed || {}).map(([key, count]) => [key, toCount(count)]).filter(([, count]) => count > 0)
-    )
+    ),
+    wildShapeForm: typeof data.wildShapeForm === 'string' && data.wildShapeForm ? data.wildShapeForm : null
   };
 }
 
@@ -236,6 +239,24 @@ function changeResource(vitals, key, delta, { resources }) {
   return { vitals: { ...vitals, resourcesUsed }, events: [] };
 }
 
+// Wild Shape (Bonus Action): spends a use, gives Temporary HP (druid level, or
+// 3 × for Circle of the Moon) and puts the druid in a learned form. Using it
+// again in a form switches to the new one.
+function takeWildShape(vitals, form, context) {
+  const status = context.wildShape;
+  if (!status) throw new Error('Only a Druid of level 2 or higher has Wild Shape.');
+  if (!status.known.includes(form)) throw new Error('Learn that form first.');
+  if (vitals.hpCurrent === 0) throw new Error("You can't Wild Shape at 0 Hit Points.");
+  const spent = changeResource(vitals, 'wildShape', 1, context).vitals;
+  const withTemp = setTempHp(spent, status.tempHp).vitals;
+  return { vitals: { ...withTemp, wildShapeForm: form }, events: ['wildShape'] };
+}
+
+function revertWildShape(vitals) {
+  if (!vitals.wildShapeForm) throw new Error('You are not in a Wild Shape form.');
+  return { vitals: { ...vitals, wildShapeForm: null }, events: ['wildShapeEnded'] };
+}
+
 // Manual adjustment to the HP maximum (e.g. the Aid spell or a curse).
 function setMaxHpBonus(vitals, bonus) {
   const value = Number(bonus);
@@ -302,7 +323,12 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     pact: spellSlots.pact,
     resourceful,
     // Channel Divinity, Rage, Second Wind, ...
-    resources: classResources(classRows, ability => abilityScore(sheetData, ability))
+    resources: classResources(classRows, ability => abilityScore(sheetData, ability)),
+    // Wild Shape: limits by druid level, and the forms learned.
+    wildShape: (() => {
+      const status = wildShapeRules(classRows);
+      return status ? { ...status, known: knownForms(sheetData) } : null;
+    })()
   };
 }
 
@@ -315,7 +341,8 @@ const ACTIONS = {
   stabilize: vitals => stabilize(vitals),
   shortRest: (vitals, params, context) => withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short'),
   longRest: (vitals, params, context) => {
-    const rested = withRecovery(longRest(vitals, context), vitals, context, 'long');
+    // A Long Rest outlasts any Wild Shape.
+    const rested = withRecovery(longRest({ ...vitals, wildShapeForm: null }, context), vitals, context, 'long');
     return context.resourceful ? { ...rested, vitals: { ...rested.vitals, heroicInspiration: true } } : rested;
   },
   // Heroic Inspiration (2024): have it or not; the DM awards it, a reroll spends it.
@@ -327,7 +354,9 @@ const ACTIONS = {
   restoreSlot: (vitals, params, context) => changeSlot(vitals, params.level, -1, context),
   maxHpBonus: (vitals, params) => setMaxHpBonus(vitals, params.bonus),
   setHp: (vitals, params, context) => setHp(vitals, params, context),
-  resetHp: vitals => resetHp(vitals)
+  resetHp: vitals => resetHp(vitals),
+  wildShape: (vitals, params, context) => takeWildShape(vitals, String(params.form || ''), context),
+  revertWildShape: vitals => revertWildShape(vitals)
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
 
@@ -341,7 +370,11 @@ function withRecovery(result, before, context, kind) {
 function applyVitalsAction(vitals, action, params, context) {
   const handler = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
   if (!handler) throw new Error(`Unknown action "${action}".`);
-  const result = handler(vitals, params || {}, context);
+  let result = handler(vitals, params || {}, context);
+  // Dropping to 0 HP (Unconscious, so Incapacitated) ends Wild Shape.
+  if (result.vitals.wildShapeForm && result.vitals.hpCurrent === 0) {
+    result = { ...result, vitals: { ...result.vitals, wildShapeForm: null }, events: [...(result.events || []), 'wildShapeEnded'] };
+  }
   const hpMax = Math.max(1, context.baseHpMax + result.vitals.hpMaxBonus);
   return {
     ...result,
@@ -373,7 +406,8 @@ function buildVitalsView(vitals, context, hpMax = context.hpMax) {
       spent: Math.min(total, vitals.spellSlotsSpent[index] || 0)
     })),
     pact: context.pact ? { ...context.pact, spent: Math.min(context.pact.count, vitals.pactSlotsSpent) } : null,
-    resources: (context.resources || []).map(resource => ({ ...resource, used: Math.min(resource.max, vitals.resourcesUsed[resource.key] || 0) }))
+    resources: (context.resources || []).map(resource => ({ ...resource, used: Math.min(resource.max, vitals.resourcesUsed[resource.key] || 0) })),
+    wildShapeForm: vitals.wildShapeForm
   };
 }
 

@@ -216,6 +216,29 @@ router.post('/characters/:id/proficiencies', (req, res) => {
   }
 });
 
+// Wild Shape: learned forms, beasts to learn, and each form's stat block.
+router.get('/characters/:id/wild-shape', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterWildShape({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { learn: 'Wolf' } or { forget: 'Wolf' }. Transforming is a vitals action.
+router.post('/characters/:id/wild-shape', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.changeCharacterWildShapeForms({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), change: body }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // Class choices the character hasn't made yet (Divine Order, Expertise, ...).
 router.get('/characters/:id/feature-choices', (req, res) => {
   const user = getSessionApiUser(req);
@@ -646,7 +669,7 @@ router.get('/characters/:id/live', (req, res) => {
 });
 
 // What an adventure's DM may do to a party member's Hit Points.
-const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize', 'inspiration'];
+const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize', 'inspiration', 'revertWildShape'];
 
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {

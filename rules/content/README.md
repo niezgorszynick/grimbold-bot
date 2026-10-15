@@ -4,13 +4,13 @@ Descriptive text for the rules engine. Mechanics (numbers, tables, choices) live
 `rules/*.js`; these files supply the readable text shown on character sheets.
 
 One file per category: `backgrounds.md`, `species.md`, `classes.md`, `subclasses.md`,
-`feats.md`, `spells.md`, `invocations.md`, `magic_items.md`, `items.md`. Missing files are
+`feats.md`, `spells.md`, `invocations.md`, `magic_items.md`, `items.md`, `beasts.md`. Missing files are
 simply treated as empty.
 
 ## Book text stays out of Git
 
 Text copied from the D&D books can't be published, and this repository is public.
-`spells.md`, `feats.md`, `invocations.md` and `magic_items.md` are listed in
+`spells.md`, `feats.md`, `invocations.md`, `magic_items.md` and `beasts.md` are listed in
 `.gitignore`: keep them locally and copy them to the server yourself (for example
 `scp rules/content/magic_items.md vps:/var/www/grimbold-bot/rules/content/`).
 Add other book-text files to `.gitignore` the same way.
@@ -109,3 +109,44 @@ This wand has 7 charges...
   dawn happens with the Long Rest.
 - Image lines (`![...](...)`) are ignored. Tables copied from web pages lose their
   column breaks; they still show, just run together.
+
+### Beast example (the format of beasts.md, for Wild Shape)
+
+```markdown
+# Practice Hound
+
+*Medium Beast, Unaligned*
+
+- **Armor Class**: 12
+- **Hit Points**: 11 (2d8 + 2)
+- **Speed**: 40 ft., Swim 20 ft.
+- **Challenge**: 1/4 (XP 50; PB +2)
+
+| STAT | SCORE | MOD | SAVE |
+|:---:|:---:|:---:|:---:|
+| **Str** | 14 | +2 | +2 |
+| ... one row each for Dex, Con, Int, Wis, Cha |
+
+- **Skills**: Perception +5, Stealth +4
+- **Senses**: Darkvision 60 ft., Passive Perception 15
+
+### Traits
+
+**Trait Name**. What it does.
+
+### Actions
+
+**Bite**. *Melee Attack Roll*: +4, reach 5 ft. *Hit*: 5 (1d6 + 2) Piercing damage.
+
+### Bonus actions
+
+### Reactions
+
+---
+```
+
+- `Challenge` sets the CR limits; a `Fly` speed is held back until Druid level 8.
+- `*Melee/Ranged Attack Roll*: +X ... *Hit*: N (dice) Type damage` lines become rollable
+  attacks. Damage after "plus" joins the roll; "or ..." and "extra ..." damage get their own roll.
+  Everything else (saving-throw actions, Multiattack, traits) is shown as text.
+- Tests use the made-up beasts in `tests/fixtures/content/beasts.md`.

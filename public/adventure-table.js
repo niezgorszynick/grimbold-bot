@@ -134,7 +134,8 @@
     droppedToZero: 'drops to 0 HP: unconscious and dying.',
     instantDeath: 'dies outright from massive damage.',
     dead: 'has died.',
-    revived: 'is back on their feet.'
+    revived: 'is back on their feet.',
+    wildShapeEnded: 'is back in their true form.'
   };
   async function changeHp(member, action, params) {
     try {
@@ -147,7 +148,9 @@
       if (!response.ok) throw new Error(result.error || 'Could not change Hit Points.');
       const parts = action === 'inspiration'
         ? [member.name + (params.on ? ' gains Heroic Inspiration.' : ' no longer has Heroic Inspiration.')]
-        : [member.name + ' ' + { damage: 'takes ' + params.amount + ' damage', heal: 'heals ' + params.amount + ' HP', tempHp: 'gains ' + params.amount + ' temporary HP' }[action] +
+        : action === 'revertWildShape'
+          ? []
+          : [member.name + ' ' + { damage: 'takes ' + params.amount + ' damage', heal: 'heals ' + params.amount + ' HP', tempHp: 'gains ' + params.amount + ' temporary HP' }[action] +
           ': ' + result.vitals.hpCurrent + ' / ' + result.vitals.hpMax + ' HP.'];
       (result.events || []).forEach(event => { if (HP_EVENTS[event]) parts.push(member.name + ' ' + HP_EVENTS[event]); });
       if (result.concentration) {
@@ -195,6 +198,14 @@
     if (member.concentration) flags.push(el('span', { className: 'tag gold', text: 'Concentrating: ' + member.concentration }));
     if (member.exhaustion) flags.push(el('span', { className: 'tag red', text: 'Exhaustion ' + member.exhaustion }));
     if (member.heroicInspiration) flags.push(el('span', { className: 'tag gold', text: '★ Heroic Inspiration' }));
+    if (member.wildShape) {
+      flags.push(el('span', { className: 'tag green' }, [
+        '🐾 Wild Shape: ' + member.wildShape.name,
+        data.canManage && data.adventure.status === 'active'
+          ? button('Revert', () => changeHp(member, 'revertWildShape', {}), 'link-button small', { title: 'End the Wild Shape (e.g. Incapacitated)' })
+          : null
+      ]));
+    }
     const remove = data.canManage && data.adventure.status === 'active'
       ? button('✕', () => {
         if (window.confirm('Take ' + member.name + ' out of the party?')) act('/party', { characterId: member.id, inParty: false }, member.name + ' left the party.');
@@ -236,8 +247,8 @@
       member.attacks.length ? el('div', { className: 'party-line party-attacks' }, [
         el('span', { className: 'party-label', text: 'Attacks' }),
         el('span', {}, member.attacks.map(attack => el('span', { className: 'party-attack' }, [
-          el('strong', { text: attack.name }), ' ', rollIf('attack:' + attack.index + ':hit', attack.attackBonus, 'Roll to hit'), ', ',
-          rollIf('attack:' + attack.index + ':damage', attack.damage, 'Roll damage')
+          el('strong', { text: attack.name }), ' ', rollIf((attack.roll || 'attack:' + attack.index) + ':hit', attack.attackBonus, 'Roll to hit'), ', ',
+          rollIf((attack.roll || 'attack:' + attack.index) + ':damage', attack.damage, 'Roll damage')
         ])))
       ]) : null
     ]);

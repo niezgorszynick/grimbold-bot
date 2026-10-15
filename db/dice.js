@@ -10,6 +10,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
 const { buildCharacterCombat } = require('./combat');
+const { activeWildShape } = require('./wildShape');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const MODES = ['normal', 'advantage', 'disadvantage'];
@@ -49,7 +50,8 @@ function parseDamage(text) {
 
 // Everything this character can roll, by id: "check:str", "save:dex",
 // "skill:Stealth", "initiative", "attack:0:hit", "attack:0:damage",
-// "attack:0:damage2" (two-handed), "spell:Wizard".
+// "attack:0:damage2" (two-handed), "spell:Wizard". In Wild Shape also the
+// beast's attacks: "beast:0:hit", "beast:0:damage", "beast:0:other:0".
 function rollOptions(character) {
   const sheetData = readSheet(character.sheet_data);
   const classes = classesOf(character);
@@ -90,6 +92,27 @@ function rollOptions(character) {
       if (damage.twoHanded) add(`attack:${index}:damage2`, `${attack.name} damage, two-handed (${damage.type})`, damage.twoHanded, 'damage');
     }
   });
+  // Wild Shape: STR, DEX and CON (and what uses them) are the beast's now.
+  const form = activeWildShape(character, sheetData);
+  if (form && !form.missing) {
+    for (const ability of ['str', 'dex', 'con']) {
+      add(`check:${ability}`, `${ABILITY_NAMES[ability]} check (${form.name})`, d20(form.mods[ability]), 'check');
+      add(`save:${ability}`, `${ABILITY_NAMES[ability]} save (${form.name})`, d20(form.saves[ability]), 'save');
+    }
+    for (const [skill, ability] of Object.entries(rules.SKILLS)) {
+      const current = Number(options.get(`skill:${skill}`).formula.replace('1d20', '')) || 0;
+      const bonus = ['str', 'dex', 'con'].includes(ability) ? form.skills[skill] : Math.max(current, form.skills[skill]);
+      add(`skill:${skill}`, `${skill} (${ability.toUpperCase()}, ${form.name})`, d20(bonus), 'check');
+    }
+    add('initiative', `Initiative (${form.name})`, d20(form.initiative), 'initiative');
+    form.attacks.forEach((attack, index) => {
+      add(`beast:${index}:hit`, `${form.name}: ${attack.name} attack`, d20(attack.attackBonus), 'attack');
+      add(`beast:${index}:damage`, `${form.name}: ${attack.name} damage (${attack.damage.type})`, attack.damage.formula, 'damage');
+      attack.damage.others.forEach((other, otherIndex) => {
+        add(`beast:${index}:other:${otherIndex}`, `${form.name}: ${attack.name} ${other.kind === 'or' ? 'other' : 'extra'} damage (${other.type})`, other.formula, 'damage');
+      });
+    });
+  }
   const sources = rules.getSpellSources({ classes, species: character.race, sheetData });
   for (const source of sources) {
     if (!options.has(`spell:${source.key}`)) add(`spell:${source.key}`, `${source.label} spell attack`, d20(source.attackBonus), 'attack');

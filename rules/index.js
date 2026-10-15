@@ -27,6 +27,7 @@ module.exports = {
   ...require('./subclassSpells'),
   ...require('./levelUp'),
   ...require('./classResources'),
+  ...require('./wildShape'),
   ...require('./vitals'),
   ...require('./content')
 };

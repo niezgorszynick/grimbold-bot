@@ -23,7 +23,8 @@
     { id: 'cs_inventory', refresh: () => window.refreshCharacterInventory, editors: null },
     { id: 'cs_purse', refresh: () => window.refreshCharacterPurse, editors: null },
     { id: 'cs_attacks_auto', refresh: () => window.refreshCharacterCombat, editors: null },
-    { id: 'cs_proficiencies', refresh: () => window.refreshCharacterProficiencies, editors: '.prof-editor' }
+    { id: 'cs_proficiencies', refresh: () => window.refreshCharacterProficiencies, editors: '.prof-editor' },
+    { id: 'cs_wild_shape', refresh: () => window.refreshCharacterWildShape, editors: null }
   ];
 
   function busy(section) {

@@ -60,7 +60,8 @@ const ADMIN_ASSETS = {
   'character-features.js': path.join(__dirname, 'public', 'character-features.js'),
   'character-live.js': path.join(__dirname, 'public', 'character-live.js'),
   'sheet-sections.js': path.join(__dirname, 'public', 'sheet-sections.js'),
-  'character-proficiencies.js': path.join(__dirname, 'public', 'character-proficiencies.js')
+  'character-proficiencies.js': path.join(__dirname, 'public', 'character-proficiencies.js'),
+  'character-wild-shape.js': path.join(__dirname, 'public', 'character-wild-shape.js')
 };
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
