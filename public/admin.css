@@ -670,7 +670,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-inspiration-icon { display: grid; place-items: center; width: 34px; height: 26px; color: #4e5058; transition: color .15s, filter .15s; }
 .sheet-inspiration-icon svg { width: 30px; height: 22px; }
 .sheet-inspiration-label { display: inline-flex; align-items: center; gap: 1px; color: #949ba4; text-transform: uppercase; font-size: 9px; line-height: 1.15; text-align: center; }
-.sheet-inspiration-label .vitals-info { font-size: 12px; padding: 0 2px; }
+/* The ⓘ sits in the corner so the label stays centred under the sun. */
+.sheet-inspiration-label .vitals-info { position: absolute; top: 2px; right: 2px; font-size: 12px; padding: 0 2px; line-height: 1; }
 .sheet-inspiration:hover .sheet-inspiration-icon { color: #80848e; }
 .sheet-inspiration-box:focus-visible + .sheet-inspiration-icon { outline: 2px solid #5865f2; outline-offset: 2px; border-radius: 4px; }
 .sheet-inspiration.is-inspired { border-color: #f1c40f; background: #2b2410; }
