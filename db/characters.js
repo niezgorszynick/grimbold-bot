@@ -11,7 +11,7 @@ const { recordGoldChange } = require('./gold');
 // Sheet fields owned by the vitals API (see rules/vitals.js).
 const VITALS_KEYS = [
   'hpCurrent', 'hpTemp', 'hpMaxBonus', 'hitDiceSpent', 'deathSaves',
-  'stable', 'exhaustion', 'spellSlotsSpent', 'pactSlotsSpent'
+  'stable', 'exhaustion', 'spellSlotsSpent', 'pactSlotsSpent', 'resourcesUsed', 'heroicInspiration'
 ];
 
 // Sheet fields set by character creation, level-ups and the shop.

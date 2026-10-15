@@ -51,6 +51,7 @@ function normalizeVitals(sheetData, hpMax) {
     deathSaves: { successes: toCount(saves.successes), failures: toCount(saves.failures) },
     stable: Boolean(data.stable),
     exhaustion: Math.min(MAX_EXHAUSTION, toCount(data.exhaustion)),
+    heroicInspiration: Boolean(data.heroicInspiration),
     spellSlotsSpent: Array.isArray(data.spellSlotsSpent) ? data.spellSlotsSpent.map(toCount) : [],
     pactSlotsSpent: toCount(data.pactSlotsSpent),
     resourcesUsed: Object.fromEntries(
@@ -284,6 +285,8 @@ function abilityScore(sheetData, ability) {
 
 // classRows: [{ className, subclassName, level }], starting class first.
 function deriveVitalsContext({ species, sheetData, classRows }) {
+  // Humans (Resourceful) gain Heroic Inspiration on every Long Rest.
+  const resourceful = species === 'Human';
   const constitution = abilityScore(sheetData, 'con');
   const feats = collectCharacterFeats(sheetData);
   const hp = calculateMaxHp({ classes: classRows, constitution, species, feats });
@@ -297,6 +300,7 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     conModifier: abilityModifier(constitution),
     slots: spellSlots.slots,
     pact: spellSlots.pact,
+    resourceful,
     // Channel Divinity, Rage, Second Wind, ...
     resources: classResources(classRows, ability => abilityScore(sheetData, ability))
   };
@@ -310,7 +314,12 @@ const ACTIONS = {
   deathSave: (vitals, params, context) => deathSave(vitals, { roll: params.roll, rng: context.rng }),
   stabilize: vitals => stabilize(vitals),
   shortRest: (vitals, params, context) => withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short'),
-  longRest: (vitals, params, context) => withRecovery(longRest(vitals, context), vitals, context, 'long'),
+  longRest: (vitals, params, context) => {
+    const rested = withRecovery(longRest(vitals, context), vitals, context, 'long');
+    return context.resourceful ? { ...rested, vitals: { ...rested.vitals, heroicInspiration: true } } : rested;
+  },
+  // Heroic Inspiration (2024): have it or not; the DM awards it, a reroll spends it.
+  inspiration: (vitals, params) => ({ vitals: { ...vitals, heroicInspiration: Boolean(params.on) }, events: [] }),
   useResource: (vitals, params, context) => changeResource(vitals, params.key, params.amount === undefined ? 1 : Number(params.amount), context),
   restoreResource: (vitals, params, context) => changeResource(vitals, params.key, -(params.amount === undefined ? 1 : Number(params.amount)), context),
   exhaustion: (vitals, params) => setExhaustion(vitals, params.level),
@@ -356,6 +365,8 @@ function buildVitalsView(vitals, context, hpMax = context.hpMax) {
     deathSaves: vitals.deathSaves,
     stable: vitals.stable,
     exhaustion: vitals.exhaustion,
+    heroicInspiration: vitals.heroicInspiration,
+    resourceful: Boolean(context.resourceful),
     spellSlots: context.slots.map((total, index) => ({
       level: index + 1,
       total,

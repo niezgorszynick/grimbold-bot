@@ -659,3 +659,9 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .weapon-fields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .weapon-preview { display: grid; gap: 3px; padding: 8px 10px; background: #232428; border-radius: 6px; font-size: 13px; }
 .weapon-preview:empty { display: none; }
+
+/* Heroic Inspiration on the sheet. */
+.vitals-inspiration { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; }
+.vitals-info { border: 0; background: none; color: #949ba4; cursor: pointer; font-size: 15px; padding: 2px 4px; }
+.vitals-info:hover, .vitals-info[aria-expanded="true"] { color: #f1c40f; }
+.vitals-inspiration-text { flex-basis: 100%; margin: 0; }

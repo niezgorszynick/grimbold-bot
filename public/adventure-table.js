@@ -145,8 +145,10 @@
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not change Hit Points.');
-      const verb = { damage: 'takes ' + params.amount + ' damage', heal: 'heals ' + params.amount + ' HP', tempHp: 'gains ' + params.amount + ' temporary HP' }[action];
-      const parts = [member.name + ' ' + verb + ': ' + result.vitals.hpCurrent + ' / ' + result.vitals.hpMax + ' HP.'];
+      const parts = action === 'inspiration'
+        ? [member.name + (params.on ? ' gains Heroic Inspiration.' : ' no longer has Heroic Inspiration.')]
+        : [member.name + ' ' + { damage: 'takes ' + params.amount + ' damage', heal: 'heals ' + params.amount + ' HP', tempHp: 'gains ' + params.amount + ' temporary HP' }[action] +
+          ': ' + result.vitals.hpCurrent + ' / ' + result.vitals.hpMax + ' HP.'];
       (result.events || []).forEach(event => { if (HP_EVENTS[event]) parts.push(member.name + ' ' + HP_EVENTS[event]); });
       if (result.concentration) {
         parts.push(result.concentration.ended
@@ -179,7 +181,10 @@
       amount,
       button('Damage', () => { const value = read(); if (value !== null) changeHp(member, 'damage', { amount: value }); }, 'btn btn-small btn-red'),
       button('Heal', () => { const value = read(); if (value !== null) changeHp(member, 'heal', { amount: value }); }, 'btn btn-small btn-green'),
-      button('Temp HP', () => { const value = read(); if (value !== null) changeHp(member, 'tempHp', { amount: value }); })
+      button('Temp HP', () => { const value = read(); if (value !== null) changeHp(member, 'tempHp', { amount: value }); }),
+      // The DM awards Heroic Inspiration (or takes it back).
+      button(member.heroicInspiration ? '★ Inspired' : '☆ Inspire', () => changeHp(member, 'inspiration', { on: !member.heroicInspiration }),
+        'btn btn-small' + (member.heroicInspiration ? ' btn-gold' : ''), { title: member.heroicInspiration ? 'Take Heroic Inspiration back' : 'Give Heroic Inspiration' })
     ]);
   }
 
@@ -189,6 +194,7 @@
     if (member.status !== 'alive') flags.push(el('span', { className: 'tag red', text: 'Dead' }));
     if (member.concentration) flags.push(el('span', { className: 'tag gold', text: 'Concentrating: ' + member.concentration }));
     if (member.exhaustion) flags.push(el('span', { className: 'tag red', text: 'Exhaustion ' + member.exhaustion }));
+    if (member.heroicInspiration) flags.push(el('span', { className: 'tag gold', text: '★ Heroic Inspiration' }));
     const remove = data.canManage && data.adventure.status === 'active'
       ? button('✕', () => {
         if (window.confirm('Take ' + member.name + ' out of the party?')) act('/party', { characterId: member.id, inParty: false }, member.name + ' left the party.');

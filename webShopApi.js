@@ -615,7 +615,7 @@ router.get('/characters/:id/live', (req, res) => {
 });
 
 // What an adventure's DM may do to a party member's Hit Points.
-const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize'];
+const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize', 'inspiration'];
 
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {

@@ -248,6 +248,26 @@
     ]);
   }
 
+  // Heroic Inspiration (2024 rules): one at a time; spend it to reroll a die.
+  const INSPIRATION_TEXT = 'Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. ' +
+    'You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.';
+  let inspirationInfoOpen = false;
+  function renderInspiration() {
+    const box = el('input', { type: 'checkbox', 'aria-label': 'Heroic Inspiration' });
+    box.checked = Boolean(vitals.heroicInspiration);
+    box.addEventListener('change', () => send('inspiration', { on: box.checked }));
+    const info = el('button', {
+      type: 'button', className: 'vitals-info', 'aria-label': 'What is Heroic Inspiration?', 'aria-expanded': String(inspirationInfoOpen), title: INSPIRATION_TEXT, text: 'ⓘ',
+      onclick: () => { inspirationInfoOpen = !inspirationInfoOpen; render(); }
+    });
+    return el('div', { className: 'vitals-inspiration' }, [
+      el('label', { className: 'vitals-inline', title: INSPIRATION_TEXT }, [box, ' ', el('strong', { text: 'Heroic Inspiration' })]),
+      info,
+      vitals.resourceful ? el('span', { className: 'muted small', text: 'Resourceful: back after each Long Rest' }) : null,
+      inspirationInfoOpen ? el('p', { className: 'muted small vitals-inspiration-text', text: INSPIRATION_TEXT }) : null
+    ]);
+  }
+
   function renderExhaustion() {
     const select = el('select', { 'aria-label': 'Exhaustion level' });
     for (let level = 0; level <= 6; level += 1) {
@@ -338,6 +358,7 @@
     root.replaceChildren(...[
       renderHitPoints(),
       renderDying(),
+      renderInspiration(),
       renderExhaustion(),
       renderRests(),
       renderResources(),

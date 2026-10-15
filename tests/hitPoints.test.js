@@ -77,3 +77,22 @@ test('reset HP: back to the rules maximum, without adjustments or temporary HP',
   const hurtAndCursed = rules.normalizeVitals({ hpCurrent: 10, hpMaxBonus: -6 }, 18);
   assert.equal(rules.applyVitalsAction(hurtAndCursed, 'resetHp', {}, context).vitals.hpCurrent, 10, 'no free healing');
 });
+
+test('Heroic Inspiration: on or off; Humans regain it on a Long Rest; editor saves never clear it', () => {
+  const human = { baseHpMax: 24, hpMax: 24, resourceful: true, hitDicePool: {}, conModifier: 0, slots: [], pact: null, resources: [] };
+  const dwarf = { ...human, resourceful: false };
+  let vitals = rules.normalizeVitals({ hpCurrent: 20 }, 24);
+  assert.equal(vitals.heroicInspiration, false);
+  vitals = rules.applyVitalsAction(vitals, 'inspiration', { on: true }, human).vitals;
+  assert.equal(vitals.heroicInspiration, true);
+  vitals = rules.applyVitalsAction(vitals, 'inspiration', { on: false }, human).vitals;
+  assert.equal(rules.applyVitalsAction(vitals, 'longRest', {}, human).vitals.heroicInspiration, true, 'Resourceful');
+  assert.equal(rules.applyVitalsAction(vitals, 'longRest', {}, dwarf).vitals.heroicInspiration, false);
+
+  const owner = createPlayer();
+  const id = fighter(owner);
+  db.prepare("UPDATE characters SET sheet_data = json_set(sheet_data, '$.heroicInspiration', json('true')) WHERE id = ?").run(id);
+  const sheet = JSON.parse(db.getCharacterById(id).sheet_data);
+  db.updateCharacterSheet({ id, player_id: owner, is_admin: false, sheet_data: JSON.stringify({ ...sheet, heroicInspiration: false }) });
+  assert.equal(JSON.parse(db.getCharacterById(id).sheet_data).heroicInspiration, true, 'only the checkbox changes it');
+});

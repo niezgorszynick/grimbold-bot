@@ -101,6 +101,7 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     resources: vitals ? vitals.view.resources.map(({ key, name, max, used }) => ({ key, name, max, left: max - used })) : [],
     hitDice: vitals ? vitals.view.hitDice : [],
     exhaustion: vitals ? vitals.view.exhaustion : 0,
+    heroicInspiration: vitals ? vitals.view.heroicInspiration : false,
     concentration: concentration ? concentration.spell : null,
     // index: the attack's place in the character's roll list (db/dice.js).
     attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType }))
