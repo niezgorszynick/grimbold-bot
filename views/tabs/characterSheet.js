@@ -196,11 +196,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <script src="/admin/assets/character-inventory.js" defer></script>
             <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>
           </section>
+          <!-- Magic Items right after Equipment & Items, before the (often long) spell list. -->
+          <section id="cs_magic_items" data-collapse="magicItems" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+          <script src="/admin/assets/character-magic-items.js" defer></script>
           <section id="cs_spells" data-collapse="spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-spells.js" defer></script>
           <script src="/admin/assets/dice.js" defer></script>
-          <section id="cs_magic_items" data-collapse="magicItems" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
-          <script src="/admin/assets/character-magic-items.js" defer></script>
         </section>
         <section class="card sheet-reset">
           <div class="sheet-section-heading">
