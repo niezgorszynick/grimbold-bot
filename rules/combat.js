@@ -4,6 +4,7 @@
 
 const { ARMOR, SHIELD_BONUS } = require('./armor');
 const { WEAPONS } = require('./weapons');
+const { customWeaponGear } = require('./customWeapons');
 const { abilityModifier, proficiencyBonus } = require('./util');
 const { getClass } = require('./classes');
 const { collectCharacterFeats, featName } = require('./feats');
@@ -64,6 +65,12 @@ function identifyGear(rawName) {
     if (match && (!best || match.index < best.index)) best = { index: match.index, gear };
   }
   return best ? best.gear : null;
+}
+
+// The armor, shield or weapon an equipment row is: a custom weapon's own
+// stats, or the item its name names.
+function inventoryGear(row) {
+  return customWeaponGear(row) || identifyGear(row && row.name);
 }
 
 // The armor, shield or weapon a magic item is: from the name it was given
@@ -152,14 +159,16 @@ function isWorn(row, gear, sheetData) {
 function wornGear(sheetData) {
   const worn = [];
   readInventory(sheetData).forEach((row, index) => {
-    const gear = identifyGear(row.name);
-    if (gear && isWorn(row, gear, sheetData)) worn.push({ from: 'inventory', index, name: row.name, gear, magic: null });
+    const gear = inventoryGear(row);
+    if (gear && isWorn(row, gear, sheetData)) {
+      worn.push({ from: 'inventory', index, name: row.nickname || row.name, realName: row.name, nickname: row.nickname || null, gear, magic: null });
+    }
   });
   readMagicItems(sheetData).forEach(entry => {
     if (!entry.equipped) return;
     const info = magicItemEntryInfo(entry);
     const gear = gearOfMagicItem(entry, info);
-    if (gear) worn.push({ from: 'magic', uid: entry.uid, name: info.name, gear, magic: info });
+    if (gear) worn.push({ from: 'magic', uid: entry.uid, name: info.name, realName: info.realName, nickname: info.nickname, gear, magic: info });
   });
   return worn;
 }
@@ -172,14 +181,14 @@ function setWorn(sheetData, target, worn) {
   const targetRow = target.from === 'inventory' ? inventory[target.index] : magicItems.find(entry => entry.uid === target.uid);
   if (!targetRow) throw new Error('That item is not on this character.');
   const gear = target.from === 'inventory'
-    ? identifyGear(targetRow.name)
+    ? inventoryGear(targetRow)
     : gearOfMagicItem(targetRow, magicItemEntryInfo(targetRow));
 
   // Make the defaults explicit first, so taking one thing off doesn't change others.
-  inventory.forEach(row => { row.equipped = isWorn(row, identifyGear(row.name), sheetData); });
+  inventory.forEach(row => { row.equipped = isWorn(row, inventoryGear(row), sheetData); });
   if (worn && gear && (gear.type === 'armor' || gear.type === 'shield')) {
     inventory.forEach(row => {
-      const other = identifyGear(row.name);
+      const other = inventoryGear(row);
       if (row !== targetRow && other && other.type === gear.type) row.equipped = false;
     });
     magicItems.forEach(entry => {
@@ -378,12 +387,15 @@ function weaponAttack(piece, ctx, armorState) {
   const monkWeapon = weapon.kind === 'Melee' && (weapon.category === 'Simple' || weapon.properties.includes('Light'));
   const martialArts = monkLevel >= 1 && monkWeapon && !armorState.armor && !armorState.shield;
 
-  const abilities = weapon.kind === 'Ranged' ? ['dex'] : ['str'];
+  // A custom weapon's extras; a homebrew one also sets its ability and proficiency.
+  const custom = weapon.custom || null;
+  let abilities = weapon.kind === 'Ranged' ? ['dex'] : ['str'];
   if (weapon.properties.includes('Finesse') || martialArts) abilities.push(weapon.kind === 'Ranged' ? 'str' : 'dex');
+  if (custom && (custom.ability === 'str' || custom.ability === 'dex')) abilities = martialArts ? [custom.ability, 'dex'] : [custom.ability];
   const ability = abilities.reduce((best, key) => (mods[key] > mods[best] ? key : best), abilities[0]);
   const mod = mods[ability];
 
-  const proficient = isProficient(weapon, training.weapons);
+  const proficient = custom && custom.proficient !== undefined ? custom.proficient : isProficient(weapon, training.weapons);
   let magicBonus = 0;
   if (piece.magic) {
     const bonus = magicWeaponBonus(piece.magic);
@@ -392,11 +404,11 @@ function weaponAttack(piece, ctx, armorState) {
     else notes.push(`${piece.name}: see the item for its magic.`);
   }
   const archery = feats.has('Archery') && weapon.kind === 'Ranged' ? 2 : 0;
-  const attackBonus = mod + (proficient ? pb : 0) + magicBonus + archery;
+  const attackBonus = mod + (proficient ? pb : 0) + magicBonus + archery + (custom ? custom.attackBonus : 0);
 
   let die = weapon.damage;
   if (martialArts && averageOf(martialArtsDie(monkLevel)) > averageOf(die)) die = martialArtsDie(monkLevel);
-  const damageMod = mod + magicBonus;
+  const damageMod = mod + magicBonus + (custom ? custom.damageBonus : 0);
   let damage = damageText(die, damageMod, weapon.damageType);
   if (weapon.versatile) damage += ` (${damageText(weapon.versatile, damageMod, '').trim()} two-handed)`;
 
@@ -407,7 +419,15 @@ function weaponAttack(piece, ctx, armorState) {
     return property;
   }).filter(Boolean);
   notes.unshift(`${ABILITY_LABELS[ability]}${props.length ? ` · ${props.join(', ')}` : ''}`);
-  if (features.has('Weapon Mastery')) notes.push(`Mastery: ${weapon.mastery}`);
+  // "Dawnbringer": say what it really is, when that's more than the base weapon
+  // the attack list already shows ("+1 Longsword", not just "Longsword").
+  if (piece.nickname && piece.realName !== weapon.name) notes.unshift(piece.realName);
+  if (features.has('Weapon Mastery') && weapon.mastery) notes.push(`Mastery: ${weapon.mastery}`);
+  if (custom) {
+    if (custom.action !== 'Action') notes.unshift(custom.action);
+    if (weapon.category === 'Homebrew') notes.push('Homebrew');
+    else if (custom.attackBonus || custom.damageBonus) notes.push(`Custom: ${signed(custom.attackBonus)} to hit, ${signed(custom.damageBonus)} damage`);
+  }
   if (!proficient) notes.push('Not proficient: no Proficiency Bonus');
   if (weapon.properties.includes('Heavy') && (weapon.kind === 'Melee' ? scores.str : scores.dex) < 13) {
     notes.push(`Heavy: Disadvantage (needs ${weapon.kind === 'Melee' ? 'Strength' : 'Dexterity'} 13)`);
@@ -501,7 +521,14 @@ function describeGear(gear) {
     if (property === 'Versatile') return `Versatile (${gear.versatile})`;
     return property;
   });
-  return [`${gear.category} ${gear.kind} weapon · ${gear.damage} ${gear.damageType}`, props.join(', ') || null, `Mastery: ${gear.mastery}`]
+  const custom = gear.custom;
+  const extras = custom ? [
+    custom.action && custom.action !== 'Action' ? custom.action : null,
+    custom.attackBonus ? `${signed(custom.attackBonus)} to hit` : null,
+    custom.damageBonus ? `${signed(custom.damageBonus)} damage` : null
+  ] : [];
+  return [`${gear.category} ${gear.kind} weapon · ${gear.damage} ${gear.damageType}`, props.join(', ') || null,
+    gear.mastery ? `Mastery: ${gear.mastery}` : null, ...extras]
     .filter(Boolean).join(' · ');
 }
 
@@ -521,6 +548,7 @@ module.exports = {
   setWorn,
   isWornByDefault: isWorn,
   calculateCombat,
+  inventoryGear,
   initiativeOf,
   describeGear,
   validateAcAdjustment

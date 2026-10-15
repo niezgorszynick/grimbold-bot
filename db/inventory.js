@@ -61,10 +61,13 @@ function buildView(sheetData, isAdmin) {
   return {
     items: readInventory(sheetData).map((row, index) => {
       const known = catalog.get(row.name.toLowerCase());
-      const gear = rules.identifyGear(row.name);
+      const gear = rules.inventoryGear(row);
       return {
         index,
         name: row.name,
+        nickname: row.nickname || null,
+        // A custom weapon's own stats, for the editor.
+        weapon: row.weapon || null,
         quantity: Number.isSafeInteger(row.quantity) && row.quantity > 0 ? row.quantity : 1,
         source: row.source || '',
         category: row.category || (known ? known.category : ''),
@@ -75,6 +78,8 @@ function buildView(sheetData, isAdmin) {
         description: row.description || (known ? known.description : '')
       };
     }),
+    // Choices for custom weapon stats.
+    weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS }
   };
 }
 
@@ -86,6 +91,8 @@ function getCharacterInventory({ id, player_id, is_admin }) {
 // action: add { catalogId | name, quantity, description }
 //       | update { index, name, quantity } | remove { index, name }
 //       | wear { index, name, worn } (armor, shields and weapons)
+//       | rename { index, name, nickname } | setWeapon { index, name, weapon | null } (custom items)
+// add with weapon stats (custom items): see rules/customWeapons.js.
 // `name` with update/remove guards against a list changed in another tab.
 function changeCharacterInventory({ id, player_id, is_admin, action, params = {} }) {
   return db.transaction(() => {
@@ -111,6 +118,8 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         if (!name) throw new Error('Give the item a name.');
         description = cleanText(params.description, 2000, 'Description');
       }
+      // A custom weapon: its own stats, so it attacks and rolls like any weapon.
+      const customWeapon = source === 'custom' && params.weapon ? rules.validateCustomWeapon(params.weapon) : null;
 
       const magic = rules.matchMagicItem(name);
       if (magic && (magic.variant || !magic.item.variants.length) && source === 'catalog') {
@@ -119,7 +128,8 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         nextSheet = { ...sheetData, magicItems };
         message = `${name} added to Magic Items.`;
       } else {
-        const existing = inventory.find(row => row.name.toLowerCase() === name.toLowerCase() &&
+        // A nicknamed item ("Ambassador") stays its own row.
+        const existing = customWeapon ? null : inventory.find(row => !row.nickname && !row.weapon && row.name.toLowerCase() === name.toLowerCase() &&
           (row.description || '') === description);
         if (existing) {
           existing.quantity = Math.min(MAX_QUANTITY, (Number(existing.quantity) || 1) + quantity);
@@ -127,8 +137,9 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
           const row = { name, quantity, source };
           if (description) row.description = description;
           if (category) row.category = category;
+          if (customWeapon) row.weapon = customWeapon;
           // New weapons are at hand; new armor waits until it is put on.
-          const gear = rules.identifyGear(name);
+          const gear = rules.inventoryGear(row);
           if (gear) row.equipped = gear.type === 'weapon';
           inventory.push(row);
         }
@@ -147,11 +158,36 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         message = `${row.name}: ${row.quantity}.`;
       }
       nextSheet = { ...sheetData, inventory };
+    } else if (action === 'setWeapon') {
+      // Weapon stats for a custom item (null makes it a plain item again).
+      const index = Number(params.index);
+      const row = Number.isSafeInteger(index) ? inventory[index] : null;
+      if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+      if (row.source !== 'custom') throw new Error('Only custom items get their own weapon stats; give a catalog weapon a nickname instead.');
+      if (params.weapon) {
+        row.weapon = rules.validateCustomWeapon(params.weapon);
+        if (typeof row.equipped !== 'boolean') row.equipped = true;
+      } else {
+        delete row.weapon;
+        delete row.equipped;
+      }
+      nextSheet = { ...sheetData, inventory };
+      message = row.weapon ? `${row.name}: weapon stats saved.` : `${row.name} is no longer a weapon.`;
+    } else if (action === 'rename') {
+      // A nickname ("Ambassador") for the sheet only; the item stays what it is. Empty clears it.
+      const index = Number(params.index);
+      const row = Number.isSafeInteger(index) ? inventory[index] : null;
+      if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+      const nickname = cleanText(params.nickname, 60, 'Nickname');
+      if (nickname && nickname.toLowerCase() !== row.name.toLowerCase()) row.nickname = nickname;
+      else delete row.nickname;
+      nextSheet = { ...sheetData, inventory };
+      message = row.nickname ? `${row.name} is now called ${row.nickname}.` : `${row.name} has its own name again.`;
     } else if (action === 'wear') {
       const index = Number(params.index);
       const row = Number.isSafeInteger(index) ? inventory[index] : null;
       if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
-      const gear = rules.identifyGear(row.name);
+      const gear = rules.inventoryGear(row);
       if (!gear) throw new Error(`${row.name} is not armor, a shield or a weapon.`);
       const worn = Boolean(params.worn);
       nextSheet = rules.setWorn({ ...sheetData, inventory }, { from: 'inventory', index }, worn);

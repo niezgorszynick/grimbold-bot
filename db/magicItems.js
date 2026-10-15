@@ -81,6 +81,8 @@ function buildView(character, sheetData, isAdmin) {
     return {
       uid: entry.uid,
       name: rules.magicItemDisplayName(entry, catalog),
+      nickname: entry.nickname || null,
+      realName: rules.magicItemRealName(entry, catalog),
       rulesName: rules.magicItemCatalogName(entry, catalog),
       baseName: entry.name,
       variant: entry.variant || null,
@@ -167,6 +169,17 @@ function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {
       }
       entry.base = params.base;
       message = `${rules.magicItemDisplayName(entry)} is a ${params.base}.`;
+    } else if (action === 'rename') {
+      // A nickname ("Ambassador") for the sheet only; the item stays what it is. Empty clears it.
+      magicItems = rules.readMagicItems(sheetData).map(entry => ({ ...entry }));
+      const entry = magicItems.find(item => item.uid === params.uid);
+      if (!entry) throw new Error('This character does not have that magic item.');
+      const nickname = String(params.nickname || '').trim();
+      if (nickname.length > 60) throw new Error('Nickname must be 60 characters or fewer.');
+      const real = rules.magicItemRealName(entry);
+      if (nickname && nickname.toLowerCase() !== real.toLowerCase()) entry.nickname = nickname;
+      else delete entry.nickname;
+      message = entry.nickname ? `${real} is now called ${entry.nickname}.` : `${real} has its own name again.`;
     } else if (action === 'grant') {
       // Items a player adds are marked, so the DM can see where they came from.
       magicItems = rules.grantMagicItem(sheetData, { ...params, source: is_admin ? (params.source || 'dm') : 'player' });

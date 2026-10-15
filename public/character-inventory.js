@@ -50,6 +50,8 @@
   let message = '';
   let isError = false;
   const open = new Set();
+  // Custom items whose weapon stats are being added.
+  const editingWeapons = new Set();
   const openResults = new Set();
 
   async function request(method, body) {
@@ -81,6 +83,17 @@
     } finally {
       render();
     }
+  }
+
+  // A nickname ("Ambassador") for the sheet only; the item keeps working as what it is.
+  function nicknameField(current, save) {
+    const input = el('input', { type: 'text', maxlength: '60', value: current || '', placeholder: 'Nickname, e.g. Ambassador', 'aria-label': 'Nickname' });
+    input.addEventListener('keydown', event => { if (event.key === 'Enter') save(input.value.trim()); });
+    return el('div', { className: 'vitals-actions item-nickname' }, [
+      input,
+      button('Save name', () => save(input.value.trim())),
+      current ? button('Clear', () => save(''), 'btn btn-small btn-secondary') : null
+    ]);
   }
 
   function itemRow(item) {
@@ -115,10 +128,11 @@
     return el('li', { className: 'inventory-row' }, [
       el('div', { className: 'inventory-row-main' }, [
         el('button', {
-          type: 'button', className: 'spell-name', text: item.name, 'aria-expanded': String(open.has(key)),
+          type: 'button', className: 'spell-name', text: item.nickname || item.name, 'aria-expanded': String(open.has(key)),
           title: [item.gear ? item.gear.stats : '', item.description ? preview(item.description) : ''].filter(Boolean).join(' — ') || 'No description',
           onclick: () => { open.has(key) ? open.delete(key) : open.add(key); render(); }
         }),
+        item.nickname ? el('span', { className: 'muted small item-real-name', text: '(' + item.name + ')' }) : null,
         item.category ? el('span', { className: 'muted small', text: item.category }) : null,
         item.source === 'custom' ? el('span', { className: 'tag', text: 'Custom' }) : null,
         el('span', { className: 'inventory-controls' }, [wear, quantity, remove])
@@ -126,7 +140,9 @@
       open.has(key)
         ? el('div', { className: 'spell-details' }, [stats, item.description
           ? renderText(item.description)
-          : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' }))])
+          : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' })),
+        item.source === 'custom' ? weaponEditor(item) : null,
+        nicknameField(item.nickname, nickname => act({ action: 'rename', index: item.index, name: item.name, nickname }))])
         : null
     ]);
   }
@@ -187,16 +203,89 @@
     ]);
   }
 
+  // Stats for a custom weapon: based on a real weapon, or homebrew. The sheet
+  // adds the ability modifier and Proficiency Bonus itself; these are extras.
+  function weaponFields(initial) {
+    const options = view.weaponOptions || { bases: [], damageTypes: [], actions: ['Action'] };
+    const start = initial || {};
+    const field = (label, control) => el('label', { className: 'weapon-field' }, [el('span', { className: 'muted small', text: label }), control]);
+    const select = (values, value, labels) => {
+      const node = el('select');
+      values.forEach(item => node.add(new Option(labels ? labels(item) : item, item)));
+      node.value = value;
+      return node;
+    };
+    const base = select(['', ...options.bases], start.base || '', item => item || 'Homebrew (no base weapon)');
+    const damage = el('input', { type: 'text', maxlength: '6', placeholder: '1d8', value: start.damage || '' });
+    const kind = select(['Melee', 'Ranged'], start.kind || 'Melee');
+    const ability = select(['str', 'dex', 'finesse'], start.ability || 'str', item => ({ str: 'Strength', dex: 'Dexterity', finesse: 'Finesse (best of STR/DEX)' })[item]);
+    const proficient = el('input', { type: 'checkbox' });
+    proficient.checked = start.proficient !== false;
+    const damageType = select(['', ...options.damageTypes], start.base && start.damageType === undefined ? '' : (start.damageType || ''), item => item || 'Same as the base weapon');
+    const action = select(options.actions, start.action || 'Action');
+    const attackBonus = el('input', { type: 'number', min: '-10', max: '20', value: String(start.attackBonus || 0) });
+    const damageBonus = el('input', { type: 'number', min: '-10', max: '20', value: String(start.damageBonus || 0) });
+    const homebrew = el('div', { className: 'weapon-fields' }, [
+      field('Damage dice', damage), field('Melee or ranged', kind), field('Attacks with', ability),
+      el('label', { className: 'weapon-field weapon-check' }, [proficient, ' Proficient'])
+    ]);
+    const sync = () => { homebrew.hidden = Boolean(base.value); };
+    base.addEventListener('change', sync);
+    sync();
+    return {
+      element: el('div', { className: 'weapon-editor' }, [
+        el('div', { className: 'weapon-fields' }, [field('Based on', base), field('Damage type', damageType), field('Takes', action)]),
+        homebrew,
+        el('div', { className: 'weapon-fields' }, [field('To-hit bonus', attackBonus), field('Damage bonus', damageBonus)]),
+        el('p', { className: 'muted small', text: 'Bonuses are on top of what the sheet works out (ability modifier and Proficiency Bonus), so they stay right as the character changes.' })
+      ]),
+      value: () => ({
+        base: base.value || null,
+        damage: damage.value.trim(),
+        kind: kind.value,
+        ability: ability.value,
+        proficient: proficient.checked,
+        damageType: damageType.value || null,
+        action: action.value,
+        attackBonus: Number(attackBonus.value) || 0,
+        damageBonus: Number(damageBonus.value) || 0
+      })
+    };
+  }
+
+  // Custom items: turn weapon stats on, change them, or turn them off.
+  function weaponEditor(item) {
+    if (!item.weapon && !editingWeapons.has(item.index)) {
+      return el('div', { className: 'vitals-actions' }, [button('Give it weapon stats', () => { editingWeapons.add(item.index); render(); })]);
+    }
+    const fields = weaponFields(item.weapon);
+    const save = button('Save weapon stats', async () => {
+      const ok = await act({ action: 'setWeapon', index: item.index, name: item.name, weapon: fields.value() });
+      if (ok) editingWeapons.delete(item.index);
+    }, 'btn btn-small btn-green');
+    const off = item.weapon
+      ? button('Not a weapon', () => {
+        if (window.confirm('Remove the weapon stats from ' + item.name + '?')) act({ action: 'setWeapon', index: item.index, name: item.name, weapon: null });
+      }, 'btn btn-small btn-secondary')
+      : button('Cancel', () => { editingWeapons.delete(item.index); render(); }, 'btn btn-small btn-secondary');
+    return el('div', { className: 'weapon-editor-wrap' }, [el('h5', { text: 'Weapon stats' }), fields.element, el('div', { className: 'vitals-actions' }, [save, off])]);
+  }
+
   function renderCustomForm() {
     const name = el('input', { type: 'text', maxlength: '100', placeholder: 'Item name', 'aria-label': 'Item name' });
     const quantity = el('input', { type: 'number', min: '1', max: '9999', value: '1', className: 'inventory-qty', 'aria-label': 'Quantity' });
     const description = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'Description (optional): what it is, what it does…', 'aria-label': 'Description' });
+    // "It's a weapon": stats so it attacks and rolls.
+    const isWeapon = el('input', { type: 'checkbox' });
+    const weapon = weaponFields(null);
+    weapon.element.hidden = true;
+    isWeapon.addEventListener('change', () => { weapon.element.hidden = !isWeapon.checked; });
     const add = button('Add custom item', async () => {
       if (!name.value.trim()) {
         name.focus();
         return;
       }
-      const ok = await act({ action: 'add', name: name.value, quantity: Number(quantity.value) || 1, description: description.value });
+      const ok = await act({ action: 'add', name: name.value, quantity: Number(quantity.value) || 1, description: description.value, weapon: isWeapon.checked ? weapon.value() : undefined });
       if (ok) mode = null;
       render();
     }, 'btn btn-small btn-green');
@@ -204,6 +293,8 @@
     return el('div', { className: 'inventory-add' }, [
       el('div', { className: 'inventory-add-fields' }, [name, el('label', { className: 'inventory-qty-label' }, ['Qty ', quantity])]),
       description,
+      el('label', { className: 'creator-check' }, [isWeapon, ' This is a weapon (it attacks and rolls)']),
+      weapon.element,
       el('div', { className: 'vitals-actions' }, [add])
     ]);
   }

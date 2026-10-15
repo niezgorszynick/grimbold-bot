@@ -642,3 +642,15 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .npc-adventures a.tag:hover { color: #f1c40f; }
 /* Disabled buttons look disabled (they used to look clickable). */
 .btn:disabled, button.btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
+/* Item nicknames ("Ambassador"). */
+.item-nickname { margin-top: 8px; }
+.item-nickname input { flex: 1; min-width: 160px; }
+.item-real-name { font-style: italic; }
+/* Custom weapon stats. */
+.weapon-editor { display: grid; gap: 8px; margin: 6px 0; }
+.weapon-editor-wrap { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3f4147; }
+.weapon-editor-wrap h5 { margin: 0 0 6px; }
+.weapon-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.weapon-fields[hidden] { display: none; }
+.weapon-field { display: grid; gap: 3px; }
+.weapon-check { display: flex; align-items: center; gap: 6px; }
