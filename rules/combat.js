@@ -409,6 +409,19 @@ function weaponAttack(piece, ctx, armorState) {
   let die = weapon.damage;
   if (martialArts && averageOf(martialArtsDie(monkLevel)) > averageOf(die)) die = martialArtsDie(monkLevel);
   const damageMod = mod + magicBonus + (custom ? custom.damageBonus : 0);
+  // What adds up to the to-hit and damage bonuses, for the sheet to explain.
+  const hitParts = [
+    { label: ABILITY_LABELS[ability], value: mod },
+    proficient ? { label: 'Proficiency', value: pb } : null,
+    magicBonus ? { label: 'Magic', value: magicBonus } : null,
+    archery ? { label: 'Archery', value: archery } : null,
+    custom && custom.attackBonus ? { label: 'Weapon', value: custom.attackBonus } : null
+  ].filter(Boolean);
+  const damageParts = [
+    { label: ABILITY_LABELS[ability], value: mod },
+    magicBonus ? { label: 'Magic', value: magicBonus } : null,
+    custom && custom.damageBonus ? { label: 'Weapon', value: custom.damageBonus } : null
+  ].filter(Boolean);
   let damage = damageText(die, damageMod, weapon.damageType);
   if (weapon.versatile) damage += ` (${damageText(weapon.versatile, damageMod, '').trim()} two-handed)`;
 
@@ -445,8 +458,13 @@ function weaponAttack(piece, ctx, armorState) {
   return {
     name: piece.name,
     from: piece.from,
+    index: piece.index,
+    uid: piece.uid,
     weapon: weapon.name,
     attackBonus: signed(attackBonus),
+    hitParts,
+    damageParts,
+    damageDie: die,
     damage,
     notes
   };

@@ -39,6 +39,19 @@ function isRulesManaged(sheetData) {
 
 // Characters made before the rules engine keep a hand-typed AC until they
 // wear armor or a shield from their equipment list.
+// The attack a custom weapon would have on this character, before it is saved:
+// the sheet's own calculation, with a made-up row at the end of the equipment.
+function previewCustomWeapon({ id, player_id, is_admin, name, weapon }) {
+  const character = loadCharacter(id, player_id, is_admin);
+  const sheetData = readSheet(character.sheet_data);
+  const row = { name: String(name || 'Custom weapon').slice(0, 100) || 'Custom weapon', quantity: 1, source: 'custom', weapon: rules.validateCustomWeapon(weapon), equipped: true };
+  const inventory = [...(Array.isArray(sheetData.inventory) ? sheetData.inventory : []), row];
+  const combat = rules.calculateCombat(combatCharacter(character, { ...sheetData, inventory }));
+  const attack = combat.attacks.find(entry => entry.from === 'inventory' && entry.index === inventory.length - 1) ||
+    combat.attacks.filter(entry => entry.from === 'inventory').pop();
+  return { attack };
+}
+
 function buildCombat(character, sheetData) {
   const combat = rules.calculateCombat(combatCharacter(character, sheetData));
   const wearsArmor = Boolean(combat.armorClass.armor || combat.armorClass.shield);
@@ -75,4 +88,4 @@ function setCharacterAcAdjustment({ id, player_id, is_admin, value }) {
   })();
 }
 
-module.exports = { getCharacterCombat, setCharacterAcAdjustment, combatWithArmorClass: withArmorClass, buildCharacterCombat: buildCombat };
+module.exports = { previewCustomWeapon, getCharacterCombat, setCharacterAcAdjustment, combatWithArmorClass: withArmorClass, buildCharacterCombat: buildCombat };

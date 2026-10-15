@@ -367,6 +367,22 @@ router.get('/characters/:id/inventory', (req, res) => {
   }
 });
 
+// What a custom weapon would attack with, while its stats are being edited: { name, weapon }.
+router.post('/characters/:id/inventory/preview-weapon', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.previewCustomWeapon({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), name: body.name, weapon: body.weapon }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Weapon preview failed:', error);
+      return res.status(500).json({ error: 'Could not work out the attack.' });
+    }
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // { action: 'add', catalogId | name, quantity, description }
 // { action: 'update', index, name, quantity } | { action: 'remove', index, name }
 router.post('/characters/:id/inventory', (req, res) => {

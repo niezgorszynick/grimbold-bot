@@ -56,3 +56,18 @@ test('custom weapons attack and roll like any weapon, with their extras', () => 
   assert.throws(() => db.changeCharacterInventory({ ...asOwner, action: 'setWeapon', params: { index: daggerRow, name: 'Dagger', weapon: { base: 'Dagger', attackBonus: 3 } } }),
     /Only custom items/);
 });
+
+test('the weapon editor shows how the sheet adds it up', () => {
+  const owner = createPlayer();
+  const id = Number(db.prepare(`
+    INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+    VALUES (?, 'Odo', 'Human', 'Fighter', 'Champion', 5, 0, 'alive', 0, ?)
+  `).run(owner, JSON.stringify({ abilities: { str: { score: 14 } }, weaponProficiencies: ['Simple weapons'] })).lastInsertRowid);
+  const { attack } = db.previewCustomWeapon({ id, player_id: owner, is_admin: false, name: 'Ember Staff', weapon: { base: 'Quarterstaff', damageType: 'Fire', attackBonus: 4, damageBonus: 4 } });
+  assert.deepEqual(attack.hitParts, [{ label: 'STR', value: 2 }, { label: 'Proficiency', value: 3 }, { label: 'Weapon', value: 4 }]);
+  assert.equal(attack.attackBonus, '+9');
+  assert.deepEqual(attack.damageParts, [{ label: 'STR', value: 2 }, { label: 'Weapon', value: 4 }]);
+  assert.equal(attack.damage, '1d6+6 Fire (1d8+6 two-handed)');
+  assert.equal(JSON.parse(db.getCharacterById(id).sheet_data).inventory, undefined, 'nothing is saved');
+  assert.throws(() => db.previewCustomWeapon({ id, player_id: createPlayer(), is_admin: false, weapon: { base: 'Dagger' } }), /Forbidden/);
+});

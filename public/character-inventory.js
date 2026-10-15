@@ -205,7 +205,18 @@
 
   // Stats for a custom weapon: based on a real weapon, or homebrew. The sheet
   // adds the ability modifier and Proficiency Bonus itself; these are extras.
-  function weaponFields(initial) {
+  // The sheet's own working-out for these stats: "+2 STR + 3 Proficiency + 4 Weapon = +9".
+  const term = (part, first) => (first ? (part.value >= 0 ? '+' : '−') : (part.value >= 0 ? ' + ' : ' − ')) + Math.abs(part.value) + ' ' + part.label;
+  function showPreview(target, attack) {
+    const [damageRoll, ...typeWords] = attack.damage.split(' ');
+    target.replaceChildren(
+      el('div', {}, [el('strong', { text: 'To hit: ' }), attack.hitParts.map((part, index) => term(part, index === 0)).join('') + ' = ' + attack.attackBonus]),
+      el('div', {}, [el('strong', { text: 'Damage: ' }), attack.damageDie + attack.damageParts.map(part => term(part, false)).join('') + ' = ' + damageRoll + ' ' + typeWords.join(' ')]),
+      attack.notes && attack.notes.length ? el('div', { className: 'muted small', text: attack.notes.join(' · ') }) : null
+    );
+  }
+
+  function weaponFields(initial, nameOf) {
     const options = view.weaponOptions || { bases: [], damageTypes: [], actions: ['Action'] };
     const start = initial || {};
     const field = (label, control) => el('label', { className: 'weapon-field' }, [el('span', { className: 'muted small', text: label }), control]);
@@ -229,28 +240,53 @@
       field('Damage dice', damage), field('Melee or ranged', kind), field('Attacks with', ability),
       el('label', { className: 'weapon-field weapon-check' }, [proficient, ' Proficient'])
     ]);
+    const preview = el('div', { className: 'weapon-preview', 'aria-live': 'polite' });
+    const value = () => ({
+      base: base.value || null,
+      damage: damage.value.trim(),
+      kind: kind.value,
+      ability: ability.value,
+      proficient: proficient.checked,
+      damageType: damageType.value || null,
+      action: action.value,
+      attackBonus: Number(attackBonus.value) || 0,
+      damageBonus: Number(damageBonus.value) || 0
+    });
+    // Asks the server, which works it out exactly like the attack list.
+    let timer = null;
+    let sequence = 0;
+    const refreshPreview = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const mine = ++sequence;
+        try {
+          const response = await fetch('/api/characters/' + characterId + '/inventory/preview-weapon', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: nameOf ? nameOf() : '', weapon: value() })
+          });
+          const result = await response.json();
+          if (mine !== sequence) return;
+          if (!response.ok || !result.attack) throw new Error(result.error || 'Could not work it out.');
+          showPreview(preview, result.attack);
+        } catch (error) {
+          if (mine === sequence) preview.replaceChildren(el('span', { className: 'muted small', text: error.message }));
+        }
+      }, 250);
+    };
     const sync = () => { homebrew.hidden = Boolean(base.value); };
     base.addEventListener('change', sync);
     sync();
-    return {
-      element: el('div', { className: 'weapon-editor' }, [
-        el('div', { className: 'weapon-fields' }, [field('Based on', base), field('Damage type', damageType), field('Takes', action)]),
-        homebrew,
-        el('div', { className: 'weapon-fields' }, [field('To-hit bonus', attackBonus), field('Damage bonus', damageBonus)]),
-        el('p', { className: 'muted small', text: 'Bonuses are on top of what the sheet works out (ability modifier and Proficiency Bonus), so they stay right as the character changes.' })
-      ]),
-      value: () => ({
-        base: base.value || null,
-        damage: damage.value.trim(),
-        kind: kind.value,
-        ability: ability.value,
-        proficient: proficient.checked,
-        damageType: damageType.value || null,
-        action: action.value,
-        attackBonus: Number(attackBonus.value) || 0,
-        damageBonus: Number(damageBonus.value) || 0
-      })
-    };
+    const editor = el('div', { className: 'weapon-editor' }, [
+      el('div', { className: 'weapon-fields' }, [field('Based on', base), field('Damage type', damageType), field('Takes', action)]),
+      homebrew,
+      el('div', { className: 'weapon-fields' }, [field('To-hit bonus', attackBonus), field('Damage bonus', damageBonus)]),
+      preview,
+      el('p', { className: 'muted small', text: 'Bonuses are on top of what the sheet works out (ability modifier and Proficiency Bonus), so they stay right as the character changes.' })
+    ]);
+    editor.addEventListener('input', refreshPreview);
+    editor.addEventListener('change', refreshPreview);
+    return { element: editor, value, refreshPreview };
   }
 
   // Custom items: turn weapon stats on, change them, or turn them off.
@@ -258,7 +294,8 @@
     if (!item.weapon && !editingWeapons.has(item.index)) {
       return el('div', { className: 'vitals-actions' }, [button('Give it weapon stats', () => { editingWeapons.add(item.index); render(); })]);
     }
-    const fields = weaponFields(item.weapon);
+    const fields = weaponFields(item.weapon, () => item.nickname || item.name);
+    fields.refreshPreview();
     const save = button('Save weapon stats', async () => {
       const ok = await act({ action: 'setWeapon', index: item.index, name: item.name, weapon: fields.value() });
       if (ok) editingWeapons.delete(item.index);
@@ -277,9 +314,9 @@
     const description = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'Description (optional): what it is, what it does…', 'aria-label': 'Description' });
     // "It's a weapon": stats so it attacks and rolls.
     const isWeapon = el('input', { type: 'checkbox' });
-    const weapon = weaponFields(null);
+    const weapon = weaponFields(null, () => name.value.trim());
     weapon.element.hidden = true;
-    isWeapon.addEventListener('change', () => { weapon.element.hidden = !isWeapon.checked; });
+    isWeapon.addEventListener('change', () => { weapon.element.hidden = !isWeapon.checked; if (isWeapon.checked) weapon.refreshPreview(); });
     const add = button('Add custom item', async () => {
       if (!name.value.trim()) {
         name.focus();

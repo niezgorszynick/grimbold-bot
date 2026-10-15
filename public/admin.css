@@ -654,3 +654,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .weapon-fields[hidden] { display: none; }
 .weapon-field { display: grid; gap: 3px; }
 .weapon-check { display: flex; align-items: center; gap: 6px; }
+/* Weapon stat fields fit their column (dropdowns used to spill into the next one). */
+.weapon-field select, .weapon-field input:not([type=checkbox]) { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.weapon-fields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.weapon-preview { display: grid; gap: 3px; padding: 8px 10px; background: #232428; border-radius: 6px; font-size: 13px; }
+.weapon-preview:empty { display: none; }
