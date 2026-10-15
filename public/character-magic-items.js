@@ -94,9 +94,22 @@
     return parts;
   }
 
+  // A nickname ("Ambassador") for the sheet only; the item keeps working as what it is.
+  function nicknameField(item) {
+    const input = el('input', { type: 'text', maxlength: '60', value: item.nickname || '', placeholder: 'Nickname, e.g. Ambassador', 'aria-label': 'Nickname of ' + item.realName });
+    const save = () => act({ action: 'rename', uid: item.uid, nickname: input.value.trim() });
+    input.addEventListener('keydown', event => { if (event.key === 'Enter') save(); });
+    return el('div', { className: 'vitals-actions item-nickname' }, [
+      input,
+      button('Save name', save),
+      item.nickname ? button('Clear', () => act({ action: 'rename', uid: item.uid, nickname: '' }), 'btn btn-small btn-secondary') : null
+    ]);
+  }
+
   function itemRow(item) {
     const tags = [
-      item.rulesName && item.rulesName !== item.name ? item.rulesName : null,
+      // A nicknamed item says what it really is.
+      item.nickname ? item.realName : (item.rulesName && item.rulesName !== item.name ? item.rulesName : null),
       item.rarity,
       item.kind + (item.baseItem ? ' (' + item.baseItem + ')' : ''),
       item.attunement.required ? 'Requires attunement' + (item.attunement.by ? ' by ' + item.attunement.by : '') : null,
@@ -165,7 +178,8 @@
         item.charges ? el('p', { className: 'muted small', text: item.charges.max + ' charges' + (item.charges.regain
           ? '; regains ' + item.charges.regain + ' daily at ' + item.charges.at + ' (applied on a Long Rest).'
           : '; they do not come back on their own.') }) : null,
-        renderText(item.description)
+        renderText(item.description),
+        nicknameField(item)
       ])
       : null;
 

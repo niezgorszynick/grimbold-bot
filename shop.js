@@ -51,7 +51,7 @@ function addToSheet(sheetJson, itemName, quantity) {
     return JSON.stringify({ ...sheet, magicItems });
   }
   const inventory = Array.isArray(sheet.inventory) ? sheet.inventory.map(row => ({ ...row })) : [];
-  const existing = inventory.find(row => row.name === itemName && !row.description);
+  const existing = inventory.find(row => row.name === itemName && !row.description && !row.nickname);
   if (existing) existing.quantity += quantity;
   else inventory.push({ name: itemName, quantity, source: 'shop' });
   return JSON.stringify({ ...sheet, inventory });

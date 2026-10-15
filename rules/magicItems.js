@@ -303,9 +303,15 @@ function catalogName(entry, catalog) {
   return variant ? variant.name : (item ? item.name : entry.name);
 }
 
-// What the sheet shows: the shop's own name when it had one ("+1 Morningstar").
-function displayName(entry, catalog) {
+// The item's real name: the shop's own name when it had one ("+1 Morningstar").
+function realName(entry, catalog) {
   return entry.label || catalogName(entry, catalog);
+}
+
+// What the sheet shows: the player's nickname ("Ambassador") when it has one.
+// Nicknames never change what the item is.
+function displayName(entry, catalog) {
+  return entry.nickname || realName(entry, catalog);
 }
 
 function effectsOf(entry, catalog) {
@@ -324,7 +330,10 @@ function isActive(entry, catalog) {
 // Everything other rules need to know about one owned item.
 function magicItemEntryInfo(entry, catalog = getMagicItemCatalog()) {
   const { item, variant } = itemOf(entry, catalog);
-  return { item, variant, effects: effectsOf(entry, catalog), active: isActive(entry, catalog), name: displayName(entry, catalog) };
+  return {
+    item, variant, effects: effectsOf(entry, catalog), active: isActive(entry, catalog),
+    name: displayName(entry, catalog), realName: realName(entry, catalog), nickname: entry.nickname || null
+  };
 }
 
 function newUid() {
@@ -358,7 +367,7 @@ function grantMagicItem(sheetData, request, catalog = getMagicItemCatalog()) {
   }
   const list = readMagicItems(sheetData).map(entry => ({ ...entry }));
   const stack = item.consumable && list.find(entry => entry.name === item.name &&
-    (entry.variant || null) === (variant ? variant.label : null) && (entry.label || null) === label);
+    (entry.variant || null) === (variant ? variant.label : null) && (entry.label || null) === label && !entry.nickname);
   if (stack) stack.quantity = (stack.quantity || 1) + quantity;
   else list.push(newEntry(item, variant, quantity, body.source, label));
   return list;
@@ -536,6 +545,7 @@ module.exports = {
   matchMagicItem,
   readMagicItems,
   magicItemDisplayName: displayName,
+  magicItemRealName: realName,
   magicItemCatalogName: catalogName,
   magicItemEntryInfo,
   grantMagicItem,
