@@ -193,25 +193,54 @@ router.post('/characters/:id/level-up', (req, res) => {
   }
 });
 
+// Armor, weapons, tools and languages: { armor, weapons, tools, languages, canEdit }.
+router.get('/characters/:id/proficiencies', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterProficiencies({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// DMs only: { armor, weapons, tools, languages } as lists of names.
+router.post('/characters/:id/proficiencies', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.setCharacterProficiencies({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), lists: body }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // Class choices the character hasn't made yet (Divine Order, Expertise, ...).
 router.get('/characters/:id/feature-choices', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    return res.json({ missing: db.getMissingFeatureChoices({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }) });
+    const who = { id: req.params.id, player_id: user.id, is_admin: isAdmin(user) };
+    // Plus a species lineage never chosen (older characters), e.g. which Elf.
+    return res.json({ missing: db.getMissingFeatureChoices(who), species: db.getMissingSpeciesChoice(who) });
   } catch (error) {
     return res.status(levelUpErrorStatus(error.message)).json({ error: error.message });
   }
 });
 
-// { picks: { [feature id]: choice } }
+// { picks: { [feature id]: choice }, species: { option, spellAbility } } — either or both.
 router.post('/characters/:id/feature-choices', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const who = { id: req.params.id, player_id: user.id, is_admin: isAdmin(user) };
   try {
-    const missing = db.chooseMissingFeatures({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), picks: body.picks });
-    return res.json({ success: true, missing });
+    if (body.species) db.chooseSpeciesOption({ ...who, choice: body.species });
+    const picks = body.picks && typeof body.picks === 'object' ? body.picks : {};
+    const pending = db.getMissingFeatureChoices(who);
+    if (Object.keys(picks).length || pending.some(feature => feature.kind === 'grant')) db.chooseMissingFeatures({ ...who, picks });
+    return res.json({ success: true, missing: db.getMissingFeatureChoices(who), species: db.getMissingSpeciesChoice(who) });
   } catch (error) {
     const status = levelUpErrorStatus(error.message);
     if (status === 400 && error instanceof TypeError) {
@@ -271,6 +300,7 @@ router.get('/characters/:id/spells', (req, res) => {
 // { action: 'choose', source, cantrips, prepared, addToSpellbook, copyAddedSpells }
 // { action: 'cast', source, spell, slotLevel | pact | free | ritual }
 // { action: 'endConcentration' }
+// { action: 'land', land } (Circle of the Land, after a Long Rest)
 // { action: 'invocations', invocations: [{ name, cantrip, feat }] }
 router.post('/characters/:id/spells', (req, res) => {
   const user = getSessionApiUser(req);
@@ -281,6 +311,7 @@ router.post('/characters/:id/spells', (req, res) => {
     if (body.action === 'choose') return res.json(db.chooseCharacterSpells({ ...who, source: body.source, request: body }));
     if (body.action === 'cast') return res.json(db.castCharacterSpell({ ...who, request: body }));
     if (body.action === 'endConcentration') return res.json(db.endCharacterConcentration(who));
+    if (body.action === 'land') return res.json(db.setCharacterLand({ ...who, land: body.land }));
     if (body.action === 'invocations') return res.json(db.chooseCharacterInvocations({ ...who, choices: body.invocations }));
     return res.status(400).json({ error: 'Unknown spell action.' });
   } catch (error) {

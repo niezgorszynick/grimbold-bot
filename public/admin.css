@@ -559,6 +559,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .character-sheet-full > #cs_spells { order: 7; }
   .character-sheet-full .sheet-saves-card { order: 8; }
   .character-sheet-full .sheet-skills-card { order: 9; }
+  .character-sheet-full .sheet-proficiencies-card { order: 9; }
   .character-sheet-full > .point-buy-card { order: 10; }
   .character-sheet-full .sheet-features-card { order: 11; }
   .character-sheet-full > .sheet-equipment { order: 12; }
@@ -679,3 +680,14 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-inspiration.is-inspired .sheet-inspiration-label { color: #f1c40f; }
 .sheet-inspiration-text { margin: 6px 0 0; }
 .sheet-inspiration-text[data-resourceful="1"]::after { content: ' Resourceful: yours comes back after each Long Rest.'; color: #f1c40f; }
+/* Proficiencies & Languages card. */
+.sheet-proficiencies-card { margin-top: 14px; }
+.prof-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 6px 0 0; font-size: 13px; }
+.prof-list dt { color: #949ba4; font-size: 11px; text-transform: uppercase; padding-top: 3px; }
+.prof-list dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.prof-tag { font-weight: normal; }
+.prof-editor { display: grid; gap: 8px; }
+.prof-edit-field { display: grid; gap: 3px; }
+.prof-edit-field textarea { width: 100%; box-sizing: border-box; }
+/* Circle of the Land: the land picker in the Druid's spells. */
+.spell-land { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0; }

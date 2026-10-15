@@ -352,7 +352,7 @@
       const previousFeat = widgets.backgroundFeat ? widgets.backgroundFeat.value() : {};
       if (!data) {
         [backgroundDetails, backgroundToolBox, backgroundFeatBox, backgroundEquipmentBox].forEach(box => box.replaceChildren());
-        widgets.backgroundTool = widgets.backgroundFeat = null;
+        widgets.backgroundTool = widgets.backgroundFeat = widgets.backgroundFeatName = null;
         renderBonuses();
         return;
       }
@@ -372,8 +372,26 @@
         backgroundToolBox.replaceChildren();
       }
 
-      widgets.backgroundFeat = featChoices(data.originFeat.name, data.originFeat.spellList, previousFeat);
-      backgroundFeatBox.replaceChildren(el('h5', { text: featLabel + ' choices' }), widgets.backgroundFeat.element);
+      // The background's Origin feat, or another Origin feat in its place.
+      const previousFeatName = widgets.backgroundFeatName ? widgets.backgroundFeatName.value : '';
+      const featName = selectBox([data.originFeat.name, ...Object.keys(R.originFeats).filter(name => name !== data.originFeat.name)], {
+        labels: name => (name === data.originFeat.name ? featLabel + ' (from the background)' : name),
+        value: previousFeatName && R.originFeats[previousFeatName] ? previousFeatName : data.originFeat.name
+      });
+      widgets.backgroundFeatName = featName;
+      const featChoicesBox = el('div');
+      const renderFeat = keep => {
+        const own = featName.value === data.originFeat.name;
+        widgets.backgroundFeat = featChoices(featName.value, own ? data.originFeat.spellList : undefined, keep ? previousFeat : {});
+        featChoicesBox.replaceChildren(widgets.backgroundFeat.element);
+      };
+      featName.addEventListener('change', () => { renderFeat(false); schedulePreview(); });
+      renderFeat(true);
+      backgroundFeatBox.replaceChildren(
+        el('h5', { text: 'Origin Feat' }),
+        field('Origin feat', featName, 'Your background gives ' + featLabel + '. If your table allows it, you can take another Origin feat instead.'),
+        featChoicesBox
+      );
 
       const previousEquipment = (form.querySelector('[name="backgroundEquipment"]:checked') || {}).value;
       backgroundEquipmentBox.replaceChildren(el('h5', { text: 'Background Equipment' }), equipmentRadios('backgroundEquipment', data.equipmentOptions, previousEquipment));
@@ -540,6 +558,7 @@
         featureChoices: window.FeatureChoices.collect(widgets.features || []),
         backgroundTool: value(widgets.backgroundTool),
         originFeatChoices: widgets.backgroundFeat ? widgets.backgroundFeat.value() : {},
+        backgroundFeat: widgets.backgroundFeatName ? widgets.backgroundFeatName.value : undefined,
         versatileFeat: widgets.versatile
           ? Object.assign({ name: widgets.versatile.select.value }, widgets.versatile.choices.value())
           : undefined,

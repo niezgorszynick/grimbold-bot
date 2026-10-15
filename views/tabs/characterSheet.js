@@ -152,6 +152,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
                 ${isAdmin ? '<details id="cs_dm_skills" class="sheet-dm-skills"><summary>DM: extra skill proficiencies &amp; Expertise</summary><p class="muted small">For feats or features the sheet doesn&#39;t apply by itself. Save the sheet afterwards.</p><div class="sheet-dm-skill-grid"></div></details>' : ''}
               </section>
+              <section id="cs_proficiencies" class="sheet-card sheet-proficiencies-card" data-collapse="proficiencies" data-character-id="${Number(characterToEdit.id)}"><h4>Proficiencies &amp; Languages</h4><p class="muted small">Loading…</p></section>
+              <script src="/admin/assets/character-proficiencies.js" defer></script>
             </div>
             <div class="sheet-col">
               <div class="sheet-combat-stats">

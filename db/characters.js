@@ -290,6 +290,44 @@ function levelUpCharacter({ id, player_id, is_admin, request }) {
   })();
 }
 
+// A species choice the character never made (lineage, legacy or ancestry, and
+// the spellcasting ability for its spells): null when there's nothing to choose.
+function getMissingSpeciesChoice({ id, player_id, is_admin }) {
+  const character = loadOwnedCharacter(id, player_id, is_admin);
+  const rule = rules.SPECIES_OPTIONS[character.race];
+  if (!rule) return null;
+  const sheetData = readSheetData(character.sheet_data);
+  const needsOption = !rule.options.includes(sheetData.speciesOption);
+  const needsAbility = Boolean(rule.spellAbilityChoice) && !['int', 'wis', 'cha'].includes(sheetData.speciesSpellAbility);
+  if (!needsOption && !needsAbility) return null;
+  return {
+    species: character.race,
+    label: rule.label,
+    options: rule.options,
+    current: needsOption ? null : sheetData.speciesOption,
+    spellAbilityChoice: Boolean(rule.spellAbilityChoice)
+  };
+}
+
+// choice: { option, spellAbility }.
+function chooseSpeciesOption({ id, player_id, is_admin, choice }) {
+  return db.transaction(() => {
+    const character = loadOwnedCharacter(id, player_id, is_admin);
+    const rule = rules.SPECIES_OPTIONS[character.race];
+    if (!rule) throw new Error(`${character.race} has no lineage to choose.`);
+    const body = choice || {};
+    if (!rule.options.includes(body.option)) throw new Error(`Choose your ${rule.label}: ${rule.options.join(', ')}.`);
+    const sheetData = readSheetData(character.sheet_data);
+    const next = { ...sheetData, speciesOption: body.option };
+    if (rule.spellAbilityChoice) {
+      if (!['int', 'wis', 'cha'].includes(body.spellAbility)) throw new Error(`Choose Intelligence, Wisdom or Charisma for your ${rule.label} spells.`);
+      next.speciesSpellAbility = body.spellAbility;
+    }
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(next), character.id);
+    return { speciesOption: next.speciesOption, speciesSpellAbility: next.speciesSpellAbility || null };
+  })();
+}
+
 // Class and subclass choices the character should have made but hasn't
 // (characters made before these were part of creation and level-ups).
 function getMissingFeatureChoices({ id, player_id, is_admin }) {
@@ -401,6 +439,8 @@ module.exports = {
   rebuildCharacter,
   getMissingFeatureChoices,
   chooseMissingFeatures,
+  getMissingSpeciesChoice,
+  chooseSpeciesOption,
   updateCharacterProgression,
 getCharacterById: (id) => db.prepare('SELECT * FROM characters WHERE id = ?').get(id),
 updateCharacterSheet: ({ id, player_id, is_admin, name, race, class_name, subclass, sheet_data }) => {

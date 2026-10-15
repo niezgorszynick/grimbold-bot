@@ -22,7 +22,8 @@
     { id: 'cs_magic_items', refresh: () => window.refreshCharacterMagicItems, editors: '.spell-picker:not(.magic-item-grant)' },
     { id: 'cs_inventory', refresh: () => window.refreshCharacterInventory, editors: null },
     { id: 'cs_purse', refresh: () => window.refreshCharacterPurse, editors: null },
-    { id: 'cs_attacks_auto', refresh: () => window.refreshCharacterCombat, editors: null }
+    { id: 'cs_attacks_auto', refresh: () => window.refreshCharacterCombat, editors: null },
+    { id: 'cs_proficiencies', refresh: () => window.refreshCharacterProficiencies, editors: '.prof-editor' }
   ];
 
   function busy(section) {

@@ -231,9 +231,16 @@ function buildStartingCharacter(input) {
     proficiencies.addTools(classTools, `${className} class`, { allowDuplicates: false });
   }
 
-  // Origin feats: the background's, plus one of choice for Humans (Versatile).
+  // Origin feats: the background's (or another Origin feat instead, if the table
+  // allows it), plus one of choice for Humans (Versatile).
+  let backgroundFeat = backgroundData.originFeat;
+  if (request.backgroundFeat && request.backgroundFeat !== backgroundData.originFeat.name) {
+    const swapped = findCanonical(ORIGIN_FEAT_NAMES, request.backgroundFeat);
+    if (!swapped) throw new Error(`"${request.backgroundFeat}" is not an Origin feat.`);
+    backgroundFeat = { name: swapped };
+  }
   const feats = [resolveOriginFeat(
-    backgroundData.originFeat,
+    backgroundFeat,
     request.originFeatChoices,
     `${background} background`,
     proficiencies

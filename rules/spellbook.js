@@ -32,7 +32,7 @@ const { getSpellCatalog, findSpell, spellListName } = require('./spells');
 const { collectCharacterFeats, featName, featGrants, CLASS_FIGHTING_STYLE_OPTIONS } = require('./feats');
 const { effectiveAbilityScore, magicItemEffects } = require('./magicItems');
 const { extraCantrips } = require('./featureChoices');
-const { subclassSpellsFor } = require('./subclassSpells');
+const { subclassSpellsFor, chosenLand, LAND_SPELLS } = require('./subclassSpells');
 const {
   INVOCATIONS, INVOCATION_NAMES, invocationLimit, readInvocations, eligibleCantrips,
   invocationIneligibility, validateInvocations
@@ -122,7 +122,11 @@ function getSpellSources(character) {
       classLevel: row.level,
       // Domain, oath, circle, patron and origin spells.
       alwaysPrepared: subclassSpellsFor(row, sheetData),
-      alwaysPreparedLabel: row.subclassName || null
+      alwaysPreparedLabel: row.subclassName || null,
+      // Circle of the Land: the land, chosen again after each Long Rest.
+      land: row.subclassName === 'Circle of the Land' && row.level >= 3
+        ? { current: chosenLand(sheetData), options: Object.keys(LAND_SPELLS) }
+        : null
     });
   }
 

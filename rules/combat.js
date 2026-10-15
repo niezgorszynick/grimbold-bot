@@ -566,6 +566,8 @@ module.exports = {
   setWorn,
   isWornByDefault: isWorn,
   calculateCombat,
+  // Weapon and armor training (stored lists, or the starting class for older sheets).
+  characterTraining: trainingLists,
   inventoryGear,
   initiativeOf,
   describeGear,

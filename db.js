@@ -21,6 +21,7 @@ module.exports = {
   ...require('./db/dice'),
   ...require('./db/gold'),
   ...require('./db/npcs'),
+  ...require('./db/proficiencies'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),

@@ -112,6 +112,25 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
   })();
 }
 
+// Circle of the Land: a new land after a Long Rest (or the first one).
+function setCharacterLand({ id, player_id, is_admin, land }) {
+  return db.transaction(() => {
+    const character = loadCharacter(id, player_id, is_admin);
+    const sheetData = readSheet(character.sheet_data);
+    const spellChar = spellCharacter(character, sheetData);
+    const druid = rules.getSpellSources(spellChar).find(source => source.land);
+    if (!druid) throw new Error('Only a Circle of the Land druid chooses a land.');
+    const state = rules.readSpellcasting(sheetData);
+    const changes = state.changes[druid.key] || {};
+    if (druid.land.current && druid.land.current !== land && !changes.rework) {
+      throw new Error('You can choose a new land after a Long Rest (until you next cast a leveled spell).');
+    }
+    const nextSheet = rules.setLand(sheetData, land);
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
+    return { spells: buildView(character, nextSheet) };
+  })();
+}
+
 function endCharacterConcentration({ id, player_id, is_admin }) {
   return db.transaction(() => {
     const character = loadCharacter(id, player_id, is_admin);
@@ -164,6 +183,7 @@ module.exports = {
   chooseCharacterSpells,
   castCharacterSpell,
   endCharacterConcentration,
+  setCharacterLand,
   chooseCharacterInvocations,
   spellEffectsOfVitals
 };

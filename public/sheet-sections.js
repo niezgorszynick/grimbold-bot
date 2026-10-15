@@ -10,7 +10,7 @@
 
   const NARROW = window.matchMedia('(max-width: 900px)');
   const STORAGE_KEY = 'grimbold-sheet-sections';
-  const FOLDED_BY_DEFAULT = ['details', 'abilities', 'features', 'equipment', 'magicItems'];
+  const FOLDED_BY_DEFAULT = ['details', 'abilities', 'proficiencies', 'features', 'equipment', 'magicItems'];
   // The title that folds each section ([data-collapse] holds the section's name).
   const TITLE = '.sheet-identity > h2, .point-buy-header h3, :scope > h4:first-child';
 

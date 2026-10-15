@@ -57,4 +57,21 @@ function subclassSpellsFor(row, sheetData) {
   return table.filter(([level]) => row.level >= level).flatMap(([, spells]) => spells);
 }
 
-module.exports = { SUBCLASS_SPELLS, LAND_SPELLS, subclassSpellsFor };
+// The land a Circle of the Land druid has chosen, or null.
+function chosenLand(sheetData) {
+  return (((sheetData || {}).featureChoices || {})[LAND_CHOICE_ID] || {}).value || null;
+}
+
+// Sets the land (after a Long Rest, or the first time). Returns the next sheetData.
+function setLand(sheetData, land) {
+  if (!LAND_SPELLS[land]) throw new Error(`Choose a land: ${Object.keys(LAND_SPELLS).join(', ')}.`);
+  const featureChoices = { ...((sheetData || {}).featureChoices || {}) };
+  const previous = featureChoices[LAND_CHOICE_ID] || {};
+  featureChoices[LAND_CHOICE_ID] = {
+    name: 'Circle Spells (Land)', source: 'Circle of the Land', level: 3, ...previous, value: land,
+    added: previous.added || { skills: [], expertise: [], tools: [], languages: [], weapons: [], armor: [], cantrips: 0 }
+  };
+  return { ...sheetData, featureChoices };
+}
+
+module.exports = { SUBCLASS_SPELLS, LAND_SPELLS, LAND_CHOICE_ID, subclassSpellsFor, chosenLand, setLand };

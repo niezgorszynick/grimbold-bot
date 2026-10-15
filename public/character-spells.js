@@ -211,6 +211,26 @@
     return Object.keys(groups).map(Number).sort((a, b) => a - b).map(level => [level, groups[level].sort()]);
   }
 
+  // Circle of the Land: which land's spells are prepared; a new one after each Long Rest.
+  function landPicker(source) {
+    const land = source.land;
+    const canChange = !land.current || source.allowance.rework;
+    const select = el('select', { 'aria-label': 'Land' });
+    if (!land.current) select.add(new Option('-- Choose a land --', ''));
+    land.options.forEach(option => select.add(new Option(option, option)));
+    select.value = land.current || '';
+    select.disabled = !canChange;
+    select.addEventListener('change', () => {
+      if (select.value) act({ action: 'land', land: select.value }, () => 'Your land is now ' + select.value + '.');
+    });
+    return el('div', { className: 'spell-land' }, [
+      el('label', { className: 'vitals-inline' }, [el('strong', { text: 'Land: ' }), select]),
+      el('span', { className: 'muted small', text: canChange
+        ? (land.current ? 'You can choose a new land now (after your Long Rest).' : 'Choose your land to prepare its Circle Spells.')
+        : 'Choose a new land after your next Long Rest.' })
+    ]);
+  }
+
   function renderSource(source) {
     const headerBits = [ABILITY[source.ability] || '', 'Save DC ' + (source.saveDc + shift(source))];
     const choosable = Boolean(source.cantripLimit || source.preparedLimit);
@@ -253,6 +273,7 @@
       counts.length ? el('p', { className: 'muted small', text: counts.join(' · ') + (missing > 0 ? ' — ' + missing + ' still to choose' : '') }) : null,
       source.changeRuleText ? el('p', { className: 'muted small', text: source.changeRuleText }) : null,
       badges.length ? el('div', { className: 'spell-badges' }, badges.map(text => el('span', { className: 'tag gold', text }))) : null,
+      source.land ? landPicker(source) : null,
       editing === source.key ? renderPicker(source) : null,
       ...body
     ]);
