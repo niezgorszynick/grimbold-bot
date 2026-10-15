@@ -229,6 +229,16 @@ const isArmorName = text => Object.keys(ARMOR).some(armor => armor.toLowerCase()
 // by a DM: "Cloak of Protection", "Weapon +1", "+1 Longsword", "Longsword +2",
 // "Potion of Greater Healing", "Belt of Hill Giant Strength", "Mithral Splint",
 // "Hide Armor of Resistance (Psychic)", ...
+// Common potions and scrolls (Potion of Healing, Spell Scroll (Cantrip)) a
+// player may record on their own sheet; anything else comes from the shop or the DM.
+const PLAYER_ADDABLE_KINDS = ['Potion', 'Scroll'];
+function playerMayAddMagicItem(name) {
+  const match = matchMagicItem(name);
+  if (!match) return false;
+  const rarity = (match.variant && match.variant.rarity) || match.item.rarity;
+  return rarity === 'Common' && PLAYER_ADDABLE_KINDS.includes(match.item.kind);
+}
+
 function matchMagicItem(rawName, catalog = getMagicItemCatalog()) {
   const name = String(rawName || '').trim();
   if (!name) return null;
@@ -374,7 +384,7 @@ function newEntry(item, variant, quantity, source, label = null) {
     equipped: false,
     attuned: false,
     chargesUsed: 0,
-    source: ['shop', 'dm', 'loot', 'creation'].includes(source) ? source : 'dm'
+    source: ['shop', 'dm', 'loot', 'creation', 'player'].includes(source) ? source : 'dm'
   };
 }
 
@@ -528,6 +538,7 @@ function effectiveAbilityScore(sheetData, ability) {
 }
 
 module.exports = {
+  playerMayAddMagicItem,
   MAGIC_ITEM_RARITIES: RARITIES,
   MAGIC_ITEM_PRICE_GP: PRICE_GP,
   ATTUNEMENT_LIMIT,

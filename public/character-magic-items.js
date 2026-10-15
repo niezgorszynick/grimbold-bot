@@ -100,7 +100,7 @@
       item.rarity,
       item.kind + (item.baseItem ? ' (' + item.baseItem + ')' : ''),
       item.attunement.required ? 'Requires attunement' + (item.attunement.by ? ' by ' + item.attunement.by : '') : null,
-      item.source === 'shop' ? 'bought' : null
+      item.source === 'shop' ? 'bought' : item.source === 'player' ? 'added by the player' : null
     ].filter(Boolean);
     const badges = [];
     if (item.attuned) badges.push(el('span', { className: 'tag gold', text: 'Attuned' }));

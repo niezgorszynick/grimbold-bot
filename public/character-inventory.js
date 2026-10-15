@@ -153,10 +153,13 @@
         return;
       }
       matches.forEach(item => {
-        const blocked = item.magic && !view.canAddMagicItems;
-        const add = button(item.magic && view.canAddMagicItems ? 'Add to Magic Items' : 'Add', () => {
-          act({ action: 'add', catalogId: item.id, quantity: Number(quantity.value) || 1 });
-        }, 'btn btn-small btn-green', blocked ? { disabled: true, title: 'Magic items come from the shop or the DM.' } : {});
+        // Players may add common potions and scrolls; other magic items come from the shop or the DM.
+        const canAdd = !item.magic || view.canAddMagicItems || item.playerCanAdd;
+        const add = canAdd
+          ? button(item.magic ? 'Add to Magic Items' : 'Add', () => {
+            act({ action: 'add', catalogId: item.id, quantity: Number(quantity.value) || 1 });
+          }, 'btn btn-small btn-green')
+          : el('span', { className: 'tag inventory-blocked', title: 'Buy it in the shop, or ask your DM to add it.', text: 'Shop or DM only' });
         const key = String(item.id);
         results.append(el('li', { className: 'inventory-row' }, [
           el('div', { className: 'inventory-row-main' }, [
