@@ -261,6 +261,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 }
                 section.querySelector('h4').textContent = 'Build ' + open.dataset.name;
                 section.querySelector('p').textContent = open.dataset.name + " hasn't been built yet. Choose species, class, ability scores, skills and starting gear below; the sheet appears when you finish. XP, level, adventures and purse are kept.";
+                document.getElementById('character-creator-root').dataset.firstBuild = '1';
                 open.style.display = 'none';
                 document.getElementById('close-character-reset').style.display = 'none';
                 show();
