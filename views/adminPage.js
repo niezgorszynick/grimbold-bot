@@ -75,6 +75,8 @@ module.exports = function renderAdminPage(req) {
     statusBanner = '<div class="alert green">✅ Item added to shop shelves!</div>';
   } else if (status === 'catalog_updated') {
     statusBanner = '<div class="alert green">✅ Catalog item updated!</div>';
+  } else if (status === 'catalog_reviewed') {
+    statusBanner = `<div class="alert green">✅ Rarity, prices and availability updated for ${Number(req.query.changed) || 0} catalog items.</div>`;
   } else if (status === 'catalog_deleted') {
     statusBanner = '<div class="alert red">🗑️ Catalog item permanently deleted.</div>';
   } else if (status === 'player_added') {

@@ -3,6 +3,7 @@
 'use strict';
 
 const { db } = require('./connection');
+const rules = require('../rules');
 
 const queries = {
   // Rolls
@@ -32,7 +33,7 @@ const queries = {
 };
 
 module.exports = {
-addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
+addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, min_stock, max_stock, rarity, availability }) => {
       const trimmedName = (name || '').trim();
       const trimmedCat = (category || '').trim();
       const trimmedDesc = (description || '').trim();
@@ -57,6 +58,7 @@ addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, 
         throw new Error('Maximum stock must be greater than or equal to minimum stock.');
       }
       if (!trimmedDesc) throw new Error('Description is required.');
+      const shopFields = rules.validateShopFields({ rarity, availability });
 
       // Names must be unique
       const existing = db.prepare('SELECT id FROM catalog WHERE name = ? COLLATE NOCASE').get(trimmedName);
@@ -65,8 +67,8 @@ addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, 
       }
 
       const stmt = db.prepare(`
-        INSERT INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock, rarity, availability)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       return stmt.run(
@@ -77,7 +79,9 @@ addCatalogItem: ({ name, category, tier, base_price_cp, description, min_level, 
         trimmedDesc,
         parsedMinLevel,
         parsedMinStock,
-        parsedMaxStock
+        parsedMaxStock,
+        shopFields.rarity,
+        shopFields.availability
       );
     },
   // Party level, used to filter the catalog by min_level
@@ -103,7 +107,7 @@ findItemByName: (name) => queries.getItemByName.get(name),
     return db.prepare('SELECT * FROM catalog WHERE id = ?').get(parseInt(id, 10));
   },
   // Update a catalog entry and sync it to the counter (items) immediately
-  updateCatalogItem: db.transaction(({ id, name, category, tier, base_price_cp, description, min_level, min_stock, max_stock }) => {
+  updateCatalogItem: db.transaction(({ id, name, category, tier, base_price_cp, description, min_level, min_stock, max_stock, rarity, availability }) => {
     const trimmedName = (name || '').trim();
     const trimmedCat = (category || '').trim();
     const trimmedDesc = (description || '').trim();
@@ -117,6 +121,7 @@ findItemByName: (name) => queries.getItemByName.get(name),
     if (isNaN(min_stock) || min_stock < 0) throw new Error('Min stock must be >= 0.');
     if (isNaN(max_stock) || max_stock < min_stock) throw new Error('Max stock must be >= min stock.');
     if (!trimmedDesc) throw new Error('Description is required.');
+    const shopFields = rules.validateShopFields({ rarity, availability });
 
     // 1. Look up the old name to find the matching counter item
     const oldItem = db.prepare('SELECT name FROM catalog WHERE id = ?').get(parseInt(id, 10));
@@ -132,7 +137,9 @@ findItemByName: (name) => queries.getItemByName.get(name),
           description = ?,
           min_level = ?,
           min_stock = ?,
-          max_stock = ?
+          max_stock = ?,
+          rarity = ?,
+          availability = ?
       WHERE id = ?
     `).run(
       trimmedName,
@@ -143,13 +150,16 @@ findItemByName: (name) => queries.getItemByName.get(name),
       parseInt(min_level, 10),
       parseInt(min_stock, 10),
       parseInt(max_stock, 10),
+      shopFields.rarity,
+      shopFields.availability,
       parseInt(id, 10)
     );
 
     // 3. If the item is currently on the counter (items), sync it now
     const shelfItem = db.prepare('SELECT id FROM items WHERE name = ? COLLATE NOCASE').get(oldItem.name);
     if (shelfItem) {
-      const newPriceGp = Math.max(1, Math.round(parseInt(base_price_cp, 10) / 100));
+      // Counter prices are in copper, like the catalog.
+      const newPriceCp = Math.max(1, parseInt(base_price_cp, 10));
       db.prepare(`
         UPDATE items
         SET name = ?,
@@ -160,7 +170,7 @@ findItemByName: (name) => queries.getItemByName.get(name),
       `).run(
         trimmedName,
         trimmedCat,
-        newPriceGp,
+        newPriceCp,
         trimmedDesc,
         shelfItem.id
       );
@@ -236,6 +246,21 @@ setPrice: (id, newPrice) => queries.updatePrice.run(newPrice, id),
 setActive: (id, isActive) => queries.toggleActive.run(isActive ? 1 : 0, id),
 deleteItem: (id) => queries.deleteItem.run(id),
 getAllCatalogItems: () => db.prepare('SELECT * FROM catalog ORDER BY name ASC').all(),
+  // Rarity, price and availability the rules suggest for catalog rows, for a DM to approve.
+  reviewCatalogRarity: () => rules.reviewCatalog(db.prepare('SELECT * FROM catalog ORDER BY name ASC').all()),
+  // Applies the suggested changes to the chosen catalog rows (ids). Returns how many changed.
+  applyCatalogRarityReview: (ids) => {
+    const wanted = new Set([].concat(ids || []).map(Number));
+    const review = rules.reviewCatalog(db.prepare('SELECT * FROM catalog').all()).filter(entry => wanted.has(entry.id));
+    const columns = ['rarity', 'base_price_cp', 'availability', 'min_level'];
+    db.transaction(() => {
+      for (const entry of review) {
+        const keys = columns.filter(key => Object.hasOwn(entry.changes, key));
+        db.prepare(`UPDATE catalog SET ${keys.map(key => `${key} = ?`).join(', ')} WHERE id = ?`).run(...keys.map(key => entry.changes[key]), entry.id);
+      }
+    })();
+    return review.length;
+  },
 getAllSales: () => db.prepare('SELECT * FROM sales ORDER BY created_at DESC LIMIT 100').all(),
 getAllRolls: () => db.prepare(`
     SELECT 

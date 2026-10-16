@@ -75,9 +75,11 @@ async function restockShop() {
     return Math.max(1, Math.round(basePriceCp * factor));
   }
 
-  const pool = typeof dbModule.getCatalogItemsByLevel === 'function'
+  // Items marked "adventure only" in the Master Catalog never reach the shelf.
+  const pool = (typeof dbModule.getCatalogItemsByLevel === 'function'
     ? dbModule.getCatalogItemsByLevel(partyLevel)
-    : sqlite.prepare('SELECT * FROM catalog WHERE min_level <= ?').all(partyLevel);
+    : sqlite.prepare('SELECT * FROM catalog WHERE min_level <= ?').all(partyLevel))
+    .filter(item => item.availability !== 'adventure');
 
   if (!pool || pool.length === 0) {
     console.error('❌ No items found in catalog for party level:', partyLevel);

@@ -223,7 +223,7 @@ router.post('/adventures/start', (req, res) => {
 // POST /admin/catalog/add — add a catalog item (price in gp/sp/cp)
 router.post('/catalog/add', (req, res) => {
   try {
-    const { name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock } = req.body;
+    const { name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock, rarity, availability } = req.body;
 
     const valPp = parseInt(pp, 10) || 0;
     const valGp = parseInt(gp, 10) || 0;
@@ -249,7 +249,9 @@ router.post('/catalog/add', (req, res) => {
       description,
       min_level,
       min_stock,
-      max_stock
+      max_stock,
+      rarity,
+      availability
     });
 
     res.redirect('/admin?tab=catalog&status=catalog_added');
@@ -261,7 +263,7 @@ router.post('/catalog/add', (req, res) => {
 // POST /admin/catalog/update — update a catalog item (price in gp/sp/cp)
 router.post('/catalog/update', (req, res) => {
   try {
-    const { id, name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock } = req.body;
+    const { id, name, category, tier, pp, gp, ep, sp, cp, description, min_level, min_stock, max_stock, rarity, availability } = req.body;
 
     const valPp = parseInt(pp, 10) || 0;
     const valGp = parseInt(gp, 10) || 0;
@@ -288,12 +290,25 @@ router.post('/catalog/update', (req, res) => {
       description,
       min_level,
       min_stock,
-      max_stock
+      max_stock,
+      rarity,
+      availability
     });
 
     res.redirect('/admin?tab=catalog&status=catalog_updated');
   } catch (err) {
     res.redirect(`/admin?tab=catalog&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// POST /admin/catalog/review — apply the suggested rarity, price and
+// availability to the ticked catalog rows (ids).
+router.post('/catalog/review', (req, res) => {
+  try {
+    const changed = db.applyCatalogRarityReview(req.body.ids === undefined ? [] : [].concat(req.body.ids));
+    res.redirect(`/admin?tab=catalog&status=catalog_reviewed&changed=${changed}`);
+  } catch (err) {
+    res.redirect(`/admin?tab=catalog&review=1&err=${encodeURIComponent(err.message)}`);
   }
 });
 

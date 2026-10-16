@@ -28,6 +28,7 @@ module.exports = {
   ...require('./levelUp'),
   ...require('./classResources'),
   ...require('./wildShape'),
+  ...require('./shopCatalog'),
   ...require('./vitals'),
   ...require('./content')
 };

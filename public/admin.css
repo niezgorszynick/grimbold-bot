@@ -729,3 +729,5 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .prof-edit-field textarea { width: 100%; box-sizing: border-box; }
 /* Circle of the Land: the land picker in the Druid's spells. */
 .spell-land { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0; }
+.catalog-review-table { width: 100%; }
+.catalog-review-table a { color: #8ea1ff; }

@@ -412,6 +412,18 @@ const MIGRATIONS = [
         if (!existing.has(name)) db.exec(`ALTER TABLE npcs ADD COLUMN ${name} ${type}`);
       }
     }
+  },
+  {
+    version: 10,
+    name: 'Catalog rarity and shop availability',
+    up(db) {
+      // rarity: '' for mundane gear, else Common … Legendary (rules/shopCatalog.js).
+      // availability: 'shop' (may be rolled into the weekly stock) or 'adventure'
+      // (adventure rewards only). Only the missing columns, so it can run again.
+      const existing = new Set(db.prepare('PRAGMA table_info(catalog)').all().map(column => column.name));
+      if (!existing.has('rarity')) db.exec("ALTER TABLE catalog ADD COLUMN rarity TEXT NOT NULL DEFAULT ''");
+      if (!existing.has('availability')) db.exec("ALTER TABLE catalog ADD COLUMN availability TEXT NOT NULL DEFAULT 'shop'");
+    }
   }
 ];
 
