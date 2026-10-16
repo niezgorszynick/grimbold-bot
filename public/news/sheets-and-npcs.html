@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Character Sheet &amp; NPC Update</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 15 October 2026</span>
+    <h1>Character Sheet &amp; NPC Update</h1>
+    <p class="lede">Druids can shapeshift on the sheet, your gear can carry its own names and stats, Heroic Inspiration has a home, a few gaps in older characters are filled, and Notable NPCs keep the DMs' secrets.</p>
+  </header>
+
+  <section>
+    <h2>Character sheets</h2>
+
+    <h3>Magic items and equipment</h3>
+    <ul>
+      <li><strong>Add any magic item</strong> to your own character from the Magic Items section. Items you add are marked as added by you, so the DM can see where they came from.</li>
+      <li><strong>Magic Items</strong> now sit right below Equipment &amp; Items instead of after the spell list.</li>
+      <li><strong>Nicknames:</strong> rename an item on your sheet ("Ambassador" for your longsword). It keeps working as what it really is.</li>
+      <li><strong>Custom weapons:</strong> a custom item can have weapon stats: Action or Bonus Action, to-hit bonus, damage dice, damage bonus and type. It rolls like any other weapon, and the editor shows the math live (for example <em>+2 STR + 3 proficiency + 2 weapon</em>).</li>
+    </ul>
+
+    <h3>Heroic Inspiration</h3>
+    <p>A sunrise tile next to Proficiency Bonus shows whether you have Heroic Inspiration; tap the ⓘ for the 2024 rule. Click it to spend it. The DM awards it from the adventure table, and Humans get it back after every Long Rest.</p>
+
+    <h3>Filling the gaps in older characters</h3>
+    <ul>
+      <li>A <strong>Proficiencies &amp; Languages</strong> card lists your armor, weapons, tools and languages.</li>
+      <li>Characters made before lineages were tracked are asked to pick one (for example which kind of Elf), and its spells follow.</li>
+      <li><strong>Circle of the Land</strong> druids choose their land in the spell section and can pick a new one after each Long Rest.</li>
+      <li>In the character creator you can swap your background's Origin feat for another Origin feat, if your table allows it.</li>
+    </ul>
+
+    <h3>Wild Shape (Druids, level 2+)</h3>
+    <ul>
+      <li>A <strong>Wild Shape</strong> card under Hit Points. Learn beast forms from the list, within your limits:</li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Druid level</th><th>Forms known</th><th>Max CR</th><th>Flying forms</th></tr></thead>
+        <tbody>
+          <tr><td>2</td><td>4</td><td>1/4</td><td>No</td></tr>
+          <tr><td>4</td><td>6</td><td>1/2</td><td>No</td></tr>
+          <tr><td>8</td><td>8</td><td>1</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Transform</strong> spends a Wild Shape use and gives temporary HP equal to your druid level. STR, DEX, CON, AC, speed, senses and attacks become the beast's; your HP, INT, WIS, CHA and proficiencies stay yours (saves and skills use whichever is better).</li>
+      <li>Every number in the form's stat block rolls, attacks included. The form ends when you revert, drop to 0 HP or take a Long Rest.</li>
+      <li><strong>Circle of the Moon:</strong> CR up to your druid level ÷ 3 (CR 1 at level 3), AC at least 13 + WIS, and three times the temporary HP.</li>
+    </ul>
+
+    <h3>Starry Form (Circle of the Stars, level 3+)</h3>
+    <ul>
+      <li>Spend a Wild Shape use to take your starry form for 10 minutes: <strong>Archer</strong> (a rollable luminous arrow), <strong>Chalice</strong> (extra healing to roll when you heal with a spell slot) or <strong>Dragon</strong> (treat a d20 of 9 or lower as 10 on INT and WIS checks and Concentration saves).</li>
+      <li>At level 10 the dice become 2d8, the Dragon flies, and you can switch constellation each turn. At level 14 you resist bludgeoning, piercing and slashing damage.</li>
+      <li><strong>Cosmic Omen</strong> (level 6) is rolled after each Long Rest: Weal adds a d6, Woe subtracts one.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">Notable NPCs</span>
+      <h2>NPCs keep their secrets</h2>
+      <ul>
+        <li><strong>Players see</strong> an NPC's name, role, portrait and the adventures they appeared in. Lore, status and stats are for DMs only.</li>
+        <li>NPCs can have a <strong>portrait or token</strong>, shown on the NPC tab and the adventure table.</li>
+      </ul>
+
+      <h3>For DMs</h3>
+      <ul>
+        <li>Each NPC has an <strong>owning DM</strong> and <strong>plans</strong>: <em>🔒 Reserved (ask me first)</em> for NPCs with long-term plans, or <em>Free to use (one-off)</em>, with a short note.</li>
+        <li>Adding another DM's reserved NPC to your adventure table shows a warning first.</li>
+        <li>A short <strong>personality</strong> field sits next to the lore. The adventures an NPC appeared in are tags you add from a dropdown.</li>
+        <li>On the adventure table you can see a druid's Wild Shape or Starry Form, revert or end it, and award Heroic Inspiration.</li>
+        <li>DMs can correct a character's armor, weapon, tool and language proficiencies on the Proficiencies &amp; Languages card.</li>
+      </ul>
+      <div class="note ask">
+        <strong>DMs: please claim your NPCs.</strong> Older NPCs have no owner or plans yet. Open each of yours, pick yourself as owning DM, set Reserved or Free to use, and add a portrait if you have one.
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>
