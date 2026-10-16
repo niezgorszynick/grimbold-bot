@@ -565,6 +565,74 @@ function adventureRoute(handler) {
 
 router.get('/adventures/:id/table', adventureRoute(({ adventureId, user }) => db.getAdventureTable({ adventureId, user })));
 
+// ─── Auctions (db/auctions.js) ──────────────────────────────────────────────
+
+function auctionError(res, error) {
+  const status = /not found/i.test(error.message) ? 404 : /only|own/i.test(error.message) ? 403 : 400;
+  return res.status(status).json({ error: error.message });
+}
+
+// Running and finished auctions, and the viewer's characters to bid or sell with.
+router.get('/auctions', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const { news, open, closed } = db.listAuctions();
+  require('./auctionNews').postAuctionNews(news);
+  const characters = Number(user.id) > 0
+    ? db.prepare("SELECT id, name, gold_cp FROM characters WHERE player_id = ? AND status = 'alive' ORDER BY name").all(Number(user.id))
+    : [];
+  return res.json({ open, closed, characters, viewerId: Number(user.id), canManage: isAdmin(user), days: db.AUCTION_DAYS, commission: db.AUCTION_COMMISSION });
+});
+
+// The magic items one of your characters could sell.
+router.get('/auctions/sellable/:characterId', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const character = db.prepare('SELECT player_id FROM characters WHERE id = ?').get(Number(req.params.characterId));
+  if (!character) return res.status(404).json({ error: 'Character not found.' });
+  if (!isAdmin(user) && character.player_id !== Number(user.id)) return res.status(403).json({ error: 'Forbidden.' });
+  return res.json({ items: db.sellableItems(req.params.characterId) });
+});
+
+// { characterId, uid }: put one of a character's magic items up for auction.
+router.post('/auctions', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const body = req.body || {};
+    const auction = db.createAuction({ user, characterId: body.characterId, uid: String(body.uid || '') });
+    require('./auctionNews').postAuctionNews([{ kind: 'listed', auctionId: auction.id, seller: auction.seller, item: auction.item, rarity: auction.rarity, openingBidCp: auction.openingBidCp, endsAt: auction.endsAt }]);
+    return res.json({ auction });
+  } catch (error) {
+    return auctionError(res, error);
+  }
+});
+
+// { characterId, amountGp }
+router.post('/auctions/:id/bid', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const body = req.body || {};
+    const amountCp = Math.round(Number(String(body.amountGp || '').replace(',', '.')) * 100);
+    const auction = db.placeBid({ user, auctionId: req.params.id, characterId: body.characterId, amountCp });
+    require('./auctionNews').postAuctionNews([{ kind: 'bid', auctionId: auction.id, item: auction.item, bidder: auction.highestBidder, amountCp: auction.currentBidCp }]);
+    return res.json({ auction });
+  } catch (error) {
+    return auctionError(res, error);
+  }
+});
+
+router.post('/auctions/:id/cancel', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ auction: db.cancelAuction({ user, auctionId: req.params.id }) });
+  } catch (error) {
+    return auctionError(res, error);
+  }
+});
+
 // NPC portraits as uploaded (everyone logged in).
 router.get('/npcs/:id/files/:kind', (req, res) => {
   const user = getSessionApiUser(req);

@@ -475,6 +475,45 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 13,
+    name: 'Auctions',
+    up(db) {
+      db.exec(`
+        -- Magic items players put up for auction (see db/auctions.js). item_data:
+        -- the sheet entry, given to the winner. status: open | sold | unsold | withdrawn.
+        CREATE TABLE IF NOT EXISTS auctions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          seller_character_id INTEGER NOT NULL,
+          seller_player_id INTEGER NOT NULL,
+          item_name TEXT NOT NULL,
+          rarity TEXT NOT NULL DEFAULT '',
+          item_data TEXT NOT NULL,
+          value_cp INTEGER NOT NULL,
+          opening_bid_cp INTEGER NOT NULL,
+          current_bid_cp INTEGER NOT NULL DEFAULT 0,
+          current_bidder_character_id INTEGER,
+          current_bidder_npc TEXT,
+          npc_cap_cp INTEGER NOT NULL DEFAULT 0,
+          npc_days INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TEXT NOT NULL,
+          ends_at TEXT NOT NULL,
+          closed_at TEXT,
+          result TEXT
+        );
+        CREATE INDEX IF NOT EXISTS auctions_status ON auctions (status, ends_at);
+        CREATE TABLE IF NOT EXISTS auction_bids (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+          character_id INTEGER,
+          npc_name TEXT,
+          amount_cp INTEGER NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+    }
   }
 ];
 

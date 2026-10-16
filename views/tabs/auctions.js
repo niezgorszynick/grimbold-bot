@@ -1,15 +1,14 @@
-// views/tabs/auctions.js — "auctions" tab of the admin panel.
+// views/tabs/auctions.js — "Auctions" tab: magic items players sell to each
+// other (and to NPC adventurers), drawn by public/auctions.js from /api/auctions.
 
 'use strict';
 
-module.exports = function renderAuctionsTab(ctx) {
-  let contentHtml = '';
-  contentHtml = `
+module.exports = function renderAuctionsTab() {
+  return `
     <section class="card">
-      <h3>Auctions</h3>
-      <p>Players will be able to submit magic items for auction, then bid against and outbid one another. If an item receives no bids, it will be sold for at least 50% of its vendor value.</p>
-      <span class="analytics-badge">Coming soon · Next on the roadmap</span>
+      <h3>Grimbold's Auction</h3>
+      <p class="muted small">Put a magic item from one of your characters up for auction for 7 days. The opening bid is half its value. Bids come out of your character's purse right away and come back if someone outbids you. Adventurers from out of town sometimes bid too. The winner gets the item on their sheet; the seller gets the winning bid less Grimbold's 10%. If nobody bids, Grimbold buys the item for the opening bid. Also on Discord: <code>/sell</code> and <code>/bid</code>.</p>
     </section>
-  `;
-  return contentHtml;
+    <div id="auctions" aria-live="polite"><p class="muted">Loading auctions…</p></div>
+    <script src="/admin/assets/auctions.js" defer></script>`;
 };

@@ -760,3 +760,11 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .artisan-good-form input, .artisan-form input, .artisan-form textarea { width: 100%; box-sizing: border-box; min-width: 0; }
 .event-form [data-for][hidden] { display: none !important; }
 .event-form input[name=title] { max-width: none; width: 100%; box-sizing: border-box; }
+/* Auctions tab */
+.auction-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.auction-card { margin: 0; display: grid; gap: 8px; align-content: start; }
+.auction-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.auction-head h4 { margin: 0; }
+.auction-amount { width: 110px; }
+.auction-bids summary { cursor: pointer; color: #d4af37; font-size: 13px; }
+.auction-results { display: grid; gap: 4px; padding-left: 18px; }
