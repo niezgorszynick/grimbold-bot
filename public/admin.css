@@ -768,3 +768,11 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .auction-amount { width: 110px; }
 .auction-bids summary { cursor: pointer; color: #d4af37; font-size: 13px; }
 .auction-results { display: grid; gap: 4px; padding-left: 18px; }
+/* Changelog tab */
+.changelog-list { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 8px; }
+.changelog-list li { padding: 8px 10px; border-radius: 6px; border: 1px solid #3f4147; display: grid; gap: 2px; }
+.changelog-list li.is-current { border-color: #5865f2; background: rgba(88, 101, 242, 0.12); }
+.changelog-list a { color: #dbdee1; text-decoration: none; }
+.changelog-list p { margin: 0; }
+.changelog-frame { width: 100%; height: 80vh; border: 0; border-radius: 8px; background: #fff; display: block; }
+.changelog p a { color: #8ea1ff; }

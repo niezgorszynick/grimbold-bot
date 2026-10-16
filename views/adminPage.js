@@ -18,14 +18,15 @@ const TAB_RENDERERS = {
   'character-sheet': require('./tabs/characterSheet'),
   'rolls': require('./tabs/rolls'),
   'players': require('./tabs/players'),
-  'npcs': require('./tabs/npcs')
+  'npcs': require('./tabs/npcs'),
+  'changelog': require('./tabs/changelog')
 };
 
 module.exports = function renderAdminPage(req) {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
-  const playerAllowedTabs = ['items', 'players', 'adventures', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet'];
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet', 'changelog'];
   const tabLabels = {
     items: 'Shop Items',
     catalog: 'Master Catalog',
@@ -37,7 +38,8 @@ module.exports = function renderAdminPage(req) {
     npcs: 'Notable NPCs',
     analytics: 'Analytics',
     auctions: 'Auctions',
-    'character-sheet': 'Character Sheet'
+    'character-sheet': 'Character Sheet',
+    changelog: 'Changelog'
   };
   const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
   let currentTab = req.query.tab || 'items';
