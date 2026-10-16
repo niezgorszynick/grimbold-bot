@@ -96,6 +96,13 @@
         el('summary', { text: auction.bids.length + ' bid' + (auction.bids.length === 1 ? '' : 's') }),
         el('ul', {}, auction.bids.map(bid => el('li', { className: 'small', text: gp(bid.amountCp) + ' — ' + bid.by + ' (' + new Date(bid.at).toLocaleString() + ')' })))
       ]) : null,
+      data.canManage ? el('div', { className: 'vitals-actions auction-dm' }, [
+        el('span', { className: 'muted small', text: 'DM test:' }),
+        el('button', { type: 'button', className: 'btn btn-small', text: '🎲 Adventurer bid', title: 'An NPC bids now (a held player bid is returned)',
+          onclick: () => act(() => api('/api/auctions/' + auction.id + '/test', { action: 'npcBid' }), 'An adventurer bid on ' + auction.item + '.') }),
+        el('button', { type: 'button', className: 'btn btn-small btn-secondary', text: '⏱ End now', title: 'Close the auction now: winner, payout or Grimbold buys it',
+          onclick: () => { if (window.confirm('End the auction for ' + auction.item + ' now? The item and gold change hands as at the real end.')) act(() => api('/api/auctions/' + auction.id + '/test', { action: 'endNow' }), 'The auction for ' + auction.item + ' has ended.'); } })
+      ]) : null,
       mineToWithdraw ? el('button', {
         type: 'button', className: 'btn btn-small btn-secondary', text: auction.currentBidCp ? 'Withdraw (DM: the bid is returned)' : 'Withdraw',
         onclick: () => { if (window.confirm('Withdraw ' + auction.item + ' from the auction?')) act(() => api('/api/auctions/' + auction.id + '/cancel', {}), auction.item + ' was withdrawn.'); }

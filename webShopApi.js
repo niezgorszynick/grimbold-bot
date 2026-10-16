@@ -623,6 +623,22 @@ router.post('/auctions/:id/bid', (req, res) => {
   }
 });
 
+// DM test tools: an adventurer bids now, or the auction ends now.
+router.post('/auctions/:id/test', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM can do that.' });
+  try {
+    const action = (req.body || {}).action;
+    if (!['npcBid', 'endNow'].includes(action)) return res.status(400).json({ error: 'Unknown test action.' });
+    const news = action === 'npcBid' ? db.forceNpcBid({ auctionId: req.params.id }) : db.endAuctionNow({ auctionId: req.params.id });
+    require('./auctionNews').postAuctionNews(news);
+    return res.json({ news, auction: db.getAuction(req.params.id) });
+  } catch (error) {
+    return auctionError(res, error);
+  }
+});
+
 router.post('/auctions/:id/cancel', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });

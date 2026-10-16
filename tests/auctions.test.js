@@ -88,3 +88,22 @@ test('a seller can withdraw an item nobody has bid on', () => {
   db.cancelAuction({ user: { id: 0, role: 'admin' }, auctionId: again.id });
   assert.equal(gold(otherChar), 5000, 'a DM withdrawal returns the held bid');
 });
+
+test('DM test tools: an adventurer bids now, and an auction ends now', () => {
+  const seller = createPlayer();
+  const bidder = createPlayer();
+  const sellerChar = addCharacter(seller, 'Seller Four', 0, [{ uid: 'w1', name: 'Wand of Magic Missiles', quantity: 1 }]);
+  const bidderChar = addCharacter(bidder, 'Bidder Four', 1000);
+  const auction = db.createAuction({ user: user(seller), characterId: sellerChar, uid: 'w1', random: noNpc });
+  db.placeBid({ user: user(bidder), auctionId: auction.id, characterId: bidderChar, amountCp: 20000 });
+  assert.equal(gold(bidderChar), 800);
+
+  const news = db.forceNpcBid({ auctionId: auction.id, random: () => 0 });
+  assert.deepEqual(news.map(item => [item.kind, item.npc, item.amountCp]), [['npcBid', 'a hooded collector', 21000]], 'even with no NPC interest');
+  assert.equal(gold(bidderChar), 1000, "the player's bid comes back");
+
+  const closed = db.endAuctionNow({ auctionId: auction.id });
+  assert.deepEqual(closed.map(item => [item.kind, item.winner, item.sellerGetsCp]), [['closed', 'a hooded collector', 18900]]);
+  assert.equal(db.getAuction(auction.id).status, 'sold');
+  assert.throws(() => db.forceNpcBid({ auctionId: auction.id }), /not running/);
+});

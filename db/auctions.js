@@ -223,6 +223,34 @@ function settle({ now = Date.now(), random = Math.random, onlyId = null } = {}) 
   return news;
 }
 
+// DM test tools. An adventurer (NPC) bids now, whatever their interest; a held
+// player bid is returned as usual. Returns news for Discord.
+function forceNpcBid({ auctionId, now = Date.now(), random = Math.random }) {
+  const news = [];
+  db.transaction(() => {
+    const auction = db.prepare('SELECT * FROM auctions WHERE id = ?').get(Number(auctionId));
+    if (!auction || auction.status !== 'open') throw new Error('That auction is not running.');
+    const base = auction.current_bid_cp || auction.opening_bid_cp;
+    const bid = Math.max(minNextBid(auction), roundGp(base * (1.05 + random() * 0.15)));
+    const npc = NPC_BIDDERS[Math.floor(random() * NPC_BIDDERS.length)];
+    refundTopBidder(auction, `Outbid on ${auction.item_name} (auction #${auction.id}): bid returned`);
+    db.prepare('INSERT INTO auction_bids (auction_id, character_id, npc_name, amount_cp, created_at) VALUES (?, NULL, ?, ?, ?)').run(auction.id, npc, bid, iso(now));
+    db.prepare('UPDATE auctions SET current_bid_cp = ?, current_bidder_character_id = NULL, current_bidder_npc = ? WHERE id = ?').run(bid, npc, auction.id);
+    news.push({ kind: 'npcBid', auctionId: auction.id, item: auction.item_name, npc, amountCp: bid });
+  })();
+  return news;
+}
+
+// Ends an auction now (DM test): the winner, payout or Grimbold's purchase as at the real end.
+function endAuctionNow({ auctionId, now = Date.now() }) {
+  const auction = db.prepare('SELECT * FROM auctions WHERE id = ?').get(Number(auctionId));
+  if (!auction || auction.status !== 'open') throw new Error('That auction is not running.');
+  db.prepare('UPDATE auctions SET ends_at = ? WHERE id = ?').run(iso(now), auction.id);
+  // No more NPC days: only the ending runs.
+  db.prepare('UPDATE auctions SET npc_days = ? WHERE id = ?').run(DURATION_DAYS, auction.id);
+  return settle({ now, onlyId: auction.id });
+}
+
 function auctionView(row) {
   if (!row) return null;
   const sellerName = (db.prepare('SELECT c.name, p.discord_tag FROM characters c JOIN players p ON p.id = c.player_id WHERE c.id = ?').get(row.seller_character_id)) || {};
@@ -279,6 +307,8 @@ module.exports = {
   placeBid,
   cancelAuction,
   settleAuctions: settle,
+  forceNpcBid,
+  endAuctionNow,
   getAuction,
   listAuctions
 };
