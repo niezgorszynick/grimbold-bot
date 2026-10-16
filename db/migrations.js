@@ -514,6 +514,16 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 14,
+    name: 'Travelling artisans',
+    up(db) {
+      // 'resident' (supplies every restock) or 'travelling' (only comes with a
+      // visiting-merchant event). See db/artisans.js.
+      const existing = new Set(db.prepare('PRAGMA table_info(artisans)').all().map(column => column.name));
+      if (!existing.has('mode')) db.exec("ALTER TABLE artisans ADD COLUMN mode TEXT NOT NULL DEFAULT 'resident'");
+    }
   }
 ];
 

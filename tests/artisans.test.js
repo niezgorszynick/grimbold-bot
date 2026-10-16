@@ -68,3 +68,37 @@ test('the restock announcement data includes the event', () => {
   assert.equal(summary.event.title, 'Visitor');
   assert.deepEqual(summary.merchantGoods.length >= 1, true);
 });
+
+test('travelling artisans visit through merchant events; shortages can hit staples or a category', () => {
+  const thrain = db.saveArtisan({ name: 'Thrain the Armorer', mode: 'travelling', active: true });
+  db.saveArtisanGood({ artisan_id: thrain, name: 'Dwarven Chain Shirt', category: 'Armor', price_gp: 60, per_week: 2, cap: 2 });
+  assert.ok(!db.activeArtisanGoods().some(good => good.name === 'Dwarven Chain Shirt'), 'no weekly supply from a travelling artisan');
+  assert.deepEqual(db.travellingGoods(thrain).map(good => [good.name, good.price_cp, good.stock]), [['Dwarven Chain Shirt', 6000, 2]]);
+
+  assert.throws(() => db.saveShopEvent({ kind: 'merchant', title: 'x', announcement: 'y', artisan_id: 999999 }), /travelling artisans/);
+  const visit = db.saveShopEvent({ kind: 'merchant', title: 'Thrain visits', announcement: 'Steel!', artisan_id: thrain, min_goods: 1, max_goods: 1, active: true });
+  assert.deepEqual(db.getShopEvent(visit).params, { artisanId: thrain, min: 1, max: 1 });
+
+  // The restock sells the artisan's goods (their per-visit amount).
+  const goods = db.travellingGoods(thrain);
+  let result = plan({ event: { kind: 'merchant', params: { artisanId: thrain, min: 1, max: 1, goods } } });
+  assert.deepEqual(result.insert.filter(row => row.source === 'event').map(row => [row.name, row.stock]), [['Dwarven Chain Shirt', 2]]);
+
+  // Shortages: staples, or a whole catalog category.
+  const withStaple = [...catalog, { id: 9, name: 'Torch', category: 'Gear', tier: 'staple', base_price_cp: 1, description: '', min_level: 1, min_stock: 2, max_stock: 2, rarity: '', availability: 'shop' }];
+  result = db.planRestock({ shelf: [], catalog: withStaple, spells, config, level: 3, random: () => 0, event: { kind: 'shortage', params: { target: 'staple' } } });
+  assert.ok(!result.insert.some(row => row.source === 'staple'));
+  result = plan({ event: { kind: 'shortage', params: { target: 'category:Gear' } } });
+  assert.ok(!result.insert.some(row => row.name === 'Rope'), 'no Gear this week');
+  assert.ok(result.insert.some(row => row.name === 'Potion of Climbing'), 'other categories as usual');
+  db.saveShopEvent({ kind: 'shortage', title: 'No blades', announcement: 'The smith is ill.', target: 'category:Weapons', active: false });
+  assert.throws(() => db.saveShopEvent({ kind: 'shortage', title: 'x', announcement: 'y', target: 'everything' }), /runs short/);
+
+  const options = db.shortageOptions([
+    { name: 'Longsword', category: 'Weapons', tier: 'common', availability: 'shop' },
+    { name: 'Dagger', category: 'Weapons', tier: 'common', availability: 'shop' },
+    { name: 'Inn Stay', category: 'Services', tier: 'service', availability: 'shop' }
+  ]);
+  assert.deepEqual(options.map(option => option.value), ['scroll', 'magic', 'staple', 'category:Weapons']);
+  assert.match(options[3].description, /Weapons.*2 items, e\.g\. Longsword/);
+});

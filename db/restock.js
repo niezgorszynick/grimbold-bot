@@ -28,7 +28,7 @@
 
 const { db } = require('./connection');
 const rules = require('../rules');
-const { activeArtisanGoods, rollWeeklyEvent } = require('./artisans');
+const { activeArtisanGoods, travellingGoods, rollWeeklyEvent } = require('./artisans');
 
 const MAGIC_RARITIES = ['Common', 'Uncommon', 'Rare'];
 // Rare items only once the party reaches tier 2 (level 5).
@@ -169,13 +169,13 @@ function planRestock({ shelf, catalog, spells, config, level, artisanGoods = [],
   if (event && event.kind === 'merchant') {
     const goods = shuffle((params.goods || []).filter(good => !taken.has(good.name.toLowerCase())), random);
     for (const good of goods.slice(0, between(params.min || 1, params.max || 3))) {
-      plan.insert.push(take({ name: good.name, category: good.category, price: good.price_cp, stock: 1, description: good.description, source: 'event', rarity: '' }));
+      plan.insert.push(take({ name: good.name, category: good.category, price: good.price_cp, stock: good.stock || 1, description: good.description, source: 'event', rarity: '' }));
     }
   }
 
   // Staples: rolled again each week.
   shelf.filter(item => item.source === 'staple').forEach(item => plan.remove.push(item.id));
-  for (const row of allowed.filter(item => item.tier === 'staple' && !taken.has(item.name.toLowerCase()))) {
+  for (const row of allowed.filter(item => item.tier === 'staple' && shortage !== 'staple' && !taken.has(item.name.toLowerCase()))) {
     plan.insert.push(take({ name: row.name, category: row.category, price: row.base_price_cp, stock: between(row.min_stock, row.max_stock), description: row.description, source: 'staple', rarity: row.rarity || '' }));
   }
 
@@ -232,6 +232,13 @@ function planRestock({ shelf, catalog, spells, config, level, artisanGoods = [],
     }));
   }
 
+  // A category shortage: nothing new of that category (a visiting merchant's
+  // goods excepted).
+  if (shortage && shortage.startsWith('category:')) {
+    const category = shortage.slice('category:'.length).toLowerCase();
+    plan.insert = plan.insert.filter(row => row.source === 'event' || String(row.category || '').toLowerCase() !== category);
+  }
+
   // A sale: this week's price off one part of the shelf.
   if (event && event.kind === 'sale') {
     const cut = price => roundPrice(price * (100 - params.percent) / 100);
@@ -243,7 +250,11 @@ function planRestock({ shelf, catalog, spells, config, level, artisanGoods = [],
 // Restocks the shelf now. Returns a summary for the announcement.
 function runRestock({ random = Math.random } = {}) {
   const config = readConfig();
-  const event = rollWeeklyEvent({ chance: config.event_chance, random });
+  let event = rollWeeklyEvent({ chance: config.event_chance, random });
+  // A travelling artisan visits with their own goods.
+  if (event && event.kind === 'merchant' && event.params.artisanId) {
+    event = { ...event, params: { ...event.params, goods: travellingGoods(event.params.artisanId) } };
+  }
   const level = partyLevel(config);
   const shelf = db.prepare('SELECT * FROM items').all();
   const catalog = db.prepare('SELECT * FROM catalog').all();

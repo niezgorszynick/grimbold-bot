@@ -1,14 +1,17 @@
 // db/artisans.js — Grimbold's suppliers and the week's news, both used by the
 // weekly restock (db/restock.js):
 //
-//   Artisans (e.g. Benet the leatherworker): resident craftspeople with a few
-//   goods each. Every restock adds `per_week` of each good, up to `cap` on the
-//   shelf; buying frees room for the next delivery.
+//   Artisans (e.g. Benet the leatherworker) with a few goods each. A resident
+//   artisan supplies every restock: `per_week` of each good, up to `cap` on the
+//   shelf; buying frees room for the next delivery. A travelling artisan only
+//   comes through a visiting-merchant event and sells their goods for a week.
 //
 //   Weekly events: a DM-written list. Each restock there's a chance (Restock
 //   Engine setting) that one of them happens, picked by weight:
-//     merchant — a visitor sells 1–3 of their goods for one week
-//     shortage — no new scrolls, or no new magic items, this week
+//     merchant — a visitor (typed goods, or a travelling artisan) sells 1–3
+//                of their goods for one week
+//     shortage — no new scrolls, magic items, staples, or one catalog
+//                category (e.g. Weapons) this week
 //     sale     — a percentage off part of the shelf this week
 //     news     — only a line in the restock announcement
 
@@ -17,7 +20,9 @@
 const { db } = require('./connection');
 
 const EVENT_KINDS = ['merchant', 'shortage', 'sale', 'news'];
-const SHORTAGE_TARGETS = ['scroll', 'magic'];
+const ARTISAN_MODES = ['resident', 'travelling'];
+// Plus 'category:<Master Catalog category>'.
+const SHORTAGE_TARGETS = ['scroll', 'magic', 'staple'];
 // Sales cover parts of the shelf rebuilt every week (magic items keep their price).
 const SALE_TARGETS = ['mundane', 'staple', 'scroll', 'artisan'];
 
@@ -46,17 +51,18 @@ function priceCp(value, label = 'Price') {
 function listArtisans() {
   const artisans = db.prepare('SELECT * FROM artisans ORDER BY name COLLATE NOCASE').all();
   const goods = db.prepare('SELECT * FROM artisan_goods ORDER BY name COLLATE NOCASE').all();
-  return artisans.map(artisan => ({ ...artisan, active: Boolean(artisan.active), goods: goods.filter(good => good.artisan_id === artisan.id) }));
+  return artisans.map(artisan => ({ ...artisan, mode: artisan.mode || 'resident', active: Boolean(artisan.active), goods: goods.filter(good => good.artisan_id === artisan.id) }));
 }
 
 function saveArtisan(fields) {
-  const values = [text(fields.name, 80, 'Name', true), text(fields.description, 1000, 'Description'), fields.active === undefined || fields.active === '1' || fields.active === true ? 1 : 0];
+  const mode = ARTISAN_MODES.includes(fields.mode) ? fields.mode : 'resident';
+  const values = [text(fields.name, 80, 'Name', true), text(fields.description, 1000, 'Description'), fields.active === undefined || fields.active === '1' || fields.active === true ? 1 : 0, mode];
   const id = Number(fields.id) || null;
   if (id) {
-    if (!db.prepare('UPDATE artisans SET name = ?, description = ?, active = ? WHERE id = ?').run(...values, id).changes) throw new Error('Artisan not found.');
+    if (!db.prepare('UPDATE artisans SET name = ?, description = ?, active = ?, mode = ? WHERE id = ?').run(...values, id).changes) throw new Error('Artisan not found.');
     return id;
   }
-  return Number(db.prepare('INSERT INTO artisans (name, description, active) VALUES (?, ?, ?)').run(...values).lastInsertRowid);
+  return Number(db.prepare('INSERT INTO artisans (name, description, active, mode) VALUES (?, ?, ?, ?)').run(...values).lastInsertRowid);
 }
 
 function deleteArtisan(id) {
@@ -85,11 +91,47 @@ function deleteArtisanGood(id) {
   db.prepare('DELETE FROM artisan_goods WHERE id = ?').run(Number(id));
 }
 
-// Goods of active artisans, for the restock: [{ name, category, price_cp, description, per_week, cap, artisan }].
+// Goods of active resident artisans, for the restock: [{ name, category, price_cp, description, per_week, cap, artisan }].
 function activeArtisanGoods() {
   return db.prepare(`
-    SELECT g.*, a.name AS artisan FROM artisan_goods g JOIN artisans a ON a.id = g.artisan_id WHERE a.active = 1 ORDER BY g.id
+    SELECT g.*, a.name AS artisan FROM artisan_goods g JOIN artisans a ON a.id = g.artisan_id
+    WHERE a.active = 1 AND a.mode = 'resident' ORDER BY g.id
   `).all();
+}
+
+// A travelling artisan's goods as a visiting merchant sells them (their weekly
+// amount each), or [] when they're gone or away.
+function travellingGoods(artisanId) {
+  return db.prepare(`
+    SELECT g.* FROM artisan_goods g JOIN artisans a ON a.id = g.artisan_id WHERE a.id = ? AND a.active = 1 ORDER BY g.id
+  `).all(Number(artisanId)).map(good => ({ name: good.name, category: good.category, price_cp: good.price_cp, description: good.description, stock: good.per_week }));
+}
+
+// What can run short: [{ value, label, description }]. catalog: Master Catalog
+// rows; each category gets an example item.
+function shortageOptions(catalog = db.prepare("SELECT name, category, tier, availability, rarity FROM catalog").all()) {
+  const options = [
+    { value: 'scroll', label: 'Scroll case', description: 'No new spell scrolls this week (e.g. Spell Scroll (Level 1: Shield)).' },
+    { value: 'magic', label: 'Magic vault', description: "No new magic items arrive; last week's stay on the shelf." },
+    { value: 'staple', label: 'Staples', description: 'No Potions of Healing, rations, rope or torches this week.' }
+  ];
+  const byCategory = new Map();
+  for (const row of catalog) {
+    if (row.tier === 'service' || row.availability === 'adventure' || /scroll/i.test(row.category)) continue;
+    if (!byCategory.has(row.category)) byCategory.set(row.category, []);
+    byCategory.get(row.category).push(row);
+  }
+  [...byCategory.keys()].sort((a, b) => a.localeCompare(b)).forEach(category => {
+    const rows = byCategory.get(category);
+    // The example: an everyday item when the category has one.
+    const names = (rows.some(row => !row.rarity) ? rows.filter(row => !row.rarity) : rows).map(row => row.name).sort((a, b) => a.localeCompare(b));
+    options.push({
+      value: `category:${category}`,
+      label: category,
+      description: `Nothing from ${category} on the shelf this week (${rows.length} item${rows.length === 1 ? '' : 's'}, e.g. ${names[Math.floor(names.length / 2)]}).`
+    });
+  });
+  return options;
 }
 
 // ─── Weekly events ──────────────────────────────────────────────────────────
@@ -137,10 +179,15 @@ function saveShopEvent(fields) {
   if (!kind) throw new Error('Choose what kind of event this is.');
   let params = {};
   if (kind === 'merchant') {
-    params = { goods: parseMerchantGoods(fields.goods), min: whole(fields.min_goods || 1, 1, 10, 'Fewest items'), max: whole(fields.max_goods || 3, 1, 10, 'Most items') };
+    const artisanId = Number(fields.artisan_id) || null;
+    if (artisanId && !db.prepare("SELECT 1 FROM artisans WHERE id = ? AND mode = 'travelling'").get(artisanId)) throw new Error('Choose one of your travelling artisans.');
+    params = artisanId ? { artisanId } : { goods: parseMerchantGoods(fields.goods) };
+    params.min = whole(fields.min_goods || 1, 1, 10, 'Fewest items');
+    params.max = whole(fields.max_goods || 3, 1, 10, 'Most items');
     if (params.max < params.min) throw new Error('"Most items" must be at least "Fewest items".');
   } else if (kind === 'shortage') {
-    if (!SHORTAGE_TARGETS.includes(fields.target)) throw new Error('Choose what runs short.');
+    const target = String(fields.target || '');
+    if (!SHORTAGE_TARGETS.includes(target) && !/^category:.{1,60}$/.test(target)) throw new Error('Choose what runs short.');
     params = { target: fields.target };
   } else if (kind === 'sale') {
     if (!SALE_TARGETS.includes(fields.target)) throw new Error('Choose what goes on sale.');
@@ -177,6 +224,9 @@ function rollWeeklyEvent({ chance, random = Math.random }) {
 module.exports = {
   SHOP_EVENT_KINDS: EVENT_KINDS,
   SHOP_SHORTAGE_TARGETS: SHORTAGE_TARGETS,
+  ARTISAN_MODES,
+  travellingGoods,
+  shortageOptions,
   SHOP_SALE_TARGETS: SALE_TARGETS,
   listArtisans,
   saveArtisan,
