@@ -73,47 +73,11 @@ router.get('/assets/:file', (req, res) => {
 
 // ─── POST ENDPOINTS: OPERATIONS & DISCORD ───────────────────────────────────
 
+// Restock Engine settings: party level (or worked out from the characters),
+// magic items per rarity, scroll case size and price fluctuation.
 router.post('/restock-settings', (req, res) => {
   try {
-    const {
-      party_level,
-      commons_count,
-      cantrips_count,
-      lvl1_count,
-      rares_count,
-      magics_count,
-      fluctuation_min,
-      fluctuation_max
-    } = req.body;
-
-    const pLevel = parseInt(party_level, 10);
-    const cCount = parseInt(commons_count, 10);
-    const cantCount = parseInt(cantrips_count, 10);
-    const l1Count = parseInt(lvl1_count, 10);
-    const rCount = parseInt(rares_count, 10);
-    const mCount = parseInt(magics_count, 10);
-    const fMin = parseFloat(fluctuation_min);
-    const fMax = parseFloat(fluctuation_max);
-
-    if (pLevel < 1 || pLevel > 20) throw new Error('Party Level must be between 1 and 20.');
-    if (cCount < 0 || cantCount < 0 || l1Count < 0 || rCount < 0 || mCount < 0) {
-      throw new Error('Stock counts cannot be negative.');
-    }
-    if (isNaN(fMin) || isNaN(fMax) || fMin <= 0 || fMax < fMin) {
-      throw new Error('Invalid price fluctuation range (Min must be > 0 and Max >= Min).');
-    }
-
-    db.setRestockConfig({
-      party_level: pLevel,
-      commons_count: cCount,
-      cantrips_count: cantCount,
-      lvl1_count: l1Count,
-      rares_count: rCount,
-      magics_count: mCount,
-      fluctuation_min: fMin,
-      fluctuation_max: fMax
-    });
-
+    db.saveRestockConfig({ ...req.body, party_level_auto: req.body.party_level_auto === '1' });
     res.redirect('/admin?tab=restock&status=settings_updated');
   } catch (err) {
     res.redirect(`/admin?tab=restock&err=${encodeURIComponent(err.message)}`);

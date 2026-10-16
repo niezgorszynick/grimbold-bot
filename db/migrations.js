@@ -424,6 +424,22 @@ const MIGRATIONS = [
       if (!existing.has('rarity')) db.exec("ALTER TABLE catalog ADD COLUMN rarity TEXT NOT NULL DEFAULT ''");
       if (!existing.has('availability')) db.exec("ALTER TABLE catalog ADD COLUMN availability TEXT NOT NULL DEFAULT 'shop'");
     }
+  },
+  {
+    version: 11,
+    name: 'Shelf item sources and ages for the weekly restock',
+    up(db) {
+      // source: 'mundane' | 'staple' | 'magic' | 'scroll' | 'manual' (a DM's own)
+      // | 'legacy' (from before this; cleared by the next restock). weeks: how
+      // many restocks a magic item has stayed. See db/restock.js.
+      const existing = new Set(db.prepare('PRAGMA table_info(items)').all().map(column => column.name));
+      if (!existing.has('source')) {
+        db.exec("ALTER TABLE items ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
+        db.exec("UPDATE items SET source = 'legacy'");
+      }
+      if (!existing.has('rarity')) db.exec("ALTER TABLE items ADD COLUMN rarity TEXT NOT NULL DEFAULT ''");
+      if (!existing.has('weeks')) db.exec('ALTER TABLE items ADD COLUMN weeks INTEGER NOT NULL DEFAULT 0');
+    }
   }
 ];
 

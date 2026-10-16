@@ -1,137 +1,70 @@
-// views/tabs/restock.js — "restock" tab of the admin panel.
+// views/tabs/restock.js — "Restock Engine" tab: how the weekly restock fills
+// Grimbold's shelf (rules in db/restock.js), and a button to run it now.
 
 'use strict';
 
 const db = require('../../db');
+const { escapeHtml } = require('../helpers');
 
-module.exports = function renderRestockTab(ctx) {
-  const { rolls } = ctx;
-  let contentHtml = '';
-  const cfg = db.getRestockConfig();
+function numberField(name, label, value, hint, { min = 0, max = 20 } = {}) {
+  return `
+    <label class="restock-field">
+      <span>${label}</span>
+      <input type="number" name="${name}" min="${min}" max="${max}" value="${escapeHtml(value)}" required>
+      <small class="muted">${hint}</small>
+    </label>`;
+}
 
-  contentHtml = `
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+module.exports = function renderRestockTab() {
+  const cfg = db.readRestockConfig();
+  const level = db.restockPartyLevel(cfg);
+  const median = db.medianCharacterLevel();
+  const shelf = db.prepare('SELECT source, COUNT(*) AS count FROM items GROUP BY source').all();
+  const count = source => (shelf.find(row => row.source === source) || {}).count || 0;
+
+  return `
+    <div class="restock-layout">
       <div class="card">
-        <h3>Weekly Restock Algorithm Parameters</h3>
-        <p style="color: #949ba4; font-size: 13px; margin-top: -5px; margin-bottom: 20px;">
-          Adjust the generation rules used during the automated weekly restock or when manually triggered.
-        </p>
-
-        <form method="POST" action="/admin/restock-settings">
-          <div style="margin-bottom: 16px;">
-            <label>
-              Party Level (1–20):
-              <span class="tooltip">?
-                <span class="tooltip-text">
-                  <strong>Level Gate:</strong> Only items with <code>min_level &le; Party Level</code> are allowed into the draw. Higher-tier loot unlocks as this number grows.
-                </span>
-              </span>
-            </label><br>
-            <input type="number" name="party_level" min="1" max="20" value="${cfg.party_level}" required style="width: 120px; margin-top: 4px;">
+        <h3>Weekly Restock</h3>
+        <p class="muted small">Every restock fills the shelf in four parts:</p>
+        <ul class="restock-rules small">
+          <li><strong>Mundane counter</strong> — every mundane item in the Master Catalog (no rarity) up to the party level, always in stock at catalog price.</li>
+          <li><strong>Staples</strong> — catalog items with the <em>staple</em> tier (Potion of Healing, rations…): always there, stock rolled weekly.</li>
+          <li><strong>Magic vault</strong> — the counts below, drawn from Common / Uncommon items (and Rare from party level 5) that are set to <em>Shop</em>. Each item stays two weeks unless it sells out, so about half changes every week. Adventure-only items never appear.</li>
+          <li><strong>Scroll case</strong> — new spell scrolls each week from the whole spell list: two cantrip/level 1, two level 2–3, one level 4+, never above half the party level (rounded up).</li>
+        </ul>
+        <form method="POST" action="/admin/restock-settings" class="restock-form">
+          <h4>Party level</h4>
+          <label class="creator-check"><input type="checkbox" name="party_level_auto" value="1" ${cfg.party_level_auto ? 'checked' : ''}> Work it out from the characters (median level of living characters${median ? `: now <strong>${median}</strong>` : ''})</label>
+          ${numberField('party_level', 'Party level (when not worked out)', cfg.party_level, 'Gates items by their minimum level.', { min: 1, max: 20 })}
+          <h4>Magic vault</h4>
+          <div class="restock-grid">
+            ${numberField('magic_common_count', 'Common items', cfg.magic_common_count, 'On the shelf at once.')}
+            ${numberField('magic_uncommon_count', 'Uncommon items', cfg.magic_uncommon_count, 'On the shelf at once.')}
+            ${numberField('magic_rare_count', 'Rare items', cfg.magic_rare_count, 'From party level 5; only Rares a DM opened to the shop.', { max: 10 })}
           </div>
-
-          <div style="background: #232428; padding: 14px; border-radius: 6px; margin-bottom: 16px;">
-            <h4 style="margin: 0 0 10px 0; color: #d4af37;">Item Quotas Per Tier:</h4>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-              <div>
-                <label style="font-size: 13px;">
-                  Common Goods:
-                  <span class="tooltip">?
-                    <span class="tooltip-text">Quantity of standard non-scroll common adventuring gear and weapons rolled each week.</span>
-                  </span>
-                </label>
-                <input type="number" name="commons_count" min="0" value="${cfg.commons_count}" required style="width: 100%;">
-              </div>
-              <div>
-                <label style="font-size: 13px;">
-                  Cantrip Scrolls:
-                  <span class="tooltip">?
-                    <span class="tooltip-text">Guaranteed quantity of distinct 0-level spell scrolls rolled each week.</span>
-                  </span>
-                </label>
-                <input type="number" name="cantrips_count" min="0" value="${cfg.cantrips_count}" required style="width: 100%;">
-              </div>
-              <div>
-                <label style="font-size: 13px;">
-                  Level 1 Scrolls:
-                  <span class="tooltip">?
-                    <span class="tooltip-text">Guaranteed quantity of distinct 1st-level spell scrolls rolled each week.</span>
-                  </span>
-                </label>
-                <input type="number" name="lvl1_count" min="0" value="${cfg.lvl1_count}" required style="width: 100%;">
-              </div>
-              <div>
-                <label style="font-size: 13px;">
-                  Rare Items:
-                  <span class="tooltip">?
-                    <span class="tooltip-text">Quantity of rare tier goods (e.g. Alchemist Fire, Acid) drawn from the available level pool.</span>
-                  </span>
-                </label>
-                <input type="number" name="rares_count" min="0" value="${cfg.rares_count}" required style="width: 100%;">
-              </div>
-              <div>
-                <label style="font-size: 13px;">
-                  Magic Items:
-                  <span class="tooltip">?
-                    <span class="tooltip-text">Quantity of permanent magic items (e.g. +1 Weapons) drawn from the available level pool.</span>
-                  </span>
-                </label>
-                <input type="number" name="magics_count" min="0" value="${cfg.magics_count}" required style="width: 100%;">
-              </div>
-              <div>
-                <label style="font-size: 13px; color: #949ba4;">
-                  Staple Items:
-                  <span class="tooltip">?
-                    <span class="tooltip-text">Staple items are never rolled randomly — all active staple items eligible for the party level are ALWAYS stocked.</span>
-                  </span>
-                </label>
-                <input type="text" value="ALL (Always)" disabled style="width: 100%; opacity: 0.6;">
-              </div>
-            </div>
+          <h4>Scroll case</h4>
+          ${numberField('scroll_count', 'Scrolls per week', cfg.scroll_count, 'Beyond five, the extra scrolls can be of any level up to the cap.')}
+          <h4>Price fluctuation (magic items and scrolls)</h4>
+          <div class="restock-grid">
+            <label class="restock-field"><span>Min multiplier</span><input type="number" step="0.01" min="0.1" name="fluctuation_min" value="${cfg.fluctuation_min}" required><small class="muted">0.85 = up to 15% cheaper</small></label>
+            <label class="restock-field"><span>Max multiplier</span><input type="number" step="0.01" min="0.1" name="fluctuation_max" value="${cfg.fluctuation_max}" required><small class="muted">1.15 = up to 15% dearer</small></label>
           </div>
-
-          <div style="background: #232428; padding: 14px; border-radius: 6px; margin-bottom: 20px;">
-            <h4 style="margin: 0 0 10px 0; color: #d4af37;">Market Price Fluctuation Range:</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-              <div>
-                <label style="font-size: 13px;">
-                  Min Multiplier (e.g. 0.85 = -15%):
-                  <span class="tooltip">?
-                    <span class="tooltip-text">The cheapest possible random price roll for non-staple goods during restock.</span>
-                  </span>
-                </label>
-                <input type="number" step="0.01" min="0.1" name="fluctuation_min" value="${cfg.fluctuation_min}" required style="width: 100%;">
-              </div>
-              <div>
-                <label style="font-size: 13px;">
-                  Max Multiplier (e.g. 1.15 = +15%):
-                  <span class="tooltip">?
-                    <span class="tooltip-text">The highest possible random price roll for non-staple goods during restock.</span>
-                  </span>
-                </label>
-                <input type="number" step="0.01" min="0.1" name="fluctuation_max" value="${cfg.fluctuation_max}" required style="width: 100%;">
-              </div>
-            </div>
-          </div>
-
           <button type="submit" class="btn btn-green">Save Restock Settings</button>
         </form>
       </div>
 
       <div>
         <div class="card">
-          <h3>Manual Store Restock</h3>
-          <p style="font-size: 13px; color: #949ba4;">
-            Instantly applies current configuration, deletes current inventory, rolls fresh goods and sends Discord announcement.
-          </p>
-          <form method="POST" action="/admin/restock" onsubmit="return confirm('Wipe store and run restock now with current settings?');">
-            <button type="submit" class="btn btn-gold" style="width: 100%; font-weight: bold; padding: 12px;">
-              🔄 Run Restock & Announce Now
-            </button>
+          <h3>Restock now</h3>
+          <p class="muted small">Party level for the next restock: <strong>${level}</strong>${cfg.party_level_auto ? ' (worked out from the characters)' : ''}.</p>
+          <p class="muted small">On the shelf now: ${count('mundane')} mundane, ${count('staple')} staples, ${count('magic')} magic, ${count('scroll')} scrolls, ${count('manual')} added by hand${count('legacy') ? `, ${count('legacy')} from the old restock (cleared next time)` : ''}.</p>
+          <p class="muted small">Items a DM added by hand stay until they sell out or you delete them.</p>
+          <form method="POST" action="/admin/restock" onsubmit="return confirm('Run the weekly restock now and announce it on Discord?');">
+            <button type="submit" class="btn btn-gold restock-now">🔄 Run Restock &amp; Announce Now</button>
           </form>
         </div>
       </div>
     </div>
   `;
-  return contentHtml;
 };

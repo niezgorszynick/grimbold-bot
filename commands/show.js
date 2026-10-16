@@ -1,4 +1,6 @@
-// commands/show.js — displays active shop items grouped by category without descriptions
+// commands/show.js — displays active shop items grouped by category without
+// descriptions: this week's stock (magic, scrolls, staples) by default, or the
+// always-stocked mundane counter. Long lists go out as several messages.
 const { formatCp } = require('../currency');
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../db');
@@ -7,13 +9,18 @@ const { getUserRoll, getDiscount, applyModifier } = require('../rollTracker');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('show')
-    .setDescription("View Grimbold's current inventory and your personal prices"),
+    .setDescription("View Grimbold's current inventory and your personal prices")
+    .addStringOption(option => option
+      .setName('section')
+      .setDescription("This week's stock (default) or the everyday mundane counter")
+      .addChoices({ name: "This week's stock", value: 'weekly' }, { name: 'Mundane counter', value: 'mundane' })),
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      const items = db.getAllActiveItems();
+      const section = interaction.options.getString('section') || 'weekly';
+      const items = db.getAllActiveItems().filter(item => (section === 'mundane') === (item.source === 'mundane'));
 
       if (!items || items.length === 0) {
         return interaction.editReply({
@@ -38,10 +45,27 @@ module.exports = {
         headerDesc += `*You haven't rolled for a discount this week! Use \`/roll\` to try your luck.*`;
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle("Grimbold's Emporium — Your Prices")
-        .setColor(0x2B2D31)
-        .setDescription(headerDesc);
+      if (section === 'weekly') headerDesc += '\n*Everyday gear is on the mundane counter: `/show section:Mundane counter`.*';
+
+      // Discord caps an embed at 25 fields and 6,000 characters: start a new
+      // one (sent as another message) well before that.
+      const embeds = [];
+      let embed = null;
+      let embedLength = 0;
+      const newEmbed = () => {
+        embed = new EmbedBuilder().setColor(0x2B2D31);
+        if (!embeds.length) {
+          embed.setTitle(section === 'mundane' ? "Grimbold's Emporium — Mundane Counter" : "Grimbold's Emporium — Your Prices").setDescription(headerDesc);
+        }
+        embeds.push(embed);
+        embedLength = headerDesc.length;
+      };
+      newEmbed();
+      const addField = field => {
+        if ((embed.data.fields || []).length >= 24 || embedLength + field.name.length + field.value.length > 4500) newEmbed();
+        embed.addFields(field);
+        embedLength += field.name.length + field.value.length;
+      };
 
       // Group items by category
       const categories = {};
@@ -77,7 +101,7 @@ module.exports = {
           const entry = `• **${item.name}**${stockTag}${priceStr}`;
 
           if (currentLength + entry.length + 1 > 900 && currentChunk.length > 0) {
-            embed.addFields({
+            addField({
               name: part === 1 ? catName : `${catName} (cont.)`,
               value: currentChunk.join('\n'),
               inline: false,
@@ -92,7 +116,7 @@ module.exports = {
         }
 
         if (currentChunk.length > 0) {
-          embed.addFields({
+          addField({
             name: part === 1 ? catName : `${catName} (cont.)`,
             value: currentChunk.join('\n'),
             inline: false,
@@ -102,7 +126,7 @@ module.exports = {
 
       // Roll info footer / field
       if (roll !== null && modifier) {
-        embed.addFields({
+        addField({
           name: 'Your Roll This Week',
           value:
             `${modifier.label}\n` +
@@ -115,7 +139,10 @@ module.exports = {
         });
       }
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embeds[0]] });
+      for (const extra of embeds.slice(1)) {
+        await interaction.followUp({ embeds: [extra], ephemeral: true });
+      }
     } catch (err) {
       console.error('Error in /show:', err);
       await interaction.editReply({

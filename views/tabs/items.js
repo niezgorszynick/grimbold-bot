@@ -19,6 +19,63 @@ module.exports = function renderItemsTab(ctx) {
   const optionsOf = values => [...new Set(values)].sort((a, b) => a.localeCompare(b))
     .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
 
+  // This week's stock (magic, scrolls, staples, DM additions) apart from the
+  // everyday mundane counter, which is folded away.
+  const weekly = activeItems.filter(item => item.source !== 'mundane');
+  const mundane = activeItems.filter(item => item.source === 'mundane');
+  const shelfRow = item => {
+            const finalPrice = shopModifier ? applyModifier(item.price, shopModifier) : item.price;
+            const hasPriceChange = shopModifier && shopModifier.percent !== 0 && finalPrice !== item.price;
+            const priceDisplay = hasPriceChange
+              ? `<del>${formatCp(item.price)}</del> <strong>${formatCp(finalPrice)}</strong>`
+              : formatCp(item.price);
+            const modifierLabel = hasPriceChange
+              ? `${shopModifier.percent > 0 ? '+' : ''}${shopModifier.percent}%`
+              : 'None';
+            return `
+            <tr data-search="${escapeHtml(`${item.name} ${item.category}`.toLowerCase())}" data-category="${escapeHtml(item.category)}">
+              <td data-sort="${item.id}">${item.id}</td>
+              <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
+              <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
+              <td data-sort="${finalPrice}">${priceDisplay}</td>
+              <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
+              <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
+              <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-final-price="${escapeHtml(formatCp(finalPrice))}" data-item-discount="${modifierLabel}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
+              ${isAdmin ? `<td>
+                <form method="POST" action="/admin/items/update" style="display:inline;">
+                  <input type="hidden" name="id" value="${item.id}">
+                  <input type="hidden" name="action" value="toggle">
+                  <input type="hidden" name="value" value="${item.is_active ? 0 : 1}">
+                  <button class="btn btn-small">${item.is_active ? 'Hide' : 'Show'}</button>
+                </form>
+                <form method="POST" action="/admin/items/update" style="display:inline;">
+                  <input type="hidden" name="id" value="${item.id}">
+                  <input type="hidden" name="action" value="delete">
+                  <button class="btn btn-small btn-red" onclick="return confirm('Delete item from shop?')">Delete</button>
+                </form>
+              </td>` : ''}
+            </tr>
+          `;
+  };
+  const shelfTable = (items, id, filterable = false) => `
+      <table${filterable ? ` id="${id}" data-filter="category" data-page-size="40" data-item-label="items"` : ` id="${id}"`}>
+        <thead>
+          <tr>
+            <th class="sortable">ID</th>
+            <th class="sortable">Name</th>
+            <th class="sortable">Category</th>
+            <th class="sortable">Price</th>
+            <th class="sortable">Stock</th>
+            <th class="sortable">Status</th>
+            <th>Action</th>
+            ${isAdmin ? '<th>Actions</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(shelfRow).join('')}
+        </tbody>
+      </table>`;
+
   contentHtml = `
     ${isAdmin ? `<div class="card" style="margin-bottom: 20px;">
       <h3>Send Custom Message from Grimbold</h3>
@@ -85,55 +142,12 @@ module.exports = function renderItemsTab(ctx) {
         : shopRoll === null && shopPlayer
           ? '<p class="muted">Roll with /roll to get your weekly personal price.</p>'
           : ''}
-      <table>
-        <thead>
-          <tr>
-            <th class="sortable">ID</th>
-            <th class="sortable">Name</th>
-            <th class="sortable">Category</th>
-            <th class="sortable">Price</th>
-            <th class="sortable">Stock</th>
-            <th class="sortable">Status</th>
-            <th>Action</th>
-            ${isAdmin ? '<th>Actions</th>' : ''}
-          </tr>
-        </thead>
-        <tbody>
-          ${activeItems.map(item => {
-            const finalPrice = shopModifier ? applyModifier(item.price, shopModifier) : item.price;
-            const hasPriceChange = shopModifier && shopModifier.percent !== 0 && finalPrice !== item.price;
-            const priceDisplay = hasPriceChange
-              ? `<del>${formatCp(item.price)}</del> <strong>${formatCp(finalPrice)}</strong>`
-              : formatCp(item.price);
-            const modifierLabel = hasPriceChange
-              ? `${shopModifier.percent > 0 ? '+' : ''}${shopModifier.percent}%`
-              : 'None';
-            return `
-            <tr>
-              <td data-sort="${item.id}">${item.id}</td>
-              <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
-              <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
-              <td data-sort="${finalPrice}">${priceDisplay}</td>
-              <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
-              <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-              <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-final-price="${escapeHtml(formatCp(finalPrice))}" data-item-discount="${modifierLabel}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
-              ${isAdmin ? `<td>
-                <form method="POST" action="/admin/items/update" style="display:inline;">
-                  <input type="hidden" name="id" value="${item.id}">
-                  <input type="hidden" name="action" value="toggle">
-                  <input type="hidden" name="value" value="${item.is_active ? 0 : 1}">
-                  <button class="btn btn-small">${item.is_active ? 'Hide' : 'Show'}</button>
-                </form>
-                <form method="POST" action="/admin/items/update" style="display:inline;">
-                  <input type="hidden" name="id" value="${item.id}">
-                  <input type="hidden" name="action" value="delete">
-                  <button class="btn btn-small btn-red" onclick="return confirm('Delete item from shop?')">Delete</button>
-                </form>
-              </td>` : ''}
-            </tr>
-          `}).join('')}
-        </tbody>
-      </table>
+      <h4>This week's stock</h4>
+      ${shelfTable(weekly, 'shop-weekly')}
+      ${mundane.length ? `<details class="shop-mundane">
+        <summary>Mundane counter — ${mundane.length} everyday items, always in stock</summary>
+        ${shelfTable(mundane, 'shop-mundane', true)}
+      </details>` : ''}
       </div>
     </div>
 

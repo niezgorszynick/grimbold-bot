@@ -731,3 +731,15 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .spell-land { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0; }
 .catalog-review-table { width: 100%; }
 .catalog-review-table a { color: #8ea1ff; }
+/* Restock Engine tab */
+.restock-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.restock-rules { padding-left: 18px; display: grid; gap: 4px; }
+.restock-form { display: grid; gap: 10px; }
+.restock-form h4 { margin: 8px 0 0; color: #d4af37; }
+.restock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.restock-field { display: grid; gap: 4px; font-size: 13px; }
+.restock-field input { max-width: 160px; }
+.restock-now { width: 100%; font-weight: bold; padding: 12px; }
+@media (max-width: 900px) { .restock-layout { grid-template-columns: 1fr; } }
+.shop-mundane { margin-top: 16px; }
+.shop-mundane > summary { cursor: pointer; font-weight: 600; color: #d4af37; padding: 6px 0; }
