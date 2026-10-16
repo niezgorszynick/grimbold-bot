@@ -440,6 +440,41 @@ const MIGRATIONS = [
       if (!existing.has('rarity')) db.exec("ALTER TABLE items ADD COLUMN rarity TEXT NOT NULL DEFAULT ''");
       if (!existing.has('weeks')) db.exec('ALTER TABLE items ADD COLUMN weeks INTEGER NOT NULL DEFAULT 0');
     }
+  },
+  {
+    version: 12,
+    name: 'Artisans and weekly shop events',
+    up(db) {
+      db.exec(`
+        -- Resident craftspeople and what they make (see db/artisans.js).
+        CREATE TABLE IF NOT EXISTS artisans (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS artisan_goods (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          artisan_id INTEGER NOT NULL REFERENCES artisans(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT 'Artisan Goods',
+          price_cp INTEGER NOT NULL CHECK (price_cp > 0),
+          description TEXT NOT NULL DEFAULT '',
+          per_week INTEGER NOT NULL DEFAULT 1,
+          cap INTEGER NOT NULL DEFAULT 3
+        );
+        -- Weekly events: kind 'merchant' | 'shortage' | 'sale' | 'news'; params JSON.
+        CREATE TABLE IF NOT EXISTS shop_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          announcement TEXT NOT NULL DEFAULT '',
+          kind TEXT NOT NULL,
+          params TEXT NOT NULL DEFAULT '{}',
+          weight INTEGER NOT NULL DEFAULT 1,
+          active INTEGER NOT NULL DEFAULT 1
+        );
+      `);
+    }
   }
 ];
 

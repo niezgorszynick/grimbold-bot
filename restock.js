@@ -35,6 +35,8 @@ async function sendDiscordAnnouncement(summary) {
           `Step up, roll your dice with **/roll** to haggle your weekly rates, and inspect the wares with **/show** before someone else grabs them!"`
         )
         .addFields(
+          ...(summary.event ? [{ name: `📣 ${summary.event.title}`, value: summary.event.announcement.slice(0, 1000), inline: false }] : []),
+          ...(summary.merchantGoods.length ? [{ name: '🧳 From the visiting merchant', value: listNames(summary.merchantGoods), inline: false }] : []),
           { name: '✨ New in the vault', value: listNames(summary.newMagic), inline: false },
           { name: '📜 In the scroll case', value: listNames(summary.scrolls), inline: false }
         )
@@ -53,7 +55,7 @@ async function sendDiscordAnnouncement(summary) {
 
 async function restockShop() {
   const summary = db.runRestock();
-  console.log(`🛒 Restock completed (party level ${summary.partyLevel}): ${summary.newMagic.length} new magic items, ${summary.keptMagic} kept, ${summary.scrolls.length} scrolls, ${summary.mundane} mundane items.`);
+  console.log(`🛒 Restock completed (party level ${summary.partyLevel}): ${summary.newMagic.length} new magic items, ${summary.keptMagic} kept, ${summary.scrolls.length} scrolls, ${summary.mundane} mundane items, ${summary.artisanGoods} artisan goods${summary.event ? `; event: ${summary.event.title}` : ''}.`);
   await sendDiscordAnnouncement(summary);
   return summary;
 }

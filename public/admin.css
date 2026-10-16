@@ -743,3 +743,20 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 @media (max-width: 900px) { .restock-layout { grid-template-columns: 1fr; } }
 .shop-mundane { margin-top: 16px; }
 .shop-mundane > summary { cursor: pointer; font-weight: 600; color: #d4af37; padding: 6px 0; }
+/* Artisans and weekly events (Restock Engine tab) */
+.artisan { border: 1px solid #3f4147; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; background: #232428; }
+.artisan > summary { cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.artisan-form, .event-form { display: grid; gap: 8px; margin: 10px 0; }
+.artisan-form label, .artisan-good-form label { display: grid; gap: 4px; font-size: 13px; }
+.artisan-good-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; align-items: end; margin: 10px 0; }
+.artisan-good-description { grid-column: 1 / -1; }
+.artisan-goods { width: 100%; margin-top: 8px; }
+.artisan-new { display: flex; gap: 8px; margin-top: 10px; }
+.artisan-new input { flex: 1; }
+.shop-events { width: 100%; margin-bottom: 14px; }
+.event-form textarea { width: 100%; box-sizing: border-box; }
+.nowrap { white-space: nowrap; }
+.artisan-form label.creator-check, .event-form label.creator-check { display: flex; gap: 8px; align-items: center; }
+.artisan-good-form input, .artisan-form input, .artisan-form textarea { width: 100%; box-sizing: border-box; min-width: 0; }
+.event-form [data-for][hidden] { display: none !important; }
+.event-form input[name=title] { max-width: none; width: 100%; box-sizing: border-box; }

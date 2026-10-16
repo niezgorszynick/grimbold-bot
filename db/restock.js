@@ -10,9 +10,16 @@
 //             so about half the magic stock changes every week.
 //   scroll  — the scroll case: spell scrolls drawn from the whole spell list,
 //             spell level capped by the party level, all new each week.
+//   artisan — goods of resident artisans (db/artisans.js): each restock adds
+//             their weekly amount, up to a cap; unsold stock stays.
+//   event   — a visiting merchant's goods (a weekly event): one week only.
 //   manual  — items a DM put on the shelf by hand: left alone (removed once
 //             sold out).
 //   legacy  — rows from before sources existed: cleared by the next restock.
+//
+// At most one weekly event happens per restock (a chance roll, then a pick by
+// weight): a visiting merchant, a shortage (no new scrolls / magic items), a
+// sale on part of the shelf, or news only.
 //
 // planRestock is pure (shelf + catalog in, changes out) so it can be tested;
 // runRestock applies a plan in one transaction.
@@ -21,6 +28,7 @@
 
 const { db } = require('./connection');
 const rules = require('../rules');
+const { activeArtisanGoods, rollWeeklyEvent } = require('./artisans');
 
 const MAGIC_RARITIES = ['Common', 'Uncommon', 'Rare'];
 // Rare items only once the party reaches tier 2 (level 5).
@@ -39,7 +47,9 @@ const DEFAULTS = {
   magic_rare_count: 1,
   scroll_count: 5,
   fluctuation_min: 0.85,
-  fluctuation_max: 1.15
+  fluctuation_max: 1.15,
+  // Percent chance of a weekly event.
+  event_chance: 40
 };
 
 function readConfig() {
@@ -61,14 +71,15 @@ function readConfig() {
     magic_rare_count: int('magic_rare_count', 0, 10),
     scroll_count: int('scroll_count', 0, 20),
     fluctuation_min: float('fluctuation_min'),
-    fluctuation_max: float('fluctuation_max')
+    fluctuation_max: float('fluctuation_max'),
+    event_chance: map.event_chance === undefined ? DEFAULTS.event_chance : int('event_chance', 0, 100)
   };
 }
 
 function saveConfig(values) {
   const upsert = db.prepare('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
   const checked = {
-    party_level: [1, 20], magic_common_count: [0, 20], magic_uncommon_count: [0, 20], magic_rare_count: [0, 10], scroll_count: [0, 20]
+    party_level: [1, 20], magic_common_count: [0, 20], magic_uncommon_count: [0, 20], magic_rare_count: [0, 10], scroll_count: [0, 20], event_chance: [0, 100]
   };
   db.transaction(() => {
     for (const [key, [min, max]] of Object.entries(checked)) {
@@ -115,9 +126,13 @@ function scrollName(spell) {
 
 // The changes this week's restock makes. shelf: items rows (with source,
 // weeks); catalog: catalog rows; spells: spell list entries. Returns
-// { remove: [ids], keep: [{ id, weeks }], insert: [rows], partyLevel }.
-function planRestock({ shelf, catalog, spells, config, level, random = Math.random }) {
-  const plan = { remove: [], keep: [], insert: [], partyLevel: level };
+// { remove: [ids], keep: [{ id, weeks }], update: [{ id, stock, price }],
+// insert: [rows], partyLevel }. artisanGoods: active artisans' goods; event:
+// this week's event or null.
+function planRestock({ shelf, catalog, spells, config, level, artisanGoods = [], event = null, random = Math.random }) {
+  const plan = { remove: [], keep: [], update: [], insert: [], partyLevel: level };
+  const params = (event && event.params) || {};
+  const shortage = event && event.kind === 'shortage' ? params.target : null;
   // A shopkeeper's price: whole gold from 10 gp, whole silver below that.
   const roundPrice = cp => (cp >= 1000 ? Math.round(cp / 100) * 100 : cp >= 10 ? Math.round(cp / 10) * 10 : Math.max(1, Math.round(cp)));
   const fluctuate = priceCp => roundPrice(priceCp * (config.fluctuation_min + random() * (config.fluctuation_max - config.fluctuation_min)));
@@ -127,9 +142,35 @@ function planRestock({ shelf, catalog, spells, config, level, random = Math.rand
   const take = row => { taken.add(row.name.toLowerCase()); return row; };
 
   // Manual rows stay until sold out; their names are taken.
-  for (const row of shelf.filter(item => !['mundane', 'staple', 'magic', 'scroll'].includes(item.source))) {
+  for (const row of shelf.filter(item => !['mundane', 'staple', 'magic', 'scroll', 'artisan', 'event'].includes(item.source))) {
     if (row.stock === 0 || row.source === 'legacy') plan.remove.push(row.id);
     else take(row);
+  }
+
+  // Artisans: this week's batch, up to each good's cap. Goods no longer made
+  // (artisan away or the good removed) leave the shelf.
+  const artisanRows = new Map(shelf.filter(item => item.source === 'artisan').map(item => [item.name.toLowerCase(), item]));
+  for (const good of artisanGoods) {
+    const key = good.name.toLowerCase();
+    if (taken.has(key)) continue;
+    const existing = artisanRows.get(key);
+    if (existing) {
+      plan.update.push({ id: existing.id, stock: Math.min(good.cap, (existing.stock || 0) + good.per_week), price: good.price_cp, source: 'artisan' });
+      artisanRows.delete(key);
+    } else {
+      plan.insert.push({ name: good.name, category: good.category, price: good.price_cp, stock: Math.min(good.cap, good.per_week), description: good.description, source: 'artisan', rarity: '' });
+    }
+    take(good);
+  }
+  artisanRows.forEach(item => plan.remove.push(item.id));
+
+  // Last week's visiting merchant has moved on; this week's sets up shop.
+  shelf.filter(item => item.source === 'event').forEach(item => plan.remove.push(item.id));
+  if (event && event.kind === 'merchant') {
+    const goods = shuffle((params.goods || []).filter(good => !taken.has(good.name.toLowerCase())), random);
+    for (const good of goods.slice(0, between(params.min || 1, params.max || 3))) {
+      plan.insert.push(take({ name: good.name, category: good.category, price: good.price_cp, stock: 1, description: good.description, source: 'event', rarity: '' }));
+    }
   }
 
   // Staples: rolled again each week.
@@ -157,7 +198,8 @@ function planRestock({ shelf, catalog, spells, config, level, random = Math.rand
   const targets = { Common: config.magic_common_count, Uncommon: config.magic_uncommon_count, Rare: level >= RARE_FROM_LEVEL ? config.magic_rare_count : 0 };
   for (const rarity of MAGIC_RARITIES) {
     const missing = targets[rarity] - keptMagic.filter(item => item.rarity === rarity).length;
-    if (missing <= 0) continue;
+    // A magic shortage: what's left stays, nothing new arrives.
+    if (missing <= 0 || shortage === 'magic') continue;
     const pool = allowed.filter(row => row.rarity === rarity && row.tier !== 'staple' && !isScrollRow(row) && !taken.has(row.name.toLowerCase()));
     for (const row of shuffle(pool, random).slice(0, missing)) {
       plan.insert.push(take({ name: row.name, category: row.category, price: fluctuate(row.base_price_cp), stock: Math.max(1, between(row.min_stock, row.max_stock)), description: row.description, source: 'magic', rarity }));
@@ -167,7 +209,7 @@ function planRestock({ shelf, catalog, spells, config, level, random = Math.rand
   // Scroll case: all new each week, spell level capped by the party level.
   shelf.filter(item => item.source === 'scroll').forEach(item => plan.remove.push(item.id));
   const maxLevel = Math.min(9, Math.ceil(level / 2));
-  for (let index = 0; index < config.scroll_count; index += 1) {
+  for (let index = 0; index < (shortage === 'scroll' ? 0 : config.scroll_count); index += 1) {
     const [low, high] = SCROLL_SLOTS[index] || [0, maxLevel];
     let range = [low, Math.min(high, maxLevel)];
     if (range[0] > range[1]) range = [Math.max(0, maxLevel - 1), maxLevel];
@@ -189,22 +231,34 @@ function planRestock({ shelf, catalog, spells, config, level, random = Math.rand
       rarity: SCROLL_RARITY[spell.level]
     }));
   }
+
+  // A sale: this week's price off one part of the shelf.
+  if (event && event.kind === 'sale') {
+    const cut = price => roundPrice(price * (100 - params.percent) / 100);
+    [...plan.insert, ...plan.update].filter(row => row.source === params.target).forEach(row => { row.price = cut(row.price); });
+  }
   return plan;
 }
 
 // Restocks the shelf now. Returns a summary for the announcement.
 function runRestock({ random = Math.random } = {}) {
   const config = readConfig();
+  const event = rollWeeklyEvent({ chance: config.event_chance, random });
   const level = partyLevel(config);
   const shelf = db.prepare('SELECT * FROM items').all();
   const catalog = db.prepare('SELECT * FROM catalog').all();
   const spells = Object.values(rules.getSpellCatalog()).filter(spell => Number.isInteger(spell.level));
-  const plan = planRestock({ shelf, catalog, spells, config, level, random });
+  const plan = planRestock({ shelf, catalog, spells, config, level, artisanGoods: activeArtisanGoods(), event, random });
   db.transaction(() => {
     const remove = db.prepare('DELETE FROM items WHERE id = ?');
     plan.remove.forEach(id => remove.run(id));
     const age = db.prepare('UPDATE items SET weeks = ? WHERE id = ?');
     plan.keep.forEach(row => age.run(row.weeks, row.id));
+    const restock = db.prepare('UPDATE items SET stock = ?, price = ?, is_active = 1 WHERE id = ?');
+    plan.update.forEach(row => restock.run(row.stock, row.price, row.id));
+    // The last event, shown in the Restock Engine tab.
+    db.prepare("INSERT INTO config (key, value) VALUES ('last_shop_event', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(JSON.stringify(event ? { title: event.title, at: new Date().toISOString() } : { title: null, at: new Date().toISOString() }));
     const insert = db.prepare(`
       INSERT INTO items (name, category, price, stock, description, is_active, source, rarity, weeks)
       VALUES (@name, @category, @price, @stock, @description, 1, @source, @rarity, 0)
@@ -214,7 +268,17 @@ function runRestock({ random = Math.random } = {}) {
     plan.insert.forEach(row => insert.run(row));
   })();
   const newOf = source => plan.insert.filter(row => row.source === source).map(row => row.name);
-  return { partyLevel: level, newMagic: newOf('magic'), keptMagic: plan.keep.length, scrolls: newOf('scroll'), mundane: newOf('mundane').length };
+  const artisanStock = [...plan.insert, ...plan.update].filter(row => row.source === 'artisan').length;
+  return {
+    partyLevel: level,
+    newMagic: newOf('magic'),
+    keptMagic: plan.keep.length,
+    scrolls: newOf('scroll'),
+    mundane: newOf('mundane').length,
+    artisanGoods: artisanStock,
+    merchantGoods: newOf('event'),
+    event: event ? { title: event.title, announcement: event.announcement, kind: event.kind } : null
+  };
 }
 
 module.exports = {

@@ -12,6 +12,7 @@ module.exports = {
   ...require('./db/adventures'),
   ...require('./db/shop'),
   ...require('./db/restock'),
+  ...require('./db/artisans'),
   ...require('./db/analytics'),
   ...require('./db/spells'),
   ...require('./db/magicItems'),

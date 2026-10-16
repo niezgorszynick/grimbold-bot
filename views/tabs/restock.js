@@ -5,6 +5,7 @@
 
 const db = require('../../db');
 const { escapeHtml } = require('../helpers');
+const { renderArtisansAndEvents } = require('./artisansEvents');
 
 function numberField(name, label, value, hint, { min = 0, max = 20 } = {}) {
   return `
@@ -15,12 +16,18 @@ function numberField(name, label, value, hint, { min = 0, max = 20 } = {}) {
     </label>`;
 }
 
-module.exports = function renderRestockTab() {
+module.exports = function renderRestockTab(ctx) {
   const cfg = db.readRestockConfig();
   const level = db.restockPartyLevel(cfg);
   const median = db.medianCharacterLevel();
   const shelf = db.prepare('SELECT source, COUNT(*) AS count FROM items GROUP BY source').all();
   const count = source => (shelf.find(row => row.source === source) || {}).count || 0;
+  let lastEvent = null;
+  try {
+    lastEvent = JSON.parse((db.prepare("SELECT value FROM config WHERE key = 'last_shop_event'").get() || {}).value || 'null');
+  } catch {
+    lastEvent = null;
+  }
 
   return `
     <div class="restock-layout">
@@ -31,6 +38,7 @@ module.exports = function renderRestockTab() {
           <li><strong>Mundane counter</strong> — every mundane item in the Master Catalog (no rarity) up to the party level, always in stock at catalog price.</li>
           <li><strong>Staples</strong> — catalog items with the <em>staple</em> tier (Potion of Healing, rations…): always there, stock rolled weekly.</li>
           <li><strong>Magic vault</strong> — the counts below, drawn from Common / Uncommon items (and Rare from party level 5) that are set to <em>Shop</em>. Each item stays two weeks unless it sells out, so about half changes every week. Adventure-only items never appear.</li>
+          <li><strong>Artisans and events</strong> — resident artisans' goods pile up to their caps, and one weekly event may happen (below).</li>
           <li><strong>Scroll case</strong> — new spell scrolls each week from the whole spell list: two cantrip/level 1, two level 2–3, one level 4+, never above half the party level (rounded up).</li>
         </ul>
         <form method="POST" action="/admin/restock-settings" class="restock-form">
@@ -45,6 +53,8 @@ module.exports = function renderRestockTab() {
           </div>
           <h4>Scroll case</h4>
           ${numberField('scroll_count', 'Scrolls per week', cfg.scroll_count, 'Beyond five, the extra scrolls can be of any level up to the cap.')}
+          <h4>Weekly events</h4>
+          ${numberField('event_chance', 'Chance of an event each week (%)', cfg.event_chance, '0 turns events off.', { min: 0, max: 100 })}
           <h4>Price fluctuation (magic items and scrolls)</h4>
           <div class="restock-grid">
             <label class="restock-field"><span>Min multiplier</span><input type="number" step="0.01" min="0.1" name="fluctuation_min" value="${cfg.fluctuation_min}" required><small class="muted">0.85 = up to 15% cheaper</small></label>
@@ -58,7 +68,8 @@ module.exports = function renderRestockTab() {
         <div class="card">
           <h3>Restock now</h3>
           <p class="muted small">Party level for the next restock: <strong>${level}</strong>${cfg.party_level_auto ? ' (worked out from the characters)' : ''}.</p>
-          <p class="muted small">On the shelf now: ${count('mundane')} mundane, ${count('staple')} staples, ${count('magic')} magic, ${count('scroll')} scrolls, ${count('manual')} added by hand${count('legacy') ? `, ${count('legacy')} from the old restock (cleared next time)` : ''}.</p>
+          <p class="muted small">On the shelf now: ${count('mundane')} mundane, ${count('staple')} staples, ${count('magic')} magic, ${count('scroll')} scrolls, ${count('artisan')} artisan goods, ${count('event')} from a visiting merchant, ${count('manual')} added by hand${count('legacy') ? `, ${count('legacy')} from the old restock (cleared next time)` : ''}.</p>
+          <p class="muted small">Last event: ${lastEvent ? (lastEvent.title ? `<strong>${escapeHtml(lastEvent.title)}</strong>` : 'none') + ` (${escapeHtml(String(lastEvent.at || '').slice(0, 10))})` : 'no restock yet'}.</p>
           <p class="muted small">Items a DM added by hand stay until they sell out or you delete them.</p>
           <form method="POST" action="/admin/restock" onsubmit="return confirm('Run the weekly restock now and announce it on Discord?');">
             <button type="submit" class="btn btn-gold restock-now">🔄 Run Restock &amp; Announce Now</button>
@@ -66,5 +77,6 @@ module.exports = function renderRestockTab() {
         </div>
       </div>
     </div>
+    ${renderArtisansAndEvents(ctx.req, cfg)}
   `;
 };

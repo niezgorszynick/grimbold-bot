@@ -84,6 +84,22 @@ router.post('/restock-settings', (req, res) => {
   }
 });
 
+// Artisans and their goods, and weekly shop events (db/artisans.js).
+const artisanRoute = (handler, anchor) => (req, res) => {
+  try {
+    handler(req.body);
+    res.redirect(`/admin?tab=restock&status=settings_updated#${anchor}`);
+  } catch (err) {
+    res.redirect(`/admin?tab=restock&err=${encodeURIComponent(err.message)}#${anchor}`);
+  }
+};
+router.post('/artisans/save', artisanRoute(body => db.saveArtisan({ ...body, active: body.active === '1' }), 'artisans'));
+router.post('/artisans/delete', artisanRoute(body => db.deleteArtisan(body.id), 'artisans'));
+router.post('/artisans/goods/save', artisanRoute(body => db.saveArtisanGood(body), 'artisans'));
+router.post('/artisans/goods/delete', artisanRoute(body => db.deleteArtisanGood(body.id), 'artisans'));
+router.post('/shop-events/save', artisanRoute(body => db.saveShopEvent({ ...body, active: body.active === '1' }), 'shop-events'));
+router.post('/shop-events/delete', artisanRoute(body => db.deleteShopEvent(body.id), 'shop-events'));
+
 // Manual restock from the panel
 router.post('/restock', async (req, res) => {
   try {
