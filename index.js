@@ -99,6 +99,10 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
+// News pages for players (public/news/*.html, e.g. /news/shop-update): public,
+// so a Discord link works without a panel login.
+app.use('/news', express.static(require('path').join(__dirname, 'public', 'news'), { extensions: ['html'], index: false }));
+
 // DM Panel route
 // The Owlbear Rodeo extension (public, works without a panel login).
 app.use('/vtt', require('./vtt'));

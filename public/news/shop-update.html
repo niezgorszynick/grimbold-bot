@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grimbold's Shop Update</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · October 2026</span>
+    <h1>Grimbold's Shop Update</h1>
+    <p class="lede">The shop got an overhaul: a counter that is always stocked, a smaller rotating magic vault, a proper scroll case, local artisans, weekly events, and auctions for selling loot to each other. Powerful items stay where they belong: in your adventures.</p>
+  </header>
+
+  <section>
+    <h2>For everyone</h2>
+    <h3>What's on the shelf now</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Part</th><th>What it is</th><th>How it changes</th></tr></thead>
+        <tbody>
+          <tr><td>Mundane counter</td><td>All everyday gear: weapons, armor, tools, adventuring gear, crafting bases.</td><td>Always in stock, fixed prices.</td></tr>
+          <tr><td>Staples</td><td>Potion of Healing, rope, rations, torches and the like.</td><td>Always there; quantities change weekly.</td></tr>
+          <tr><td>Magic vault</td><td>A few Common and Uncommon magic items (a Rare now and then for higher-level parties).</td><td>Each item stays two weeks unless it sells, so about half the vault is new every week.</td></tr>
+          <tr><td>Scroll case</td><td>Five spell scrolls from the whole spell list, including level 2 and up.</td><td>All new every week. Spell level is capped by the party's level.</td></tr>
+          <tr><td>Artisans</td><td>Goods made by local craftspeople.</td><td>Restocked weekly up to a limit; unsold pieces wait for you.</td></tr>
+          <tr><td>Weekly event</td><td>Sometimes a travelling merchant, a shortage or a sale.</td><td>Announced in the restock post.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Prices</strong> follow the item's rarity (2024 rules: Common 100 gp, Uncommon 400 gp; potions and scrolls half), moved up or down a little each week. Your weekly <code>/roll</code> discount still applies.</li>
+      <li><strong>Very Rare and Legendary items</strong> are never sold in the shop. Most Rare items aren't either. Those come from adventures.</li>
+      <li>Items you buy go straight onto your character sheet; magic items arrive as working magic items.</li>
+    </ul>
+
+    <h3>Auctions: selling your loot</h3>
+    <ol>
+      <li>Put one of your character's magic items up for auction with <code>/sell</code> or in the <strong>Auctions</strong> tab of the panel. It leaves your sheet while the auction runs: <strong>7 days</strong>.</li>
+      <li>The opening bid is <strong>half the item's value</strong>. Each new bid must beat the last by 5% (at least 1 gp).</li>
+      <li>Bidding takes the gold from your purse straight away. If someone outbids you, you get it back.</li>
+      <li>Adventurers from out of town sometimes bid too, so the price can rise even without other players. Or it may not.</li>
+      <li>At the end the highest bidder gets the item on their sheet and the seller gets the bid, less <strong>Grimbold's 10%</strong>. If nobody bids, Grimbold buys it for the opening bid and puts it on his shelf.</li>
+      <li>You can withdraw your item as long as nobody has bid on it.</li>
+    </ol>
+
+    <h3>Discord commands</h3>
+    <dl class="cmds">
+      <dt><code>/show</code></dt><dd>This week's stock: magic vault, scrolls, staples, artisans, visiting merchant.</dd>
+      <dt><code>/show section:Mundane counter</code></dt><dd>The everyday gear.</dd>
+      <dt><code>/buy</code></dt><dd>Buy for one of your characters (unchanged).</dd>
+      <dt><code>/sell</code></dt><dd>Put a magic item up for auction.</dd>
+      <dt><code>/bid</code></dt><dd>Bid on an auction; leave the amount empty to bid the minimum.</dd>
+    </dl>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>What's yours to run</h2>
+
+      <h3>Master Catalog</h3>
+      <ul>
+        <li>Every item now has a <strong>rarity</strong> and an <strong>availability</strong>: <em>Shop</em> or <em>Adventure only</em>. Adventure-only items never appear in the shop.</li>
+        <li>Rare items start as adventure only. If a Rare item suits the shop (a Potion of Invisibility, +2 ammunition), open its edit page and switch it to Shop. Very Rare and Legendary can't be switched.</li>
+        <li>The <strong>Review</strong> banner lists items whose rarity, price or level gate looks off, with the fix shown as old → new. Untick anything you disagree with, then apply.</li>
+      </ul>
+
+      <h3>Restock Engine tab</h3>
+      <ul>
+        <li>Set the party level by hand, or tick <em>Work it out from the characters</em> (the median level of living characters).</li>
+        <li>Choose how many Common, Uncommon and Rare items the vault holds, how many scrolls the case gets, the price swing, and the weekly <strong>event chance</strong> (40% to start).</li>
+        <li>Items you put on the shelf yourself in the Shop Items tab now stay until they sell or you delete them.</li>
+      </ul>
+
+      <h3>Artisans</h3>
+      <ol>
+        <li>Restock Engine tab → <strong>Artisans</strong> → type a name (e.g. <em>Benet the Leatherworker</em>) → <strong>Add artisan</strong>.</li>
+        <li>Open them and add their goods: name, category, price in gp, how many they make per week, and the most that can sit on the shelf.</li>
+        <li>Untick <em>Supplying Grimbold</em> while they're away (say, after something happened to them in an adventure). Their goods leave the shelf at the next restock.</li>
+      </ol>
+
+      <h3>Weekly events</h3>
+      <p>Each restock, there's a chance one event fires. Events with a higher <strong>weight</strong> are picked more often. Grimbold reads the event's announcement out in the restock post.</p>
+      <div class="kinds">
+        <div class="kind"><strong>Visiting merchant</strong><span>Sells 1–3 of their goods for a week. Goods go one per line: <code>Name | price in gp | category | description</code></span></div>
+        <div class="kind"><strong>Shortage</strong><span>No new scrolls, or no new magic items, that week.</span></div>
+        <div class="kind"><strong>Sale</strong><span>A % off the mundane counter, staples, scroll case or artisan goods.</span></div>
+        <div class="kind"><strong>News only</strong><span>Just a line in the restock post.</span></div>
+      </div>
+      <p class="muted" style="color:var(--muted)">Example merchant line: <code>Dwarven Chain Shirt | 60 | Armor | Fine dwarven links</code></p>
+
+      <div class="note ask">
+        <strong>Please add events and artisans tied to your adventures.</strong> The list starts empty, and every event you write makes the shop a little more alive. Did your party save a caravan? Its merchant can visit. Did a smithy burn down? Run a shortage. Did the town win a festival? Hold a sale. Write the announcement as Grimbold would say it.
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>
