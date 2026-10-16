@@ -90,6 +90,19 @@ module.exports = function renderCharacterSheetTab(ctx) {
   const canManageOwnCharacters = currentUser.id > 0;
   const canEditRequestedCharacter = characterToEdit &&
     (isAdmin || (canManageOwnCharacters && characterToEdit.player_id === currentUser.id));
+  // Made in the Players tab (a name, class and level only) and never built:
+  // it opens in the creator instead of an empty sheet.
+  const unbuiltCharacter = Boolean(canEditRequestedCharacter) && (() => {
+    let data = {};
+    try {
+      data = JSON.parse(characterToEdit.sheet_data || '{}') || {};
+    } catch {
+      data = {};
+    }
+    const hasScores = data.abilities && typeof data.abilities === 'object' && Object.values(data.abilities)
+      .some(value => Number.isInteger(value && typeof value === 'object' ? (value.score ?? value.total) : value));
+    return !Array.isArray(data.originFeats) && !Array.isArray(data.levelHistory) && !hasScores;
+  })();
   const classNames = Object.keys(DND_CLASSES_AND_SUBCLASSES);
   const sheetClassTreeJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
   const sheetSpeciesJson = JSON.stringify(DND_DATA.species).replace(/</g, '\\u003c');
@@ -101,8 +114,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
   const editFormHtml = req.query.edit_char
     ? canEditRequestedCharacter
       ? `
-        <section id="cs_levelup" class="sheet-card levelup" data-character-id="${Number(characterToEdit.id)}" hidden></section>
-        <section id="cs_feature_choices" class="sheet-card feature-choices-card" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+        ${unbuiltCharacter ? '' : `<section id="cs_levelup" class="sheet-card levelup" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+        <section id="cs_feature_choices" class="sheet-card feature-choices-card" data-character-id="${Number(characterToEdit.id)}" hidden></section>`}
         <script src="/admin/assets/character-features.js" defer></script>
         <script src="/admin/assets/character-live.js" defer></script>
         <script src="/admin/assets/sheet-sections.js" defer></script>
@@ -215,7 +228,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
         <section class="card sheet-reset">
           <div class="sheet-section-heading">
             <h4>Reset Character</h4>
-            <button id="open-character-reset" class="btn btn-red btn-small" type="button" data-name="${escapeHtml(characterToEdit.name)}">Reset Character…</button>
+            <button id="open-character-reset" class="btn btn-red btn-small" type="button" data-name="${escapeHtml(characterToEdit.name)}" ${unbuiltCharacter ? 'data-unbuilt="1"' : ''}>Reset Character…</button>
           </div>
           <p class="muted small">Build this character again in the character creator. Keeps XP, level, adventures, purse, magic items and bought items; species, class, abilities, skills, spells and starting gear are chosen again. The sheet is only replaced when you finish the creator.</p>
           <div id="character-reset-view" hidden>
@@ -226,6 +239,32 @@ module.exports = function renderCharacterSheetTab(ctx) {
             (() => {
               const open = document.getElementById('open-character-reset');
               const view = document.getElementById('character-reset-view');
+              const show = () => {
+                view.hidden = false;
+                open.disabled = true;
+                if (!document.getElementById('character-creator-script')) {
+                  const script = document.createElement('script');
+                  script.id = 'character-creator-script';
+                  script.src = '/admin/assets/character-creator.js';
+                  document.body.append(script);
+                }
+                view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              };
+              // A character never built (added in the Players tab): straight to the
+              // creator, above the empty sheet, which stays hidden until it's built.
+              if (open.dataset.unbuilt) {
+                const section = open.closest('.sheet-reset');
+                const sheet = document.getElementById('fullCharacterSheetContainer');
+                if (sheet) {
+                  sheet.parentNode.insertBefore(section, sheet);
+                  sheet.hidden = true;
+                }
+                section.querySelector('h4').textContent = 'Build ' + open.dataset.name;
+                section.querySelector('p').textContent = open.dataset.name + " hasn't been built yet. Choose species, class, ability scores, skills and starting gear below; the sheet appears when you finish. XP, level, adventures and purse are kept.";
+                open.style.display = 'none';
+                document.getElementById('close-character-reset').style.display = 'none';
+                show();
+              }
               open.addEventListener('click', () => {
                 const sure = window.confirm('Are you sure you want to reset ' + open.dataset.name + '?\\n\\nYou will build the character again in the creator. When you finish, species, class, abilities, skills, spells and starting gear are replaced. XP, level, adventures, purse, magic items and bought items are kept.');
                 if (!sure) return;
