@@ -69,20 +69,27 @@ function rollOptions(character) {
   // Thaumaturge, Magician, Otherworldly Glamour: a bonus to some checks.
   const featureBonus = rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability));
   const options = new Map();
-  const add = (id, label, formula, kind) => options.set(id, { id, label, formula, kind });
+  // extra: { advantage: [item names], disadvantage: [...] } from item bonuses.
+  const add = (id, label, formula, kind, extra = {}) => options.set(id, { id, label, formula, kind, ...extra });
+  // Custom item bonuses (a ring's +2 to History, a book's Advantage on Religion).
+  const itemTotals = rules.itemBonusTotals(sheetData);
+  const fromItems = roll => rules.itemBonusFor(itemTotals, roll);
 
   for (const [ability, name] of Object.entries(ABILITY_NAMES)) {
     // Jack of All Trades (2024) is for skill checks only, not plain ability checks.
-    add(`check:${ability}`, `${name} check`, d20(mod(ability) + items.checks + (featureBonus.checks[ability] || 0)), 'check');
-    add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves), 'save');
+    const check = fromItems({ type: 'check', ability });
+    const save = fromItems({ type: 'save', ability });
+    add(`check:${ability}`, `${name} check`, d20(mod(ability) + items.checks + (featureBonus.checks[ability] || 0) + check.value), 'check', check);
+    add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves + save.value), 'save', save);
   }
   for (const [skill, ability] of Object.entries(rules.SKILLS)) {
     const proficient = skills.includes(skill);
     const bonus = mod(ability) + (proficient ? pb : jack) + (expertise.includes(skill) ? pb : 0) + items.checks +
       Math.max(featureBonus.skills[skill] || 0, featureBonus.checks[ability] || 0);
-    add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus), 'check');
+    const item = fromItems({ type: 'skill', skill, ability });
+    add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus + item.value), 'check', item);
   }
-  add('initiative', 'Initiative', d20(rules.initiativeOf({ classes, sheetData }).total), 'initiative');
+  add('initiative', 'Initiative', d20(rules.initiativeOf({ classes, sheetData }).total), 'initiative', fromItems({ type: 'initiative' }));
 
   const combat = buildCharacterCombat(character, sheetData);
   combat.attacks.forEach((attack, index) => {
@@ -181,11 +188,25 @@ const ROLL_QUERY = `
 function rollForCharacter({ characterId, user, request = {} }) {
   const character = loadCharacter(characterId);
   if (!canRollFor(character, user)) throw new Error('Forbidden.');
-  const mode = MODES.includes(request.mode) ? request.mode : 'normal';
+  let mode = MODES.includes(request.mode) ? request.mode : 'normal';
   let option;
   if (request.roll) {
     option = rollOptions(character).get(String(request.roll));
     if (!option) throw new Error('That roll is not on this character sheet.');
+    // An item's Advantage / Disadvantage joins the roller's choice; one of
+    // each cancels out (2024 rules).
+    const itemAdvantage = (option.advantage || []).length > 0;
+    const itemDisadvantage = (option.disadvantage || []).length > 0;
+    if (itemAdvantage || itemDisadvantage) {
+      const advantage = itemAdvantage || mode === 'advantage';
+      const disadvantage = itemDisadvantage || mode === 'disadvantage';
+      mode = advantage && disadvantage ? 'normal' : advantage ? 'advantage' : 'disadvantage';
+      const notes = [
+        itemAdvantage ? `Advantage: ${option.advantage.join(', ')}` : null,
+        itemDisadvantage ? `Disadvantage: ${option.disadvantage.join(', ')}` : null
+      ].filter(Boolean);
+      option = { ...option, label: `${option.label} (${notes.join('; ')})`.slice(0, MAX_LABEL) };
+    }
   } else {
     const label = String(request.label || '').trim().slice(0, MAX_LABEL) || 'Roll';
     option = { id: 'custom', label, formula: String(request.formula || ''), kind: 'custom' };

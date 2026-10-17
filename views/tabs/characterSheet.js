@@ -608,6 +608,18 @@ module.exports = function renderCharacterSheetTab(ctx) {
         // Expertise and feature check bonuses (Thaumaturge, ...) from the loaded sheet.
         let sheetExpertise = [];
         let sheetCheckBonuses = { skills: {}, checks: {} };
+        // Custom item bonuses (rules/itemBonuses.js): added on top, plus Advantage marks.
+        let sheetItemBonuses = null;
+        const itemExtra = (targets, value) => {
+          const totals = sheetItemBonuses;
+          if (!totals) return { value: 0, mark: null, title: '' };
+          const from = kind => [...new Set(targets.flatMap(target => totals[kind][target] || []))];
+          const advantage = from('advantage');
+          const disadvantage = from('disadvantage');
+          const mark = advantage.length && disadvantage.length ? null : advantage.length ? 'ADV' : disadvantage.length ? 'DIS' : null;
+          const title = [advantage.length ? 'Advantage: ' + advantage.join(', ') : '', disadvantage.length ? 'Disadvantage: ' + disadvantage.join(', ') : ''].filter(Boolean).join('. ');
+          return { value, mark, title };
+        };
         // Initiative from the server: { total, parts: [{ label, value }], advantage }.
         let sheetInitiative = null;
         // Ability modifiers as last loaded or saved, to preview unsaved changes elsewhere (spell DC).
@@ -619,6 +631,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
           }));
         }
 
+        // The equipment list changed an item's bonuses: show them without a reload.
+        window.applyItemBonuses = totals => {
+          sheetItemBonuses = totals || null;
+          updateDerivedStats(sheetCharacterLevel);
+        };
         function updateDerivedStats(level) {
           const bonus = Math.ceil(Math.max(1, Number(level) || 1) / 4) + 1;
           proficiencyBonus.textContent = '+' + bonus;
@@ -640,9 +657,14 @@ module.exports = function renderCharacterSheetTab(ctx) {
               ? Math.floor((score - 10) / 2)
               : 0;
             const saveRow = savesContainer.querySelector('[data-save="' + ability + '"]').closest('.sheet-check-row');
-            const saveTotal = modifier + (saveRow.querySelector('input').checked ? bonus : 0);
-            saveRow.querySelector('.sheet-check-modifier').textContent =
-              (saveTotal >= 0 ? '+' : '') + saveTotal;
+            const saveItems = sheetItemBonuses
+              ? itemExtra(['save:' + ability, 'saves'], (sheetItemBonuses.saves[ability] || 0) + sheetItemBonuses.allSaves)
+              : itemExtra([], 0);
+            const saveTotal = modifier + (saveRow.querySelector('input').checked ? bonus : 0) + saveItems.value;
+            const saveModifier = saveRow.querySelector('.sheet-check-modifier');
+            saveModifier.textContent = (saveTotal >= 0 ? '+' : '') + saveTotal;
+            if (saveItems.mark) saveModifier.dataset.adv = saveItems.mark; else delete saveModifier.dataset.adv;
+            saveRow.title = saveItems.title;
           });
           // Initiative: the DEX on the sheet now, plus Alert and items from the server.
           if (sheetInitiative) {
@@ -665,12 +687,17 @@ module.exports = function renderCharacterSheetTab(ctx) {
             const skillRow = skillsContainer.querySelector('[data-skill="' + skill + '"]').closest('.sheet-check-row');
             const proficient = skillRow.querySelector('input').checked;
             const expert = proficient && sheetExpertise.includes(skill);
+            const skillItems = sheetItemBonuses
+              ? itemExtra(['skill:' + skill, 'check:' + ability, 'checks'],
+                (sheetItemBonuses.skills[skill] || 0) + (sheetItemBonuses.checks[ability] || 0) + sheetItemBonuses.allChecks)
+              : itemExtra([], 0);
             const total = modifier + (proficient ? bonus : 0) + (expert ? bonus : 0) +
-              Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0);
+              Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0) + skillItems.value;
             skillRow.classList.toggle('has-expertise', expert);
-            skillRow.title = expert ? 'Expertise: proficiency bonus counts twice' : (skillRow.dataset.sourceTitle || '');
-            skillRow.querySelector('.sheet-check-modifier').textContent =
-              (total >= 0 ? '+' : '') + total;
+            skillRow.title = [expert ? 'Expertise: proficiency bonus counts twice' : (skillRow.dataset.sourceTitle || ''), skillItems.title].filter(Boolean).join('. ');
+            const skillModifier = skillRow.querySelector('.sheet-check-modifier');
+            skillModifier.textContent = (total >= 0 ? '+' : '') + total;
+            if (skillItems.mark) skillModifier.dataset.adv = skillItems.mark; else delete skillModifier.dataset.adv;
           });
         }
 
@@ -816,6 +843,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             const data = result.sheetData || {};
             sheetExpertise = Array.isArray(data.expertise) ? data.expertise : [];
             sheetCheckBonuses = result.checkBonuses || sheetCheckBonuses;
+            sheetItemBonuses = result.itemBonuses || null;
             sheetInitiative = result.initiative || null;
             sheetCharacterLevel = character.level || 1;
             const classRows = Array.isArray(result.classes) ? result.classes : [];

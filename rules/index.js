@@ -29,6 +29,7 @@ module.exports = {
   ...require('./classResources'),
   ...require('./wildShape'),
   ...require('./shopCatalog'),
+  ...require('./itemBonuses'),
   ...require('./vitals'),
   ...require('./content')
 };

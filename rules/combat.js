@@ -9,6 +9,7 @@ const { abilityModifier, proficiencyBonus } = require('./util');
 const { getClass } = require('./classes');
 const { collectCharacterFeats, featName } = require('./feats');
 const { readMagicItems, magicItemEntryInfo, effectiveAbilityScore, magicItemEffects } = require('./magicItems');
+const { itemBonusTotals, itemBonusFor } = require('./itemBonuses');
 
 const ABILITY_LABELS = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
 const MAX_AC_ADJUSTMENT = 10;
@@ -516,6 +517,9 @@ function initiativeOf(character) {
   if (ctx.feats.has('Alert')) parts.push({ label: 'Alert', value: ctx.pb });
   const items = magicItemEffects(ctx.sheetData).checks || 0;
   if (items) parts.push({ label: 'Magic items', value: items });
+  // Custom item bonuses (rules/itemBonuses.js).
+  const itemBonus = itemBonusFor(itemBonusTotals(ctx.sheetData), { type: 'initiative' });
+  if (itemBonus.value) parts.push({ label: 'Items', value: itemBonus.value });
   const advantage = [];
   if (ctx.classes.some(row => row.className === 'Fighter' && row.subclassName === 'Champion' && row.level >= 3)) advantage.push('Remarkable Athlete');
   if (ctx.levelOf('Barbarian') >= 7) advantage.push('Feral Instinct');

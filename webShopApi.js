@@ -134,7 +134,9 @@ router.get('/characters/:id', (req, res) => {
       }
     })(),
     // Thaumaturge, Magician, Otherworldly Glamour: bonuses the skill list adds.
-    checkBonuses: rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability))
+    checkBonuses: rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability)),
+    // Custom item bonuses, added on top (skills, checks, saves) and Advantage marks.
+    itemBonuses: rules.itemBonusTotals(sheetData)
   });
 });
 

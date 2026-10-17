@@ -786,3 +786,15 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .catalog-fill input { width: 100%; box-sizing: border-box; }
 .merchant-fields, .merchant-goods { display: grid; gap: 8px; }
 .artisan-new select { width: auto; }
+/* Advantage / Disadvantage from an item, next to a check or save */
+.sheet-check-modifier[data-adv] { position: relative; }
+.sheet-check-modifier[data-adv]::after { content: attr(data-adv); position: absolute; top: -7px; right: -10px; font-size: 9px; font-weight: 700; padding: 1px 3px; border-radius: 3px; background: #23a55a; color: #fff; letter-spacing: 0.04em; }
+.sheet-check-modifier[data-adv="DIS"]::after { background: #f23f43; }
+/* Item bonuses */
+.item-bonuses { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3f4147; display: grid; gap: 6px; }
+.item-bonuses h5 { margin: 0; }
+.item-bonus-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.item-bonus-fields[hidden] { display: none !important; }
+.item-bonus-tag { background: #2d4a3a; color: #b9f0cf; }
+.item-bonus-tag.is-off { opacity: 0.55; text-decoration: line-through; }
+.item-bonus-fields input[hidden] { display: none; }

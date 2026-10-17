@@ -75,6 +75,8 @@
       if (body.action === 'add' && window.refreshCharacterMagicItems) window.refreshCharacterMagicItems();
       // Armor and weapons change Armor Class and the attack list.
       if (window.refreshCharacterCombat) window.refreshCharacterCombat();
+      // Item bonuses change skill and save numbers (and initiative).
+      if (window.applyItemBonuses) window.applyItemBonuses(view.itemBonuses);
       return true;
     } catch (error) {
       message = error.message;
@@ -135,6 +137,12 @@
         item.nickname ? el('span', { className: 'muted small item-real-name', text: '(' + item.name + ')' }) : null,
         item.category ? el('span', { className: 'muted small', text: item.category }) : null,
         item.source === 'custom' ? el('span', { className: 'tag', text: 'Custom' }) : null,
+        // Its bonuses at a glance; dimmed while it isn't in use.
+        item.bonuses.length ? el('span', {
+          className: 'tag item-bonus-tag' + (item.bonusesActive ? '' : ' is-off'),
+          title: item.bonuses.map(bonus => bonus.text).join('; ') + (item.bonusesActive ? '' : ' (not in use)'),
+          text: item.bonuses[0].text + (item.bonuses.length > 1 ? ' +' + (item.bonuses.length - 1) : '')
+        }) : null,
         el('span', { className: 'inventory-controls' }, [wear, quantity, remove])
       ]),
       open.has(key)
@@ -142,6 +150,7 @@
           ? renderText(item.description)
           : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' })),
         item.source === 'custom' ? weaponEditor(item) : null,
+        bonusEditor(item),
         nicknameField(item.nickname, nickname => act({ action: 'rename', index: item.index, name: item.name, nickname }))])
         : null
     ]);
@@ -291,6 +300,52 @@
     return { element: editor, value, refreshPreview };
   }
 
+  // One custom bonus: what it applies to, and +N, Advantage or Disadvantage.
+  function bonusFields() {
+    const targets = (view && view.bonusTargets) || { skills: [], abilities: [] };
+    const abilityName = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+    const target = el('select', { 'aria-label': 'Applies to' });
+    const group = (label, entries) => {
+      const node = el('optgroup', { label });
+      entries.forEach(([value, text]) => node.append(new Option(text, value)));
+      target.append(node);
+    };
+    group('Skills', targets.skills.map(skill => ['skill:' + skill, skill + ' checks']));
+    group('Ability checks', targets.abilities.map(ability => ['check:' + ability, abilityName[ability] + ' checks']));
+    group('Saving throws', targets.abilities.map(ability => ['save:' + ability, abilityName[ability] + ' saves']));
+    group('Other', [['checks', 'All ability checks'], ['saves', 'All saving throws'], ['initiative', 'Initiative']]);
+    const kind = el('select', { 'aria-label': 'Effect' });
+    [['bonus', 'Bonus'], ['advantage', 'Advantage'], ['disadvantage', 'Disadvantage']].forEach(([value, text]) => kind.add(new Option(text, value)));
+    const amount = el('input', { type: 'number', min: '-10', max: '10', value: '1', className: 'inventory-qty', 'aria-label': 'Bonus amount' });
+    const sync = () => { amount.hidden = kind.value !== 'bonus'; };
+    kind.addEventListener('change', sync);
+    sync();
+    return {
+      element: el('div', { className: 'vitals-actions item-bonus-fields' }, [target, kind, amount]),
+      value: () => ({ target: target.value, kind: kind.value, value: Number(amount.value) || 0 })
+    };
+  }
+
+  // Bonuses an item gives (a ring's +2 to History, a book's Advantage on Religion),
+  // and whether it's in use so they apply.
+  function bonusEditor(item) {
+    const current = item.bonuses.map(({ target, kind, value }) => ({ target, kind, value }));
+    const save = list => act({ action: 'setBonuses', index: item.index, name: item.name, bonuses: list });
+    const fields = bonusFields();
+    const inUse = el('input', { type: 'checkbox' });
+    inUse.checked = item.bonusesActive;
+    inUse.addEventListener('change', () => act({ action: 'useBonuses', index: item.index, name: item.name, active: inUse.checked }));
+    return el('div', { className: 'item-bonuses' }, [
+      el('h5', { text: 'Bonuses' }),
+      item.bonuses.length ? el('ul', { className: 'item-bonus-list' }, item.bonuses.map((bonus, index) => el('li', {}, [
+        bonus.text, ' ',
+        button('✕', () => save(current.filter((_, other) => other !== index)), 'btn btn-small btn-secondary', { 'aria-label': 'Remove ' + bonus.text, title: 'Remove' })
+      ]))) : el('p', { className: 'muted small', text: 'For what the sheet doesn\'t know: +2 to History checks, Advantage on Religion checks while held close…' }),
+      item.bonuses.length ? el('label', { className: 'creator-check' }, [inUse, ' In use (worn, held, close at hand): its bonuses apply']) : null,
+      el('div', { className: 'vitals-actions' }, [fields.element, button('+ Add bonus', () => save([...current, fields.value()]))])
+    ]);
+  }
+
   // Custom items: turn weapon stats on, change them, or turn them off.
   function weaponEditor(item) {
     if (!item.weapon && !editingWeapons.has(item.index)) {
@@ -319,12 +374,17 @@
     const weapon = weaponFields(null, () => name.value.trim());
     weapon.element.hidden = true;
     isWeapon.addEventListener('change', () => { weapon.element.hidden = !isWeapon.checked; if (isWeapon.checked) weapon.refreshPreview(); });
+    // "Add a custom bonus": one bonus now; more from the item's details later.
+    const hasBonus = el('input', { type: 'checkbox' });
+    const bonus = bonusFields();
+    bonus.element.hidden = true;
+    hasBonus.addEventListener('change', () => { bonus.element.hidden = !hasBonus.checked; });
     const add = button('Add custom item', async () => {
       if (!name.value.trim()) {
         name.focus();
         return;
       }
-      const ok = await act({ action: 'add', name: name.value, quantity: Number(quantity.value) || 1, description: description.value, weapon: isWeapon.checked ? weapon.value() : undefined });
+      const ok = await act({ action: 'add', name: name.value, quantity: Number(quantity.value) || 1, description: description.value, weapon: isWeapon.checked ? weapon.value() : undefined, bonuses: hasBonus.checked ? [bonus.value()] : undefined });
       if (ok) mode = null;
       render();
     }, 'btn btn-small btn-green');
@@ -334,6 +394,8 @@
       description,
       el('label', { className: 'creator-check' }, [isWeapon, ' This is a weapon (it attacks and rolls)']),
       weapon.element,
+      el('label', { className: 'creator-check' }, [hasBonus, ' Add a custom bonus (e.g. +2 to History checks, Advantage on Religion checks)']),
+      bonus.element,
       el('div', { className: 'vitals-actions' }, [add])
     ]);
   }

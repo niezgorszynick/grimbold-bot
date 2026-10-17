@@ -68,6 +68,9 @@ function buildView(sheetData, isAdmin) {
         nickname: row.nickname || null,
         // A custom weapon's own stats, for the editor.
         weapon: row.weapon || null,
+        // Custom bonuses (rules/itemBonuses.js) and whether they apply now.
+        bonuses: Array.isArray(row.bonuses) ? row.bonuses.map(bonus => ({ ...bonus, text: rules.describeItemBonus(bonus) })) : [],
+        bonusesActive: row.bonusesActive !== false,
         quantity: Number.isSafeInteger(row.quantity) && row.quantity > 0 ? row.quantity : 1,
         source: row.source || '',
         category: row.category || (known ? known.category : ''),
@@ -79,7 +82,14 @@ function buildView(sheetData, isAdmin) {
       };
     }),
     // Choices for custom weapon stats.
-    weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS }
+    weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS },
+    // What item bonuses add up to now, for the skill and save numbers.
+    itemBonuses: rules.itemBonusTotals(sheetData),
+    // Choices for a custom bonus.
+    bonusTargets: {
+      skills: Object.keys(rules.SKILLS).sort(),
+      abilities: ['str', 'dex', 'con', 'int', 'wis', 'cha']
+    }
   };
 }
 
@@ -92,6 +102,7 @@ function getCharacterInventory({ id, player_id, is_admin }) {
 //       | update { index, name, quantity } | remove { index, name }
 //       | wear { index, name, worn } (armor, shields and weapons)
 //       | rename { index, name, nickname } | setWeapon { index, name, weapon | null } (custom items)
+//       | setBonuses { index, name, bonuses } | useBonuses { index, name, active }
 // add with weapon stats (custom items): see rules/customWeapons.js.
 // `name` with update/remove guards against a list changed in another tab.
 function changeCharacterInventory({ id, player_id, is_admin, action, params = {} }) {
@@ -120,6 +131,7 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
       }
       // A custom weapon: its own stats, so it attacks and rolls like any weapon.
       const customWeapon = source === 'custom' && params.weapon ? rules.validateCustomWeapon(params.weapon) : null;
+      const bonuses = rules.validateItemBonuses(params.bonuses);
 
       const magic = rules.matchMagicItem(name);
       if (magic && (magic.variant || !magic.item.variants.length) && source === 'catalog') {
@@ -129,7 +141,7 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         message = `${name} added to Magic Items.`;
       } else {
         // A nicknamed item ("Ambassador") stays its own row.
-        const existing = customWeapon ? null : inventory.find(row => !row.nickname && !row.weapon && row.name.toLowerCase() === name.toLowerCase() &&
+        const existing = customWeapon || bonuses.length ? null : inventory.find(row => !row.nickname && !row.weapon && row.name.toLowerCase() === name.toLowerCase() &&
           (row.description || '') === description);
         if (existing) {
           existing.quantity = Math.min(MAX_QUANTITY, (Number(existing.quantity) || 1) + quantity);
@@ -138,6 +150,7 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
           if (description) row.description = description;
           if (category) row.category = category;
           if (customWeapon) row.weapon = customWeapon;
+          if (bonuses.length) row.bonuses = bonuses;
           // New weapons are at hand; new armor waits until it is put on.
           const gear = rules.inventoryGear(row);
           if (gear) row.equipped = gear.type === 'weapon';
@@ -173,6 +186,25 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
       }
       nextSheet = { ...sheetData, inventory };
       message = row.weapon ? `${row.name}: weapon stats saved.` : `${row.name} is no longer a weapon.`;
+    } else if (action === 'setBonuses' || action === 'useBonuses') {
+      // Custom bonuses (+2 to History, Advantage on Religion) and whether the
+      // item is in use (worn, held close) so they apply.
+      const index = Number(params.index);
+      const row = Number.isSafeInteger(index) ? inventory[index] : null;
+      if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+      if (action === 'setBonuses') {
+        const bonuses = rules.validateItemBonuses(params.bonuses);
+        if (bonuses.length) row.bonuses = bonuses;
+        else {
+          delete row.bonuses;
+          delete row.bonusesActive;
+        }
+        message = bonuses.length ? `${row.name}: bonuses saved.` : `${row.name} has no bonuses now.`;
+      } else {
+        row.bonusesActive = Boolean(params.active);
+        message = row.bonusesActive ? `${row.name} is in use: its bonuses apply.` : `${row.name} is put away: its bonuses don't apply.`;
+      }
+      nextSheet = { ...sheetData, inventory };
     } else if (action === 'rename') {
       // A nickname ("Ambassador") for the sheet only; the item stays what it is. Empty clears it.
       const index = Number(params.index);
