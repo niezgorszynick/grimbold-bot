@@ -229,3 +229,31 @@ test('the DM chooses the type of a magic weapon that can be several', () => {
   assert.equal(sword.attackBonus, '+5');
   assert.equal(sword.damage, '1d8+3 Slashing (1d10+3 two-handed)');
 });
+
+test('two-weapon fighting: an off-hand row for the extra Light attack, without the ability modifier', () => {
+  const sheet = (inventory, extra = {}) => ({ abilities: abilities({ str: 8, dex: 16 }), inventory, ...extra });
+  const rogue = [{ className: 'Rogue', subclassName: 'Thief', level: 3 }];
+  const names = result => result.attacks.map(entry => entry.name);
+
+  // One dagger alone: nothing to fight with in the other hand.
+  assert.ok(!names(combat(rogue, sheet([row('Dagger')]))).includes('Dagger (off-hand)'));
+  // Two daggers in one line count as two.
+  const pair = combat(rogue, sheet([row('Dagger', { quantity: 2 })]));
+  const offHand = attack(pair, 'Dagger (off-hand)');
+  assert.deepEqual([offHand.attackBonus, offHand.damage], ['+5', '1d4 Piercing']);
+  assert.match(offHand.notes[0], /Nick makes it part of the Attack action/);
+  assert.equal(attack(pair, 'Dagger').damage, '1d4+3 Piercing', 'the main attack keeps its modifier');
+
+  // Two-Weapon Fighting adds the modifier; a negative modifier always applies.
+  const twf = combat(rogue, sheet([row('Dagger', { quantity: 2 })], { originFeats: [{ name: 'Two-Weapon Fighting' }] }));
+  assert.equal(attack(twf, 'Dagger (off-hand)').damage, '1d4+3 Piercing');
+  const weak = combat(rogue, { abilities: abilities({ str: 8, dex: 8 }), inventory: [row('Handaxe', { quantity: 2 })] });
+  assert.equal(attack(weak, 'Handaxe (off-hand)').damage, '1d6-1 Slashing');
+
+  // Not Light (a longsword) needs Dual Wielder; two-handed weapons never.
+  const mixed = sheet([row('Dagger'), row('Longsword'), row('Greatsword')]);
+  assert.ok(!names(combat(fighter(3), mixed)).includes('Longsword (off-hand)'));
+  const dual = combat(fighter(3), { ...mixed, originFeats: [{ name: 'Dual Wielder' }] });
+  assert.ok(names(dual).includes('Longsword (off-hand)'));
+  assert.ok(!names(dual).includes('Greatsword (off-hand)'));
+});

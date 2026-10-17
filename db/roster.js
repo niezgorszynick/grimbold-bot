@@ -105,8 +105,9 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     heroicInspiration: vitals ? vitals.view.heroicInspiration : false,
     concentration: concentration ? concentration.spell : null,
     // index: the attack's place in the character's roll list (db/dice.js).
-    attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType }))
-      .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => ({ ...attack, roll: `attack:${attack.index}` })) : [],
+    // Off-hand rows stay on the sheet; the table lists the main attacks.
+    attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType, offHand: attack.offHand }))
+      .filter(attack => !attack.needsType && !attack.offHand).slice(0, 4).map(({ needsType, offHand, ...attack }) => ({ ...attack, roll: `attack:${attack.index}` })) : [],
     wildShape: null,
     starryForm: null,
     cosmicOmen: null

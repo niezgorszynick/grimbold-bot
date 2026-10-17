@@ -161,14 +161,14 @@ function wornGear(sheetData) {
   readInventory(sheetData).forEach((row, index) => {
     const gear = inventoryGear(row);
     if (gear && isWorn(row, gear, sheetData)) {
-      worn.push({ from: 'inventory', index, name: row.nickname || row.name, realName: row.name, nickname: row.nickname || null, gear, magic: null });
+      worn.push({ from: 'inventory', index, name: row.nickname || row.name, realName: row.name, nickname: row.nickname || null, gear, magic: null, quantity: Math.max(1, Number(row.quantity) || 1) });
     }
   });
   readMagicItems(sheetData).forEach(entry => {
     if (!entry.equipped) return;
     const info = magicItemEntryInfo(entry);
     const gear = gearOfMagicItem(entry, info);
-    if (gear) worn.push({ from: 'magic', uid: entry.uid, name: info.name, realName: info.realName, nickname: info.nickname, gear, magic: info });
+    if (gear) worn.push({ from: 'magic', uid: entry.uid, name: info.name, realName: info.realName, nickname: info.nickname, gear, magic: info, quantity: Math.max(1, Number(entry.quantity) || 1) });
   });
   return worn;
 }
@@ -379,7 +379,10 @@ function calculateArmor(ctx) {
 
 // ─── Attacks ────────────────────────────────────────────────────────────────
 
-function weaponAttack(piece, ctx, armorState) {
+// options.offHand: the extra attack of the Light property (or Dual Wielder),
+// which adds no ability modifier to damage unless it is negative or the
+// character has Two-Weapon Fighting.
+function weaponAttack(piece, ctx, armorState, options = {}) {
   const { mods, scores, pb, feats, features, training, levelOf } = ctx;
   const weapon = piece.gear;
   const notes = [];
@@ -408,7 +411,9 @@ function weaponAttack(piece, ctx, armorState) {
 
   let die = weapon.damage;
   if (martialArts && averageOf(martialArtsDie(monkLevel)) > averageOf(die)) die = martialArtsDie(monkLevel);
-  const damageMod = mod + magicBonus + (custom ? custom.damageBonus : 0);
+  const offHand = Boolean(options.offHand);
+  const abilityDamage = offHand && mod > 0 && !feats.has('Two-Weapon Fighting') ? 0 : mod;
+  const damageMod = abilityDamage + magicBonus + (custom ? custom.damageBonus : 0);
   // What adds up to the to-hit and damage bonuses, for the sheet to explain.
   const hitParts = [
     { label: ABILITY_LABELS[ability], value: mod },
@@ -418,12 +423,13 @@ function weaponAttack(piece, ctx, armorState) {
     custom && custom.attackBonus ? { label: 'Weapon', value: custom.attackBonus } : null
   ].filter(Boolean);
   const damageParts = [
-    { label: ABILITY_LABELS[ability], value: mod },
+    abilityDamage || !offHand ? { label: ABILITY_LABELS[ability], value: abilityDamage } : null,
     magicBonus ? { label: 'Magic', value: magicBonus } : null,
     custom && custom.damageBonus ? { label: 'Weapon', value: custom.damageBonus } : null
   ].filter(Boolean);
   let damage = damageText(die, damageMod, weapon.damageType);
-  if (weapon.versatile) damage += ` (${damageText(weapon.versatile, damageMod, '').trim()} two-handed)`;
+  // The off-hand attack is made one-handed.
+  if (weapon.versatile && !offHand) damage += ` (${damageText(weapon.versatile, damageMod, '').trim()} two-handed)`;
 
   const props = weapon.properties.map(property => {
     if (property === 'Thrown') return `Thrown ${weapon.range}`;
@@ -454,9 +460,17 @@ function weaponAttack(piece, ctx, armorState) {
     notes.push('Great Weapon Fighting: 1s and 2s on damage dice count as 3 (two-handed)');
   }
   if (feats.has('Thrown Weapon Fighting') && weapon.properties.includes('Thrown')) notes.push('Thrown Weapon Fighting: +2 damage when thrown');
-  if (feats.has('Two-Weapon Fighting') && weapon.properties.includes('Light')) notes.push('Two-Weapon Fighting: add your modifier to the extra Light attack');
+  if (feats.has('Two-Weapon Fighting') && weapon.properties.includes('Light') && !offHand) notes.push('Two-Weapon Fighting: add your modifier to the extra Light attack');
+  if (offHand) {
+    const nick = features.has('Weapon Mastery') && weapon.mastery === 'Nick';
+    notes.unshift(nick
+      ? 'Off-hand: after attacking with a different Light weapon; Nick makes it part of the Attack action (once per turn)'
+      : 'Off-hand: Bonus Action, after taking the Attack action with a different Light weapon');
+    notes.push(abilityDamage ? (mod < 0 ? 'Negative modifier still applies to damage' : 'Two-Weapon Fighting: modifier added to damage') : 'No ability modifier to damage');
+  }
   return {
-    name: piece.name,
+    name: offHand ? `${piece.name} (off-hand)` : piece.name,
+    offHand,
     from: piece.from,
     index: piece.index,
     uid: piece.uid,
@@ -512,7 +526,21 @@ function calculateCombat(character) {
   const ctx = context(character);
   const armorClass = calculateArmor(ctx);
   const weapons = ctx.worn.filter(piece => piece.gear.type === 'weapon');
-  const attacks = weapons.filter(piece => !piece.gear.unknown).map(piece => weaponAttack(piece, ctx, armorClass));
+  const known = weapons.filter(piece => !piece.gear.unknown);
+  const attacks = [];
+  // Two-weapon fighting (Light property): the extra attack needs a Light weapon
+  // for the first attack and a different weapon for the second, which must be
+  // Light, or with Dual Wielder any one-handed melee weapon. Two daggers in one
+  // inventory line count as two.
+  const isLight = piece => piece.gear.properties.includes('Light');
+  const canOffHand = piece => isLight(piece) ||
+    (ctx.feats.has('Dual Wielder') && piece.gear.kind === 'Melee' && !piece.gear.properties.includes('Two-Handed'));
+  const lightUnits = known.filter(isLight).reduce((sum, piece) => sum + (piece.quantity || 1), 0);
+  known.forEach(piece => {
+    attacks.push(weaponAttack(piece, ctx, armorClass));
+    const otherLight = lightUnits - (isLight(piece) ? 1 : 0);
+    if (canOffHand(piece) && otherLight >= 1) attacks.push(weaponAttack(piece, ctx, armorClass, { offHand: true }));
+  });
   // Listed anyway, so a worn magic weapon never just disappears.
   weapons.filter(piece => piece.gear.unknown).forEach(piece => {
     attacks.push({
