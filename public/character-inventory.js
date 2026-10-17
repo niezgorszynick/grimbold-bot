@@ -258,6 +258,8 @@
     const refreshPreview = () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
+        // Not a weapon (yet): nothing to work out.
+        if (editor.hidden) return;
         const mine = ++sequence;
         try {
           const response = await fetch('/api/characters/' + characterId + '/inventory/preview-weapon', {

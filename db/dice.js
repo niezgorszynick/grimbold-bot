@@ -92,6 +92,9 @@ function rollOptions(character) {
     if (damage) {
       add(`attack:${index}:damage`, `${attack.name} damage (${damage.type})`, damage.formula, 'damage');
       if (damage.twoHanded) add(`attack:${index}:damage2`, `${attack.name} damage, two-handed (${damage.type})`, damage.twoHanded, 'damage');
+      // The extra Light attack (no ability modifier unless negative / Two-Weapon Fighting).
+      const offHand = attack.offHand && parseDamage(attack.offHand.damage);
+      if (offHand) add(`attack:${index}:offhand`, `${attack.name} damage, off-hand (${offHand.type})`, offHand.formula, 'damage');
     }
   });
   // Wild Shape: STR, DEX and CON (and what uses them) are the beast's now.

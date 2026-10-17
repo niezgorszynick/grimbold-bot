@@ -97,8 +97,14 @@
     const rollButton = (id, text, title) => el('button', { type: 'button', className: 'roll-link', 'data-roll': id, title, text });
     const damageCell = (attack, index) => {
       const match = String(attack.damage).match(/^(.*?)\s*\((\S+) two-handed\)$/);
-      if (!match) return [rollButton('attack:' + index + ':damage', attack.damage, 'Roll damage')];
-      return [rollButton('attack:' + index + ':damage', match[1], 'Roll damage'), ' ', rollButton('attack:' + index + ':damage2', '(' + match[2] + ' two-handed)', 'Roll two-handed damage')];
+      const cell = match
+        ? [rollButton('attack:' + index + ':damage', match[1], 'Roll damage'), ' ', rollButton('attack:' + index + ':damage2', '(' + match[2] + ' two-handed)', 'Roll two-handed damage')]
+        : [rollButton('attack:' + index + ':damage', attack.damage, 'Roll damage')];
+      // The extra Light attack: its own damage link in the same row.
+      if (attack.offHand) {
+        cell.push(' ', rollButton('attack:' + index + ':offhand', 'off-hand ' + String(attack.offHand.damage).split(' ')[0], attack.offHand.rule));
+      }
+      return cell;
     };
     const rows = view.attacks.map((attack, index) => el('tr', { className: attack.needsType ? 'needs-type' : null }, [
       el('td', { 'data-label': 'Name' }, [el('strong', { text: attack.name }), attack.weapon && attack.weapon !== attack.name ? el('span', { className: 'muted small', text: ' ' + attack.weapon }) : null]),

@@ -461,16 +461,16 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
   }
   if (feats.has('Thrown Weapon Fighting') && weapon.properties.includes('Thrown')) notes.push('Thrown Weapon Fighting: +2 damage when thrown');
   if (feats.has('Two-Weapon Fighting') && weapon.properties.includes('Light') && !offHand) notes.push('Two-Weapon Fighting: add your modifier to the extra Light attack');
-  if (offHand) {
-    const nick = features.has('Weapon Mastery') && weapon.mastery === 'Nick';
-    notes.unshift(nick
-      ? 'Off-hand: after attacking with a different Light weapon; Nick makes it part of the Attack action (once per turn)'
-      : 'Off-hand: Bonus Action, after taking the Attack action with a different Light weapon');
-    notes.push(abilityDamage ? (mod < 0 ? 'Negative modifier still applies to damage' : 'Two-Weapon Fighting: modifier added to damage') : 'No ability modifier to damage');
-  }
+  // How the off-hand attack works, for the damage link's tooltip.
+  const offHandRule = offHand
+    ? (features.has('Weapon Mastery') && weapon.mastery === 'Nick'
+      ? 'Off-hand attack after attacking with a different Light weapon; Nick makes it part of the Attack action (once per turn).'
+      : 'Off-hand attack: a Bonus Action after taking the Attack action with a different Light weapon.') +
+      (abilityDamage ? (mod < 0 ? ' A negative modifier still applies to damage.' : ' Two-Weapon Fighting adds your modifier.') : ' No ability modifier to damage.')
+    : null;
   return {
-    name: offHand ? `${piece.name} (off-hand)` : piece.name,
-    offHand,
+    name: piece.name,
+    offHandRule,
     from: piece.from,
     index: piece.index,
     uid: piece.uid,
@@ -539,7 +539,11 @@ function calculateCombat(character) {
   known.forEach(piece => {
     attacks.push(weaponAttack(piece, ctx, armorClass));
     const otherLight = lightUnits - (isLight(piece) ? 1 : 0);
-    if (canOffHand(piece) && otherLight >= 1) attacks.push(weaponAttack(piece, ctx, armorClass, { offHand: true }));
+    // In the same row: a second damage link ("off-hand 1d4"), not a row of its own.
+    if (canOffHand(piece) && otherLight >= 1) {
+      const off = weaponAttack(piece, ctx, armorClass, { offHand: true });
+      attacks[attacks.length - 1].offHand = { damage: off.damage, rule: off.offHandRule };
+    }
   });
   // Listed anyway, so a worn magic weapon never just disappears.
   weapons.filter(piece => piece.gear.unknown).forEach(piece => {

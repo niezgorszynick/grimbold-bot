@@ -692,6 +692,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .weapon-editor-wrap h5 { margin: 0 0 6px; }
 .weapon-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
 .weapon-fields[hidden] { display: none; }
+/* "This is a weapon" unticked: the whole editor stays out of the way. */
+.weapon-editor[hidden] { display: none; }
 .weapon-field { display: grid; gap: 3px; }
 .weapon-check { display: flex; align-items: center; gap: 6px; }
 /* Weapon stat fields fit their column (dropdowns used to spill into the next one). */
