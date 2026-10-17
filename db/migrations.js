@@ -524,6 +524,20 @@ const MIGRATIONS = [
       const existing = new Set(db.prepare('PRAGMA table_info(artisans)').all().map(column => column.name));
       if (!existing.has('mode')) db.exec("ALTER TABLE artisans ADD COLUMN mode TEXT NOT NULL DEFAULT 'resident'");
     }
+  },
+  {
+    version: 15,
+    name: 'Wood Elf speed',
+    up(db) {
+      // Wood Elves have Speed 35 ft.; characters made before it was applied still
+      // had the Elf 30 ft. A speed someone typed in by hand is left alone.
+      db.exec(`
+        UPDATE characters SET sheet_data = json_set(sheet_data, '$.speed', '35 ft.')
+        WHERE race = 'Elf' AND json_valid(sheet_data)
+          AND json_extract(sheet_data, '$.speciesOption') = 'Wood Elf'
+          AND COALESCE(json_extract(sheet_data, '$.speed'), '30 ft.') IN ('30 ft.', '30 ft', '30')
+      `);
+    }
   }
 ];
 

@@ -5,7 +5,7 @@
 // Error with a player-facing message on the first invalid choice.
 
 const { ABILITIES, SKILL_NAMES, proficiencyBonus, findCanonical } = require('./util');
-const { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, sizeOptions } = require('./species');
+const { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, speciesSpeed, sizeOptions } = require('./species');
 const { DND_CLASSES_AND_SUBCLASSES } = require('./subclasses');
 const { ALL_CLASSES } = require('./classes');
 const { BACKGROUNDS } = require('./backgrounds');
@@ -350,7 +350,8 @@ function buildStartingCharacter(input) {
     armorClass: armor.ac,
     armorClassSource: armor.source,
     initiative: `${initiative >= 0 ? '+' : ''}${initiative}`,
-    speed: `${speciesData.speed} ft.`,
+    // Wood Elves are faster (Speed 35 ft.).
+    speed: `${speciesSpeed(species, speciesOption)} ft.`,
     hpMax: hp.max,
     hpCurrent: hp.max,
     hpTemp: 0,

@@ -79,3 +79,27 @@ test("a background's Origin feat can be swapped for another at creation", () => 
   assert.deepEqual(alert.sheetData.originFeats.map(feat => [feat.name, feat.source]), [['Alert', 'Soldier background']]);
   assert.throws(() => rules.buildStartingCharacter({ ...request, backgroundFeat: 'Great Weapon Master' }), /not an Origin feat/);
 });
+
+test('Wood Elves get Speed 35 ft.: at creation, when the lineage is chosen later, and for older sheets', () => {
+  const request = {
+    name: 'Faelar', species: 'Elf', speciesOption: 'Wood Elf', speciesSpellAbility: 'wis', speciesSkills: ['Insight'], className: 'Fighter', subclass: 'Champion', fightingStyle: 'Defense',
+    background: 'Soldier', generationMethod: 'Standard Array',
+    baseScores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 }, backgroundBonuses: { str: 2, con: 1 },
+    classSkills: ['Perception', 'Survival'], backgroundTool: 'Dice', languages: ['Elvish', 'Orc'], classEquipment: 'A', backgroundEquipment: 'A'
+  };
+  assert.equal(rules.buildStartingCharacter(request).sheetData.speed, '35 ft.');
+  assert.equal(rules.buildStartingCharacter({ ...request, speciesOption: 'High Elf' }).sheetData.speed, '30 ft.');
+
+  const owner = createPlayer();
+  const id = addCharacter(owner, { race: 'Elf', sheet: { speed: '30 ft.', abilities: { wis: { score: 14 } } } });
+  db.chooseSpeciesOption({ id, player_id: owner, is_admin: false, choice: { option: 'Wood Elf', spellAbility: 'wis' } });
+  assert.equal(JSON.parse(db.getCharacterById(id).sheet_data).speed, '35 ft.');
+  const custom = addCharacter(owner, { race: 'Elf', sheet: { speed: '40 ft. (Boots of Striding)', abilities: { wis: { score: 14 } } } });
+  db.chooseSpeciesOption({ id: custom, player_id: owner, is_admin: false, choice: { option: 'Wood Elf', spellAbility: 'wis' } });
+  assert.equal(JSON.parse(db.getCharacterById(custom).sheet_data).speed, '40 ft. (Boots of Striding)', 'a hand-typed speed stays');
+
+  // The one-time fix for Wood Elves made before this.
+  const old = addCharacter(owner, { race: 'Elf', sheet: { speed: '30 ft.', speciesOption: 'Wood Elf' } });
+  require('../db/migrations').MIGRATIONS.find(migration => migration.version === 15).up(db.db);
+  assert.equal(JSON.parse(db.getCharacterById(old).sheet_data).speed, '35 ft.');
+});

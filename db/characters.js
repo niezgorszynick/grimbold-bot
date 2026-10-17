@@ -319,6 +319,9 @@ function chooseSpeciesOption({ id, player_id, is_admin, choice }) {
     if (!rule.options.includes(body.option)) throw new Error(`Choose your ${rule.label}: ${rule.options.join(', ')}.`);
     const sheetData = readSheetData(character.sheet_data);
     const next = { ...sheetData, speciesOption: body.option };
+    // A lineage can change the Speed (Wood Elf: 35 ft.); a hand-typed speed stays.
+    const baseSpeed = `${rules.speciesSpeed(character.race, null)} ft.`;
+    if (!sheetData.speed || sheetData.speed === baseSpeed) next.speed = `${rules.speciesSpeed(character.race, body.option)} ft.`;
     if (rule.spellAbilityChoice) {
       if (!['int', 'wis', 'cha'].includes(body.spellAbility)) throw new Error(`Choose Intelligence, Wisdom or Charisma for your ${rule.label} spells.`);
       next.speciesSpellAbility = body.spellAbility;

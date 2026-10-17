@@ -107,4 +107,14 @@ function sizeOptions(speciesName) {
   return species.size === 'Medium or Small' ? ['Medium', 'Small'] : [species.size];
 }
 
-module.exports = { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, sizeOptions };
+// Lineages that change the species' Speed (Wood Elf: Speed 35 ft.).
+const LINEAGE_SPEED = { 'Elf:Wood Elf': 35 };
+
+// Walking speed in feet for a species and its chosen lineage (if any).
+function speciesSpeed(species, option) {
+  const lineage = LINEAGE_SPEED[`${species}:${option}`];
+  if (lineage) return lineage;
+  return (DND_SPECIES_DATA[species] || {}).speed || 30;
+}
+
+module.exports = { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, LINEAGE_SPEED, speciesSpeed, sizeOptions };
