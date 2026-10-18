@@ -100,7 +100,8 @@ function portraitHtml(character) {
           message.textContent = method === 'POST' ? 'Uploading…' : '';
           const response = await fetch('/api/characters/' + root.dataset.characterId + '/portrait', { method, headers: body ? { 'Content-Type': 'application/octet-stream' } : {}, body });
           const result = await response.json().catch(() => ({}));
-          if (!response.ok) { message.textContent = result.error || 'That did not work.'; return; }
+          // 413 without a message: the web server in front (e.g. nginx) refused the size.
+          if (!response.ok) { message.textContent = result.error || (response.status === 413 ? 'The server refused a file this size. Try a smaller image (under 1 MB), or ask the admin to raise the upload limit.' : 'Upload failed (error ' + response.status + ').'); return; }
           window.location.reload();
         };
         root.querySelector('.sheet-portrait-image').addEventListener('click', () => file.click());

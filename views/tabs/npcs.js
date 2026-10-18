@@ -95,7 +95,7 @@ function filesHtml(npc) {
           const send = async (method, body) => {
             const response = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/octet-stream' } : {}, body });
             const result = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(result.error || 'The upload failed.');
+            if (!response.ok) throw new Error(result.error || (response.status === 413 ? 'The server refused a file this size. Try a smaller image (under 1 MB), or ask the admin to raise the upload limit.' : 'Upload failed (error ' + response.status + ').'));
             window.location.reload();
           };
           slot.querySelector('[data-upload]').addEventListener('click', async () => {
