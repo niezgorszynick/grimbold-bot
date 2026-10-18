@@ -232,7 +232,8 @@
     const casting = member.spellcasting.map(source => source.label + ' DC ' + source.saveDc + ' · ' + signed(source.attackBonus));
     return el('article', { className: 'party-card' + (member.hp && member.hp.current === 0 ? ' is-down' : ''), 'data-roll-character': data.canManage ? String(member.id) : null }, [
       el('header', { className: 'party-card-header' }, [
-        el('div', {}, [nameNode, el('div', { className: 'muted small', text: member.player + ' · ' + (member.species || '') + ' · ' + classes })]),
+        member.portraitUrl ? el('img', { className: 'party-portrait', src: member.portraitUrl, alt: '', loading: 'lazy' }) : null,
+        el('div', { className: 'party-card-title' }, [nameNode, el('div', { className: 'muted small', text: member.player + ' · ' + (member.species || '') + ' · ' + classes })]),
         remove
       ]),
       hpBlock(member.hp),

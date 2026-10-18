@@ -78,6 +78,44 @@ function formatGold(cp) {
   return `${gp.toLocaleString('en-US')} gp`;
 }
 
+// The character's portrait (initials without one); click to upload or change it.
+function portraitHtml(character) {
+  const url = db.characterPortraitUrl(character);
+  const initials = String(character.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0].toUpperCase()).join('');
+  return `
+    <div class="sheet-portrait" data-character-id="${Number(character.id)}">
+      <button type="button" class="sheet-portrait-image" title="Upload a portrait (PNG, JPG, WebP or GIF, up to 5 MB)" aria-label="Upload a portrait">
+        ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(character.name)}">` : `<span>${escapeHtml(initials)}</span>`}
+      </button>
+      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      ${url ? '<button type="button" class="link-button small sheet-portrait-remove" title="Remove the portrait">× remove</button>' : ''}
+      <small class="sheet-portrait-message muted" role="status"></small>
+    </div>
+    <script>
+      (() => {
+        const root = document.currentScript.previousElementSibling;
+        const file = root.querySelector('input[type=file]');
+        const message = root.querySelector('.sheet-portrait-message');
+        const send = async (method, body) => {
+          message.textContent = method === 'POST' ? 'Uploading…' : '';
+          const response = await fetch('/api/characters/' + root.dataset.characterId + '/portrait', { method, headers: body ? { 'Content-Type': 'application/octet-stream' } : {}, body });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) { message.textContent = result.error || 'That did not work.'; return; }
+          window.location.reload();
+        };
+        root.querySelector('.sheet-portrait-image').addEventListener('click', () => file.click());
+        file.addEventListener('change', () => {
+          const chosen = file.files[0];
+          if (!chosen) return;
+          if (chosen.size > 5 * 1024 * 1024) { message.textContent = 'Portraits can be 5 MB at most.'; return; }
+          send('POST', chosen);
+        });
+        const remove = root.querySelector('.sheet-portrait-remove');
+        if (remove) remove.addEventListener('click', () => { if (confirm('Remove this portrait?')) send('DELETE'); });
+      })();
+    </script>`;
+}
+
 module.exports = function renderCharacterSheetTab(ctx) {
   const { req, currentUser, isAdmin, status } = ctx;
   let contentHtml = '';
@@ -122,6 +160,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
         <script src="/admin/assets/character-levelup.js" defer></script>
         <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
           <header class="sheet-header" data-collapse="details">
+            ${portraitHtml(characterToEdit)}
             <div class="sheet-identity">
               <h2 id="cs_header_name">Character Sheet</h2>
               <span id="cs_header_sub">Loading character...</span>

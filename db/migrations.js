@@ -538,6 +538,15 @@ const MIGRATIONS = [
           AND COALESCE(json_extract(sheet_data, '$.speed'), '30 ft.') IN ('30 ft.', '30 ft', '30')
       `);
     }
+  },
+  {
+    version: 16,
+    name: 'Character portraits',
+    up(db) {
+      // A file name in uploads/characters (see db/characterPortraits.js).
+      const existing = new Set(db.prepare('PRAGMA table_info(characters)').all().map(column => column.name));
+      if (!existing.has('portrait_file')) db.exec("ALTER TABLE characters ADD COLUMN portrait_file TEXT NOT NULL DEFAULT ''");
+    }
   }
 ];
 

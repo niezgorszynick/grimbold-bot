@@ -8,6 +8,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { buildCharacterCombat } = require('./combat');
 const { activeWildShape, starryFormState } = require('./wildShape');
+const { characterPortraitUrl } = require('./characterPortraits');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
@@ -64,6 +65,7 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
   const row = {
     id: character.id,
     name: character.name,
+    portraitUrl: characterPortraitUrl(character),
     species: character.race,
     playerId: character.player_id,
     player: character.player_tag,

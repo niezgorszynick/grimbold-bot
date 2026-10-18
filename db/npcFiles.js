@@ -76,4 +76,4 @@ function getNpcFile({ npcId, kind }) {
   return { file, contentType: CONTENT_TYPES[path.extname(name).slice(1)] || 'application/octet-stream' };
 }
 
-module.exports = { NPC_FILE_MAX_BYTES: MAX_BYTES, saveNpcFile, removeNpcFile, removeNpcFiles, getNpcFile };
+module.exports = { NPC_FILE_MAX_BYTES: MAX_BYTES, sniffImage: sniff, saveNpcFile, removeNpcFile, removeNpcFiles, getNpcFile };

@@ -798,3 +798,16 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .item-bonus-tag { background: #2d4a3a; color: #b9f0cf; }
 .item-bonus-tag.is-off { opacity: 0.55; text-decoration: line-through; }
 .item-bonus-fields input[hidden] { display: none; }
+/* Character portraits */
+.sheet-header { align-items: flex-start; }
+.sheet-portrait { display: grid; justify-items: center; gap: 4px; flex: 0 0 auto; }
+.sheet-portrait-image { width: 84px; height: 84px; border-radius: 50%; border: 2px solid #d4af37; background: #232428; padding: 0; overflow: hidden; cursor: pointer; display: grid; place-items: center; color: #d4af37; font-size: 28px; font-weight: 700; }
+.sheet-portrait-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sheet-portrait-image:hover, .sheet-portrait-image:focus-visible { border-color: #f1c40f; outline: none; box-shadow: 0 0 0 3px rgba(241, 196, 15, 0.35); }
+.sheet-portrait-message { max-width: 120px; text-align: center; }
+.party-portrait { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #3f4147; flex: 0 0 auto; }
+.party-card-title { flex: 1; min-width: 0; }
+.roster-portrait { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }
+@media (max-width: 600px) { .sheet-portrait-image { width: 64px; height: 64px; font-size: 22px; } }
+.sheet-portrait-remove { color: #949ba4; text-decoration: none; }
+.sheet-portrait-remove:hover { color: #f23f43; }

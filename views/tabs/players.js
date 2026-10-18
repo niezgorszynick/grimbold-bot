@@ -583,6 +583,7 @@ module.exports = function renderPlayersTab(ctx) {
               <td data-sort="${escapeHtml(row.discord_tag)}"><strong>${escapeHtml(row.discord_tag)}</strong></td>
               <td data-sort="${escapeHtml(row.discord_id)}"><small style="color: #949ba4;">${escapeHtml(row.discord_id)}</small></td>
               <td data-sort="${escapeHtml(row.character_name || '')}">
+                ${row.character_portrait_file ? `<img class="roster-portrait" src="/api/characters/${Number(row.character_id)}/portrait?v=${encodeURIComponent(row.character_portrait_file)}" alt="" loading="lazy">` : ''}
                 ${row.character_name ? `<strong>${escapeHtml(row.character_name)}</strong>` : '<em style="color: #949ba4;">(No character)</em>'}
               </td>
               <td data-sort="${escapeHtml(row.character_race || '')}">${row.character_race ? escapeHtml(row.character_race) : '—'}</td>

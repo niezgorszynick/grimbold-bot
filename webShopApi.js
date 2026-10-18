@@ -651,6 +651,35 @@ router.post('/auctions/:id/cancel', (req, res) => {
   }
 });
 
+// Character portraits: everyone logged in sees them; the owner or a DM uploads.
+router.get('/characters/:id/portrait', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const found = db.getCharacterPortraitFile(req.params.id);
+  if (!found) return res.status(404).json({ error: 'No portrait.' });
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(found.file);
+});
+
+router.post('/characters/:id/portrait', express.raw({ type: () => true, limit: db.NPC_FILE_MAX_BYTES }), (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.saveCharacterPortrait({ characterId: req.params.id, user, buffer: req.body }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+router.delete('/characters/:id/portrait', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.removeCharacterPortrait({ characterId: req.params.id, user }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // NPC portraits as uploaded (everyone logged in).
 router.get('/npcs/:id/files/:kind', (req, res) => {
   const user = getSessionApiUser(req);

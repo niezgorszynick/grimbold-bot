@@ -39,7 +39,8 @@ module.exports = {
         c.level AS character_level,
         c.xp AS character_xp,
         c.gold_cp AS character_gold_cp,
-        c.status AS character_status
+        c.status AS character_status,
+        c.portrait_file AS character_portrait_file
       FROM players p
       LEFT JOIN characters c ON p.id = c.player_id
       ORDER BY p.discord_tag ASC, c.name ASC
