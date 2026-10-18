@@ -103,6 +103,15 @@ app.get('/logout', (req, res) => {
 // so a Discord link works without a panel login.
 app.use('/news', express.static(require('path').join(__dirname, 'public', 'news'), { extensions: ['html'], index: false }));
 
+// NPC portraits as webhook avatars: Discord fetches these without a login
+// (an NPC speaking in an adventure thread, see adventureThreads.js).
+app.get('/avatars/npc/:file', (req, res) => {
+  const found = db.getNpcPortraitByName(req.params.file);
+  if (!found) return res.status(404).end();
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(found.file);
+});
+
 // DM Panel route
 // The Owlbear Rodeo extension (public, works without a panel login).
 app.use('/vtt', require('./vtt'));

@@ -189,7 +189,8 @@ test('Grimbrandt speaks through a webhook and tags finished threads', async () =
   threads.setClientForTests(null);
 });
 
-test('the DM speaks in the adventure thread under a chosen name', async () => {
+test('the DM speaks in the adventure thread as Grimbrandt or a Notable NPC', async () => {
+  process.env.PANEL_URL = 'https://panel.example/';
   const dm = createPlayer();
   const outsider = createPlayer();
   const posts = [];
@@ -199,28 +200,34 @@ test('the DM speaks in the adventure thread under a chosen name', async () => {
   threads.setClientForTests({ user: { id: 'bot', displayAvatarURL: () => 'https://cdn.example/bot.png' }, channels: { fetch: async id => (id === thread.id ? thread : null) } });
   const adventure = await threads.logAdventureThread(thread, { announce: false });
   const say = (user, fields) => threads.sayInAdventureThread({ adventureId: adventure.id, user, ...fields });
+  const vex = db.saveNpc({ name: 'Captain Vex' });
+  const krzykacz = db.saveNpc({ name: 'Krzykacz Miejski' });
+  db.prepare("UPDATE npcs SET portrait_file = 'npc-x-portrait-abc123.png' WHERE id = ?").run(krzykacz);
 
-  const result = await say(userOf(dm), { name: 'Captain Vex', text: 'Raise the anchor!' });
+  const result = await say(userOf(dm), { npcId: vex, text: 'Raise the anchor!' });
   assert.deepEqual(result, { sent: true, as: 'Captain Vex', webhook: true });
   assert.equal(posts[0].username, 'Captain Vex');
   assert.equal(posts[0].threadId, thread.id);
   assert.equal(posts[0].content, 'Raise the anchor!');
-  assert.equal(posts[0].avatarURL, 'https://cdn.example/bot.png', 'no picture given: the bot\'s');
+  assert.equal(posts[0].avatarURL, 'https://cdn.example/bot.png', 'no portrait: the bot\'s picture');
   assert.deepEqual(posts[0].allowedMentions, { parse: ['users', 'roles'] }, 'no @everyone');
 
-  await say(userOf(outsider, 'admin'), { name: '', text: 'Ink!', avatarUrl: 'https://img.example/g.png' });
-  assert.equal(posts[1].username, 'Grimbrandt', 'no name: Grimbrandt');
-  assert.equal(posts[1].avatarURL, 'https://img.example/g.png');
+  await say(userOf(dm), { npcId: krzykacz, text: 'Słuchajcie!' });
+  assert.equal(posts[1].avatarURL, 'https://panel.example/avatars/npc/npc-x-portrait-abc123.png', 'the portrait through its public address');
+  assert.equal(db.getNpcPortraitByName('npc-x-portrait-abc123.png'), null, 'no file on disk: nothing served');
+  assert.equal(db.getNpcPortraitByName(''), null);
 
-  await assert.rejects(say(userOf(outsider), { name: 'X', text: 'hi' }), /Forbidden/);
-  await assert.rejects(say(userOf(dm), { name: 'Discord Staff', text: 'hi' }), /does not allow/);
-  await assert.rejects(say(userOf(dm), { name: 'X', text: '   ' }), /Write a message/);
-  await assert.rejects(say(userOf(dm), { name: 'X', text: 'hi', avatarUrl: 'javascript:alert(1)' }), /https/);
+  await say(userOf(outsider, 'admin'), { npcId: null, text: 'Ink!' });
+  assert.equal(posts[2].username, 'Grimbrandt', 'no NPC: Grimbrandt');
+
+  await assert.rejects(say(userOf(outsider), { npcId: vex, text: 'hi' }), /Forbidden/);
+  await assert.rejects(say(userOf(dm), { npcId: 999999, text: 'hi' }), /NPC not found/);
+  await assert.rejects(say(userOf(dm), { npcId: vex, text: '   ' }), /Write a message/);
 
   // Without a webhook the bot posts it, with the name on top.
   thread.parent = null;
   threads.setClientForTests({ user: { id: 'bot' }, channels: { fetch: async () => thread } });
-  assert.equal((await say(userOf(dm), { name: 'Captain Vex', text: 'Ahoy' })).webhook, false);
+  assert.equal((await say(userOf(dm), { npcId: vex, text: 'Ahoy' })).webhook, false);
   assert.equal(thread.sent.at(-1).content, '**Captain Vex:** Ahoy');
   threads.setClientForTests(null);
 });

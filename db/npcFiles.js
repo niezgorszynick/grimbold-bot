@@ -76,4 +76,11 @@ function getNpcFile({ npcId, kind }) {
   return { file, contentType: CONTENT_TYPES[path.extname(name).slice(1)] || 'application/octet-stream' };
 }
 
-module.exports = { NPC_FILE_MAX_BYTES: MAX_BYTES, sniffImage: sniff, saveNpcFile, removeNpcFile, removeNpcFiles, getNpcFile };
+// An NPC portrait by its file name, for Discord to fetch as a webhook avatar
+// (public: only names that are some NPC's current portrait).
+function getNpcPortraitByName(name) {
+  const npc = db.prepare('SELECT id FROM npcs WHERE portrait_file = ? AND portrait_file != ?').get(String(name || ''), '');
+  return npc ? getNpcFile({ npcId: npc.id, kind: 'portrait' }) : null;
+}
+
+module.exports = { NPC_FILE_MAX_BYTES: MAX_BYTES, getNpcPortraitByName, sniffImage: sniff, saveNpcFile, removeNpcFile, removeNpcFiles, getNpcFile };

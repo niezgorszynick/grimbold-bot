@@ -791,14 +791,14 @@ router.post('/adventures/:id/thread', async (req, res) => {
   }
 });
 
-// { name, text, avatarUrl } — the DM speaks in the adventure's Discord thread.
+// { npcId, text } — the DM speaks in the adventure's Discord thread.
 router.post('/adventures/:id/message', async (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body || {};
   try {
     return res.json(await require('./adventureThreads').sayInAdventureThread({
-      adventureId: req.params.id, user, name: body.name, text: body.text, avatarUrl: body.avatarUrl
+      adventureId: req.params.id, user, npcId: body.npcId, text: body.text
     }));
   } catch (error) {
     return res.status(adventureErrorStatus(error.message)).json({ error: error.message });

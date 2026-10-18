@@ -456,11 +456,7 @@
   const remember = (key, value) => { try { if (value === undefined) return localStorage.getItem(key) || ''; localStorage.setItem(key, value); } catch (error) { /* private window */ } return ''; };
   function speakSection() {
     if (!speakBox) {
-      const names = el('datalist', { id: 'speak-names-' + adventureId });
-      const name = el('input', { type: 'text', maxlength: '80', list: names.id, placeholder: 'Grimbrandt', 'aria-label': 'Speak as' });
-      name.value = remember('speak-as');
-      const avatar = el('input', { type: 'url', maxlength: '500', placeholder: 'https://… (optional picture)', 'aria-label': 'Picture link' });
-      avatar.value = remember('speak-avatar');
+      const speaker = el('select', { 'aria-label': 'Speak as' });
       const text = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'What do they say? Markdown and @mentions work as in Discord.', 'aria-label': 'Message' });
       const status = el('small', { className: 'muted', role: 'status' });
       const send = button('Send to thread', async () => {
@@ -468,9 +464,8 @@
         send.disabled = true;
         status.textContent = 'Sending…';
         try {
-          const result = await api('/message', { name: name.value, text: text.value, avatarUrl: avatar.value });
-          remember('speak-as', name.value.trim());
-          remember('speak-avatar', avatar.value.trim());
+          const result = await api('/message', { npcId: speaker.value ? Number(speaker.value) : null, text: text.value });
+          remember('speak-npc-' + adventureId, speaker.value);
           text.value = '';
           status.textContent = 'Sent as ' + result.as + (result.webhook ? '.' : ' (by the bot: it needs the Manage Webhooks permission to use the name itself).');
         } catch (error) {
@@ -483,18 +478,26 @@
       speakBox = el('details', { className: 'sheet-card speak-box' }, [
         el('summary', { text: '💬 Speak in the Discord thread' }),
         el('div', { className: 'table-filter' }, [
-          el('label', { className: 'table-filter-level' }, ['Speak as ', name]),
-          el('label', { className: 'table-filter-level speak-avatar' }, ['Picture ', avatar]),
-          names
+          el('label', { className: 'table-filter-level' }, ['Speak as ', speaker])
         ]),
         text,
         el('div', { className: 'vitals-actions' }, [send, status])
       ]);
-      speakBox.names = names;
+      speakBox.speaker = speaker;
     }
-    // Suggestions: Grimbrandt and the NPCs at the table.
-    const suggestions = ['Grimbrandt', 'Grimbold', 'The Narrator'].concat((data.npcs || []).map(npc => npc.name));
-    speakBox.names.replaceChildren(...[...new Set(suggestions)].map(value => el('option', { value })));
+    // Grimbrandt, the NPCs at the table, then the other Notable NPCs. The
+    // choice survives reloads (and is remembered per adventure).
+    const select = speakBox.speaker;
+    const chosen = select.options.length ? select.value : remember('speak-npc-' + adventureId);
+    const option = npc => el('option', { value: String(npc.id), text: npc.name });
+    const atTable = data.npcs || [];
+    const others = (data.npcCandidates || []).filter(npc => !atTable.some(entry => entry.id === npc.id));
+    select.replaceChildren(...[
+      el('option', { value: '', text: 'Grimbrandt (the chronicler)' }),
+      atTable.length ? el('optgroup', { label: 'At the table' }, atTable.map(option)) : null,
+      others.length ? el('optgroup', { label: 'Other Notable NPCs' }, others.map(option)) : null
+    ].filter(Boolean));
+    select.value = [...select.options].some(entry => entry.value === chosen) ? chosen : '';
     return speakBox;
   }
 
