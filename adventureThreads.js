@@ -124,6 +124,56 @@ async function postAsGrimbrandt(thread, content) {
   return false;
 }
 
+// ─── DMs speaking in a thread from the panel ────────────────────────────────
+
+const SPEAKER_LIMIT = 80;
+const MESSAGE_LIMIT = 2000;
+
+// Discord refuses webhook names containing these.
+function checkSpeaker(name) {
+  const speaker = String(name || '').trim() || PERSONA;
+  if (speaker.length > SPEAKER_LIMIT) throw new Error(`The name can be ${SPEAKER_LIMIT} characters at most.`);
+  if (/discord|clyde/i.test(speaker) || /^(everyone|here)$/i.test(speaker)) throw new Error('Discord does not allow that name.');
+  return speaker;
+}
+
+// From the adventure table: { adventureId, user, name, text, avatarUrl }.
+// The message goes into the adventure's thread under the chosen name (a
+// webhook on the channel); without one, the bot posts it with the name on top.
+async function sayInAdventureThread({ adventureId, user, name, text, avatarUrl }) {
+  const adventure = db.getAdventureById(Number(adventureId));
+  if (!adventure) throw new Error('Adventure not found.');
+  if (!db.canManageAdventure(adventure, user)) throw new Error('Forbidden.');
+  if (!adventure.discord_thread_id) throw new Error('This adventure has no Discord thread.');
+  const speaker = checkSpeaker(name);
+  const content = String(text || '').trim();
+  if (!content) throw new Error('Write a message first.');
+  if (content.length > MESSAGE_LIMIT) throw new Error(`Discord messages can be ${MESSAGE_LIMIT} characters at most.`);
+  const avatar = String(avatarUrl || '').trim();
+  if (avatar && !/^https:\/\/\S+$/i.test(avatar)) throw new Error('The picture must be an https:// image link.');
+  if (!client) throw new Error('The bot is not connected to Discord right now.');
+  const thread = await client.channels.fetch(adventure.discord_thread_id).catch(() => null);
+  if (!thread) throw new Error('The Discord thread could not be found (deleted?).');
+  if (thread.archived && typeof thread.setArchived === 'function') await thread.setArchived(false).catch(() => {});
+
+  // Grimbrandt keeps his own picture; anyone else gets the link given, or the bot's.
+  const botAvatar = client.user && typeof client.user.displayAvatarURL === 'function' ? client.user.displayAvatarURL() : undefined;
+  const avatarURL = avatar || (speaker === PERSONA ? process.env.GRIMBRANDT_AVATAR_URL || undefined : botAvatar);
+  const allowedMentions = { parse: ['users', 'roles'] };
+  try {
+    const hook = await webhookFor(thread.parent);
+    if (hook) {
+      await hook.send({ content, threadId: thread.id, username: speaker, avatarURL, allowedMentions });
+      return { sent: true, as: speaker, webhook: true };
+    }
+  } catch (error) {
+    console.warn(`Could not speak through a webhook (${error.message}); posting as the bot.`);
+  }
+  if (typeof thread.send !== 'function') throw new Error('Could not post in the thread.');
+  await thread.send({ content: `**${speaker}:** ${content}`.slice(0, MESSAGE_LIMIT), allowedMentions });
+  return { sent: true, as: speaker, webhook: false };
+}
+
 // ─── Threads → adventures ───────────────────────────────────────────────────
 
 // Threads from before this feature was switched on are left alone, so old
@@ -246,6 +296,7 @@ module.exports = {
   renameAdventureThread,
   announceAdventureEnd,
   catchUpAdventureThreads,
+  sayInAdventureThread,
   stripStatusTag,
   channelId,
   setClientForTests

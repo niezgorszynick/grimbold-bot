@@ -188,3 +188,39 @@ test('Grimbrandt speaks through a webhook and tags finished threads', async () =
   assert.equal(other.name, '[ANULOWANE] Zlecenie bez chętnych');
   threads.setClientForTests(null);
 });
+
+test('the DM speaks in the adventure thread under a chosen name', async () => {
+  const dm = createPlayer();
+  const outsider = createPlayer();
+  const posts = [];
+  const parent = { id: 'chan-zlecenia', fetchWebhooks: async () => [], createWebhook: async () => ({ name: 'Grimbrandt', avatar: 'a', send: async post => { posts.push(post); } }) };
+  const thread = fakeThread({ ownerId: discordIdOf(dm) });
+  thread.parent = parent;
+  threads.setClientForTests({ user: { id: 'bot', displayAvatarURL: () => 'https://cdn.example/bot.png' }, channels: { fetch: async id => (id === thread.id ? thread : null) } });
+  const adventure = await threads.logAdventureThread(thread, { announce: false });
+  const say = (user, fields) => threads.sayInAdventureThread({ adventureId: adventure.id, user, ...fields });
+
+  const result = await say(userOf(dm), { name: 'Captain Vex', text: 'Raise the anchor!' });
+  assert.deepEqual(result, { sent: true, as: 'Captain Vex', webhook: true });
+  assert.equal(posts[0].username, 'Captain Vex');
+  assert.equal(posts[0].threadId, thread.id);
+  assert.equal(posts[0].content, 'Raise the anchor!');
+  assert.equal(posts[0].avatarURL, 'https://cdn.example/bot.png', 'no picture given: the bot\'s');
+  assert.deepEqual(posts[0].allowedMentions, { parse: ['users', 'roles'] }, 'no @everyone');
+
+  await say(userOf(outsider, 'admin'), { name: '', text: 'Ink!', avatarUrl: 'https://img.example/g.png' });
+  assert.equal(posts[1].username, 'Grimbrandt', 'no name: Grimbrandt');
+  assert.equal(posts[1].avatarURL, 'https://img.example/g.png');
+
+  await assert.rejects(say(userOf(outsider), { name: 'X', text: 'hi' }), /Forbidden/);
+  await assert.rejects(say(userOf(dm), { name: 'Discord Staff', text: 'hi' }), /does not allow/);
+  await assert.rejects(say(userOf(dm), { name: 'X', text: '   ' }), /Write a message/);
+  await assert.rejects(say(userOf(dm), { name: 'X', text: 'hi', avatarUrl: 'javascript:alert(1)' }), /https/);
+
+  // Without a webhook the bot posts it, with the name on top.
+  thread.parent = null;
+  threads.setClientForTests({ user: { id: 'bot' }, channels: { fetch: async () => thread } });
+  assert.equal((await say(userOf(dm), { name: 'Captain Vex', text: 'Ahoy' })).webhook, false);
+  assert.equal(thread.sent.at(-1).content, '**Captain Vex:** Ahoy');
+  threads.setClientForTests(null);
+});

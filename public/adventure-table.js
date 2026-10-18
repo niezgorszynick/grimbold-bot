@@ -416,6 +416,55 @@
     ]);
   }
 
+  // The DM speaks in the adventure's Discord thread under any name (Grimbrandt,
+  // an NPC, "The Narrator"...). Built once, so a reload does not wipe a
+  // half-written message; the last name and picture are remembered.
+  let speakBox = null;
+  const remember = (key, value) => { try { if (value === undefined) return localStorage.getItem(key) || ''; localStorage.setItem(key, value); } catch (error) { /* private window */ } return ''; };
+  function speakSection() {
+    if (!speakBox) {
+      const names = el('datalist', { id: 'speak-names-' + adventureId });
+      const name = el('input', { type: 'text', maxlength: '80', list: names.id, placeholder: 'Grimbrandt', 'aria-label': 'Speak as' });
+      name.value = remember('speak-as');
+      const avatar = el('input', { type: 'url', maxlength: '500', placeholder: 'https://… (optional picture)', 'aria-label': 'Picture link' });
+      avatar.value = remember('speak-avatar');
+      const text = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'What do they say? Markdown and @mentions work as in Discord.', 'aria-label': 'Message' });
+      const status = el('small', { className: 'muted', role: 'status' });
+      const send = button('Send to thread', async () => {
+        if (!text.value.trim()) { status.textContent = 'Write a message first.'; return; }
+        send.disabled = true;
+        status.textContent = 'Sending…';
+        try {
+          const result = await api('/message', { name: name.value, text: text.value, avatarUrl: avatar.value });
+          remember('speak-as', name.value.trim());
+          remember('speak-avatar', avatar.value.trim());
+          text.value = '';
+          status.textContent = 'Sent as ' + result.as + (result.webhook ? '.' : ' (by the bot: it needs the Manage Webhooks permission to use the name itself).');
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          send.disabled = false;
+        }
+      }, 'btn btn-small btn-gold');
+      text.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send.click(); });
+      speakBox = el('details', { className: 'sheet-card speak-box' }, [
+        el('summary', { text: '💬 Speak in the Discord thread' }),
+        el('div', { className: 'table-filter' }, [
+          el('label', { className: 'table-filter-level' }, ['Speak as ', name]),
+          el('label', { className: 'table-filter-level speak-avatar' }, ['Picture ', avatar]),
+          names
+        ]),
+        text,
+        el('div', { className: 'vitals-actions' }, [send, status])
+      ]);
+      speakBox.names = names;
+    }
+    // Suggestions: Grimbrandt and the NPCs at the table.
+    const suggestions = ['Grimbrandt', 'Grimbold', 'The Narrator'].concat((data.npcs || []).map(npc => npc.name));
+    speakBox.names.replaceChildren(...[...new Set(suggestions)].map(value => el('option', { value })));
+    return speakBox;
+  }
+
   // The party's latest rolls (made on their sheets or here by the DM).
   function rollLog() {
     const rolls = data.rolls || [];
@@ -467,6 +516,7 @@
       ]),
       controls.length ? el('div', { className: 'table-filter' }, controls) : null,
       finishing && data.canManage && active ? finishForm() : null,
+      data.canManage && adventure.threadUrl ? speakSection() : null,
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null,
       data.party.length
         ? el('div', { className: 'party-grid' }, data.party.map(memberCard))

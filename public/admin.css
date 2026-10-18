@@ -811,3 +811,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 @media (max-width: 600px) { .sheet-portrait-image { width: 64px; height: 64px; font-size: 22px; } }
 .sheet-portrait-remove { color: #949ba4; text-decoration: none; }
 .sheet-portrait-remove:hover { color: #f23f43; }
+.speak-box summary { cursor: pointer; color: #f1c40f; font-weight: 600; }
+.speak-box[open] summary { margin-bottom: 8px; }
+.speak-box textarea { width: 100%; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.speak-box input { width: 220px; max-width: 100%; padding: 6px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.speak-box .speak-avatar input { width: 300px; }

@@ -285,5 +285,6 @@ module.exports = {
   finishAdventure,
   cancelAdventure,
   startAdventure,
-  adventureThreadUrl: threadUrl
+  adventureThreadUrl: threadUrl,
+  canManageAdventure: (adventure, user) => accessTo(adventure, user).manage
 };

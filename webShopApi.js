@@ -770,6 +770,20 @@ function announceAdventureEnd(adventureId) {
     .catch(error => console.error('[ERROR] Announcing the end of an adventure:', error));
 }
 
+// { name, text, avatarUrl } — the DM speaks in the adventure's Discord thread.
+router.post('/adventures/:id/message', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body || {};
+  try {
+    return res.json(await require('./adventureThreads').sayInAdventureThread({
+      adventureId: req.params.id, user, name: body.name, text: body.text, avatarUrl: body.avatarUrl
+    }));
+  } catch (error) {
+    return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // { xp, dmCharacterId, notes, title }
 router.post('/adventures/:id/finish', adventureRoute(({ adventureId, user, body }) => {
   const result = db.finishAdventure({ adventureId, user, xp: body.xp, dmCharacterId: body.dmCharacterId || null, notes: body.notes, title: body.title });
