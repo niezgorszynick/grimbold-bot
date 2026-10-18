@@ -41,6 +41,18 @@ function createAdventureFromThread({ threadId, guildId, title, ownerDiscordId })
   })();
 }
 
+// An adventure made in the panel, tied to a Discord thread afterwards.
+function linkAdventureToThread({ adventureId, user, threadId, guildId }) {
+  const adventure = loadAdventure(adventureId);
+  if (!accessTo(adventure, user).manage) throw new Error('Forbidden.');
+  if (adventure.discord_thread_id) throw new Error('This adventure already has a Discord thread.');
+  const taken = db.prepare('SELECT id, title FROM adventures WHERE discord_thread_id = ?').get(String(threadId));
+  if (taken) throw new Error(`That thread already belongs to "${taken.title}".`);
+  db.prepare('UPDATE adventures SET discord_thread_id = ?, discord_guild_id = ? WHERE id = ?')
+    .run(String(threadId), guildId ? String(guildId) : null, adventure.id);
+  return { linked: true, threadUrl: threadUrl({ discord_thread_id: String(threadId), discord_guild_id: guildId }) };
+}
+
 // Renaming the thread renames an adventure that is still running.
 function renameAdventureForThread(threadId, title) {
   return db.prepare("UPDATE adventures SET title = ? WHERE discord_thread_id = ? AND status = 'active'")
@@ -286,5 +298,6 @@ module.exports = {
   cancelAdventure,
   startAdventure,
   adventureThreadUrl: threadUrl,
+  linkAdventureToThread,
   canManageAdventure: (adventure, user) => accessTo(adventure, user).manage
 };

@@ -770,6 +770,27 @@ function announceAdventureEnd(adventureId) {
     .catch(error => console.error('[ERROR] Announcing the end of an adventure:', error));
 }
 
+// Open, unlinked threads to tie a panel-made adventure to; { threadId } links one.
+router.get('/adventures/:id/threads', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ threads: await require('./adventureThreads').unlinkedAdventureThreads({ adventureId: req.params.id, user }) });
+  } catch (error) {
+    return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+router.post('/adventures/:id/thread', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(await require('./adventureThreads').linkAdventureThread({ adventureId: req.params.id, user, threadId: (req.body || {}).threadId }));
+  } catch (error) {
+    return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // { name, text, avatarUrl } — the DM speaks in the adventure's Discord thread.
 router.post('/adventures/:id/message', async (req, res) => {
   const user = getSessionApiUser(req);

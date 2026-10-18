@@ -174,6 +174,36 @@ async function sayInAdventureThread({ adventureId, user, name, text, avatarUrl }
   return { sent: true, as: speaker, webhook: false };
 }
 
+// ─── Linking an adventure made in the panel ─────────────────────────────────
+
+// Open threads in the adventures channel that no adventure has yet, newest first.
+async function unlinkedAdventureThreads({ adventureId, user }) {
+  const adventure = db.getAdventureById(Number(adventureId));
+  if (!adventure) throw new Error('Adventure not found.');
+  if (!db.canManageAdventure(adventure, user)) throw new Error('Forbidden.');
+  if (!client) throw new Error('The bot is not connected to Discord right now.');
+  const channel = await client.channels.fetch(channelId()).catch(() => null);
+  if (!channel || !channel.threads) throw new Error('The adventures channel could not be found.');
+  const { threads } = await channel.threads.fetchActive();
+  const linked = new Set(db.prepare('SELECT discord_thread_id FROM adventures WHERE discord_thread_id IS NOT NULL').all().map(row => row.discord_thread_id));
+  return [...threads.values()]
+    .filter(thread => !linked.has(thread.id))
+    .sort((a, b) => (b.createdTimestamp || 0) - (a.createdTimestamp || 0))
+    .map(thread => ({ id: thread.id, name: thread.name, createdAt: thread.createdTimestamp ? new Date(thread.createdTimestamp).toISOString() : null }));
+}
+
+// Ties the adventure to the thread; the bot joins it so renames come through.
+async function linkAdventureThread({ adventureId, user, threadId }) {
+  if (!client) throw new Error('The bot is not connected to Discord right now.');
+  const thread = await client.channels.fetch(String(threadId || '')).catch(() => null);
+  if (!thread || thread.parentId !== channelId()) throw new Error('That is not a thread in the adventures channel.');
+  const result = db.linkAdventureToThread({ adventureId, user, threadId: thread.id, guildId: thread.guildId });
+  if (thread.joinable && !thread.joined && typeof thread.join === 'function') {
+    await thread.join().catch(error => console.warn(`Could not join thread ${thread.id}: ${error.message}`));
+  }
+  return result;
+}
+
 // ─── Threads → adventures ───────────────────────────────────────────────────
 
 // Threads from before this feature was switched on are left alone, so old
@@ -297,6 +327,8 @@ module.exports = {
   announceAdventureEnd,
   catchUpAdventureThreads,
   sayInAdventureThread,
+  unlinkedAdventureThreads,
+  linkAdventureThread,
   stripStatusTag,
   channelId,
   setClientForTests

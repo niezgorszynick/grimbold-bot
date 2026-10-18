@@ -224,3 +224,34 @@ test('the DM speaks in the adventure thread under a chosen name', async () => {
   assert.equal(thread.sent.at(-1).content, '**Captain Vex:** Ahoy');
   threads.setClientForTests(null);
 });
+
+test('an adventure made in the panel is tied to an open thread later', async () => {
+  const dm = createPlayer();
+  const outsider = createPlayer();
+  const linkedAlready = await (async () => {
+    threads.setClientForTests({ user: { id: 'bot' }, channels: { fetch: async () => null } });
+    return threads.logAdventureThread(fakeThread({ ownerId: discordIdOf(dm) }), { announce: false });
+  })();
+  const open = fakeThread({ name: 'Manual one' });
+  const elsewhere = fakeThread({ parentId: 'other-channel' });
+  const all = new Map([[open.id, open], [linkedAlready.discord_thread_id, { id: linkedAlready.discord_thread_id, name: 'taken' }]]);
+  const channel = { threads: { fetchActive: async () => ({ threads: all }) } };
+  threads.setClientForTests({ user: { id: 'bot' }, channels: { fetch: async id => (id === 'chan-zlecenia' ? channel : id === open.id ? open : id === elsewhere.id ? elsewhere : null) } });
+
+  const adventureId = db.startAdventure({ title: 'Made by hand', dmPlayerId: dm });
+  const asDm = { adventureId, user: userOf(dm) };
+  assert.deepEqual((await threads.unlinkedAdventureThreads(asDm)).map(thread => thread.id), [open.id], 'linked threads are left out');
+  await assert.rejects(threads.unlinkedAdventureThreads({ adventureId, user: userOf(outsider) }), /Forbidden/);
+  await assert.rejects(threads.linkAdventureThread({ ...asDm, threadId: elsewhere.id }), /not a thread in the adventures channel/);
+  await assert.rejects(threads.linkAdventureThread({ ...asDm, threadId: linkedAlready.discord_thread_id }), /not a thread|already belongs/);
+
+  const result = await threads.linkAdventureThread({ ...asDm, threadId: open.id });
+  assert.equal(result.threadUrl, `https://discord.com/channels/guild-1/${open.id}`);
+  assert.equal(open.joined, true);
+  assert.equal(db.getAdventureById(adventureId).discord_thread_id, open.id);
+  await assert.rejects(threads.linkAdventureThread({ ...asDm, threadId: open.id }), /already has a Discord thread/);
+  // From now on the thread renames the adventure, as with any other.
+  assert.equal(await threads.renameAdventureThread({ name: 'Manual one' }, { ...open, name: 'Manual one, part 2' }), true);
+  assert.equal(db.getAdventureById(adventureId).title, 'Manual one, part 2');
+  threads.setClientForTests(null);
+});

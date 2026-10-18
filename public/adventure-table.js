@@ -416,6 +416,39 @@
     ]);
   }
 
+  // An adventure made in the panel: pick one of the open threads to tie it to.
+  let threadPicker = null;
+  function threadSection() {
+    if (threadPicker) return threadPicker;
+    const select = el('select', { 'aria-label': 'Discord thread' }, [el('option', { value: '', text: 'Loading open threads…' })]);
+    const status = el('small', { className: 'muted', role: 'status' });
+    const link = button('Link thread', async () => {
+      if (!select.value) { status.textContent = 'Choose a thread first.'; return; }
+      link.disabled = true;
+      try {
+        await api('/thread', { threadId: select.value });
+        threadPicker = null;
+        message = 'Linked to the Discord thread.';
+        isError = false;
+        load();
+      } catch (error) {
+        status.textContent = error.message;
+        link.disabled = false;
+      }
+    }, 'btn btn-small btn-gold');
+    threadPicker = el('div', { className: 'table-filter thread-link' }, [
+      el('span', { className: 'muted small', text: 'No Discord thread yet:' }), select, link, status
+    ]);
+    api('/threads').then(result => {
+      select.replaceChildren(el('option', { value: '', text: result.threads.length ? 'Choose an open thread…' : 'No open threads without an adventure' }),
+        ...result.threads.map(thread => el('option', { value: thread.id, text: thread.name + (thread.createdAt ? ' (' + thread.createdAt.slice(0, 10) + ')' : '') })));
+    }).catch(error => {
+      select.replaceChildren(el('option', { value: '', text: 'Could not load threads' }));
+      status.textContent = error.message;
+    });
+    return threadPicker;
+  }
+
   // The DM speaks in the adventure's Discord thread under any name (Grimbrandt,
   // an NPC, "The Narrator"...). Built once, so a reload does not wipe a
   // half-written message; the last name and picture are remembered.
@@ -516,6 +549,7 @@
       ]),
       controls.length ? el('div', { className: 'table-filter' }, controls) : null,
       finishing && data.canManage && active ? finishForm() : null,
+      data.canManage && !adventure.threadUrl ? threadSection() : null,
       data.canManage && adventure.threadUrl ? speakSection() : null,
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null,
       data.party.length
