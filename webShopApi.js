@@ -715,7 +715,7 @@ router.delete('/npcs/:id/files/:kind', (req, res) => {
 
 // Notable NPCs on the table: { npcId, inAdventure }, and their HP: { action, amount }.
 router.post('/adventures/:id/npcs', adventureRoute(({ adventureId, user, body }) =>
-  db.setAdventureNpc({ adventureId, user, npcId: body.npcId, inAdventure: body.inAdventure !== false })));
+  db.setAdventureNpc({ adventureId, user, npcId: body.npcId, inAdventure: body.inAdventure !== false, hidden: Boolean(body.hidden) })));
 router.post('/adventures/:id/npcs/:npcId/hp', (req, res) => adventureRoute(({ adventureId, user, body }) =>
   db.changeNpcHp({ adventureId, user, npcId: req.params.npcId, action: body.action, amount: body.amount }))(req, res));
 
@@ -790,6 +790,13 @@ router.post('/adventures/:id/thread', async (req, res) => {
     return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
   }
 });
+
+// An admin becomes this adventure's DM (recorded on the adventure).
+router.post('/adventures/:id/takeover', adventureRoute(({ adventureId, user }) => db.takeOverAdventure({ adventureId, user })));
+
+// { npcId, hidden } — show an NPC to the party, or keep it the DM's secret.
+router.post('/adventures/:id/npcs/:npcId/hidden', (req, res) => adventureRoute(({ adventureId, user, body }) =>
+  db.setAdventureNpcHidden({ adventureId, user, npcId: req.params.npcId, hidden: Boolean(body.hidden) }))(req, res));
 
 // { npcId, text } — the DM speaks in the adventure's Discord thread.
 router.post('/adventures/:id/message', async (req, res) => {

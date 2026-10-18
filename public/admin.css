@@ -815,3 +815,13 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .speak-box[open] summary { margin-bottom: 8px; }
 .speak-box textarea { box-sizing: border-box; width: 100%; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
 .speak-box select { min-width: 240px; max-width: 100%; padding: 6px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+
+.npc-table-card.is-hidden { border-style: dashed; opacity: 0.8; }
+.npc-visibility { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
+.npc-add { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.npc-add label { display: inline-flex; align-items: center; gap: 4px; }
+.npc-condition { font-weight: 600; }
+.npc-condition-unhurt { color: #23a55a; }
+.npc-condition-wounded { color: #f0b232; }
+.npc-condition-bloodied { color: #f57731; }
+.npc-condition-down { color: #f23f43; }

@@ -98,14 +98,29 @@ function getNpc(id, { showStats = false } = {}) {
 }
 
 // NPCs on an adventure's table.
+// How an NPC looks to the party: a word, never numbers.
+function npcCondition(row) {
+  if (!Number.isInteger(row.hp_max) || row.hp_max <= 0) return null;
+  const current = Number.isInteger(row.hp_current) ? row.hp_current : row.hp_max;
+  if (current <= 0) return 'Down';
+  if (current * 2 <= row.hp_max) return 'Bloodied';
+  return current < row.hp_max ? 'Wounded' : 'Unhurt';
+}
+
+// NPCs on an adventure's table. showStats: the adventure's DM (stats, HP and
+// the hidden ones, marked). Everyone else: the revealed ones and their condition.
 function getAdventureNpcs(adventureId, { showStats = false } = {}) {
   const rows = db.prepare(`
-    SELECT n.*, p.discord_tag AS owner_tag FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id
+    SELECT n.*, an.hidden AS table_hidden, p.discord_tag AS owner_tag FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id
     LEFT JOIN players p ON p.id = n.owner_player_id
     WHERE an.adventure_id = ? ORDER BY an.added_at, n.name COLLATE NOCASE
   `).all(Number(adventureId));
-  const byNpc = appearances(rows.map(row => row.id));
-  return rows.map(row => npcView(row, byNpc[row.id], showStats));
+  const shown = showStats ? rows : rows.filter(row => !row.table_hidden);
+  const byNpc = appearances(shown.map(row => row.id));
+  return shown.map(row => {
+    const view = npcView(row, byNpc[row.id], showStats);
+    return showStats ? { ...view, hidden: Boolean(row.table_hidden) } : { ...view, condition: npcCondition(row) };
+  });
 }
 
 // The DMs who can look after an NPC: the Root DM and every admin account.
@@ -203,4 +218,4 @@ function deleteNpc(id) {
   return deleted;
 }
 
-module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, listNpcs, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };
+module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, npcCondition, listNpcs, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };

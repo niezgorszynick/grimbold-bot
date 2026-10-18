@@ -305,7 +305,7 @@
         select.value = '';
         return;
       }
-      act('/npcs', { npcId: Number(select.value), inAdventure: true }, (chosen ? chosen.name : 'NPC') + ' joined the table.');
+      act('/npcs', { npcId: Number(select.value), inAdventure: true, hidden: addHidden }, (chosen ? chosen.name : 'NPC') + (addHidden ? ' joined the table, hidden from the party.' : ' joined the table.'));
     });
     return select;
   }
@@ -323,8 +323,12 @@
     await load();
   }
 
+  // NPC stats, HP and hidden NPCs: the adventure's DM (and the Root DM) only.
+  const secretsOpen = () => data.canSeeSecrets && data.adventure.status === 'active';
+  let addHidden = false;
+
   function npcCard(npc) {
-    const manage = data.canManage && data.adventure.status === 'active';
+    const manage = secretsOpen();
     const stats = npc.stats;
     const hp = stats && Number.isInteger(stats.hpMax)
       ? { current: Number.isInteger(stats.hpCurrent) ? stats.hpCurrent : stats.hpMax, max: stats.hpMax, temp: stats.hpTemp }
@@ -354,7 +358,7 @@
       }, 'btn btn-small btn-secondary party-remove', { title: 'Remove from the adventure', 'aria-label': 'Remove ' + npc.name + ' from the adventure' })
       : null;
     const abilities = stats ? ABILITIES.filter(ability => stats.abilities[ability]) : [];
-    return el('article', { className: 'party-card npc-table-card' + (hp && hp.current === 0 ? ' is-down' : '') }, [
+    return el('article', { className: 'party-card npc-table-card' + (hp && hp.current === 0 ? ' is-down' : '') + (npc.hidden ? ' is-hidden' : '') + (npc.condition === 'Down' ? ' is-down' : '') }, [
       el('header', { className: 'party-card-header' }, [
         npc.portraitUrl ? el('img', { className: 'npc-portrait npc-portrait-small', src: npc.portraitUrl, alt: '', loading: 'lazy' }) : null,
         el('div', { className: 'npc-table-name' }, [
@@ -363,6 +367,11 @@
         ]),
         remove
       ]),
+      manage ? el('div', { className: 'npc-visibility' }, [
+        npc.hidden ? el('span', { className: 'tag gold', text: 'Hidden from the party' }) : el('span', { className: 'muted small', text: 'Visible to the party' }),
+        button(npc.hidden ? 'Reveal' : 'Hide', () => act('/npcs/' + npc.id + '/hidden', { hidden: !npc.hidden }, npc.name + (npc.hidden ? ' is now visible to the party.' : ' is hidden from the party.')), 'btn btn-small btn-secondary')
+      ]) : null,
+      !stats && npc.condition ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Condition' }), el('span', { className: 'npc-condition npc-condition-' + npc.condition.toLowerCase(), text: npc.condition })]) : null,
       stats ? hpBlock(hp) : (npc.description ? el('p', { className: 'muted small npc-table-description', text: npc.description }) : null),
       actions,
       stats ? el('div', { className: 'party-stats' }, [
@@ -378,10 +387,15 @@
   }
 
   function npcSection() {
-    const manage = data.canManage && data.adventure.status === 'active';
-    if (!data.npcs.length && !(manage && data.npcCandidates.length)) return null;
+    const manage = secretsOpen();
+    const hiddenNote = data.hiddenNpcs ? el('p', { className: 'muted small', text: data.hiddenNpcs + ' NPC' + (data.hiddenNpcs === 1 ? ' is' : 's are') + " hidden by this adventure's DM." }) : null;
+    if (!data.npcs.length && !(manage && data.npcCandidates.length)) return hiddenNote;
+    const hiddenBox = el('input', { type: 'checkbox' });
+    hiddenBox.checked = addHidden;
+    hiddenBox.addEventListener('change', () => { addHidden = hiddenBox.checked; });
     return el('section', { className: 'adventure-npcs' }, [
-      el('div', { className: 'sheet-section-heading' }, [el('h3', { text: 'Notable NPCs' }), manage && data.npcCandidates.length ? npcPicker() : null]),
+      el('div', { className: 'sheet-section-heading' }, [el('h3', { text: 'Notable NPCs' }), manage && data.npcCandidates.length ? el('span', { className: 'npc-add' }, [npcPicker(), el('label', { className: 'muted small', title: 'Prepare the NPC without the party seeing it; reveal it later.' }, [hiddenBox, ' add hidden'])]) : null]),
+      hiddenNote,
       data.npcs.length ? el('div', { className: 'party-grid' }, data.npcs.map(npcCard)) : el('p', { className: 'muted small', text: 'No NPCs at the table.' })
     ]);
   }
@@ -525,6 +539,12 @@
       ? el('span', { className: 'tag green', text: 'Running' })
       : el('span', { className: 'tag' + (adventure.status === 'cancelled' ? ' red' : ''), text: adventure.status === 'cancelled' ? 'Cancelled' : 'Finished' });
     const controls = [];
+    if (data.canTakeOver) {
+      controls.push(button('Take over as DM', async () => {
+        if (!window.confirm('Become the DM of "' + adventure.title + '"? You will see its NPC stats and hidden NPCs, and ' + (adventure.dm || 'everyone') + ' will see that you took over.')) return;
+        await act('/takeover', {}, 'You are now the DM of this adventure.');
+      }, 'btn btn-small btn-secondary', { title: "Only the adventure's DM sees its NPC stats and hidden NPCs." }));
+    }
     if (data.canManage && active) {
       if (data.candidates.length) controls.push(partyPicker());
       controls.push(button('Finish adventure…', () => { finishing = true; render(); }, 'btn btn-small btn-gold'));
@@ -542,7 +562,8 @@
             'DM: ' + (adventure.dm || 'not linked to a player') + ' · started ' + String(adventure.startedAt || '').slice(0, 16),
             adventure.threadUrl ? ' · ' : null,
             adventure.threadUrl ? el('a', { href: adventure.threadUrl, target: '_blank', rel: 'noopener', text: 'Discord thread ↗' }) : null
-          ])
+          ]),
+          (data.dmChanges || []).length ? el('p', { className: 'muted small' }, data.dmChanges.map(change => 'Taken over by ' + change.to + (change.from ? ' from ' + change.from : '') + ' on ' + String(change.at).slice(0, 10) + '. ')) : null
         ]),
         el('div', { className: 'muted small adventure-refresh' }, [
           active ? (live ? '● Live' : 'Reconnecting… (checks every ' + (REFRESH_MS / 1000) + ' s)') : '',

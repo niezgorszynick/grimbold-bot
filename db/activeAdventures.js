@@ -94,17 +94,63 @@ function getAdventureLiveScope({ adventureId, user }) {
   };
 }
 
-// Admins and the adventure's own DM run it; players with a character in the
-// party may look at the table.
+// Admins and the adventure's own DM run it (party, finishing); players with a
+// character in the party may look at the table. Its secrets (NPC stats and HP,
+// NPCs not yet revealed, later encounters) are for its DM and the Root DM only,
+// since some DMs play in other DMs' adventures. Without a DM, any admin.
 function accessTo(adventure, user) {
   const isAdmin = Boolean(user && user.role === 'admin');
-  const manage = isAdmin || (adventure.dm_player_id !== null && adventure.dm_player_id === Number(user && user.id));
-  if (manage) return { manage: true, view: true };
+  const isDm = adventure.dm_player_id !== null && adventure.dm_player_id === Number(user && user.id);
+  const isRoot = isAdmin && Number(user && user.id) === 0;
+  const manage = isAdmin || isDm;
+  const secret = isDm || isRoot || (isAdmin && adventure.dm_player_id === null);
+  if (manage) return { manage: true, view: true, secret };
   const inParty = db.prepare(`
     SELECT 1 FROM adventure_party ap JOIN characters c ON c.id = ap.character_id
     WHERE ap.adventure_id = ? AND c.player_id = ?
   `).get(adventure.id, Number(user && user.id));
-  return { manage: false, view: Boolean(inParty) };
+  return { manage: false, view: Boolean(inParty), secret: false };
+}
+
+function requireSecret(adventure, user) {
+  requireManage(adventure, user);
+  if (!accessTo(adventure, user).secret) throw new Error("Only this adventure's DM can do that (take the adventure over first).");
+}
+
+function readDmChanges(adventure) {
+  try {
+    const list = JSON.parse(adventure.dm_changes || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+// An admin becomes the adventure's DM (e.g. its DM can't make the session).
+// Recorded on the adventure, so everyone can see who took over and when.
+function takeOverAdventure({ adventureId, user }) {
+  const adventure = loadAdventure(adventureId);
+  requireManage(adventure, user);
+  const userId = Number(user && user.id);
+  if (userId === 0) throw new Error('The Root DM already sees everything; log in with your own account to run an adventure.');
+  if (adventure.dm_player_id === userId) throw new Error('You are already the DM of this adventure.');
+  const player = db.prepare('SELECT discord_tag FROM players WHERE id = ?').get(userId);
+  const changes = [...readDmChanges(adventure), {
+    fromId: adventure.dm_player_id, from: adventure.dm_name || null,
+    toId: userId, to: player ? player.discord_tag : String(userId), at: new Date().toISOString()
+  }];
+  db.prepare('UPDATE adventures SET dm_player_id = ?, dm_changes = ? WHERE id = ?').run(userId, JSON.stringify(changes), adventure.id);
+  return getAdventureTable({ adventureId: adventure.id, user });
+}
+
+// Show or hide an NPC on the table (hidden ones stay the DM's secret).
+function setAdventureNpcHidden({ adventureId, user, npcId, hidden }) {
+  const adventure = loadAdventure(adventureId);
+  requireSecret(adventure, user);
+  const changed = db.prepare('UPDATE adventure_npcs SET hidden = ? WHERE adventure_id = ? AND npc_id = ?')
+    .run(hidden ? 1 : 0, adventure.id, Number(npcId)).changes;
+  if (!changed) throw new Error('That NPC is not in this adventure.');
+  return getAdventureTable({ adventureId: adventure.id, user });
 }
 
 function requireManage(adventure, user) {
@@ -148,15 +194,23 @@ function getAdventureTable({ adventureId, user }) {
       notes: adventure.description || ''
     },
     canManage: access.manage,
+    // The adventure's secrets (NPC stats, hidden NPCs): its DM and the Root DM.
+    canSeeSecrets: access.secret,
+    canTakeOver: access.manage && !access.secret && adventure.status === 'active' && Number(user && user.id) !== 0,
+    // NPCs the DM keeps hidden: only how many, for other admins.
+    hiddenNpcs: access.manage && !access.secret
+      ? db.prepare('SELECT COUNT(*) AS n FROM adventure_npcs WHERE adventure_id = ? AND hidden = 1').get(adventure.id).n
+      : 0,
+    dmChanges: readDmChanges(adventure).map(change => ({ from: change.from, to: change.to, at: change.at })),
     party: getCharacterSnapshots(ids),
     // The party's latest rolls; private ones only for the DM (and the roller).
-    rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.manage, viewerId: Number(user && user.id) || null }),
+    rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.secret, viewerId: Number(user && user.id) || null }),
     candidates,
     dmCharacters,
     // Notable NPCs with the party; stats and HP only for the DM.
-    npcs: getAdventureNpcs(adventure.id, { showStats: access.manage }),
+    npcs: getAdventureNpcs(adventure.id, { showStats: access.secret }),
     // reservedBy: another DM has long-term plans for this NPC (a warning, not a lock).
-    npcCandidates: access.manage && adventure.status === 'active'
+    npcCandidates: access.secret && adventure.status === 'active'
       ? db.prepare(`
         SELECT n.id, n.name, n.affiliation, n.plans, n.owner_player_id, p.discord_tag AS owner_tag FROM npcs n
         LEFT JOIN players p ON p.id = n.owner_player_id
@@ -174,12 +228,12 @@ function getAdventureTable({ adventureId, user }) {
 }
 
 // Adds an NPC to the adventure's table, or takes them off it (the DM).
-function setAdventureNpc({ adventureId, user, npcId, inAdventure }) {
+function setAdventureNpc({ adventureId, user, npcId, inAdventure, hidden = false }) {
   const adventure = loadAdventure(adventureId);
-  requireManage(adventure, user);
+  requireSecret(adventure, user);
   const npc = db.prepare('SELECT id FROM npcs WHERE id = ?').get(Number(npcId));
   if (!npc) throw new Error('NPC not found.');
-  if (inAdventure) db.prepare('INSERT OR IGNORE INTO adventure_npcs (adventure_id, npc_id) VALUES (?, ?)').run(adventure.id, npc.id);
+  if (inAdventure) db.prepare('INSERT OR IGNORE INTO adventure_npcs (adventure_id, npc_id, hidden) VALUES (?, ?, ?)').run(adventure.id, npc.id, hidden ? 1 : 0);
   else db.prepare('DELETE FROM adventure_npcs WHERE adventure_id = ? AND npc_id = ?').run(adventure.id, npc.id);
   return getAdventureTable({ adventureId: adventure.id, user });
 }
@@ -188,7 +242,7 @@ function setAdventureNpc({ adventureId, user, npcId, inAdventure }) {
 // Damage takes temporary HP first; HP never go below 0 or above the maximum.
 function changeNpcHp({ adventureId, user, npcId, action, amount }) {
   const adventure = loadAdventure(adventureId);
-  requireManage(adventure, user);
+  requireSecret(adventure, user);
   const npc = db.prepare(`
     SELECT n.* FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id WHERE an.adventure_id = ? AND n.id = ?
   `).get(adventure.id, Number(npcId));
@@ -299,5 +353,8 @@ module.exports = {
   startAdventure,
   adventureThreadUrl: threadUrl,
   linkAdventureToThread,
-  canManageAdventure: (adventure, user) => accessTo(adventure, user).manage
+  canManageAdventure: (adventure, user) => accessTo(adventure, user).manage,
+  canSeeAdventureSecrets: (adventure, user) => accessTo(adventure, user).secret,
+  takeOverAdventure,
+  setAdventureNpcHidden
 };

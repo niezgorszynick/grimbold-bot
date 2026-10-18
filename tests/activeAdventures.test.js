@@ -262,3 +262,63 @@ test('an adventure made in the panel is tied to an open thread later', async () 
   assert.equal(db.getAdventureById(adventureId).title, 'Manual one, part 2');
   threads.setClientForTests(null);
 });
+
+test("an adventure's secrets are for its DM and the Root DM; other admins can take over", () => {
+  const dm = createPlayer('admin');
+  const otherDm = createPlayer('admin');
+  const player = createPlayer();
+  const adventureId = db.startAdventure({ title: 'Secret Crypt', dmPlayerId: dm });
+  const hero = addCharacter(player, 'Seer');
+  const asDm = { adventureId, user: userOf(dm, 'admin') };
+  const asOther = { adventureId, user: userOf(otherDm, 'admin') };
+  const asRoot = { adventureId, user: { id: 0, role: 'admin' } };
+  db.setPartyMember({ ...asDm, characterId: hero, inParty: true });
+
+  const lich = db.saveNpc({ name: 'Old Lich', hp_max: 40, armor_class: 17 });
+  const guide = db.saveNpc({ name: 'Village Guide', hp_max: 10 });
+  db.setAdventureNpc({ ...asDm, npcId: guide, inAdventure: true });
+  db.setAdventureNpc({ ...asDm, npcId: lich, inAdventure: true, hidden: true });
+
+  // The DM sees both, with stats; the hidden one is marked.
+  let table = db.getAdventureTable(asDm);
+  assert.equal(table.canSeeSecrets, true);
+  assert.deepEqual(table.npcs.map(npc => [npc.name, npc.hidden, npc.stats.hpMax]).sort(), [['Old Lich', true, 40], ['Village Guide', false, 10]]);
+
+  // The party sees the guide only, with a condition word and no numbers.
+  table = db.getAdventureTable({ adventureId, user: userOf(player) });
+  assert.deepEqual(table.npcs.map(npc => npc.name), ['Village Guide']);
+  assert.equal(table.npcs[0].condition, 'Unhurt');
+  assert.equal(table.npcs[0].stats, undefined);
+
+  // Another admin runs the table but sees no stats, no hidden NPCs (just a count), and can't change HP.
+  table = db.getAdventureTable(asOther);
+  assert.equal(table.canManage, true);
+  assert.equal(table.canSeeSecrets, false);
+  assert.equal(table.canTakeOver, true);
+  assert.equal(table.hiddenNpcs, 1);
+  assert.deepEqual(table.npcs.map(npc => [npc.name, npc.stats]), [['Village Guide', undefined]]);
+  assert.deepEqual(table.npcCandidates, []);
+  assert.throws(() => db.changeNpcHp({ ...asOther, npcId: guide, action: 'damage', amount: 3 }), /Only this adventure's DM/);
+  assert.throws(() => db.setAdventureNpcHidden({ ...asOther, npcId: lich, hidden: false }), /Only this adventure's DM/);
+
+  // The Root DM sees everything without taking over.
+  assert.equal(db.getAdventureTable(asRoot).npcs.length, 2);
+  assert.throws(() => db.takeOverAdventure(asRoot), /Root DM already sees everything/);
+
+  // Damage shows to the party as a condition.
+  db.changeNpcHp({ ...asDm, npcId: guide, action: 'damage', amount: 6 });
+  assert.equal(db.getAdventureTable({ adventureId, user: userOf(player) }).npcs[0].condition, 'Bloodied');
+
+  // Revealed: the party sees the lich too.
+  db.setAdventureNpcHidden({ ...asDm, npcId: lich, hidden: false });
+  assert.equal(db.getAdventureTable({ adventureId, user: userOf(player) }).npcs.length, 2);
+
+  // Taking over: recorded, and the secrets move to the new DM.
+  table = db.takeOverAdventure(asOther);
+  assert.equal(table.canSeeSecrets, true);
+  assert.equal(table.dmChanges.length, 1);
+  assert.equal(table.dmChanges[0].to, db.prepare('SELECT discord_tag FROM players WHERE id = ?').get(otherDm).discord_tag);
+  assert.equal(db.getAdventureTable(asDm).canSeeSecrets, false, 'the old DM is now just another admin');
+  assert.throws(() => db.takeOverAdventure(asOther), /already the DM/);
+  assert.throws(() => db.takeOverAdventure({ adventureId, user: userOf(player) }), /Forbidden/);
+});

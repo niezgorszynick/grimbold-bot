@@ -547,6 +547,22 @@ const MIGRATIONS = [
       const existing = new Set(db.prepare('PRAGMA table_info(characters)').all().map(column => column.name));
       if (!existing.has('portrait_file')) db.exec("ALTER TABLE characters ADD COLUMN portrait_file TEXT NOT NULL DEFAULT ''");
     }
+  },
+  {
+    version: 17,
+    name: 'Adventure secrets: hidden table NPCs, DM take-overs',
+    up(db) {
+      // hidden: the DM prepared the NPC; the party doesn't see it yet.
+      const npcColumns = new Set(db.prepare('PRAGMA table_info(adventure_npcs)').all().map(column => column.name));
+      if (!npcColumns.has('hidden')) db.exec('ALTER TABLE adventure_npcs ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+      // dm_changes: JSON list of { fromId, from, toId, to, at } when an admin took an adventure over.
+      const adventureColumns = new Set(db.prepare('PRAGMA table_info(adventures)').all().map(column => column.name));
+      if (!adventureColumns.has('dm_changes')) db.exec("ALTER TABLE adventures ADD COLUMN dm_changes TEXT NOT NULL DEFAULT '[]'");
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS change_log_adventure_npc_update AFTER UPDATE ON adventure_npcs
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+      `);
+    }
   }
 ];
 
