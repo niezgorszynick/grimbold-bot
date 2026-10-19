@@ -628,6 +628,14 @@ const MIGRATIONS = [
       if (!columns.has('name')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN name TEXT');
       if (!columns.has('armor_class')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN armor_class INTEGER');
     }
+  },
+  {
+    version: 21,
+    name: 'Encounter combatants: party members (their initiative; HP stays on the sheet)',
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
+      if (!columns.has('character_id')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN character_id INTEGER REFERENCES characters(id) ON DELETE CASCADE');
+    }
   }
 ];
 

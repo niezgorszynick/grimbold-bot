@@ -222,6 +222,8 @@ function rollForCharacter({ characterId, user, request = {} }) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(character.id, Number(user.id) > 0 ? Number(user.id) : null, label, result.formula,
     option.kind === 'damage' ? 'normal' : mode, result.total, JSON.stringify(detail), request.private ? 1 : 0).lastInsertRowid);
+  // Initiative during a running encounter: the fight's turn order gets it.
+  if (option.kind === 'initiative') require('./encounters').recordInitiativeRoll(character.id, result.total);
   return rollView(db.prepare(`${ROLL_QUERY} WHERE r.id = ?`).get(id));
 }
 

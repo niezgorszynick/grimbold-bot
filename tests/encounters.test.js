@@ -101,7 +101,7 @@ test('encounters: the DM plans them in secret, runs them, tracks HP and rolls', 
   assert.equal(seen.name, 'Gazer lair');
   assert.deepEqual(seen.combatants.map(c => c.label), encounter.combatants.map(c => c.label));
   assert.equal(seen.combatants.find(c => c.id === first.id).condition, 'Bloodied');
-  assert.deepEqual(Object.keys(seen.combatants[0]).sort(), ['condition', 'id', 'kind', 'label', 'npcId']);
+  assert.deepEqual(Object.keys(seen.combatants[0]).sort(), ['characterId', 'condition', 'id', 'kind', 'label', 'npcId']);
   assert.equal(db.getAdventureTable(asPlayer).encounters.list, undefined);
 
   const roll = db.rollForCombatant({ ...asDm, combatantId: first.id, request: { roll: 'actions:0:damage:0', critical: true } });
@@ -202,4 +202,64 @@ test('the DM renames creatures (to match tokens) and changes their AC and HP', (
   assert.equal(lookout.baseName, 'Lookout', 'a renamed creature matches only its own name');
   const roll = db.rollForCombatant({ ...asDm, combatantId: second.id, request: { roll: 'initiative' } });
   assert.equal(roll.roll.combatant, 'Lookout');
+});
+
+test('party members join encounters; their initiative rolls land in the running fight', () => {
+  const dm = createPlayer();
+  const playerId = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('pc-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'pc-thread', title: 'Party night', ownerDiscordId: 'pc-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const asPlayer = { id: playerId, role: 'player' };
+  const kael = addCharacter(playerId, 'Kael Stormborn', 4);
+  const brin = addCharacter(playerId, 'Brin', 4);
+  const outsider = addCharacter(playerId, 'Outsider', 4);
+  db.setPartyMember({ ...asDm, characterId: kael, inParty: true });
+  db.setPartyMember({ ...asDm, characterId: brin, inParty: true });
+
+  const encounterId = db.createEncounter({ ...asDm, name: 'Wolves' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId, monster: 'Practice Footpad' });
+  assert.throws(() => db.addEncounterCharacters({ ...asDm, encounterId, characterId: outsider }), /Only party members/);
+  let table = db.addEncounterCharacters({ ...asDm, encounterId, characterId: kael });
+  assert.throws(() => db.addEncounterCharacters({ ...asDm, encounterId, characterId: kael }), /already in this encounter/);
+  let encounter = table.encounters.list[0];
+  const pc = encounter.combatants.find(c => c.kind === 'pc');
+  assert.deepEqual([pc.label, pc.characterId, pc.xp, pc.hpMax], ['Kael Stormborn', kael, 0, null]);
+  assert.equal(encounter.xp, 25, 'party members add no XP');
+  assert.throws(() => db.changeCombatantHp({ ...asDm, combatantId: pc.id, action: 'damage', amount: 1 }), /on their card/);
+  assert.throws(() => db.updateCombatant({ ...asDm, combatantId: pc.id, name: 'X' }), /character sheet/);
+  assert.throws(() => db.rollForCombatant({ ...asDm, combatantId: pc.id, request: { roll: 'initiative' } }), /own sheet/);
+
+  // A roll before the fight starts changes nothing.
+  db.rollForCharacter({ characterId: kael, user: asPlayer, request: { roll: 'initiative' } });
+  assert.equal(db.getAdventureTable(asDm).encounters.list[0].combatants.find(c => c.id === pc.id).initiative, null);
+
+  db.runEncounter({ ...asDm, encounterId });
+  table = db.rollEncounterInitiative({ ...asDm, encounterId });
+  assert.equal(table.encounters.list[0].combatants.find(c => c.id === pc.id).initiative, null, '"Roll initiative" leaves the party to roll their own');
+
+  const kaelRoll = db.rollForCharacter({ characterId: kael, user: asPlayer, request: { roll: 'initiative' } });
+  assert.equal(kaelRoll.kind, 'initiative');
+  const brinRoll = db.rollForCharacter({ characterId: brin, user: asPlayer, request: { roll: 'initiative' } });
+  db.rollForCharacter({ characterId: outsider, user: asPlayer, request: { roll: 'initiative' } });
+  encounter = db.getAdventureTable(asDm).encounters.list[0];
+  assert.equal(encounter.combatants.find(c => c.characterId === kael).initiative, kaelRoll.total);
+  assert.equal(encounter.combatants.find(c => c.characterId === brin).initiative, brinRoll.total, 'rolling adds a party member the DM had not');
+  assert.ok(!encounter.combatants.some(c => c.characterId === outsider), 'not someone outside the party');
+  db.rollForCharacter({ characterId: kael, user: asPlayer, request: { roll: 'check:str' } });
+  assert.equal(db.getAdventureTable(asDm).encounters.list[0].combatants.find(c => c.characterId === kael).initiative, kaelRoll.total, 'only initiative rolls');
+
+  // The party sees themselves in the order; Owlbear gets their first names to match tokens.
+  const seen = db.getAdventureTable({ adventureId: adventure.id, user: asPlayer });
+  assert.ok(seen.encounters.running.combatants.some(c => c.kind === 'pc' && c.label === 'Kael Stormborn'));
+  assert.equal(seen.viewerId, playerId);
+  const feed = db.getVttEncounters({ key: db.getVttKey({ playerId: dm }) }).encounters[0].combatants;
+  const kaelFeed = feed.find(c => c.label === 'Kael Stormborn');
+  assert.deepEqual([kaelFeed.baseName, kaelFeed.kind, kaelFeed.initiative], ['Kael', 'pc', kaelRoll.total]);
+
+  // The whole party at once (whoever is missing).
+  const second = db.createEncounter({ ...asDm, name: 'Later' }).encounters.list.find(e => e.name === 'Later').id;
+  table = db.addEncounterCharacters({ ...asDm, encounterId: second });
+  assert.equal(table.encounters.list.find(e => e.id === second).combatants.filter(c => c.kind === 'pc').length, 2);
+  assert.throws(() => db.addEncounterCharacters({ ...asDm, encounterId: second }), /whole party is already/);
 });

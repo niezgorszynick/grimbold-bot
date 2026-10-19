@@ -810,10 +810,12 @@ const encounterRoute = handler => (req, res) => adventureRoute(args => handler({
 router.post('/adventures/:id/encounters/:encounterId', encounterRoute(({ adventureId, user, body, encounterId }) =>
   db.updateEncounter({ adventureId, user, encounterId, name: body.name, notes: body.notes })));
 router.post('/adventures/:id/encounters/:encounterId/delete', encounterRoute(({ adventureId, user, encounterId }) => db.deleteEncounter({ adventureId, user, encounterId })));
-// { monster, count } or { npcId }
-router.post('/adventures/:id/encounters/:encounterId/add', encounterRoute(({ adventureId, user, body, encounterId }) => (body.npcId
-  ? db.addEncounterNpc({ adventureId, user, encounterId, npcId: body.npcId })
-  : db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, count: body.count }))));
+// { monster, count }, { npcId }, { characterId } or { party: true }
+router.post('/adventures/:id/encounters/:encounterId/add', encounterRoute(({ adventureId, user, body, encounterId }) => {
+  if (body.npcId) return db.addEncounterNpc({ adventureId, user, encounterId, npcId: body.npcId });
+  if (body.characterId || body.party) return db.addEncounterCharacters({ adventureId, user, encounterId, characterId: body.party ? null : body.characterId });
+  return db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, count: body.count });
+}));
 router.post('/adventures/:id/encounters/:encounterId/run', encounterRoute(({ adventureId, user, encounterId }) => db.runEncounter({ adventureId, user, encounterId })));
 router.post('/adventures/:id/encounters/:encounterId/end', encounterRoute(({ adventureId, user, encounterId }) => db.endEncounter({ adventureId, user, encounterId })));
 router.post('/adventures/:id/encounters/:encounterId/initiative', encounterRoute(({ adventureId, user, encounterId }) => db.rollEncounterInitiative({ adventureId, user, encounterId })));

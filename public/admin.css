@@ -876,3 +876,4 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .combatant-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; padding: 8px; border-radius: 6px; background: #1e1f22; font-size: 13px; }
 .combatant-editor input[type=text] { width: 180px; max-width: 100%; }
 .combatant-editor p { flex-basis: 100%; margin: 0; }
+.encounter-order li.is-pc strong { color: #8ea1ff; }

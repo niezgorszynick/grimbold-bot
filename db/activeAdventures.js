@@ -196,6 +196,8 @@ function getAdventureTable({ adventureId, user }) {
       notes: adventure.description || ''
     },
     canManage: access.manage,
+    // Players roll for their own characters at the table (initiative and the rest).
+    viewerId: Number(user && user.id) || 0,
     // The adventure's secrets (NPC stats, hidden NPCs): its DM and the Root DM.
     canSeeSecrets: access.secret,
     canTakeOver: access.manage && !access.secret && adventure.status === 'active' && Number(user && user.id) !== 0,

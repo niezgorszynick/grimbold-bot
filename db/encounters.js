@@ -1,6 +1,8 @@
 // db/encounters.js — Encounters the DM prepares for an adventure: monsters
 // from the catalog (rules/monsters.js), one row per creature with its own HP,
-// and Notable NPCs (their HP stays on the NPC). Planned encounters are the
+// Notable NPCs (their HP stays on the NPC) and party members (only their
+// initiative here: a character's initiative roll during a running encounter
+// lands on it, adding them if the DM had not). Planned encounters are the
 // DM's secret (the adventure's DM and the Root DM); when the DM runs one, the
 // party sees who is in the fight and how hurt they look, never the numbers.
 
@@ -42,9 +44,9 @@ function loadEncounter(adventure, encounterId) {
 }
 
 const COMBATANT_QUERY = `
-  SELECT ec.*, n.name AS npc_name, n.hp_max AS npc_hp_max, n.hp_current AS npc_hp_current, n.hp_temp AS npc_hp_temp,
+  SELECT ec.*, ch.name AS character_name, n.name AS npc_name, n.hp_max AS npc_hp_max, n.hp_current AS npc_hp_current, n.hp_temp AS npc_hp_temp,
     n.armor_class AS npc_ac, n.abilities AS npc_abilities, n.base_monster AS npc_base, n.portrait_file AS npc_portrait
-  FROM encounter_combatants ec LEFT JOIN npcs n ON n.id = ec.npc_id
+  FROM encounter_combatants ec LEFT JOIN npcs n ON n.id = ec.npc_id LEFT JOIN characters ch ON ch.id = ec.character_id
 `;
 
 function loadCombatant(adventure, combatantId) {
@@ -62,6 +64,7 @@ function rollSource(row) {
 }
 
 function hpOf(row) {
+  if (row.character_id) return { max: null, current: null, temp: 0 };
   return row.npc_id
     ? { max: row.npc_hp_max, current: row.npc_hp_current, temp: row.npc_hp_temp || 0 }
     : { max: row.hp_max, current: row.hp_current, temp: row.hp_temp || 0 };
@@ -69,6 +72,7 @@ function hpOf(row) {
 
 // "Goblin 2" when there are several; the NPC's name for an NPC.
 function defaultLabel(row, counts) {
+  if (row.character_id) return row.character_name;
   if (row.npc_id) return row.npc_name;
   return counts[row.monster_name] > 1 ? `${row.monster_name} ${row.number}` : row.monster_name;
 }
@@ -80,8 +84,13 @@ function combatantView(row, counts, secret) {
   const label = row.name || defaultLabel(row, counts);
   const hp = hpOf(row);
   const condition = npcCondition({ hp_max: hp.max, hp_current: hp.current });
-  const view = { id: row.id, kind: row.npc_id ? 'npc' : 'monster', label, condition, npcId: row.npc_id || null };
+  const kind = row.character_id ? 'pc' : row.npc_id ? 'npc' : 'monster';
+  const view = { id: row.id, kind, label, condition, npcId: row.npc_id || null, characterId: row.character_id || null };
   if (!secret) return view;
+  // A party member: their numbers are on their own card at the table.
+  if (row.character_id) {
+    return { ...view, monster: null, customName: null, defaultLabel: label, statblockFound: false, armorClass: null, hpMax: null, hpCurrent: null, hpTemp: 0, initiative: row.initiative, initiativeBonus: null, xp: 0, crText: null };
+  }
   const source = rollSource(row);
   const base = row.npc_id ? (row.npc_base ? rules.getMonster(row.npc_base) : null) : monster;
   const dex = (source && source.abilities && source.abilities.dex) || 10;
@@ -252,6 +261,43 @@ function addEncounterNpc({ adventureId, user, encounterId, npcId }) {
   return table(adventure, user);
 }
 
+function partyOf(adventure) {
+  return db.prepare('SELECT character_id FROM adventure_party WHERE adventure_id = ?').all(adventure.id).map(row => row.character_id);
+}
+
+// { characterId } — one party member, or all of them without: the party joins the fight.
+function addEncounterCharacters({ adventureId, user, encounterId, characterId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const encounter = openEncounter(adventure, encounterId);
+  const party = partyOf(adventure);
+  const wanted = characterId === undefined || characterId === null ? party : [Number(characterId)];
+  if (!wanted.length) throw new Error('There is no one in the party yet.');
+  if (!wanted.every(id => party.includes(id))) throw new Error('Only party members can join the encounter.');
+  const already = new Set(db.prepare('SELECT character_id FROM encounter_combatants WHERE encounter_id = ? AND character_id IS NOT NULL').all(encounter.id).map(row => row.character_id));
+  const missing = wanted.filter(id => !already.has(id));
+  if (!missing.length) throw new Error(characterId ? 'That character is already in this encounter.' : 'The whole party is already in this encounter.');
+  roomFor(encounter, missing.length);
+  const insert = db.prepare('INSERT INTO encounter_combatants (encounter_id, character_id) VALUES (?, ?)');
+  db.transaction(() => missing.forEach(id => insert.run(encounter.id, id)))();
+  return table(adventure, user);
+}
+
+// A character rolled initiative: it becomes their initiative in each running
+// encounter of an adventure they are in (joining it if the DM had not added them).
+function recordInitiativeRoll(characterId, total) {
+  const encounters = db.prepare(`
+    SELECT e.id FROM encounters e JOIN adventures a ON a.id = e.adventure_id
+    JOIN adventure_party ap ON ap.adventure_id = a.id AND ap.character_id = ?
+    WHERE e.status = 'running' AND a.status = 'active'
+  `).all(Number(characterId));
+  for (const encounter of encounters) {
+    const row = db.prepare('SELECT id FROM encounter_combatants WHERE encounter_id = ? AND character_id = ?').get(encounter.id, Number(characterId));
+    if (row) db.prepare('UPDATE encounter_combatants SET initiative = ? WHERE id = ?').run(total, row.id);
+    else db.prepare('INSERT INTO encounter_combatants (encounter_id, character_id, initiative) VALUES (?, ?, ?)').run(encounter.id, Number(characterId), total);
+  }
+  return encounters.length;
+}
+
 function removeCombatant({ adventureId, user, combatantId }) {
   const adventure = secretAdventure(adventureId, user);
   const row = loadCombatant(adventure, combatantId);
@@ -306,7 +352,8 @@ function setCombatantInitiative({ adventureId, user, combatantId, initiative }) 
 function rollEncounterInitiative({ adventureId, user, encounterId }) {
   const adventure = secretAdventure(adventureId, user);
   const encounter = openEncounter(adventure, encounterId);
-  const rows = db.prepare(`${COMBATANT_QUERY} WHERE ec.encounter_id = ? AND ec.initiative IS NULL`).all(encounter.id);
+  // Party members roll their own (on their sheet or the table).
+  const rows = db.prepare(`${COMBATANT_QUERY} WHERE ec.encounter_id = ? AND ec.initiative IS NULL AND ec.character_id IS NULL`).all(encounter.id);
   const update = db.prepare('UPDATE encounter_combatants SET initiative = ? WHERE id = ?');
   db.transaction(() => {
     for (const row of rows) {
@@ -338,6 +385,7 @@ function applyHp({ max, current, temp }, action, value) {
 function changeCombatantHp({ adventureId, user, combatantId, action, amount }) {
   const adventure = secretAdventure(adventureId, user);
   const row = loadCombatant(adventure, combatantId);
+  if (row.character_id) throw new Error(`Change ${row.character_name}'s HP on their card.`);
   const value = Number(amount);
   if (!Number.isInteger(value) || value < 0 || value > 10000) throw new Error('Enter a whole number from 0 to 10000.');
   const hp = hpOf(row);
@@ -365,6 +413,7 @@ function updateCombatant({ adventureId, user, combatantId, name, armorClass, hpM
   const row = loadCombatant(adventure, combatantId);
   const encounter = loadEncounter(adventure, row.encounter_id);
   if (encounter.status === 'done') throw new Error(`"${encounter.name}" is over.`);
+  if (row.character_id) throw new Error(`Change ${row.character_name} on their character sheet.`);
   const newName = name === undefined ? row.name : (String(name || '').replace(/\s+/g, ' ').trim() || null);
   if (newName && newName.length > MAX_NAME) throw new Error(`Names can be ${MAX_NAME} characters at most.`);
   const ac = optionalNumber(armorClass, 0, 40, 'AC');
@@ -396,6 +445,7 @@ function updateCombatant({ adventureId, user, combatantId, name, armorClass, hpM
 function rollForCombatant({ adventureId, user, combatantId, request = {} }) {
   const adventure = secretAdventure(adventureId, user);
   const row = loadCombatant(adventure, combatantId);
+  if (row.character_id) throw new Error(`${row.character_name} rolls on their own sheet.`);
   const source = rollSource(row);
   if (!source) throw new Error(`${row.monster_name} is not in the monster list on this server.`);
   const option = rules.creatureRollOptions(source).get(String(request.roll || ''));
@@ -439,7 +489,10 @@ function getVttEncounters({ key }) {
           id: combatant.id,
           label: combatant.label,
           // "Goblin Warrior" for "Goblin Warrior 2": tokens are often named after the monster.
-          baseName: combatant.kind === 'monster' && !combatant.customName ? combatant.label.replace(/ \d+$/, '') : combatant.label,
+          // A character's token may carry only their first name.
+          baseName: combatant.kind === 'pc' ? combatant.label.split(' ')[0]
+            : combatant.kind === 'monster' && !combatant.customName ? combatant.label.replace(/ \d+$/, '') : combatant.label,
+          kind: combatant.kind,
           initiative: combatant.initiative ?? null,
           down: combatant.hpCurrent === 0
         }))
@@ -458,6 +511,8 @@ module.exports = {
   addEncounterNpc,
   removeCombatant,
   updateCombatant,
+  addEncounterCharacters,
+  recordInitiativeRoll,
   runEncounter,
   endEncounter,
   setCombatantInitiative,
