@@ -1,9 +1,11 @@
 // vtt/background.js — Runs while the Owlbear Rodeo room is open. Every few
 // seconds it asks the panel for rolls this player made, sends each to everyone
 // in the room, and shows the rolls others send (private ones to the GM only).
+// The GM's copy also puts initiative rolls into Owlbear's Initiative Tracker,
+// on the token named like the character ("Thorin Ironfist" or "Thorin").
 
 import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
-import { CHANNEL, store, describe } from './shared.js';
+import { CHANNEL, store, describe, matchTokens, putInTracker } from './shared.js';
 
 const POLL_MS = 2000;
 
@@ -13,6 +15,19 @@ OBR.onReady(async () => {
   OBR.player.onChange(player => { isGm = player.role === 'GM'; });
   const seen = new Set();
 
+  async function trackInitiative(roll) {
+    if (!isGm || roll.kind !== 'initiative' || !store.settings().tracker || !Number.isFinite(roll.total)) return;
+    try {
+      if (!(await OBR.scene.isReady())) return;
+      const firstName = String(roll.character || '').split(' ')[0];
+      const [match] = matchTokens(await OBR.scene.items.getItems(), [{ label: roll.character, baseName: firstName }]);
+      if (!match.token) return;
+      await putInTracker(OBR, [{ itemId: match.token.id, initiative: roll.total }]);
+    } catch (error) {
+      console.warn("Grimbold's Dice: could not update the initiative tracker", error);
+    }
+  }
+
   OBR.broadcast.onMessage(CHANNEL, ({ data, connectionId }) => {
     const roll = data;
     if (!roll || typeof roll !== 'object' || seen.has(roll.id)) return;
@@ -20,6 +35,7 @@ OBR.onReady(async () => {
     const mine = connectionId === myConnection;
     if (roll.private && !isGm && !mine) return;
     store.addToLog({ ...roll, mine });
+    trackInitiative(roll);
     if (store.settings().notify) {
       const variant = roll.natural === 20 ? 'SUCCESS' : roll.natural === 1 ? 'ERROR' : roll.private ? 'WARNING' : 'DEFAULT';
       OBR.notification.show(describe(roll), variant);

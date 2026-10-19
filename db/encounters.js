@@ -368,7 +368,38 @@ function rollForCombatant({ adventureId, user, combatantId, request = {} }) {
   };
 }
 
+// The running encounters of the adventures this key's player is the DM of,
+// for the Owlbear extension to put into the initiative tracker: names and
+// initiative only.
+function getVttEncounters({ key }) {
+  const player = require('./dice').vttPlayerForKey(key);
+  const rows = db.prepare(`
+    SELECT e.*, a.title AS adventure_title FROM encounters e JOIN adventures a ON a.id = e.adventure_id
+    WHERE e.status = 'running' AND a.status = 'active' AND a.dm_player_id = ? ORDER BY e.started_at
+  `).all(player.player_id);
+  return {
+    player: player.discord_tag,
+    encounters: rows.map(encounter => {
+      const view = encounterView(encounter, db.prepare(`${COMBATANT_QUERY} WHERE ec.encounter_id = ? ORDER BY ec.id`).all(encounter.id), true, { low: 0, moderate: 0, high: 0 });
+      return {
+        id: encounter.id,
+        adventure: encounter.adventure_title,
+        name: encounter.name,
+        combatants: view.combatants.map(combatant => ({
+          id: combatant.id,
+          label: combatant.label,
+          // "Goblin Warrior" for "Goblin Warrior 2": tokens are often named after the monster.
+          baseName: combatant.kind === 'monster' ? combatant.label.replace(/ \d+$/, '') : combatant.label,
+          initiative: combatant.initiative ?? null,
+          down: combatant.hpCurrent === 0
+        }))
+      };
+    })
+  };
+}
+
 module.exports = {
+  getVttEncounters,
   encountersForTable,
   createEncounter,
   updateEncounter,

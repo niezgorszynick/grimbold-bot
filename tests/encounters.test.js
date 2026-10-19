@@ -122,3 +122,40 @@ test('encounters: the DM plans them in secret, runs them, tracks HP and rolls', 
   table = db.deleteEncounter({ ...asDm, encounterId });
   assert.deepEqual(table.encounters.list.map(e => e.name), ['Second wave']);
 });
+
+test('Owlbear: the DM key reads the running encounter; tokens are matched by name', async () => {
+  const dm = createPlayer();
+  const other = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('vtt-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'vtt-thread', title: 'Owlbear night', ownerDiscordId: 'vtt-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const dmKey = db.getVttKey({ playerId: dm });
+  const otherKey = db.getVttKey({ playerId: other });
+  assert.deepEqual(db.getVttEncounters({ key: dmKey }).encounters, [], 'nothing running yet');
+  assert.throws(() => db.getVttEncounters({ key: 'not-a-real-key-at-all' }), /Unknown key/);
+
+  const encounterId = db.createEncounter({ ...asDm, name: 'Bridge' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId, monster: 'Practice Footpad', count: 2 });
+  db.runEncounter({ ...asDm, encounterId });
+  const first = db.getAdventureTable(asDm).encounters.list[0].combatants[0];
+  db.setCombatantInitiative({ ...asDm, combatantId: first.id, initiative: 14 });
+
+  const feed = db.getVttEncounters({ key: dmKey });
+  assert.equal(feed.encounters[0].name, 'Bridge');
+  assert.deepEqual(feed.encounters[0].combatants.map(c => [c.label, c.baseName, c.initiative]),
+    [['Practice Footpad 1', 'Practice Footpad', 14], ['Practice Footpad 2', 'Practice Footpad', null]]);
+  assert.deepEqual(db.getVttEncounters({ key: otherKey }).encounters, [], "another player's key sees nothing");
+
+  const { matchTokens, TRACKER_KEY } = await import('../vtt/shared.js');
+  assert.equal(TRACKER_KEY, 'rodeo.owlbear.initiative-tracker/metadata');
+  const items = [
+    { id: 'map', type: 'IMAGE', layer: 'MAP', name: 'Practice Footpad' },
+    { id: 'a', type: 'IMAGE', layer: 'CHARACTER', name: 'Practice Footpad', text: { plainText: '' } },
+    { id: 'b', type: 'IMAGE', layer: 'CHARACTER', name: 'x', text: { plainText: 'practice footpad 2' } },
+    { id: 'c', type: 'IMAGE', layer: 'CHARACTER', name: 'Thorin' }
+  ];
+  const matches = matchTokens(items, feed.encounters[0].combatants);
+  assert.deepEqual(matches.map(m => m.token && m.token.id), ['a', 'b'], 'exact label first, then the monster name; never the map');
+  assert.equal(matchTokens(items, [{ label: 'Thorin Ironfist', baseName: 'Thorin' }])[0].token.id, 'c', 'a character by first name');
+  assert.equal(matchTokens(items, [{ label: 'Nobody', baseName: 'Nobody' }])[0].token, null);
+});

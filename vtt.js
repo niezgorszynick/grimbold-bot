@@ -1,7 +1,8 @@
 // vtt.js — The Owlbear Rodeo extension "Grimbold's Dice", served at /vtt:
 // its manifest, its pages (vtt/*), and the roll feed its background page
 // reads with a player's key. Public (no panel login), with CORS so Owlbear
-// can load it; a key only reveals the rolls its own player made.
+// can load it; a key only reveals the rolls its own player made, and the
+// running encounters (names and initiative) of the adventures they DM.
 
 'use strict';
 
@@ -10,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -24,13 +25,13 @@ router.get('/manifest.json', (req, res) => {
     version: VERSION,
     manifest_version: 1,
     author: "Grimbold's Emporium",
-    description: 'Rolls made on the character sheets of the Grimbold panel, shown to everyone in the room (private rolls to the GM only).',
+    description: "Rolls made on the character sheets of the Grimbold panel, shown to everyone in the room (private rolls to the GM only). Initiative rolls and the DM's running encounter go into the Owlbear initiative tracker.",
     icon: '/vtt/icon.svg',
     action: {
       title: "Grimbold's Dice",
       icon: '/vtt/icon.svg',
       popover: '/vtt/popover.html',
-      height: 520,
+      height: 600,
       width: 360
     },
     background_url: '/vtt/background.html'
@@ -41,6 +42,16 @@ router.get('/rolls', (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     return res.json(db.getVttRolls({ key: req.query.key, after: req.query.after }));
+  } catch (error) {
+    return res.status(401).json({ error: error.message });
+  }
+});
+
+// The DM's running encounter, for the initiative tracker.
+router.get('/encounter', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(db.getVttEncounters({ key: req.query.key }));
   } catch (error) {
     return res.status(401).json({ error: error.message });
   }

@@ -173,6 +173,8 @@ function rollView(row) {
     total: row.total,
     natural: detail.natural,
     text: detail.text,
+    // initiative, check, save, attack, damage, custom (Owlbear puts initiative in the tracker).
+    kind: detail.kind || null,
     critical: Boolean(detail.critical),
     private: Boolean(row.private),
     createdAt: row.created_at
@@ -318,11 +320,17 @@ function getVttKey({ playerId, regenerate = false }) {
 
 // The extension asks for the rolls a player made after `after` (a roll id).
 // Without `after` it learns the latest id, so old rolls are not replayed.
-function getVttRolls({ key, after }) {
+// The player a key belongs to (and the key is marked as used).
+function vttPlayerForKey(key) {
   const row = typeof key === 'string' && key.length >= 16
     ? db.prepare('SELECT v.player_id, p.discord_tag FROM vtt_keys v JOIN players p ON p.id = v.player_id WHERE v.key = ?').get(key)
     : null;
   if (!row) throw new Error('Unknown key. Copy it again from the panel.');
+  return row;
+}
+
+function getVttRolls({ key, after }) {
+  const row = vttPlayerForKey(key);
   db.prepare('UPDATE vtt_keys SET last_used_at = CURRENT_TIMESTAMP WHERE player_id = ?').run(row.player_id);
   const latest = db.prepare('SELECT MAX(id) AS id FROM dice_rolls WHERE player_id = ?').get(row.player_id).id || 0;
   const since = Number(after);
@@ -339,6 +347,7 @@ module.exports = {
   getCharacterRolls,
   getVttKey,
   getVttRolls,
+  vttPlayerForKey,
   TRACKED_DICE,
   getSheetRollsByDie,
   getSheetDieFaces,

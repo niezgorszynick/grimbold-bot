@@ -6,6 +6,8 @@ export const CHANNEL = 'grimbold.dice/roll';
 const PREFIX = 'grimbold-dice.';
 const LOG_SIZE = 60;
 const bus = typeof BroadcastChannel === 'function' ? new BroadcastChannel('grimbold-dice') : null;
+// Node (the tests) would otherwise wait on the channel forever.
+if (bus && typeof bus.unref === 'function') bus.unref();
 
 function read(name, fallback) {
   try {
@@ -37,7 +39,8 @@ export const store = {
   setAfter: id => write('after', id),
   status: () => read('status', null),
   setStatus: status => write('status', status),
-  settings: () => ({ notify: true, ...read('settings', {}) }),
+  // tracker: the GM's copy puts initiative rolls into Owlbear's initiative tracker.
+  settings: () => ({ notify: true, tracker: true, ...read('settings', {}) }),
   setSettings: update => write('settings', { ...store.settings(), ...update }),
   log: () => read('log', []),
   addToLog(roll) {
@@ -59,4 +62,41 @@ export function describe(roll) {
   const extra = roll.natural === 20 ? ' — natural 20!' : roll.natural === 1 ? ' — natural 1' : '';
   const mode = roll.mode === 'advantage' ? ' (advantage)' : roll.mode === 'disadvantage' ? ' (disadvantage)' : '';
   return `${roll.private ? '🔒 ' : ''}${roll.character} — ${roll.label}${mode}: ${roll.total}${extra}`;
+}
+
+// ─── Owlbear's own Initiative Tracker ─────────────────────────────────────
+// It lists the image tokens that carry this metadata ({ count: '17', active })
+// under the token's label (or name). We only set the count; whose turn it is
+// stays the tracker's business.
+export const TRACKER_KEY = 'rodeo.owlbear.initiative-tracker/metadata';
+const normal = text => String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+export const tokenName = item => (item.text && item.text.plainText) || item.name || '';
+const isToken = item => item.type === 'IMAGE' && (item.layer === 'CHARACTER' || item.layer === 'MOUNT');
+
+// wanted: [{ label, baseName }] → the same list with .token (or null). Exact
+// names first ("Goblin Warrior 2"), then the base name ("Goblin Warrior"),
+// each token used once.
+export function matchTokens(items, wanted) {
+  const tokens = items.filter(isToken);
+  const used = new Set();
+  const take = name => {
+    const token = tokens.find(item => !used.has(item.id) && normal(tokenName(item)) === normal(name));
+    if (token) used.add(token.id);
+    return token || null;
+  };
+  const result = wanted.map(entry => ({ ...entry, token: take(entry.label) }));
+  result.forEach(entry => { if (!entry.token && entry.baseName && entry.baseName !== entry.label) entry.token = take(entry.baseName); });
+  return result;
+}
+
+// pairs: [{ itemId, initiative }]
+export async function putInTracker(OBR, pairs) {
+  if (!pairs.length) return;
+  const byId = new Map(pairs.map(pair => [pair.itemId, pair.initiative]));
+  await OBR.scene.items.updateItems([...byId.keys()], items => {
+    items.forEach(item => {
+      const old = item.metadata[TRACKER_KEY];
+      item.metadata[TRACKER_KEY] = { count: String(byId.get(item.id)), active: Boolean(old && old.active) };
+    });
+  });
 }
