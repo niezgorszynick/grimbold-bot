@@ -242,8 +242,12 @@
       ? el('a', { className: 'roster-name', href: '/admin?tab=character-sheet&edit_char=' + member.id, target: '_blank', rel: 'noopener', text: member.name })
       : el('strong', { text: member.name });
     const casting = member.spellcasting.map(source => source.label + ' DC ' + source.saveDc + ' · ' + signed(source.attackBonus));
-    return el('article', { className: 'party-card' + (member.hp && member.hp.current === 0 ? ' is-down' : ''), 'data-roll-character': canRollFor() ? String(member.id) : null }, [
+    // In the running fight: outlined like the creatures; the DM sets their initiative here.
+    const fighter = runningCombatants().find(combatant => combatant.characterId === member.id);
+    return el('article', { className: 'party-card' + (member.hp && member.hp.current === 0 ? ' is-down' : '') + (fighter ? ' in-encounter' : ''), 'data-roll-character': canRollFor() ? String(member.id) : null }, [
       el('header', { className: 'party-card-header' }, [
+        fighter && secretsOpen() ? partyInitiativeInput(fighter) : null,
+        fighter && !secretsOpen() ? el('span', { className: 'tag red', title: 'In the fight', text: '⚔' }) : null,
         member.portraitUrl ? el('img', { className: 'party-portrait', src: member.portraitUrl, alt: '', loading: 'lazy' }) : null,
         el('div', { className: 'party-card-title' }, [nameNode, el('div', { className: 'muted small', text: member.player + ' · ' + (member.species || '') + ' · ' + classes })]),
         remove
@@ -615,31 +619,35 @@
     ]);
   }
 
-  // A party member in the fight: their initiative here; HP and the rest on their card.
-  function partyCombatantCard(combatant) {
-    const member = (data.party || []).find(entry => entry.id === combatant.characterId);
+  // The running fight's combatants as this viewer sees them ([] when none).
+  function runningCombatants() {
+    const encounters = (data && data.encounters) || {};
+    const running = secretsOpen() ? (encounters.list || []).find(item => item.status === 'running') : encounters.running;
+    return running ? running.combatants : [];
+  }
+
+  // A party member's initiative box on their own card (empty until they roll).
+  function partyInitiativeInput(combatant) {
     const initiative = el('input', {
       type: 'number', min: '-10', max: '50', value: combatant.initiative ?? '', placeholder: '—', className: 'encounter-initiative',
-      'aria-label': 'Initiative of ' + combatant.label, title: 'Initiative: the player rolls it on their sheet or card, or type it in'
+      'aria-label': 'Initiative of ' + combatant.label,
+      title: combatant.initiative === null ? 'Waiting for their initiative roll (or type it in)' : 'Initiative (their roll; type to change)'
     });
     initiative.addEventListener('change', () => act('/combatants/' + combatant.id + '/initiative', { initiative: initiative.value }, ''));
-    return el('article', { className: 'party-card encounter-combatant encounter-pc' + (member && member.hp && member.hp.current === 0 ? ' is-down' : '') }, [
-      el('header', { className: 'party-card-header' }, [
-        initiative,
-        el('div', { className: 'party-card-title' }, [
-          el('strong', { text: combatant.label }),
-          el('div', { className: 'muted small', text: 'Party' + (member ? ' · ' + member.player : '') + (combatant.initiative === null ? ' · waiting for their initiative roll' : '') })
-        ]),
-        button('✕', () => act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'),
-          'btn btn-small btn-secondary party-remove', { title: 'Remove from the encounter', 'aria-label': 'Remove ' + combatant.label })
-      ]),
-      member ? hpBlock(member.hp) : null,
-      member ? el('div', { className: 'party-stats' }, [stat('AC', member.armorClass, 'Armor Class')]) : null
-    ]);
+    const leave = button('leave fight', () => {
+      if (window.confirm('Take ' + combatant.label + ' out of the fight? They stay in the party.')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.');
+    }, 'link-button small', { title: 'Take out of the fight (they stay in the party)', 'aria-label': 'Take ' + combatant.label + ' out of the fight' });
+    return el('span', { className: 'party-initiative' }, [initiative, leave]);
+  }
+
+  // Everyone in the fight, in order: "22 Hool 1 · 15 Quor · — Viera".
+  function turnOrder(encounter) {
+    return el('ol', { className: 'turn-order' }, encounter.combatants.map(combatant => el('li', {
+      className: (combatant.kind === 'pc' ? 'is-pc' : '') + (combatant.hpCurrent === 0 ? ' is-down' : '')
+    }, [el('span', { className: 'turn-order-init', text: combatant.initiative ?? '—' }), combatant.label])));
   }
 
   function combatantCard(combatant) {
-    if (combatant.kind === 'pc') return partyCombatantCard(combatant);
     const statblock = combatant.monster ? (data.encounters.statblocks || {})[combatant.monster] : null;
     const hp = Number.isInteger(combatant.hpMax) ? { current: combatant.hpCurrent, max: combatant.hpMax, temp: combatant.hpTemp } : null;
     const initiative = el('input', {
@@ -718,7 +726,11 @@
         ]),
         encounter.notes ? el('p', { className: 'muted small', text: encounter.notes }) : null,
         el('p', { className: 'muted small', text: 'In initiative order. Players\' initiative rolls land here (and in Owlbear) on their own; "Roll initiative" rolls for the monsters and NPCs. Monster rolls show in the dice bar for you only (Shift-click: advantage, Ctrl-click: disadvantage). The party sees the names and how hurt they look.' }),
-        el('div', { className: 'party-grid' }, encounter.combatants.map(combatantCard)),
+        turnOrder(encounter),
+        el('div', { className: 'party-grid' }, encounter.combatants.filter(combatant => combatant.kind !== 'pc').map(combatantCard)),
+        encounter.combatants.some(combatant => combatant.kind === 'pc')
+          ? el('p', { className: 'muted small', text: 'Party members in the fight are outlined in red below, with their initiative on their card.' })
+          : null,
         el('details', { className: 'encounter-reinforcements' }, [el('summary', { className: 'small', text: '+ Reinforcements' }), addControls(encounter)])
       ]);
     }

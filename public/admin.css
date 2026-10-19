@@ -877,3 +877,11 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .combatant-editor input[type=text] { width: 180px; max-width: 100%; }
 .combatant-editor p { flex-basis: 100%; margin: 0; }
 .encounter-order li.is-pc strong { color: #8ea1ff; }
+.party-card.in-encounter { border: 1px solid #f23f43aa; background: #2b1f22; }
+.party-card.in-encounter .encounter-initiative { margin-right: 4px; }
+.turn-order { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 8px 0 10px; padding: 0; counter-reset: none; }
+.turn-order li { padding: 3px 8px; border-radius: 12px; background: #1e1f22; font-size: 13px; }
+.turn-order li.is-pc { color: #8ea1ff; }
+.turn-order li.is-down { opacity: 0.5; text-decoration: line-through; }
+.turn-order-init { display: inline-block; min-width: 18px; margin-right: 4px; font-weight: bold; color: #f0b232; }
+.party-initiative { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
