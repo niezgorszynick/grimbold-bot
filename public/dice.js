@@ -3,6 +3,8 @@
 // the result shows in the dice bar, goes into the roll log, and reaches
 // Owlbear Rodeo through the "Grimbold's Dice" extension.
 // Shift-click: advantage. Ctrl/Cmd-click: disadvantage.
+// The adventure table's monsters: data-creature-roll="actions:0:hit" inside
+// data-roll-combatant="<id>" rolls from the statblock, for the DM only.
 
 (function () {
   const characters = () => [...document.querySelectorAll('[data-roll-character]')];
@@ -111,9 +113,43 @@
     }
   }
 
+  // A monster's roll: the DM's eyes only (not logged, not sent to Owlbear).
+  async function rollCreature(adventureId, combatantId, request) {
+    if (busy) return;
+    busy = true;
+    bar.classList.add('is-rolling');
+    try {
+      const response = await fetch('/api/adventures/' + adventureId + '/combatants/' + combatantId + '/roll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ mode, critical }, request))
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not roll.');
+      showResult(Object.assign({}, data.roll, { character: data.roll.combatant, private: true }));
+      if (critical && /damage/i.test(data.roll.label)) { critical = false; sync(); }
+    } catch (error) {
+      result.replaceChildren(el('span', { className: 'sheet-message is-error', text: error.message }));
+    } finally {
+      busy = false;
+      bar.classList.remove('is-rolling');
+    }
+  }
+
   // Click anything marked data-roll. Inside a label (saves, skills) the click
   // rolls instead of ticking the checkbox.
   document.addEventListener('click', event => {
+    const creature = event.target.closest('[data-creature-roll]');
+    const combatant = creature && creature.closest('[data-roll-combatant]');
+    const page = creature && creature.closest('[data-adventure-id]');
+    if (combatant && page) {
+      event.preventDefault();
+      const request = { roll: creature.dataset.creatureRoll };
+      if (event.shiftKey) request.mode = 'advantage';
+      else if (event.ctrlKey || event.metaKey) request.mode = 'disadvantage';
+      rollCreature(page.dataset.adventureId, combatant.dataset.rollCombatant, request);
+      return;
+    }
     const target = event.target.closest('[data-roll]');
     if (!target) return;
     const owner = target.closest('[data-roll-character]');

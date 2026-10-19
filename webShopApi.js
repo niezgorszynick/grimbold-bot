@@ -544,7 +544,7 @@ router.post('/vtt/key', (req, res) => {
 
 function adventureErrorStatus(message) {
   if (message === 'Forbidden.') return 403;
-  if (message === 'Adventure not found.' || message === 'Character not found.' || message === 'NPC not found.') return 404;
+  if (message === 'Adventure not found.' || message === 'Character not found.' || message === 'NPC not found.' || message === 'Encounter not found.') return 404;
   return 400;
 }
 
@@ -797,6 +797,36 @@ router.post('/adventures/:id/takeover', adventureRoute(({ adventureId, user }) =
 // { npcId, hidden } — show an NPC to the party, or keep it the DM's secret.
 router.post('/adventures/:id/npcs/:npcId/hidden', (req, res) => adventureRoute(({ adventureId, user, body }) =>
   db.setAdventureNpcHidden({ adventureId, user, npcId: req.params.npcId, hidden: Boolean(body.hidden) }))(req, res));
+
+// Encounters (the adventure's DM): plan them, run them, track HP and roll
+// from the statblocks. The monster list is for the builder.
+router.get('/adventures/:id/monsters', adventureRoute(({ adventureId, user }) => {
+  const adventure = db.loadAdventureRow(adventureId);
+  if (!db.canSeeAdventureSecrets(adventure, user)) throw new Error('Forbidden.');
+  return { monsters: require('./rules').listMonsters().filter(monster => !monster.summon) };
+}));
+router.post('/adventures/:id/encounters', adventureRoute(({ adventureId, user, body }) => db.createEncounter({ adventureId, user, name: body.name })));
+const encounterRoute = handler => (req, res) => adventureRoute(args => handler({ ...args, encounterId: req.params.encounterId, combatantId: req.params.combatantId }))(req, res);
+router.post('/adventures/:id/encounters/:encounterId', encounterRoute(({ adventureId, user, body, encounterId }) =>
+  db.updateEncounter({ adventureId, user, encounterId, name: body.name, notes: body.notes })));
+router.post('/adventures/:id/encounters/:encounterId/delete', encounterRoute(({ adventureId, user, encounterId }) => db.deleteEncounter({ adventureId, user, encounterId })));
+// { monster, count } or { npcId }
+router.post('/adventures/:id/encounters/:encounterId/add', encounterRoute(({ adventureId, user, body, encounterId }) => (body.npcId
+  ? db.addEncounterNpc({ adventureId, user, encounterId, npcId: body.npcId })
+  : db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, count: body.count }))));
+router.post('/adventures/:id/encounters/:encounterId/run', encounterRoute(({ adventureId, user, encounterId }) => db.runEncounter({ adventureId, user, encounterId })));
+router.post('/adventures/:id/encounters/:encounterId/end', encounterRoute(({ adventureId, user, encounterId }) => db.endEncounter({ adventureId, user, encounterId })));
+router.post('/adventures/:id/encounters/:encounterId/initiative', encounterRoute(({ adventureId, user, encounterId }) => db.rollEncounterInitiative({ adventureId, user, encounterId })));
+router.post('/adventures/:id/combatants/:combatantId/remove', encounterRoute(({ adventureId, user, combatantId }) => db.removeCombatant({ adventureId, user, combatantId })));
+// { initiative } (empty clears it)
+router.post('/adventures/:id/combatants/:combatantId/initiative', encounterRoute(({ adventureId, user, body, combatantId }) =>
+  db.setCombatantInitiative({ adventureId, user, combatantId, initiative: body.initiative })));
+// { action: damage | heal | tempHp, amount }
+router.post('/adventures/:id/combatants/:combatantId/hp', encounterRoute(({ adventureId, user, body, combatantId }) =>
+  db.changeCombatantHp({ adventureId, user, combatantId, action: body.action, amount: body.amount })));
+// { roll, mode, critical }
+router.post('/adventures/:id/combatants/:combatantId/roll', encounterRoute(({ adventureId, user, body, combatantId }) =>
+  db.rollForCombatant({ adventureId, user, combatantId, request: body })));
 
 // { npcId, text } — the DM speaks in the adventure's Discord thread.
 router.post('/adventures/:id/message', async (req, res) => {

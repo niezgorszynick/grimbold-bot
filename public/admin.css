@@ -852,3 +852,24 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .statblock-lore summary { cursor: pointer; color: #949ba4; }
 .statblock footer { display: flex; flex-wrap: wrap; gap: 4px; }
 @media (max-width: 600px) { .statblock-abilities { font-size: 12px; } .statblock-abilities th, .statblock-abilities td { padding: 4px 3px; } }
+
+/* Encounters on the adventure table (the DM plans and runs them) */
+.adventure-encounters, .encounter-running { margin-top: 18px; }
+.encounter-running { padding: 12px; border: 1px solid #f23f4355; border-radius: 8px; background: #2b1f22; }
+.encounter-running h3 { margin: 0; }
+.encounter-card summary { cursor: pointer; }
+.encounter-card { margin-top: 10px; }
+.encounter-roster { margin: 8px 0; padding-left: 18px; display: grid; gap: 3px; }
+.encounter-add { margin: 8px 0; }
+.encounter-monster-input { flex: 1 1 220px; min-width: 0; }
+.encounter-initiative { width: 56px; text-align: center; font-weight: bold; }
+.encounter-combatant .party-card-header { align-items: center; }
+.encounter-statblock-toggle summary { cursor: pointer; color: #8ea1ff; font-size: 13px; }
+.encounter-statblock { margin-top: 8px; font-size: 13px; gap: 6px; }
+.encounter-statblock .statblock-section { font-size: 13px; }
+.encounter-abilities { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.encounter-roll { margin: 2px 2px 0 0; padding: 2px 6px; font-size: 11px; }
+.encounter-order { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 4px; }
+.encounter-order li.is-down { opacity: 0.6; text-decoration: line-through; }
+.encounter-reinforcements summary, .encounter-done summary { cursor: pointer; color: #949ba4; margin-top: 8px; }
+.encounter-running { margin-bottom: 18px; }

@@ -21,6 +21,7 @@ module.exports = {
   ...require('./db/combat'),
   ...require('./db/roster'),
   ...require('./db/activeAdventures'),
+  ...require('./db/encounters'),
   ...require('./db/dice'),
   ...require('./db/gold'),
   ...require('./db/npcs'),

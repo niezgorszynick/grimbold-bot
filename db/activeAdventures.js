@@ -9,6 +9,7 @@ const { updateCharacterProgression } = require('./characters');
 const { getCharacterSnapshots } = require('./roster');
 const { getRecentRolls } = require('./dice');
 const { getAdventureNpcs } = require('./npcs');
+const { encountersForTable } = require('./encounters');
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 4000;
@@ -180,6 +181,7 @@ function getAdventureTable({ adventureId, user }) {
       // The DM reward can't go to a character who took part.
       .filter(row => !ids.includes(row.id))
     : [];
+  const party = getCharacterSnapshots(ids);
   return {
     adventure: {
       id: adventure.id,
@@ -202,7 +204,11 @@ function getAdventureTable({ adventureId, user }) {
       ? db.prepare('SELECT COUNT(*) AS n FROM adventure_npcs WHERE adventure_id = ? AND hidden = 1').get(adventure.id).n
       : 0,
     dmChanges: readDmChanges(adventure).map(change => ({ from: change.from, to: change.to, at: change.at })),
-    party: getCharacterSnapshots(ids),
+    party,
+    // Planned encounters and their statblocks: the DM's secret until run.
+    encounters: encountersForTable({
+      adventureId: adventure.id, secret: access.secret, manage: access.manage, partyLevels: party.map(member => member.level)
+    }),
     // The party's latest rolls; private ones only for the DM (and the roller).
     rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.secret, viewerId: Number(user && user.id) || null }),
     candidates,
@@ -356,5 +362,8 @@ module.exports = {
   canManageAdventure: (adventure, user) => accessTo(adventure, user).manage,
   canSeeAdventureSecrets: (adventure, user) => accessTo(adventure, user).secret,
   takeOverAdventure,
-  setAdventureNpcHidden
+  setAdventureNpcHidden,
+  // For db/encounters.js.
+  loadAdventureRow: loadAdventure,
+  requireAdventureSecret: requireSecret
 };

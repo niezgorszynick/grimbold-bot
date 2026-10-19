@@ -406,6 +406,276 @@
     ]);
   }
 
+  // ─── Encounters ────────────────────────────────────────────────────────────
+  // The DM plans them (monsters × count and NPCs against the party's XP
+  // budget), runs one, and tracks it here: initiative, HP and statblock dice
+  // (rolled through the dice bar, for the DM's eyes only). The party sees the
+  // running fight's creatures in turn order with a word for their state.
+  const thousands = n => Number(n || 0).toLocaleString('en-US');
+  const openStatblocks = new Set();
+  let monsterList = null;
+  let monsterListLoading = false;
+  const DIFFICULTY_TAGS = { None: 'tag', Low: 'tag green', Moderate: 'tag gold', High: 'tag red', 'Beyond High': 'tag red' };
+
+  // The catalog for the "add a monster" boxes, loaded once.
+  function monsterDatalist() {
+    let list = document.getElementById('encounter-monster-list');
+    if (!list) {
+      list = el('datalist', { id: 'encounter-monster-list' });
+      document.body.append(list);
+    }
+    if (!monsterList && !monsterListLoading) {
+      monsterListLoading = true;
+      api('/monsters').then(result => {
+        monsterList = result.monsters;
+        list.replaceChildren(...monsterList.map(monster => el('option', { value: monster.name, text: 'CR ' + monster.crText + ' · ' + thousands(monster.xp) + ' XP · ' + monster.typeText })));
+      }).catch(error => {
+        monsterListLoading = false;
+        message = 'Monster list: ' + error.message;
+        isError = true;
+        render();
+      });
+    }
+    return list;
+  }
+
+  function difficultyTag(encounter) {
+    if (!encounter.difficulty) return el('span', { className: 'muted small', text: thousands(encounter.xp) + ' XP (add the party for a budget)' });
+    const without = encounter.npcsWithoutXp;
+    return el('span', {}, [
+      el('span', { className: DIFFICULTY_TAGS[encounter.difficulty] || 'tag', text: encounter.difficulty }),
+      el('span', { className: 'muted small', text: ' ' + thousands(encounter.xp) + ' XP' + (without ? ' (+' + without + ' NPC' + (without === 1 ? '' : 's') + ' without a statblock)' : '') })
+    ]);
+  }
+
+  // Add monsters (a catalog name × count) or a Notable NPC.
+  function addControls(encounter) {
+    monsterDatalist();
+    const name = el('input', { type: 'text', list: 'encounter-monster-list', placeholder: 'Monster, e.g. Goblin Warrior', 'aria-label': 'Monster to add', className: 'encounter-monster-input' });
+    const count = el('input', { type: 'number', min: '1', max: '20', value: '1', className: 'inventory-qty', 'aria-label': 'How many' });
+    const add = () => {
+      if (!name.value.trim()) { message = 'Type a monster name first.'; isError = true; render(); return; }
+      const many = Number(count.value) || 1;
+      act('/encounters/' + encounter.id + '/add', { monster: name.value.trim(), count: many }, many + ' × ' + name.value.trim() + ' added to ' + encounter.name + '.');
+    };
+    name.addEventListener('keydown', event => { if (event.key === 'Enter') add(); });
+    const inEncounter = new Set(encounter.combatants.filter(combatant => combatant.npcId).map(combatant => combatant.npcId));
+    const npcs = [...(data.npcs || []), ...(data.npcCandidates || [])]
+      .filter((npc, index, all) => all.findIndex(other => other.id === npc.id) === index && !inEncounter.has(npc.id));
+    const npcSelect = el('select', { 'aria-label': 'NPC to add to the encounter' }, [
+      el('option', { value: '', text: '+ Notable NPC…' }),
+      ...npcs.map(npc => el('option', { value: String(npc.id), text: npc.name }))
+    ]);
+    npcSelect.addEventListener('change', () => {
+      if (!npcSelect.value) return;
+      const chosen = npcs.find(npc => String(npc.id) === npcSelect.value);
+      act('/encounters/' + encounter.id + '/add', { npcId: Number(npcSelect.value) }, (chosen ? chosen.name : 'The NPC') + ' joins ' + encounter.name + '.');
+    });
+    return el('div', { className: 'table-filter encounter-add' }, [name, el('label', { className: 'small' }, ['× ', count]), button('Add', add, 'btn btn-small'), npcs.length ? npcSelect : null]);
+  }
+
+  function plannedCard(encounter) {
+    const notes = el('textarea', { rows: '2', maxlength: '2000', placeholder: 'Notes: terrain, tactics, treasure…', 'aria-label': 'Notes for ' + encounter.name });
+    notes.value = encounter.notes || '';
+    notes.addEventListener('change', () => act('/encounters/' + encounter.id, { notes: notes.value }, 'Notes saved.'));
+    const rows = encounter.combatants.map(combatant => el('li', {}, [
+      el('strong', { text: combatant.label }),
+      el('span', {
+        className: 'muted small',
+        text: ' ' + [
+          combatant.crText ? 'CR ' + combatant.crText : (combatant.kind === 'npc' ? 'NPC' : null),
+          Number.isInteger(combatant.hpMax) ? combatant.hpMax + ' HP' : null,
+          combatant.armorClass ? 'AC ' + combatant.armorClass : null
+        ].filter(Boolean).join(' · ')
+      }),
+      ' ', button('✕', () => act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' removed.'), 'link-button small', { title: 'Remove ' + combatant.label, 'aria-label': 'Remove ' + combatant.label })
+    ]));
+    const count = encounter.combatants.length;
+    return el('details', { className: 'sheet-card encounter-card', open: count === 0 || openPlans.has(encounter.id) ? true : null, 'data-encounter': String(encounter.id) }, [
+      el('summary', {}, [el('strong', { text: encounter.name }), ' ', difficultyTag(encounter), el('span', { className: 'muted small', text: ' · ' + count + ' creature' + (count === 1 ? '' : 's') })]),
+      rows.length ? el('ul', { className: 'encounter-roster' }, rows) : el('p', { className: 'muted small', text: 'Nothing here yet: add monsters or NPCs below.' }),
+      addControls(encounter),
+      notes,
+      el('div', { className: 'vitals-actions' }, [
+        button('▶ Run encounter', () => {
+          if (window.confirm('Run "' + encounter.name + '"? The party will see who is in the fight (not their numbers), and its NPCs join the table.')) {
+            act('/encounters/' + encounter.id + '/run', {}, encounter.name + ' has begun. Roll initiative!');
+          }
+        }, 'btn btn-small btn-green'),
+        button('Rename', () => {
+          const name = window.prompt('Encounter name', encounter.name);
+          if (name && name.trim()) act('/encounters/' + encounter.id, { name }, 'Renamed.');
+        }, 'btn btn-small btn-secondary'),
+        button('Delete', () => { if (window.confirm('Delete "' + encounter.name + '"?')) act('/encounters/' + encounter.id + '/delete', {}, encounter.name + ' deleted.'); }, 'btn btn-small btn-red')
+      ])
+    ]);
+  }
+
+  // A statblock with its dice: the dice bar rolls them (Shift: advantage, Ctrl: disadvantage).
+  function statblockNode(monster) {
+    const rolls = new Map((monster.rolls || []).map(roll => [roll.id, roll]));
+    const rollButton = (id, text) => (rolls.has(id)
+      ? el('button', { type: 'button', className: 'roll-link', 'data-creature-roll': id, title: rolls.get(id).label + ' (' + rolls.get(id).formula + ')', text })
+      : document.createTextNode(text));
+    const mod = score => Math.floor((score - 10) / 2);
+    const entryRolls = (section, index) => (monster.rolls || []).filter(roll => roll.id.startsWith(section + ':' + index + ':')).map(roll => el('button', {
+      type: 'button', className: 'btn btn-small encounter-roll', 'data-creature-roll': roll.id, title: roll.label,
+      text: '🎲 ' + (roll.kind === 'attack' ? 'Hit ' + (roll.formula.replace('1d20', '') || '+0') : roll.formula + ' ' + ((roll.label.match(/\(([^)]+)\)$/) || [])[1] || ''))
+    }));
+    const sections = [['traits', 'Traits'], ['actions', 'Actions'], ['bonusActions', 'Bonus Actions'], ['reactions', 'Reactions'], ['legendaryActions', 'Legendary Actions']];
+    const lines = [['Vulnerabilities', monster.vulnerabilities], ['Resistances', monster.resistances], ['Immunities', monster.immunities], ['Senses', monster.senses], ['Languages', monster.languages]]
+      .filter(([, value]) => value).map(([label, value]) => el('div', {}, [el('strong', { text: label + ' ' }), value]));
+    const skills = Object.entries(monster.skills || {});
+    return el('div', { className: 'statblock encounter-statblock' }, [
+      el('div', { className: 'muted small' }, [el('em', { text: monster.typeLine }), ' · CR ' + monster.crText + ' · ', rollButton('initiative', 'Initiative ' + signed(monster.initiative ?? mod(monster.abilities.dex || 10)))]),
+      el('div', { className: 'statblock-lines' }, [
+        el('div', {}, [el('strong', { text: 'Speed ' }), monster.speed]),
+        el('div', { className: 'encounter-abilities' }, ABILITIES.filter(ability => monster.abilities[ability]).map(ability => el('span', {}, [
+          el('small', { text: ability.toUpperCase() + ' ' }),
+          rollButton('check:' + ability, monster.abilities[ability] + ' (' + signed(mod(monster.abilities[ability])) + ')'),
+          el('small', { text: ' save ' }),
+          rollButton('save:' + ability, signed(monster.saves[ability] ?? mod(monster.abilities[ability])))
+        ]))),
+        skills.length ? el('div', {}, [el('strong', { text: 'Skills ' }), ...skills.flatMap(([skill, bonus], index) => [index ? ', ' : '', rollButton('skill:' + skill, skill + ' ' + signed(bonus))])]) : null,
+        ...lines
+      ]),
+      ...sections.flatMap(([key, title]) => ((monster[key] || []).length ? [
+        el('h4', { className: 'statblock-section', text: title }),
+        key === 'legendaryActions' && monster.legendaryIntro ? el('p', { className: 'statblock-entry', text: monster.legendaryIntro }) : null,
+        ...monster[key].map((entry, index) => el('p', { className: 'statblock-entry' + (entry.sub ? ' is-sub' : '') }, [
+          el('strong', {}, el('em', { text: entry.name + '. ' })), entry.text, ' ', ...entryRolls(key, index)
+        ]))
+      ] : []))
+    ]);
+  }
+
+  function combatantCard(combatant) {
+    const statblock = combatant.monster ? (data.encounters.statblocks || {})[combatant.monster] : null;
+    const hp = Number.isInteger(combatant.hpMax) ? { current: combatant.hpCurrent, max: combatant.hpMax, temp: combatant.hpTemp } : null;
+    const initiative = el('input', {
+      type: 'number', min: '-10', max: '50', value: combatant.initiative ?? '', placeholder: '—', className: 'encounter-initiative',
+      'aria-label': 'Initiative of ' + combatant.label, title: 'Initiative (' + signed(combatant.initiativeBonus) + '); empty to clear'
+    });
+    initiative.addEventListener('change', () => act('/combatants/' + combatant.id + '/initiative', { initiative: initiative.value }, ''));
+    let actions = null;
+    if (hp) {
+      const amount = el('input', { type: 'number', min: '1', max: '10000', inputmode: 'numeric', placeholder: 'HP', 'aria-label': 'Amount for ' + combatant.label });
+      const change = action => {
+        const value = Number(amount.value);
+        if (!Number.isInteger(value) || value <= 0) { message = 'Enter a positive whole number for ' + combatant.label + ' first.'; isError = true; render(); return; }
+        act('/combatants/' + combatant.id + '/hp', { action, amount: value }, result => {
+          const after = result.encounters.list.flatMap(item => item.combatants).find(item => item.id === combatant.id);
+          const verb = { damage: 'takes ' + value + ' damage', heal: 'heals ' + value + ' HP', tempHp: 'gains ' + value + ' temporary HP' }[action];
+          return combatant.label + ' ' + verb + (after ? ': ' + after.hpCurrent + ' / ' + after.hpMax + ' HP.' + (after.hpCurrent === 0 ? ' ' + combatant.label + ' is down.' : '') : '.');
+        });
+      };
+      amount.addEventListener('keydown', event => { if (event.key === 'Enter') change('damage'); });
+      actions = el('div', { className: 'party-hp-actions' }, [
+        amount,
+        button('Damage', () => change('damage'), 'btn btn-small btn-red'),
+        button('Heal', () => change('heal'), 'btn btn-small btn-green'),
+        button('Temp HP', () => change('tempHp'))
+      ]);
+    }
+    let statblockPart;
+    if (statblock) {
+      statblockPart = el('details', { className: 'encounter-statblock-toggle', open: openStatblocks.has(combatant.id) ? true : null }, [el('summary', { text: 'Statblock & dice' }), statblockNode(statblock)]);
+      // Open statblocks stay open when the table reloads.
+      statblockPart.addEventListener('toggle', () => { if (statblockPart.open) openStatblocks.add(combatant.id); else openStatblocks.delete(combatant.id); });
+    } else {
+      statblockPart = el('p', { className: 'muted small', text: combatant.kind === 'npc' ? 'No statblock: base the NPC on one on the Notable NPCs tab.' : 'This monster is not in the list on this server.' });
+    }
+    const sub = [
+      combatant.kind === 'npc' ? 'NPC' : null,
+      combatant.kind === 'npc' && combatant.monster ? combatant.monster : null,
+      combatant.crText ? 'CR ' + combatant.crText : null
+    ].filter(Boolean).join(' · ');
+    return el('article', { className: 'party-card encounter-combatant' + (hp && hp.current === 0 ? ' is-down' : ''), 'data-roll-combatant': String(combatant.id) }, [
+      el('header', { className: 'party-card-header' }, [
+        initiative,
+        el('div', { className: 'party-card-title' }, [el('strong', { text: combatant.label }), sub ? el('div', { className: 'muted small', text: sub }) : null]),
+        button('✕', () => { if (window.confirm('Take ' + combatant.label + ' out of the fight?')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'); },
+          'btn btn-small btn-secondary party-remove', { title: 'Remove from the encounter', 'aria-label': 'Remove ' + combatant.label })
+      ]),
+      hpBlock(hp),
+      actions,
+      el('div', { className: 'party-stats' }, [
+        stat('AC', combatant.armorClass ?? '—', 'Armor Class'),
+        statblock ? stat('Speed', statblock.speed.split(',')[0]) : null
+      ].filter(Boolean)),
+      statblockPart
+    ]);
+  }
+
+  // The fight that is on: the DM's working view, or the party's.
+  function runningSection() {
+    const encounters = data.encounters || {};
+    if (secretsOpen()) {
+      const encounter = (encounters.list || []).find(item => item.status === 'running');
+      if (!encounter) return null;
+      return el('section', { className: 'encounter-running' }, [
+        el('div', { className: 'sheet-section-heading' }, [
+          el('h3', {}, ['⚔ ' + encounter.name + ' ', difficultyTag(encounter)]),
+          el('span', { className: 'vitals-actions' }, [
+            button('🎲 Roll initiative', () => act('/encounters/' + encounter.id + '/initiative', {}, 'Initiative rolled for every creature that had none.'), 'btn btn-small',
+              { title: 'Rolls for each creature without an initiative; type a number in to set one yourself.' }),
+            button('End encounter', () => { if (window.confirm('End "' + encounter.name + '"?')) act('/encounters/' + encounter.id + '/end', {}, encounter.name + ' is over.'); }, 'btn btn-small btn-gold')
+          ])
+        ]),
+        encounter.notes ? el('p', { className: 'muted small', text: encounter.notes }) : null,
+        el('p', { className: 'muted small', text: 'In initiative order. Monster rolls show in the dice bar for you only (Shift-click: advantage, Ctrl-click: disadvantage). The party sees the names and how hurt they look.' }),
+        el('div', { className: 'party-grid' }, encounter.combatants.map(combatantCard)),
+        el('details', { className: 'encounter-reinforcements' }, [el('summary', { className: 'small', text: '+ Reinforcements' }), addControls(encounter)])
+      ]);
+    }
+    const running = encounters.running;
+    if (!running) return null;
+    return el('section', { className: 'encounter-running' }, [
+      el('h3', { text: '⚔ ' + running.name }),
+      el('ol', { className: 'encounter-order' }, running.combatants.map(combatant => el('li', { className: combatant.condition === 'Down' ? 'is-down' : null }, [
+        el('strong', { text: combatant.label }), ' ',
+        combatant.condition ? el('span', { className: 'npc-condition npc-condition-' + combatant.condition.toLowerCase(), text: combatant.condition }) : null
+      ])))
+    ]);
+  }
+
+  // Planned encounters that stay open when the table reloads.
+  const openPlans = new Set();
+  function encounterPlanner() {
+    const encounters = data.encounters || {};
+    if (!secretsOpen()) {
+      const prepared = encounters.prepared || 0;
+      return prepared ? el('p', { className: 'muted small', text: prepared + ' encounter' + (prepared === 1 ? ' is' : 's are') + " prepared by this adventure's DM." }) : null;
+    }
+    const budget = encounters.budget || { low: 0, moderate: 0, high: 0 };
+    const levels = encounters.partyLevels || [];
+    const name = el('input', { type: 'text', maxlength: '100', placeholder: 'New encounter, e.g. Ambush at the ford', 'aria-label': 'New encounter name' });
+    const create = () => { if (name.value.trim()) act('/encounters', { name: name.value }, 'Encounter "' + name.value.trim() + '" created.'); };
+    name.addEventListener('keydown', event => { if (event.key === 'Enter') create(); });
+    const planned = (encounters.list || []).filter(item => item.status === 'planned');
+    const done = (encounters.list || []).filter(item => item.status === 'done');
+    const section = el('section', { className: 'adventure-encounters' }, [
+      el('div', { className: 'sheet-section-heading' }, [el('h3', { text: 'Encounters' }), el('span', { className: 'muted small', text: 'Only you (and the Root DM) see these until you run one.' })]),
+      el('p', { className: 'small' }, levels.length
+        ? ['XP budget for the party (level' + (levels.length === 1 ? ' ' : 's ') + levels.join(', ') + '): ',
+          el('span', { className: 'tag green', text: 'Low ' + thousands(budget.low) }), ' ',
+          el('span', { className: 'tag gold', text: 'Moderate ' + thousands(budget.moderate) }), ' ',
+          el('span', { className: 'tag red', text: 'High ' + thousands(budget.high) })]
+        : [el('span', { className: 'muted', text: 'Add the party to see the XP budget.' })]),
+      el('div', { className: 'table-filter' }, [name, button('Create', create, 'btn btn-small btn-green')]),
+      ...planned.map(plannedCard),
+      done.length ? el('details', { className: 'encounter-done' }, [
+        el('summary', { className: 'small', text: done.length + ' finished encounter' + (done.length === 1 ? '' : 's') }),
+        el('ul', {}, done.map(item => el('li', {}, [item.name + ' · ' + thousands(item.xp) + ' XP ', button('Delete', () => act('/encounters/' + item.id + '/delete', {}, item.name + ' deleted.'), 'link-button small')])))
+      ]) : null
+    ]);
+    section.querySelectorAll('.encounter-card').forEach(card => card.addEventListener('toggle', () => {
+      const id = Number(card.dataset.encounter);
+      if (card.open) openPlans.add(id); else openPlans.delete(id);
+    }));
+    return section;
+  }
+
   function finishForm() {
     const xp = el('input', { type: 'number', min: '1', max: '20', value: String(data.adventure.xp || 1), className: 'inventory-qty', 'aria-label': 'XP for each party member' });
     const reward = el('select', { 'aria-label': 'DM reward' });
@@ -582,10 +852,12 @@
       data.canManage && !adventure.threadUrl ? threadSection() : null,
       data.canManage && adventure.threadUrl ? speakSection() : null,
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null,
+      runningSection(),
       data.party.length
         ? el('div', { className: 'party-grid' }, data.party.map(memberCard))
         : el('p', { className: 'muted', text: data.canManage && active ? 'No one in the party yet: add the characters taking part above.' : 'No characters in this adventure.' }),
       npcSection(),
+      encounterPlanner(),
       !active && adventure.notes ? el('div', { className: 'card' }, [el('h4', { text: 'Notes' }), el('p', { text: adventure.notes })]) : null,
       rollLog()
     ].filter(Boolean));

@@ -572,6 +572,53 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(npcs)').all().map(column => column.name));
       if (!columns.has('base_monster')) db.exec("ALTER TABLE npcs ADD COLUMN base_monster TEXT NOT NULL DEFAULT ''");
     }
+  },
+  {
+    version: 19,
+    name: 'Encounters: monsters and NPCs the DM prepares for an adventure',
+    up(db) {
+      db.exec(`
+        -- status: planned (the DM's secret), running (on the table), done.
+        CREATE TABLE IF NOT EXISTS encounters (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'planned',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          started_at DATETIME,
+          ended_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS encounters_adventure ON encounters (adventure_id);
+        -- One row per creature: a monster from the catalog (its own HP here),
+        -- or a Notable NPC (HP on the npcs row). number: Goblin 1, Goblin 2...
+        CREATE TABLE IF NOT EXISTS encounter_combatants (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          encounter_id INTEGER NOT NULL REFERENCES encounters(id) ON DELETE CASCADE,
+          monster_name TEXT,
+          npc_id INTEGER REFERENCES npcs(id) ON DELETE CASCADE,
+          number INTEGER NOT NULL DEFAULT 1,
+          hp_max INTEGER,
+          hp_current INTEGER,
+          hp_temp INTEGER NOT NULL DEFAULT 0,
+          initiative INTEGER,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS encounter_combatants_encounter ON encounter_combatants (encounter_id);
+        CREATE TRIGGER IF NOT EXISTS change_log_encounter_insert AFTER INSERT ON encounters
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_encounter_update AFTER UPDATE ON encounters
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_encounter_delete AFTER DELETE ON encounters
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', OLD.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_combatant_insert AFTER INSERT ON encounter_combatants
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM encounters WHERE id = NEW.encounter_id; END;
+        CREATE TRIGGER IF NOT EXISTS change_log_combatant_update AFTER UPDATE ON encounter_combatants
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM encounters WHERE id = NEW.encounter_id; END;
+        CREATE TRIGGER IF NOT EXISTS change_log_combatant_delete AFTER DELETE ON encounter_combatants
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM encounters WHERE id = OLD.encounter_id; END;
+      `);
+    }
   }
 ];
 
