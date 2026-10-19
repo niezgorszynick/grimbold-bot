@@ -333,6 +333,8 @@ module.exports = {
   starryFormRules,
   constellations,
   parseBeast,
+  parseFeature,
+  parseCr,
   loadBeasts,
   getBeast,
   wildShapeRules,

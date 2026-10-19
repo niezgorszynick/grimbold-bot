@@ -510,6 +510,13 @@ router.post(['/adventures/update', '/adventures/edit'], (req, res) => {
   }
 });
 
+// A monster's statblock for the Monsters tab (DMs only).
+router.get('/monsters/statblock', requireAdmin, (req, res) => {
+  const monster = require('./rules').getMonster(req.query.name);
+  if (!monster) return res.status(404).send('No such monster.');
+  return res.send(require('./views/tabs/monsters').monsterPanel(monster));
+});
+
 // ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {

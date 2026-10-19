@@ -6,6 +6,7 @@
 'use strict';
 
 const db = require('../../db');
+const rules = require('../../rules');
 const { escapeHtml } = require('../helpers');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
@@ -14,7 +15,7 @@ const PLAN_LABELS = { '': 'Not said', reserved: '🔒 Reserved (ask me first)', 
 const signed = n => (n >= 0 ? `+${n}` : String(n));
 
 function hasStats(stats) {
-  return stats.armorClass !== null || stats.hpMax !== null || Boolean(stats.speed) || Object.keys(stats.abilities).length > 0;
+  return Boolean(stats.baseMonster) || stats.armorClass !== null || stats.hpMax !== null || Boolean(stats.speed) || Object.keys(stats.abilities).length > 0;
 }
 
 function statsHtml(stats) {
@@ -22,7 +23,11 @@ function statsHtml(stats) {
     ? `${stats.hpCurrent ?? stats.hpMax} / ${stats.hpMax}${stats.hpTemp ? ` (+${stats.hpTemp} temp)` : ''}`
     : '—';
   const abilities = ABILITIES.filter(ability => stats.abilities[ability]);
+  const base = stats.baseMonster;
   return `
+    ${base ? `<div class="small">Statblock: ${base.found
+      ? `<a href="/admin?tab=monsters&monster=${encodeURIComponent(base.name)}">${escapeHtml(base.name)}</a> <span class="muted">(CR ${escapeHtml(base.crText)})</span>`
+      : `${escapeHtml(base.name)} <span class="muted">(not in the monster list on this server)</span>`}</div>` : ''}
     <div class="npc-stats">
       <span><small>AC</small><strong>${stats.armorClass ?? '—'}</strong></span>
       <span><small>HP</small><strong>${hp}</strong></span>
@@ -167,9 +172,22 @@ function adventurePicker(adventures, appeared) {
     </script>`;
 }
 
-function npcForm(npc, adventures, owners, currentUserId) {
+// A new NPC started from a statblock (Monsters tab): its stats filled in.
+function statsFromMonster(monster) {
+  return {
+    baseMonster: { name: monster.name },
+    armorClass: monster.armorClass,
+    hpMax: monster.hitPoints,
+    hpCurrent: null,
+    speed: monster.speed.slice(0, 60),
+    abilities: Object.fromEntries(Object.entries(monster.abilities).map(([ability, score]) => [ability, { score }]))
+  };
+}
+
+function npcForm(npc, adventures, owners, currentUserId, startMonster) {
   const value = (key, fallback = '') => escapeHtml(npc && npc[key] !== undefined && npc[key] !== null ? npc[key] : fallback);
-  const stats = (npc && npc.stats) || { abilities: {} };
+  const stats = (npc && npc.stats) || (startMonster ? statsFromMonster(startMonster) : { abilities: {} });
+  const monsters = rules.listMonsters();
   const stat = key => (stats[key] === null || stats[key] === undefined ? '' : stats[key]);
   const appeared = new Set(((npc && npc.adventures) || []).map(adventure => adventure.id));
   // A new NPC belongs to the DM adding it; an older one may have no owner yet.
@@ -202,6 +220,11 @@ function npcForm(npc, adventures, owners, currentUserId) {
         <label>Personality (short)<textarea name="personality" rows="2" maxlength="1000" placeholder="Gruff, loyal to a fault, hates elves">${value('personality')}</textarea></label>
         <label>Lore<textarea name="description" rows="4" maxlength="5000">${value('description')}</textarea></label>
         <h4>Stats</h4>
+        <label>Based on a statblock${monsters.length ? '' : ' <span class="muted small">(no monster list on this server)</span>'}
+          <input name="base_monster" list="npc-monster-list" maxlength="100" placeholder="e.g. Mage, Bandit Captain (optional)" value="${escapeHtml(stats.baseMonster ? stats.baseMonster.name : '')}">
+        </label>
+        ${monsters.length ? `<datalist id="npc-monster-list">${monsters.filter(monster => !monster.summon).map(monster => `<option value="${escapeHtml(monster.name)}">CR ${escapeHtml(monster.crText)} ${escapeHtml(monster.typeText)}</option>`).join('')}</datalist>` : ''}
+        <p class="muted small">Stats you leave empty are taken from the statblock when you save. DMs see the full statblock from the NPC's card.</p>
         <div class="npc-form-grid">
           <label>AC<input name="armor_class" type="number" min="0" max="40" value="${stat('armorClass')}"></label>
           <label>Max HP<input name="hp_max" type="number" min="1" max="5000" value="${stat('hpMax')}"></label>
@@ -232,6 +255,7 @@ module.exports = function renderNpcsTab(ctx) {
   const npcs = db.listNpcs({ showStats: isAdmin });
   const editing = isAdmin && req.query.edit_npc ? db.getNpc(req.query.edit_npc, { showStats: true }) : null;
   const creating = isAdmin && req.query.new_npc && !editing;
+  const startMonster = creating && req.query.base_monster ? rules.getMonster(req.query.base_monster) : null;
   const adventures = isAdmin && (editing || creating) ? db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all() : [];
   const owners = isAdmin && (editing || creating) ? db.listNpcOwners() : [];
   const currentUserId = req.session && req.session.user ? Number(req.session.user.id) : null;
@@ -247,7 +271,7 @@ module.exports = function renderNpcsTab(ctx) {
       <p class="muted small">The people the party keeps running into: who they are and where they turned up.${isAdmin ? ' Players see only the name, role, portrait and adventures; everything else here is for DMs. 🔒 Reserved NPCs have long-term plans: ask their DM before using them. Add an NPC to a running adventure from its table.' : ''}</p>
       ${npcs.length > 4 ? '<input type="search" id="npc-search" placeholder="Search by name or role…" aria-label="Search NPCs">' : ''}
     </section>
-    ${editing || creating ? npcForm(editing, adventures, owners, currentUserId) : ''}
+    ${editing || creating ? npcForm(editing, adventures, owners, currentUserId, startMonster) : ''}
     ${npcs.length
       ? `<section class="npc-grid">${npcs.map(npc => npcCard(npc, isAdmin)).join('')}</section>`
       : '<section class="card"><p class="muted">No NPCs yet.</p></section>'}

@@ -4,13 +4,13 @@ Descriptive text for the rules engine. Mechanics (numbers, tables, choices) live
 `rules/*.js`; these files supply the readable text shown on character sheets.
 
 One file per category: `backgrounds.md`, `species.md`, `classes.md`, `subclasses.md`,
-`feats.md`, `spells.md`, `invocations.md`, `magic_items.md`, `items.md`, `beasts.md`. Missing files are
+`feats.md`, `spells.md`, `invocations.md`, `magic_items.md`, `items.md`, `beasts.md`, `monsters.md`. Missing files are
 simply treated as empty.
 
 ## Book text stays out of Git
 
 Text copied from the D&D books can't be published, and this repository is public.
-`spells.md`, `feats.md`, `invocations.md`, `magic_items.md` and `beasts.md` are listed in
+`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md` and `monsters.md` are listed in
 `.gitignore`: keep them locally and copy them to the server yourself (for example
 `scp rules/content/magic_items.md vps:/var/www/grimbold-bot/rules/content/`).
 Add other book-text files to `.gitignore` the same way.
@@ -150,3 +150,16 @@ This wand has 7 charges...
   attacks. Damage after "plus" joins the roll; "or ..." and "extra ..." damage get their own roll.
   Everything else (saving-throw actions, Multiattack, traits) is shown as text.
 - Tests use the made-up beasts in `tests/fixtures/content/beasts.md`.
+
+### Monsters (monsters.md, for the DMs' Monsters tab)
+
+The Monster Manual statblocks in the beast format above, plus:
+
+- `### Legendary actions` (its first line, "Legendary Action Uses: ...", is shown before the actions)
+  and `### Description` (lore).
+- Entry names may be wrapped in `<em>`; names like `**<em>  1: Paralyzing Ray</em>**` are shown
+  indented under the entry before them.
+- `**Habitat**`, `**Treasure**` and `**Source**` footer lines.
+- `Challenge` may read `8 (XP 3 900, or 5 000 in Lair; PB +3)`, `1/8 (25 XP; PB+2)` or
+  `None (XP 0; ...)` for summons; XP missing from the line comes from the 2024 CR table.
+- Tests use the made-up monsters in `tests/fixtures/content/monsters.md`.

@@ -39,7 +39,7 @@ const users = {
   admin: { id: 0, discord_tag: 'admin', role: 'admin' },
   player: { id: player, discord_tag: 'tester', role: 'player' }
 };
-const tabs = ['items', 'catalog', 'restock', 'sales', 'rolls', 'players', 'adventures', 'npcs', 'analytics', 'auctions', 'character-sheet', 'changelog'];
+const tabs = ['items', 'catalog', 'restock', 'sales', 'rolls', 'players', 'adventures', 'npcs', 'monsters', 'analytics', 'auctions', 'character-sheet', 'changelog'];
 
 for (const [role, user] of Object.entries(users)) {
   test(`every admin tab renders with valid inline scripts (${role})`, () => {

@@ -19,6 +19,7 @@ const TAB_RENDERERS = {
   'rolls': require('./tabs/rolls'),
   'players': require('./tabs/players'),
   'npcs': require('./tabs/npcs'),
+  'monsters': require('./tabs/monsters'),
   'changelog': require('./tabs/changelog')
 };
 
@@ -36,6 +37,7 @@ module.exports = function renderAdminPage(req) {
     players: 'Players',
     adventures: 'Adventures',
     npcs: 'Notable NPCs',
+    monsters: 'Monsters',
     analytics: 'Analytics',
     auctions: 'Auctions',
     'character-sheet': 'Character Sheet',

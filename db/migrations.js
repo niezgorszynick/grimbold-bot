@@ -563,6 +563,15 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
       `);
     }
+  },
+  {
+    version: 18,
+    name: 'Notable NPCs based on a monster statblock',
+    up(db) {
+      // base_monster: a statblock name from rules/content/monsters.md, or ''.
+      const columns = new Set(db.prepare('PRAGMA table_info(npcs)').all().map(column => column.name));
+      if (!columns.has('base_monster')) db.exec("ALTER TABLE npcs ADD COLUMN base_monster TEXT NOT NULL DEFAULT ''");
+    }
   }
 ];
 

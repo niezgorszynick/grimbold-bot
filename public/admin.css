@@ -825,3 +825,30 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .npc-condition-wounded { color: #f0b232; }
 .npc-condition-bloodied { color: #f57731; }
 .npc-condition-down { color: #f23f43; }
+
+/* Monsters tab and statblocks (DMs) */
+.monster-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.monster-filters input[type=search] { flex: 1 1 200px; min-width: 0; }
+.monster-filters label { display: inline-flex; align-items: center; gap: 4px; }
+.monster-table td, .monster-table th { padding: 7px 8px; }
+.monster-table a { color: #8ea1ff; text-decoration: none; }
+.monster-table a:hover { text-decoration: underline; }
+.monster-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.monster-panel-actions [data-close-monster] { margin-left: auto; }
+.monster-panel-actions a:not(.btn) { color: #8ea1ff; }
+.statblock { display: grid; gap: 10px; max-width: 820px; }
+.statblock header h3 { margin: 0 0 2px; color: #f0b232; }
+.statblock-core { display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 10px; background: #232428; border-radius: 6px; }
+.statblock-core span { display: grid; }
+.statblock-core small { color: #949ba4; font-size: 11px; }
+.statblock-abilities { margin: 0; max-width: 560px; font-size: 13px; }
+.statblock-abilities th, .statblock-abilities td { padding: 5px 6px; text-align: center; }
+.statblock-abilities tbody th { text-align: left; }
+.statblock-lines { display: grid; gap: 3px; font-size: 14px; }
+.statblock-section { margin: 6px 0 0; padding-bottom: 3px; border-bottom: 1px solid #f0b23255; color: #f0b232; font-size: 15px; }
+.statblock-entry { margin: 0; line-height: 1.45; }
+.statblock-entry.is-sub { margin-left: 18px; }
+.statblock-lore p { line-height: 1.45; }
+.statblock-lore summary { cursor: pointer; color: #949ba4; }
+.statblock footer { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 600px) { .statblock-abilities { font-size: 12px; } .statblock-abilities th, .statblock-abilities td { padding: 4px 3px; } }

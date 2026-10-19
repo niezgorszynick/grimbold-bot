@@ -378,6 +378,12 @@
         stat('AC', stats.armorClass ?? '—', 'Armor Class'),
         stats.speed ? stat('Speed', stats.speed) : null
       ].filter(Boolean)) : null,
+      stats && stats.baseMonster ? el('div', { className: 'party-line' }, [
+        el('span', { className: 'party-label', text: 'Statblock' }),
+        stats.baseMonster.found
+          ? el('a', { href: '/admin?tab=monsters&monster=' + encodeURIComponent(stats.baseMonster.name), target: '_blank', rel: 'noopener', text: stats.baseMonster.name + ' (CR ' + stats.baseMonster.crText + ')' })
+          : stats.baseMonster.name
+      ]) : null,
       abilities.length ? el('div', { className: 'party-line' }, [
         el('span', { className: 'party-label', text: 'Scores' }),
         abilities.map(ability => ability.toUpperCase() + ' ' + stats.abilities[ability].score + ' (' + signed(stats.abilities[ability].modifier) + ')').join(' · ')

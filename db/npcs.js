@@ -1,13 +1,15 @@
 // db/npcs.js — Notable NPCs (Kevah, Arleta, ...). Players see who they are:
 // name, role, portrait and the adventures they appeared in. DMs also see the
 // lore, personality, status, stats, notes, and which DM looks after the NPC
-// and whether they have plans for it. Adding NPCs to a running adventure and
+// and whether they have plans for it. An NPC can be based on a monster
+// statblock (rules/monsters.js): its empty stats come from the statblock. Adding NPCs to a running adventure and
 // their HP there live in db/activeAdventures.js; uploaded portraits in
 // db/npcFiles.js.
 
 'use strict';
 
 const { db } = require('./connection');
+const { getMonster, listMonsters } = require('../rules/monsters');
 // The Root DM (auth.js ROOT_ADMIN) has no players row; auth.js loads db, so
 // it is not required here.
 const ROOT_ADMIN = { id: 0, discord_tag: 'Root DM' };
@@ -75,6 +77,7 @@ function npcView(row, adventures, showStats) {
     plansNote: row.plans_note || '',
     dmNotes: row.dm_notes,
     stats: {
+      baseMonster: row.base_monster ? baseMonsterView(row.base_monster) : null,
       armorClass: row.armor_class,
       hpMax: row.hp_max,
       hpCurrent: row.hp_current,
@@ -83,6 +86,16 @@ function npcView(row, adventures, showStats) {
       abilities: Object.fromEntries(Object.entries(abilities).map(([ability, score]) => [ability, { score, modifier: Math.floor((score - 10) / 2) }]))
     }
   };
+}
+
+function baseMonsterView(name) {
+  const monster = getMonster(name);
+  return { name, crText: monster ? monster.crText : null, found: Boolean(monster) };
+}
+
+// The NPCs built on a statblock (the Monsters tab lists them).
+function listNpcsBasedOn(monsterName) {
+  return db.prepare('SELECT id, name FROM npcs WHERE base_monster = ? ORDER BY name COLLATE NOCASE').all(String(monsterName || ''));
 }
 
 function listNpcs({ showStats = false } = {}) {
@@ -151,13 +164,25 @@ function readOwner(value) {
 
 // Creates (no id) or updates an NPC (admins). fields: name, affiliation,
 // description, personality, status, dm_notes, owner_player_id,
-// plans, plans_note, armor_class, hp_max, hp_current, speed, str…cha,
+// plans, plans_note, base_monster, armor_class, hp_max, hp_current, speed, str…cha,
 // adventure_ids (the adventures they appeared in). A new NPC without an owner
 // belongs to created_by (the DM adding it).
 function saveNpc(fields) {
   const name = cleanText(fields.name, 100, 'Name');
   if (!name) throw new Error('An NPC needs a name.');
   const status = STATUSES.includes(fields.status) ? fields.status : 'alive';
+  // A statblock to build on: the stats left empty come from it.
+  const baseMonster = cleanText(fields.base_monster, 100, 'Statblock');
+  const monster = baseMonster ? getMonster(baseMonster) : null;
+  if (baseMonster && !monster && listMonsters().length) throw new Error(`There is no monster called "${baseMonster}" in the catalog.`);
+  const blank = key => fields[key] === undefined || fields[key] === null || String(fields[key]).trim() === '';
+  if (monster) {
+    fields = { ...fields };
+    if (blank('armor_class') && monster.armorClass !== null) fields.armor_class = monster.armorClass;
+    if (blank('hp_max') && monster.hitPoints !== null) fields.hp_max = monster.hitPoints;
+    if (blank('speed')) fields.speed = monster.speed.slice(0, 60);
+    for (const ability of ABILITIES) if (blank(ability) && monster.abilities[ability]) fields[ability] = monster.abilities[ability];
+  }
   const plans = PLANS.includes(fields.plans) ? fields.plans : '';
   const hpMax = optionalInt(fields.hp_max, 1, 5000, 'Max HP');
   let hpCurrent = optionalInt(fields.hp_current, 0, 5000, 'Current HP');
@@ -182,7 +207,8 @@ function saveNpc(fields) {
     hpMax,
     hpCurrent,
     cleanText(fields.speed, 60, 'Speed'),
-    JSON.stringify(abilities)
+    JSON.stringify(abilities),
+    monster ? monster.name : baseMonster
   ];
   const adventureIds = [...new Set([].concat(fields.adventure_ids || []).map(Number))].filter(Number.isSafeInteger);
   return db.transaction(() => {
@@ -190,15 +216,15 @@ function saveNpc(fields) {
     if (id) {
       const result = db.prepare(`
         UPDATE npcs SET name = ?, affiliation = ?, description = ?, personality = ?, status = ?, dm_notes = ?,
-          plans = ?, plans_note = ?, armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ?, owner_player_id = ? WHERE id = ?
+          plans = ?, plans_note = ?, armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ?, base_monster = ?, owner_player_id = ? WHERE id = ?
       `).run(...values, owner, id);
       if (!result.changes) throw new Error('NPC not found.');
     } else {
       if (owner === null && fields.created_by !== undefined && fields.created_by !== null) owner = Number(fields.created_by);
       id = Number(db.prepare(`
         INSERT INTO npcs (name, affiliation, description, personality, status, dm_notes, plans, plans_note,
-          armor_class, hp_max, hp_current, speed, abilities, owner_player_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          armor_class, hp_max, hp_current, speed, abilities, base_monster, owner_player_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(...values, owner).lastInsertRowid);
     }
     if (fields.adventure_ids !== undefined) {
@@ -218,4 +244,4 @@ function deleteNpc(id) {
   return deleted;
 }
 
-module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, npcCondition, listNpcs, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };
+module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, npcCondition, listNpcs, listNpcsBasedOn, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };
