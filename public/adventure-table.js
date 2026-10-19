@@ -252,6 +252,7 @@
         el('div', { className: 'party-card-title' }, [nameNode, el('div', { className: 'muted small', text: member.player + ' · ' + (member.species || '') + ' · ' + classes })]),
         remove
       ]),
+      fightActions(member, fighter),
       hpBlock(member.hp),
       data.canManage && data.adventure.status === 'active' && member.hp && member.status === 'alive' ? hpActions(member) : null,
       el('div', { className: 'party-stats' }, [
@@ -551,8 +552,9 @@
         className: 'muted small',
         text: ' ' + [
           combatant.crText ? 'CR ' + combatant.crText : (combatant.kind === 'npc' ? 'NPC' : combatant.kind === 'pc' ? 'party' : null),
-          Number.isInteger(combatant.hpMax) ? combatant.hpMax + ' HP' : null,
-          combatant.armorClass ? 'AC ' + combatant.armorClass : null
+          Number.isInteger(combatant.hpMax) ? (encounter.status === 'paused' ? combatant.hpCurrent + ' / ' : '') + combatant.hpMax + ' HP' : null,
+          combatant.armorClass ? 'AC ' + combatant.armorClass : null,
+          encounter.status === 'paused' && combatant.initiative !== null ? 'initiative ' + combatant.initiative : null
         ].filter(Boolean).join(' · ')
       }),
       ' ', combatant.kind === 'pc' ? null : editButton(combatant),
@@ -561,17 +563,25 @@
       combatantEditor(combatant)
     ]));
     const count = encounter.combatants.length;
-    return el('details', { className: 'sheet-card encounter-card', open: count === 0 || openPlans.has(encounter.id) ? true : null, 'data-encounter': String(encounter.id) }, [
-      el('summary', {}, [el('strong', { text: encounter.name }), ' ', difficultyTag(encounter), el('span', { className: 'muted small', text: ' · ' + count + ' creature' + (count === 1 ? '' : 's') })]),
+    const paused = encounter.status === 'paused';
+    const startButton = paused
+      ? button('▶ Resume encounter', () => act('/encounters/' + encounter.id + '/resume', {}, encounter.name + ' is back on.'), 'btn btn-small btn-green')
+      : button('▶ Run encounter', () => {
+        if (window.confirm('Run "' + encounter.name + '"? The party will see who is in the fight (not their numbers), and its NPCs join the table.')) {
+          act('/encounters/' + encounter.id + '/run', {}, encounter.name + ' has begun. Roll initiative!');
+        }
+      }, 'btn btn-small btn-green');
+    return el('details', { className: 'sheet-card encounter-card' + (paused ? ' is-paused' : ''), open: count === 0 || openPlans.has(encounter.id) ? true : null, 'data-encounter': String(encounter.id) }, [
+      el('summary', {}, [
+        paused ? el('span', { className: 'tag gold', text: '⏸ Paused' }) : null, paused ? ' ' : null,
+        el('strong', { text: encounter.name }), ' ', difficultyTag(encounter), el('span', { className: 'muted small', text: ' · ' + count + ' creature' + (count === 1 ? '' : 's') })
+      ]),
       rows.length ? el('ul', { className: 'encounter-roster' }, rows) : el('p', { className: 'muted small', text: 'Nothing here yet: add monsters or NPCs below.' }),
       addControls(encounter),
       notes,
       el('div', { className: 'vitals-actions' }, [
-        button('▶ Run encounter', () => {
-          if (window.confirm('Run "' + encounter.name + '"? The party will see who is in the fight (not their numbers), and its NPCs join the table.')) {
-            act('/encounters/' + encounter.id + '/run', {}, encounter.name + ' has begun. Roll initiative!');
-          }
-        }, 'btn btn-small btn-green'),
+        startButton,
+        paused ? button('End encounter', () => { if (window.confirm('End "' + encounter.name + '" for good?')) act('/encounters/' + encounter.id + '/end', {}, encounter.name + ' is over.'); }, 'btn btn-small btn-gold') : null,
         button('Rename', () => {
           const name = window.prompt('Encounter name', encounter.name);
           if (name && name.trim()) act('/encounters/' + encounter.id, { name }, 'Renamed.');
@@ -620,10 +630,37 @@
   }
 
   // The running fight's combatants as this viewer sees them ([] when none).
-  function runningCombatants() {
+  function runningEncounter() {
     const encounters = (data && data.encounters) || {};
-    const running = secretsOpen() ? (encounters.list || []).find(item => item.status === 'running') : encounters.running;
+    return (secretsOpen() ? (encounters.list || []).find(item => item.status === 'running') : encounters.running) || null;
+  }
+  function runningCombatants() {
+    const running = runningEncounter();
     return running ? running.combatants : [];
+  }
+
+  // Joining or leaving the running fight from a party member's card. The
+  // player joins by rolling initiative (the dice bar sends it to Owlbear too);
+  // the DM adds them and they roll when ready.
+  function fightActions(member, fighter) {
+    const running = runningEncounter();
+    if (!running || data.adventure.status !== 'active' || member.status !== 'alive') return null;
+    const mine = member.playerId === data.viewerId;
+    if (!fighter) {
+      if (secretsOpen()) {
+        return el('div', { className: 'fight-actions' }, [button('⚔ Join the fight', () => act('/encounters/' + running.id + '/add', { characterId: member.id }, member.name + ' joins ' + running.name + '.'), 'btn btn-small btn-red')]);
+      }
+      if (mine) {
+        return el('div', { className: 'fight-actions' }, [el('button', { type: 'button', className: 'btn btn-small btn-red', 'data-roll': 'initiative', title: 'Rolls your initiative: you join the turn order (and Owlbear\'s tracker)', text: '⚔ Join the fight (roll initiative)' })]);
+      }
+      return null;
+    }
+    if (mine && !secretsOpen()) {
+      return el('div', { className: 'fight-actions' }, [button('Leave the fight', () => {
+        if (window.confirm('Take ' + member.name + ' out of the fight? Rolling initiative again brings them back.')) act('/fight/leave', { characterId: member.id }, member.name + ' left the fight.');
+      }, 'btn btn-small btn-secondary')]);
+    }
+    return null;
   }
 
   // A party member's initiative box on their own card (empty until they roll).
@@ -721,6 +758,8 @@
           el('span', { className: 'vitals-actions' }, [
             button('🎲 Roll initiative', () => act('/encounters/' + encounter.id + '/initiative', {}, 'Initiative rolled for every creature that had none.'), 'btn btn-small',
               { title: 'Rolls for each creature without an initiative; type a number in to set one yourself.' }),
+            button('⏸ Pause', () => act('/encounters/' + encounter.id + '/pause', {}, encounter.name + ' is paused: HP and initiative are kept. Resume it from Encounters below.'), 'btn btn-small btn-secondary',
+              { title: 'Keep it as it is for later; the party stops seeing it.' }),
             button('End encounter', () => { if (window.confirm('End "' + encounter.name + '"?')) act('/encounters/' + encounter.id + '/end', {}, encounter.name + ' is over.'); }, 'btn btn-small btn-gold')
           ])
         ]),
@@ -761,7 +800,7 @@
     const name = el('input', { type: 'text', maxlength: '100', placeholder: 'New encounter, e.g. Ambush at the ford', 'aria-label': 'New encounter name' });
     const create = () => { if (name.value.trim()) act('/encounters', { name: name.value }, 'Encounter "' + name.value.trim() + '" created.'); };
     name.addEventListener('keydown', event => { if (event.key === 'Enter') create(); });
-    const planned = (encounters.list || []).filter(item => item.status === 'planned');
+    const planned = (encounters.list || []).filter(item => item.status === 'paused' || item.status === 'planned');
     const done = (encounters.list || []).filter(item => item.status === 'done');
     const section = el('section', { className: 'adventure-encounters' }, [
       el('div', { className: 'sheet-section-heading' }, [el('h3', { text: 'Encounters' }), el('span', { className: 'muted small', text: 'Only you (and the Root DM) see these until you run one.' })]),

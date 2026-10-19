@@ -817,6 +817,10 @@ router.post('/adventures/:id/encounters/:encounterId/add', encounterRoute(({ adv
   return db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, count: body.count });
 }));
 router.post('/adventures/:id/encounters/:encounterId/run', encounterRoute(({ adventureId, user, encounterId }) => db.runEncounter({ adventureId, user, encounterId })));
+router.post('/adventures/:id/encounters/:encounterId/pause', encounterRoute(({ adventureId, user, encounterId }) => db.pauseEncounter({ adventureId, user, encounterId })));
+router.post('/adventures/:id/encounters/:encounterId/resume', encounterRoute(({ adventureId, user, encounterId }) => db.resumeEncounter({ adventureId, user, encounterId })));
+// { characterId } — a player (or the DM) takes a party member out of the running fight.
+router.post('/adventures/:id/fight/leave', adventureRoute(({ adventureId, user, body }) => db.leaveEncounter({ adventureId, user, characterId: body.characterId })));
 router.post('/adventures/:id/encounters/:encounterId/end', encounterRoute(({ adventureId, user, encounterId }) => db.endEncounter({ adventureId, user, encounterId })));
 router.post('/adventures/:id/encounters/:encounterId/initiative', encounterRoute(({ adventureId, user, encounterId }) => db.rollEncounterInitiative({ adventureId, user, encounterId })));
 router.post('/adventures/:id/combatants/:combatantId/remove', encounterRoute(({ adventureId, user, combatantId }) => db.removeCombatant({ adventureId, user, combatantId })));

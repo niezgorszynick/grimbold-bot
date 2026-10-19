@@ -2,7 +2,9 @@
 // from the catalog (rules/monsters.js), one row per creature with its own HP,
 // Notable NPCs (their HP stays on the NPC) and party members (only their
 // initiative here: a character's initiative roll during a running encounter
-// lands on it, adding them if the DM had not). Planned encounters are the
+// lands on it, adding them if the DM had not; players may also leave the
+// fight). A running encounter can be paused (kept as it is, out of the party's
+// sight) and resumed later. Planned encounters are the
 // DM's secret (the adventure's DM and the Root DM); when the DM runs one, the
 // party sees who is in the fight and how hurt they look, never the numbers.
 
@@ -151,7 +153,7 @@ function statblockWithRolls(monster) {
 // (everything, with the XP budget for the party and the running fight's
 // statblocks); otherwise only the running encounter as the party sees it.
 function encountersForTable({ adventureId, secret, manage, partyLevels }) {
-  const encounters = db.prepare("SELECT * FROM encounters WHERE adventure_id = ? ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'planned' THEN 1 ELSE 2 END, id")
+  const encounters = db.prepare("SELECT * FROM encounters WHERE adventure_id = ? ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'paused' THEN 1 WHEN 'planned' THEN 2 ELSE 3 END, id")
     .all(Number(adventureId));
   const ids = encounters.map(encounter => encounter.id);
   const rows = ids.length
@@ -329,10 +331,51 @@ function runEncounter({ adventureId, user, encounterId }) {
   return table(adventure, user);
 }
 
-function endEncounter({ adventureId, user, encounterId }) {
+// Kept as it is (HP, initiative, who is in it) for later; the party stops seeing it.
+function pauseEncounter({ adventureId, user, encounterId }) {
   const adventure = secretAdventure(adventureId, user);
   const encounter = loadEncounter(adventure, encounterId);
   if (encounter.status !== 'running') throw new Error(`"${encounter.name}" is not running.`);
+  db.prepare("UPDATE encounters SET status = 'paused' WHERE id = ?").run(encounter.id);
+  return table(adventure, user);
+}
+
+function resumeEncounter({ adventureId, user, encounterId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const encounter = loadEncounter(adventure, encounterId);
+  if (encounter.status !== 'paused') throw new Error(`"${encounter.name}" is not paused.`);
+  const running = db.prepare("SELECT name FROM encounters WHERE adventure_id = ? AND status = 'running'").get(adventure.id);
+  if (running) throw new Error(`Pause or end "${running.name}" first.`);
+  const npcIds = db.prepare('SELECT npc_id FROM encounter_combatants WHERE encounter_id = ? AND npc_id IS NOT NULL').all(encounter.id).map(row => row.npc_id);
+  db.transaction(() => {
+    db.prepare("UPDATE encounters SET status = 'running' WHERE id = ?").run(encounter.id);
+    revealNpcs(adventure, npcIds);
+  })();
+  return table(adventure, user);
+}
+
+// A party member leaves the running fight (the player, or the DM). They stay
+// in the party; rolling initiative again brings them back.
+function leaveEncounter({ adventureId, user, characterId }) {
+  const { loadAdventureRow, canSeeAdventureSecrets } = adventures();
+  const adventure = loadAdventureRow(adventureId);
+  if (adventure.status !== 'active') throw new Error('This adventure is no longer running.');
+  const character = db.prepare('SELECT id, name, player_id FROM characters WHERE id = ?').get(Number(characterId));
+  if (!character) throw new Error('Character not found.');
+  const own = character.player_id === Number(user && user.id);
+  if (!own && !canSeeAdventureSecrets(adventure, user)) throw new Error('Forbidden.');
+  const removed = db.prepare(`
+    DELETE FROM encounter_combatants WHERE character_id = ? AND encounter_id IN
+      (SELECT id FROM encounters WHERE adventure_id = ? AND status = 'running')
+  `).run(character.id, adventure.id).changes;
+  if (!removed) throw new Error(`${character.name} is not in the fight.`);
+  return table(adventure, user);
+}
+
+function endEncounter({ adventureId, user, encounterId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const encounter = loadEncounter(adventure, encounterId);
+  if (encounter.status !== 'running' && encounter.status !== 'paused') throw new Error(`"${encounter.name}" is not running.`);
   db.prepare("UPDATE encounters SET status = 'done', ended_at = CURRENT_TIMESTAMP WHERE id = ?").run(encounter.id);
   return table(adventure, user);
 }
@@ -515,6 +558,9 @@ module.exports = {
   recordInitiativeRoll,
   runEncounter,
   endEncounter,
+  pauseEncounter,
+  resumeEncounter,
+  leaveEncounter,
   setCombatantInitiative,
   rollEncounterInitiative,
   changeCombatantHp,

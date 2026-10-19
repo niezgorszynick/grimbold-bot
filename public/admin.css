@@ -885,3 +885,5 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .turn-order li.is-down { opacity: 0.5; text-decoration: line-through; }
 .turn-order-init { display: inline-block; min-width: 18px; margin-right: 4px; font-weight: bold; color: #f0b232; }
 .party-initiative { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.encounter-card.is-paused { border: 1px solid #f0b23288; }
+.fight-actions { margin: 4px 0; }

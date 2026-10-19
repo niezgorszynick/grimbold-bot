@@ -263,3 +263,58 @@ test('party members join encounters; their initiative rolls land in the running 
   assert.equal(table.encounters.list.find(e => e.id === second).combatants.filter(c => c.kind === 'pc').length, 2);
   assert.throws(() => db.addEncounterCharacters({ ...asDm, encounterId: second }), /whole party is already/);
 });
+
+test('encounters pause and resume as they were; players leave the fight and roll back in', () => {
+  const dm = createPlayer();
+  const playerId = createPlayer();
+  const stranger = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('pause-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'pause-thread', title: 'Long night', ownerDiscordId: 'pause-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const asPlayer = { id: playerId, role: 'player' };
+  const kael = addCharacter(playerId, 'Kael', 4);
+  db.setPartyMember({ ...asDm, characterId: kael, inParty: true });
+
+  const first = db.createEncounter({ ...asDm, name: 'Ambush' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId: first, monster: 'Practice Footpad' });
+  db.runEncounter({ ...asDm, encounterId: first });
+  db.rollForCharacter({ characterId: kael, user: asPlayer, request: { roll: 'initiative' } });
+  let combatants = db.getAdventureTable(asDm).encounters.list[0].combatants;
+  const footpad = combatants.find(c => c.kind === 'monster');
+  db.changeCombatantHp({ ...asDm, combatantId: footpad.id, action: 'damage', amount: 4 });
+  db.setCombatantInitiative({ ...asDm, combatantId: footpad.id, initiative: 12 });
+
+  // Leaving: the player (or the DM), not strangers; the character stays in the party.
+  assert.throws(() => db.leaveEncounter({ adventureId: adventure.id, user: { id: stranger, role: 'player' }, characterId: kael }), /Forbidden/);
+  let table = db.leaveEncounter({ adventureId: adventure.id, user: asPlayer, characterId: kael });
+  assert.ok(!table.encounters.running.combatants.some(c => c.characterId === kael));
+  assert.ok(table.party.some(member => member.id === kael), 'still in the party');
+  assert.throws(() => db.leaveEncounter({ adventureId: adventure.id, user: asPlayer, characterId: kael }), /not in the fight/);
+  db.rollForCharacter({ characterId: kael, user: asPlayer, request: { roll: 'initiative' } });
+  assert.ok(db.getAdventureTable(asDm).encounters.list[0].combatants.some(c => c.characterId === kael), 'rolling again brings them back');
+
+  // Pause: the party stops seeing it, it keeps its state, another can run.
+  assert.throws(() => db.resumeEncounter({ ...asDm, encounterId: first }), /not paused/);
+  table = db.pauseEncounter({ ...asDm, encounterId: first });
+  assert.equal(table.encounters.list.find(e => e.id === first).status, 'paused');
+  assert.equal(db.getAdventureTable({ adventureId: adventure.id, user: asPlayer }).encounters.running, null);
+  const kaelRollWhilePaused = db.rollForCharacter({ characterId: kael, user: asPlayer, request: { roll: 'initiative' } });
+  const second = db.createEncounter({ ...asDm, name: 'Interlude' }).encounters.list.find(e => e.name === 'Interlude').id;
+  db.addEncounterMonster({ ...asDm, encounterId: second, monster: 'Practice Footpad' });
+  db.runEncounter({ ...asDm, encounterId: second });
+  assert.throws(() => db.resumeEncounter({ ...asDm, encounterId: first }), /Pause or end "Interlude" first/);
+  db.endEncounter({ ...asDm, encounterId: second });
+
+  table = db.resumeEncounter({ ...asDm, encounterId: first });
+  const resumed = table.encounters.list.find(e => e.id === first);
+  assert.equal(resumed.status, 'running');
+  const again = resumed.combatants.find(c => c.id === footpad.id);
+  assert.deepEqual([again.hpCurrent, again.initiative], [5, 12], 'HP and initiative kept');
+  assert.notEqual(resumed.combatants.find(c => c.characterId === kael).initiative, null);
+  assert.ok(kaelRollWhilePaused.total >= 1, 'a roll while paused is just a roll');
+
+  // A paused encounter can also be ended for good.
+  db.pauseEncounter({ ...asDm, encounterId: first });
+  table = db.endEncounter({ ...asDm, encounterId: first });
+  assert.equal(table.encounters.list.find(e => e.id === first).status, 'done');
+});
