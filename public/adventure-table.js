@@ -474,6 +474,43 @@
     return el('div', { className: 'table-filter encounter-add' }, [name, el('label', { className: 'small' }, ['× ', count]), button('Add', add, 'btn btn-small'), npcs.length ? npcSelect : null]);
   }
 
+  // Rename a creature (e.g. to match its token in Owlbear) or change its AC and HP.
+  const editingCombatants = new Set();
+  function editButton(combatant) {
+    return button('✎', () => {
+      if (editingCombatants.has(combatant.id)) editingCombatants.delete(combatant.id); else editingCombatants.add(combatant.id);
+      render();
+    }, 'link-button small', { title: 'Rename ' + combatant.label + ' or change its AC and HP', 'aria-label': 'Edit ' + combatant.label });
+  }
+  function combatantEditor(combatant) {
+    if (!editingCombatants.has(combatant.id)) return null;
+    const name = el('input', { type: 'text', maxlength: '100', value: combatant.customName || '', placeholder: combatant.defaultLabel, 'aria-label': 'Name' });
+    const number = (value, min, max, label) => el('input', { type: 'number', min, max, value: value ?? '', className: 'inventory-qty', 'aria-label': label });
+    const ac = number(combatant.armorClass, '0', '40', 'AC');
+    const hpMax = number(combatant.hpMax, '1', '5000', 'Max HP');
+    const hpCurrent = number(combatant.hpCurrent, '0', '5000', 'Current HP');
+    const save = () => act('/combatants/' + combatant.id, {
+      name: name.value, armorClass: ac.value, hpMax: hpMax.value || undefined, hpCurrent: hpCurrent.value
+    }, result => {
+      editingCombatants.delete(combatant.id);
+      const after = result.encounters.list.flatMap(item => item.combatants).find(item => item.id === combatant.id);
+      return (after ? after.label : combatant.label) + ' updated.';
+    });
+    [name, ac, hpMax, hpCurrent].forEach(input => input.addEventListener('keydown', event => { if (event.key === 'Enter') save(); }));
+    return el('div', { className: 'combatant-editor' }, [
+      el('label', {}, ['Name ', name]),
+      el('label', {}, ['AC ', ac]),
+      el('label', {}, ['HP ', hpCurrent, ' / ', hpMax]),
+      el('span', { className: 'vitals-actions' }, [
+        button('Save', save, 'btn btn-small btn-green'),
+        button('Cancel', () => { editingCombatants.delete(combatant.id); render(); }, 'btn btn-small btn-secondary')
+      ]),
+      el('p', { className: 'muted small', text: combatant.kind === 'npc'
+        ? 'An empty name goes back to the NPC\'s. AC and HP are the NPC\'s own, so they change on the NPC too.'
+        : 'An empty name goes back to "' + combatant.defaultLabel + '", an empty AC to the statblock\'s. Use the token\'s name in Owlbear to match it.' })
+    ]);
+  }
+
   function plannedCard(encounter) {
     const notes = el('textarea', { rows: '2', maxlength: '2000', placeholder: 'Notes: terrain, tactics, treasure…', 'aria-label': 'Notes for ' + encounter.name });
     notes.value = encounter.notes || '';
@@ -488,7 +525,10 @@
           combatant.armorClass ? 'AC ' + combatant.armorClass : null
         ].filter(Boolean).join(' · ')
       }),
-      ' ', button('✕', () => act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' removed.'), 'link-button small', { title: 'Remove ' + combatant.label, 'aria-label': 'Remove ' + combatant.label })
+      ' ', editButton(combatant),
+      ' ', button('✕', () => act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' removed.'), 'link-button small', { title: 'Remove ' + combatant.label, 'aria-label': 'Remove ' + combatant.label }),
+      combatant.customName ? el('span', { className: 'muted small', text: ' (' + combatant.defaultLabel + ')' }) : null,
+      combatantEditor(combatant)
     ]));
     const count = encounter.combatants.length;
     return el('details', { className: 'sheet-card encounter-card', open: count === 0 || openPlans.has(encounter.id) ? true : null, 'data-encounter': String(encounter.id) }, [
@@ -593,10 +633,14 @@
     return el('article', { className: 'party-card encounter-combatant' + (hp && hp.current === 0 ? ' is-down' : ''), 'data-roll-combatant': String(combatant.id) }, [
       el('header', { className: 'party-card-header' }, [
         initiative,
-        el('div', { className: 'party-card-title' }, [el('strong', { text: combatant.label }), sub ? el('div', { className: 'muted small', text: sub }) : null]),
+        el('div', { className: 'party-card-title' }, [
+          el('strong', { text: combatant.label }), ' ', editButton(combatant),
+          sub || combatant.customName ? el('div', { className: 'muted small', text: [combatant.customName ? combatant.defaultLabel : null, sub].filter(Boolean).join(' · ') }) : null
+        ]),
         button('✕', () => { if (window.confirm('Take ' + combatant.label + ' out of the fight?')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'); },
           'btn btn-small btn-secondary party-remove', { title: 'Remove from the encounter', 'aria-label': 'Remove ' + combatant.label })
       ]),
+      combatantEditor(combatant),
       hpBlock(hp),
       actions,
       el('div', { className: 'party-stats' }, [

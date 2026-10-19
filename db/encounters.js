@@ -67,12 +67,17 @@ function hpOf(row) {
     : { max: row.hp_max, current: row.hp_current, temp: row.hp_temp || 0 };
 }
 
+// "Goblin 2" when there are several; the NPC's name for an NPC.
+function defaultLabel(row, counts) {
+  if (row.npc_id) return row.npc_name;
+  return counts[row.monster_name] > 1 ? `${row.monster_name} ${row.number}` : row.monster_name;
+}
+
 // counts: how many of each monster are in the encounter (to number them).
+// row.name: the DM's own name for it (e.g. to match a token in Owlbear).
 function combatantView(row, counts, secret) {
   const monster = row.monster_name ? rules.getMonster(row.monster_name) : null;
-  const label = row.npc_id
-    ? row.npc_name
-    : (counts[row.monster_name] > 1 ? `${row.monster_name} ${row.number}` : row.monster_name);
+  const label = row.name || defaultLabel(row, counts);
   const hp = hpOf(row);
   const condition = npcCondition({ hp_max: hp.max, hp_current: hp.current });
   const view = { id: row.id, kind: row.npc_id ? 'npc' : 'monster', label, condition, npcId: row.npc_id || null };
@@ -83,8 +88,10 @@ function combatantView(row, counts, secret) {
   return {
     ...view,
     monster: row.monster_name || row.npc_base || null,
+    customName: row.name || null,
+    defaultLabel: defaultLabel(row, counts),
     statblockFound: Boolean(base),
-    armorClass: row.npc_id ? row.npc_ac : (monster ? monster.armorClass : null),
+    armorClass: row.npc_id ? row.npc_ac : (row.armor_class ?? (monster ? monster.armorClass : null)),
     hpMax: hp.max,
     hpCurrent: Number.isInteger(hp.current) ? hp.current : hp.max,
     hpTemp: hp.temp,
@@ -341,6 +348,49 @@ function changeCombatantHp({ adventureId, user, combatantId, action, amount }) {
   return table(adventure, user);
 }
 
+function optionalNumber(value, min, max, label) {
+  if (value === undefined) return undefined;
+  if (value === null || String(value).trim() === '') return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) throw new Error(`${label} must be a whole number from ${min} to ${max}.`);
+  return number;
+}
+
+// The DM changes a creature: { name, armorClass, hpMax, hpCurrent }, each
+// optional; an empty name or AC goes back to the statblock's. A monster keeps
+// its numbers here; an NPC's AC and HP are the NPC's own, so they change on
+// the NPC too.
+function updateCombatant({ adventureId, user, combatantId, name, armorClass, hpMax, hpCurrent }) {
+  const adventure = secretAdventure(adventureId, user);
+  const row = loadCombatant(adventure, combatantId);
+  const encounter = loadEncounter(adventure, row.encounter_id);
+  if (encounter.status === 'done') throw new Error(`"${encounter.name}" is over.`);
+  const newName = name === undefined ? row.name : (String(name || '').replace(/\s+/g, ' ').trim() || null);
+  if (newName && newName.length > MAX_NAME) throw new Error(`Names can be ${MAX_NAME} characters at most.`);
+  const ac = optionalNumber(armorClass, 0, 40, 'AC');
+  const max = optionalNumber(hpMax, 1, 5000, 'Max HP');
+  const current = optionalNumber(hpCurrent, 0, 5000, 'Current HP');
+  if (max === null) throw new Error('Max HP must be a whole number from 1 to 5000.');
+  const hp = hpOf(row);
+  const nextMax = max === undefined ? hp.max : max;
+  // A creature at full HP stays at full HP when its maximum changes.
+  let nextCurrent = current === undefined || current === null
+    ? (Number.isInteger(hp.current) && hp.current !== hp.max ? hp.current : nextMax)
+    : current;
+  if (Number.isInteger(nextMax) && Number.isInteger(nextCurrent)) nextCurrent = Math.min(nextCurrent, nextMax);
+  db.transaction(() => {
+    if (row.npc_id) {
+      db.prepare('UPDATE encounter_combatants SET name = ? WHERE id = ?').run(newName, row.id);
+      db.prepare('UPDATE npcs SET armor_class = ?, hp_max = ?, hp_current = ? WHERE id = ?')
+        .run(ac === undefined ? row.npc_ac : ac, nextMax, nextCurrent, row.npc_id);
+    } else {
+      db.prepare('UPDATE encounter_combatants SET name = ?, armor_class = ?, hp_max = ?, hp_current = ? WHERE id = ?')
+        .run(newName, ac === undefined ? row.armor_class : ac, nextMax, nextCurrent, row.id);
+    }
+  })();
+  return table(adventure, user);
+}
+
 // A roll from a creature's statblock, for the DM only (not logged or shown
 // to the party). request: { roll: option id, mode, critical }.
 function rollForCombatant({ adventureId, user, combatantId, request = {} }) {
@@ -353,8 +403,8 @@ function rollForCombatant({ adventureId, user, combatantId, request = {} }) {
   const mode = MODES.includes(request.mode) && option.kind !== 'damage' ? request.mode : 'normal';
   const critical = Boolean(request.critical) && option.kind === 'damage';
   const result = rules.rollFormula(option.formula, { mode, critical });
-  const rows = db.prepare('SELECT monster_name FROM encounter_combatants WHERE encounter_id = ? AND monster_name = ?').all(row.encounter_id, row.monster_name || '');
-  const name = row.npc_id ? row.npc_name : (rows.length > 1 ? `${row.monster_name} ${row.number}` : row.monster_name);
+  const count = db.prepare('SELECT COUNT(*) AS n FROM encounter_combatants WHERE encounter_id = ? AND monster_name = ?').get(row.encounter_id, row.monster_name || '').n;
+  const name = row.name || defaultLabel(row, { [row.monster_name]: count });
   return {
     roll: {
       combatant: name,
@@ -389,7 +439,7 @@ function getVttEncounters({ key }) {
           id: combatant.id,
           label: combatant.label,
           // "Goblin Warrior" for "Goblin Warrior 2": tokens are often named after the monster.
-          baseName: combatant.kind === 'monster' ? combatant.label.replace(/ \d+$/, '') : combatant.label,
+          baseName: combatant.kind === 'monster' && !combatant.customName ? combatant.label.replace(/ \d+$/, '') : combatant.label,
           initiative: combatant.initiative ?? null,
           down: combatant.hpCurrent === 0
         }))
@@ -407,6 +457,7 @@ module.exports = {
   addEncounterMonster,
   addEncounterNpc,
   removeCombatant,
+  updateCombatant,
   runEncounter,
   endEncounter,
   setCombatantInitiative,

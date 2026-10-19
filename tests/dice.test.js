@@ -129,6 +129,8 @@ test('the extension manifest and feed are public, with CORS', async () => {
     assert.equal(body.manifest_version, 1);
     assert.equal(body.background_url, '/vtt/background.html');
     assert.equal(body.action.popover, '/vtt/popover.html');
+    assert.ok(body.description.length <= 128, 'Owlbear refuses longer descriptions');
+    assert.ok(body.name.length <= 128 && body.action.title.length <= 128);
     for (const file of ['/vtt/background.html', '/vtt/popover.html', '/vtt/background.js', '/vtt/shared.js', '/vtt/icon.svg']) {
       assert.equal((await fetch(base + file)).status, 200, file);
     }

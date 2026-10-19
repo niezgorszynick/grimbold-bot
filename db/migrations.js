@@ -619,6 +619,15 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM encounters WHERE id = OLD.encounter_id; END;
       `);
     }
+  },
+  {
+    version: 20,
+    name: "Encounter combatants: the DM's own name (to match a VTT token) and AC",
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
+      if (!columns.has('name')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN name TEXT');
+      if (!columns.has('armor_class')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN armor_class INTEGER');
+    }
   }
 ];
 

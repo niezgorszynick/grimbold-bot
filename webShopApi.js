@@ -818,6 +818,9 @@ router.post('/adventures/:id/encounters/:encounterId/run', encounterRoute(({ adv
 router.post('/adventures/:id/encounters/:encounterId/end', encounterRoute(({ adventureId, user, encounterId }) => db.endEncounter({ adventureId, user, encounterId })));
 router.post('/adventures/:id/encounters/:encounterId/initiative', encounterRoute(({ adventureId, user, encounterId }) => db.rollEncounterInitiative({ adventureId, user, encounterId })));
 router.post('/adventures/:id/combatants/:combatantId/remove', encounterRoute(({ adventureId, user, combatantId }) => db.removeCombatant({ adventureId, user, combatantId })));
+// { name, armorClass, hpMax, hpCurrent }: the DM's own name and numbers for a creature.
+router.post('/adventures/:id/combatants/:combatantId', encounterRoute(({ adventureId, user, body, combatantId }) =>
+  db.updateCombatant({ adventureId, user, combatantId, name: body.name, armorClass: body.armorClass, hpMax: body.hpMax, hpCurrent: body.hpCurrent })));
 // { initiative } (empty clears it)
 router.post('/adventures/:id/combatants/:combatantId/initiative', encounterRoute(({ adventureId, user, body, combatantId }) =>
   db.setCombatantInitiative({ adventureId, user, combatantId, initiative: body.initiative })));

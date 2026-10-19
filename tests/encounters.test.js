@@ -159,3 +159,47 @@ test('Owlbear: the DM key reads the running encounter; tokens are matched by nam
   assert.equal(matchTokens(items, [{ label: 'Thorin Ironfist', baseName: 'Thorin' }])[0].token.id, 'c', 'a character by first name');
   assert.equal(matchTokens(items, [{ label: 'Nobody', baseName: 'Nobody' }])[0].token, null);
 });
+
+test('the DM renames creatures (to match tokens) and changes their AC and HP', () => {
+  const dm = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('edit-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'edit-thread', title: 'Edits', ownerDiscordId: 'edit-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const encounterId = db.createEncounter({ ...asDm, name: 'Camp' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId, monster: 'Practice Footpad', count: 2 });
+  const npc = db.saveNpc({ name: 'Sela', hp_max: 20, armor_class: 12 });
+  let table = db.addEncounterNpc({ ...asDm, encounterId, npcId: npc });
+  const [first, second, sela] = table.encounters.list[0].combatants;
+
+  table = db.updateCombatant({ ...asDm, combatantId: first.id, name: '  Red   Bandana ', armorClass: '14', hpMax: '15' });
+  let edited = table.encounters.list[0].combatants.find(c => c.id === first.id);
+  assert.deepEqual([edited.label, edited.customName, edited.defaultLabel], ['Red Bandana', 'Red Bandana', 'Practice Footpad 1']);
+  assert.deepEqual([edited.armorClass, edited.hpMax, edited.hpCurrent], [14, 15, 15], 'full HP stays full');
+
+  db.changeCombatantHp({ ...asDm, combatantId: second.id, action: 'damage', amount: 4 });
+  table = db.updateCombatant({ ...asDm, combatantId: second.id, hpMax: '12' });
+  assert.equal(table.encounters.list[0].combatants.find(c => c.id === second.id).hpCurrent, 5, 'a hurt creature keeps its HP');
+  table = db.updateCombatant({ ...asDm, combatantId: second.id, hpCurrent: '30' });
+  assert.equal(table.encounters.list[0].combatants.find(c => c.id === second.id).hpCurrent, 12, 'never above the maximum');
+  assert.throws(() => db.updateCombatant({ ...asDm, combatantId: second.id, armorClass: '99' }), /AC must be/);
+  assert.throws(() => db.updateCombatant({ ...asDm, combatantId: second.id, hpMax: '' }), /Max HP/);
+
+  table = db.updateCombatant({ ...asDm, combatantId: first.id, name: '', armorClass: '' });
+  edited = table.encounters.list[0].combatants.find(c => c.id === first.id);
+  assert.deepEqual([edited.label, edited.armorClass], ['Practice Footpad 1', 12], 'empty: back to the statblock');
+
+  // An NPC: the name is the encounter's, AC and HP the NPC's own.
+  db.updateCombatant({ ...asDm, combatantId: sela.id, name: 'Hooded figure', armorClass: '15', hpMax: '25' });
+  assert.deepEqual([db.getNpc(npc, { showStats: true }).name, db.getNpc(npc, { showStats: true }).stats.armorClass, db.getNpc(npc, { showStats: true }).stats.hpMax], ['Sela', 15, 25]);
+
+  // The party and Owlbear see the new name.
+  db.updateCombatant({ ...asDm, combatantId: second.id, name: 'Lookout' });
+  db.runEncounter({ ...asDm, encounterId });
+  const seen = db.getAdventureTable({ adventureId: adventure.id, user: { id: createPlayer(), role: 'admin' } });
+  assert.ok(seen.encounters.running.combatants.some(c => c.label === 'Lookout'));
+  const feed = db.getVttEncounters({ key: db.getVttKey({ playerId: dm }) });
+  const lookout = feed.encounters[0].combatants.find(c => c.label === 'Lookout');
+  assert.equal(lookout.baseName, 'Lookout', 'a renamed creature matches only its own name');
+  const roll = db.rollForCombatant({ ...asDm, combatantId: second.id, request: { roll: 'initiative' } });
+  assert.equal(roll.roll.combatant, 'Lookout');
+});

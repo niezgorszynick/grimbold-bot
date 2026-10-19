@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -25,7 +25,8 @@ router.get('/manifest.json', (req, res) => {
     version: VERSION,
     manifest_version: 1,
     author: "Grimbold's Emporium",
-    description: "Rolls made on the character sheets of the Grimbold panel, shown to everyone in the room (private rolls to the GM only). Initiative rolls and the DM's running encounter go into the Owlbear initiative tracker.",
+    // Owlbear refuses descriptions over 128 characters (tests/dice.test.js checks it).
+    description: 'Rolls from the Grimbold panel for the whole table, and initiative into the Owlbear tracker.',
     icon: '/vtt/icon.svg',
     action: {
       title: "Grimbold's Dice",

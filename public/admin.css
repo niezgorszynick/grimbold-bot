@@ -873,3 +873,6 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .encounter-order li.is-down { opacity: 0.6; text-decoration: line-through; }
 .encounter-reinforcements summary, .encounter-done summary { cursor: pointer; color: #949ba4; margin-top: 8px; }
 .encounter-running { margin-bottom: 18px; }
+.combatant-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; padding: 8px; border-radius: 6px; background: #1e1f22; font-size: 13px; }
+.combatant-editor input[type=text] { width: 180px; max-width: 100%; }
+.combatant-editor p { flex-basis: 100%; margin: 0; }
