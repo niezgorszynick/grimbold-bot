@@ -132,6 +132,36 @@ module.exports = {
     return run();
   },
   // Adventures
+  // The characters in each adventure, by adventure id: those rewarded for a
+  // finished one, the party of a running one. [{ id, name, player, dmReward }]
+  getAdventureParties: adventureIds => {
+    const ids = [...new Set(adventureIds.map(Number))].filter(Number.isSafeInteger);
+    if (!ids.length) return {};
+    const marks = ids.map(() => '?').join(',');
+    const rows = db.prepare(`
+      SELECT r.adventure_id, c.id, c.name, p.discord_tag AS player, 0 AS dm_reward
+      FROM adventure_rewards r JOIN characters c ON c.id = r.character_id LEFT JOIN players p ON p.id = c.player_id
+      WHERE r.adventure_id IN (${marks})
+      UNION ALL
+      SELECT ap.adventure_id, c.id, c.name, p.discord_tag, 0
+      FROM adventure_party ap JOIN adventures a ON a.id = ap.adventure_id JOIN characters c ON c.id = ap.character_id
+      LEFT JOIN players p ON p.id = c.player_id
+      WHERE ap.adventure_id IN (${marks}) AND a.status = 'active'
+      UNION ALL
+      SELECT a.id, c.id, c.name, p.discord_tag, 1
+      FROM adventures a JOIN characters c ON c.id = a.dm_character_id LEFT JOIN players p ON p.id = c.player_id
+      WHERE a.id IN (${marks}) AND a.status = 'completed'
+    `).all(...ids, ...ids, ...ids);
+    const parties = {};
+    rows.forEach(row => {
+      const list = parties[row.adventure_id] = parties[row.adventure_id] || [];
+      if (!list.some(entry => entry.id === row.id && entry.dmReward === Boolean(row.dm_reward))) {
+        list.push({ id: row.id, name: row.name, player: row.player || null, dmReward: Boolean(row.dm_reward) });
+      }
+    });
+    Object.values(parties).forEach(list => list.sort((a, b) => Number(a.dmReward) - Number(b.dmReward) || a.name.localeCompare(b.name)));
+    return parties;
+  },
   getAllAdventures: () => db.prepare(`
     SELECT a.*, p.discord_tag AS dm_name 
     FROM adventures a

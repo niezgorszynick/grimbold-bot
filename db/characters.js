@@ -48,6 +48,51 @@ function calculateLevelFromXp(xp) {
   return Math.min(20, 4 + Math.floor((points - 3) / 4));
 }
 
+// The XP a level starts at (level 4 at 3 XP, then every 4 XP); null past 20.
+function xpForLevel(level) {
+  if (level <= 3) return 0;
+  if (level > 20) return null;
+  return 3 + 4 * (level - 4);
+}
+
+// How a character's level came about: each completed adventure they were
+// rewarded for and each DM reward given to them, in order, with the running
+// total and the levels reached; what the records don't explain (DM points
+// spent on them, XP set by hand) as one line; and the next level.
+function getCharacterLevelBreakdown(characterId) {
+  const character = db.prepare('SELECT id, name, xp, level FROM characters WHERE id = ?').get(Number(characterId));
+  if (!character) return null;
+  const rewards = db.prepare(`
+    SELECT a.id, a.title, COALESCE(a.completed_at, a.created_at) AS date, r.xp, 'adventure' AS kind
+    FROM adventure_rewards r JOIN adventures a ON a.id = r.adventure_id
+    WHERE r.character_id = ? AND a.status = 'completed'
+    UNION ALL
+    SELECT a.id, a.title, COALESCE(a.completed_at, a.created_at) AS date, 1 AS xp, 'dm' AS kind
+    FROM adventures a WHERE a.dm_character_id = ? AND a.status = 'completed'
+    ORDER BY date, id
+  `).all(character.id, character.id);
+  let total = 0;
+  const entries = rewards.map(reward => {
+    const before = calculateLevelFromXp(total);
+    total += reward.xp;
+    const after = calculateLevelFromXp(total);
+    return { adventureId: reward.id, title: reward.title, date: reward.date, kind: reward.kind, xp: reward.xp, total, levelUp: after > before ? after : null };
+  });
+  const xp = Number(character.xp) || 0;
+  const level = calculateLevelFromXp(xp);
+  const nextAt = xpForLevel(level + 1);
+  return {
+    xp,
+    level,
+    fromAdventures: rewards.filter(reward => reward.kind === 'adventure').reduce((sum, reward) => sum + reward.xp, 0),
+    fromDmRewards: rewards.filter(reward => reward.kind === 'dm').length,
+    // DM points the player spent on this character, or XP a DM set by hand.
+    other: xp - total,
+    entries,
+    next: nextAt === null ? null : { level: level + 1, at: nextAt, needed: Math.max(0, nextAt - xp) }
+  };
+}
+
 function getCharacterClassRows(characterId) {
   return db.prepare(`
     SELECT id, character_id, class_name, subclass_name, class_level, is_primary
@@ -434,6 +479,8 @@ function updateCharacterProgression(characterId, xp) {
 
 module.exports = {
   calculateLevelFromXp,
+  xpForLevel,
+  getCharacterLevelBreakdown,
   validateCharacterLevels,
   updateCharacterGold,
   getCharacterLevelUpOptions,

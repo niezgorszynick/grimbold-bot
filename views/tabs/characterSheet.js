@@ -117,6 +117,38 @@ function portraitHtml(character) {
     </script>`;
 }
 
+// "How was this level reached?": folded away; adventure by adventure, with
+// the running XP and the levels reached, then what's needed for the next.
+function levelBreakdownHtml(characterId) {
+  const breakdown = db.getCharacterLevelBreakdown(characterId);
+  if (!breakdown) return '';
+  const date = text => escapeHtml(String(text || '').slice(0, 10));
+  const rows = breakdown.entries.map(entry => `
+    <tr>
+      <td>${date(entry.date)}</td>
+      <td>${escapeHtml(entry.title)}${entry.kind === 'dm' ? ' <span class="tag gold">DM reward</span>' : ''}</td>
+      <td class="level-xp">+${entry.xp}</td>
+      <td class="level-xp">${entry.total}</td>
+      <td>${entry.levelUp ? `<span class="tag green">Level ${entry.levelUp}</span>` : ''}</td>
+    </tr>`).join('');
+  const other = breakdown.other
+    ? `<tr><td></td><td>DM points spent on this character &amp; XP set by a DM</td><td class="level-xp">${breakdown.other > 0 ? '+' : ''}${breakdown.other}</td><td class="level-xp">${breakdown.xp}</td><td></td></tr>`
+    : '';
+  const next = breakdown.next
+    ? `Level ${breakdown.next.level} at ${breakdown.next.at} XP: ${breakdown.next.needed} more to go.`
+    : 'Level 20: the highest there is.';
+  return `
+    <details class="sheet-card level-breakdown">
+      <summary><strong>Level ${breakdown.level}</strong> · ${breakdown.xp} XP <span class="muted small">— how was this level reached?</span></summary>
+      <p class="muted small">Every adventurer starts at level 3. Level 4 comes at 3 XP, then a level every 4 XP (level 5 at 7, level 6 at 11, …). Each finished adventure gives its XP; a DM's reward gives +1.</p>
+      ${rows || other ? `<table class="level-table">
+        <thead><tr><th>Date</th><th>Adventure</th><th class="level-xp">XP</th><th class="level-xp">Total</th><th></th></tr></thead>
+        <tbody>${rows}${other}</tbody>
+      </table>` : '<p class="muted small">No adventures yet.</p>'}
+      <p class="small"><strong>${next}</strong></p>
+    </details>`;
+}
+
 module.exports = function renderCharacterSheetTab(ctx) {
   const { req, currentUser, isAdmin, status } = ctx;
   let contentHtml = '';
@@ -179,6 +211,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
           </header>
           <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
+          ${levelBreakdownHtml(characterToEdit.id)}
           <section class="sheet-card point-buy-card" data-collapse="abilities">
             <div class="point-buy-header">
               <div>

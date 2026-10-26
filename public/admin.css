@@ -894,3 +894,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .gift-form .gift-note { width: 100%; }
 .gift-button { padding: 2px 6px; }
 .inventory-have { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Adventures: the party under each adventure; the sheet's level breakdown */
+.adventure-party { margin-top: 3px; line-height: 1.5; }
+.level-breakdown summary { cursor: pointer; }
+.level-breakdown .level-table { margin: 6px 0; font-size: 13px; }
+.level-breakdown .level-table th, .level-breakdown .level-table td { padding: 5px 8px; }
+.level-breakdown .level-xp { text-align: right; font-variant-numeric: tabular-nums; }

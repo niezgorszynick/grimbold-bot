@@ -16,10 +16,21 @@ function renderAdventureTable(adventureId, isAdmin) {
     </div>`;
 }
 
+// The characters taking part, under the adventure's title: "Kael (Ola) · Brin (Tom)".
+function partyLine(party) {
+  const members = (party || []).filter(member => !member.dmReward);
+  const dmReward = (party || []).find(member => member.dmReward);
+  if (!members.length && !dmReward) return '<div class="adventure-party muted small">No one in the party yet.</div>';
+  return `<div class="adventure-party small">${members.length ? `<span class="muted">Party:</span> ${members
+    .map(member => `${escapeHtml(member.name)}${member.player ? ` <span class="muted">(${escapeHtml(member.player)})</span>` : ''}`).join(' · ')}` : ''}${
+    dmReward ? `${members.length ? ' · ' : ''}<span class="muted">DM reward:</span> ${escapeHtml(dmReward.name)}` : ''}</div>`;
+}
+
 // Adventures that are running, from Discord threads or started by hand.
 function renderActiveAdventures({ isAdmin, currentUser, allPlayers }) {
   const active = isAdmin ? db.getActiveAdventures() : db.getAdventuresForUser(currentUser);
   if (!isAdmin && !active.length) return '';
+  const parties = db.getAdventureParties(active.map(adventure => adventure.id));
   const date = text => escapeHtml(String(text || '').slice(0, 16));
   return `
     <div class="card">
@@ -34,7 +45,8 @@ function renderActiveAdventures({ isAdmin, currentUser, allPlayers }) {
             ${active.map(adventure => `
               <tr>
                 <td><a class="roster-name" href="/admin?tab=adventures&table=${adventure.id}">${escapeHtml(adventure.title)}</a>
-                  ${adventure.thread_url ? ` <a class="muted small" href="${escapeHtml(adventure.thread_url)}" target="_blank" rel="noopener">Discord thread ↗</a>` : ''}</td>
+                  ${adventure.thread_url ? ` <a class="muted small" href="${escapeHtml(adventure.thread_url)}" target="_blank" rel="noopener">Discord thread ↗</a>` : ''}
+                  ${partyLine(parties[adventure.id])}</td>
                 <td>${adventure.dm_name ? escapeHtml(adventure.dm_name) : '<span class="muted">Unknown — not linked to a player</span>'}</td>
                 <td>${date(adventure.created_at)}</td>
                 <td>${adventure.party_size}</td>
@@ -60,6 +72,7 @@ module.exports = function renderAdventuresTab(ctx) {
   const tableId = Number.parseInt(req.query.table, 10);
   if (Number.isSafeInteger(tableId) && tableId > 0) return renderAdventureTable(tableId, isAdmin);
   const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
+  const finishedParties = db.getAdventureParties(allAdventures.map(adventure => adventure.id));
   const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
   const editAdvId = isAdmin && req.query.edit_adv ? Number(req.query.edit_adv) : null;
   let editingAdventure = null;
@@ -227,7 +240,7 @@ module.exports = function renderAdventuresTab(ctx) {
           ${allAdventures.length === 0 ? `<tr><td colspan="${isAdmin ? 6 : 5}">No completed adventures recorded yet.</td></tr>` : allAdventures.map(adv => `
             <tr>
               <td data-sort="${adv.created_at}">${adv.created_at}</td>
-              <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong></td>
+              <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong>${partyLine(finishedParties[adv.id])}</td>
               <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>None</em>'}</td>
               <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
               <td>${escapeHtml(adv.description || '—')}</td>
