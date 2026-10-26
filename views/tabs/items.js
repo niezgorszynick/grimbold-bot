@@ -5,9 +5,16 @@
 const { formatCp } = require('../../currency');
 const { applyModifier } = require('../../rollTracker');
 const { escapeHtml } = require('../helpers');
+const db = require('../../db');
 
 module.exports = function renderItemsTab(ctx) {
-  const { isAdmin, status, catalogItems, activeItems, shopPlayer, shopRoll, shopModifier } = ctx;
+  const { isAdmin, status, catalogItems, activeItems, shopPlayer, shopRoll, shopModifier, currentUser } = ctx;
+  // Reservations (db/reservations.js): on the shelf, and the viewer's own.
+  const reservations = db.listActiveReservations();
+  const reservedItems = new Map(reservations.map(reservation => [reservation.itemId, reservation]));
+  const viewerId = currentUser ? Number(currentUser.id) : 0;
+  const mine = reservations.filter(reservation => reservation.playerId === viewerId);
+  const restocksText = n => `${n} restock${n === 1 ? '' : 's'}`;
   let contentHtml = '';
   const catalogJson = JSON.stringify(catalogItems.map(c => ({
     name: c.name,
@@ -40,7 +47,7 @@ module.exports = function renderItemsTab(ctx) {
               <td data-sort="${finalPrice}">${priceDisplay}</td>
               <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
               <td data-sort="${item.is_active}">${item.is_active ? '<span class="tag green">Active</span>' : '<span class="tag red">Hidden</span>'}</td>
-              <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-final-price="${escapeHtml(formatCp(finalPrice))}" data-item-discount="${modifierLabel}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button></td>
+              <td><button type="button" class="btn btn-small btn-gold shop-buy-button" data-item-name="${escapeHtml(item.name)}" data-item-price="${escapeHtml(formatCp(item.price))}" data-item-final-price="${escapeHtml(formatCp(finalPrice))}" data-item-discount="${modifierLabel}" data-item-stock="${item.stock === null ? '' : item.stock}" ${item.stock === 0 || !item.is_active ? 'disabled' : ''}>Buy</button>${reserveCell(item, finalPrice)}</td>
               ${isAdmin ? `<td>
                 <form method="POST" action="/admin/items/update" style="display:inline;">
                   <input type="hidden" name="id" value="${item.id}">
@@ -57,6 +64,17 @@ module.exports = function renderItemsTab(ctx) {
             </tr>
           `;
   };
+  // Rotating stock can be reserved (a 10% deposit holds it through 2 restocks).
+  function reserveCell(item, finalPrice) {
+    const reservation = reservedItems.get(item.id);
+    if (reservation) {
+      const own = reservation.playerId === viewerId;
+      return ` <span class="tag ${own ? 'gold' : ''} shop-reserved" title="Held through the next ${restocksText(reservation.restocksLeft)}. Anyone may still buy it.">🔖 Reserved${own ? ` for ${escapeHtml(reservation.character)}` : ` by ${escapeHtml(reservation.character)}`}</span>`;
+    }
+    if (!shopPlayer || !db.RESERVABLE_SOURCES.includes(item.source) || item.stock === 0 || !item.is_active) return '';
+    return ` <button type="button" class="btn btn-small btn-secondary shop-reserve-button" data-item-name="${escapeHtml(item.name)}" data-item-final-cp="${finalPrice}" title="Pay a ${db.RESERVATION_DEPOSIT_PERCENT}% deposit to keep it on the shelf while you save up">Reserve</button>`;
+  }
+
   const shelfTable = (items, id, filterable = false) => `
       <table${filterable ? ` id="${id}" data-filter="category" data-page-size="40" data-item-label="items"` : ` id="${id}"`}>
         <thead>
@@ -142,6 +160,15 @@ module.exports = function renderItemsTab(ctx) {
         : shopRoll === null && shopPlayer
           ? '<p class="muted">Roll with /roll to get your weekly personal price.</p>'
           : ''}
+      ${mine.length ? `<div class="shop-my-reservations">
+        <strong>🔖 Your reservations</strong>
+        <ul>${mine.map(reservation => `<li><strong>${escapeHtml(reservation.item)}</strong> for ${escapeHtml(reservation.character)} · deposit ${formatCp(reservation.depositCp)} (comes off the price) · held through the next ${restocksText(reservation.restocksLeft)}
+          <button type="button" class="link-button small shop-reservation-cancel" data-id="${reservation.id}" data-item="${escapeHtml(reservation.item)}" data-deposit="${escapeHtml(formatCp(reservation.depositCp))}">give it up</button></li>`).join('')}</ul>
+      </div>` : ''}
+      ${isAdmin && reservations.length ? `<details class="shop-my-reservations"><summary><strong>🔖 All reservations (${reservations.length})</strong></summary>
+        <ul>${reservations.map(reservation => `<li><strong>${escapeHtml(reservation.item)}</strong> for ${escapeHtml(reservation.character)} (${escapeHtml(reservation.player || '?')}) · deposit ${formatCp(reservation.depositCp)} · ${restocksText(reservation.restocksLeft)} left
+          <button type="button" class="link-button small shop-reservation-cancel" data-id="${reservation.id}" data-item="${escapeHtml(reservation.item)}" data-deposit="${escapeHtml(formatCp(reservation.depositCp))}" data-refund="1">cancel &amp; refund</button></li>`).join('')}</ul>
+      </details>` : ''}
       <h4>This week's stock</h4>
       ${shelfTable(weekly, 'shop-weekly')}
       ${mundane.length ? `<details class="shop-mundane">
@@ -175,6 +202,21 @@ module.exports = function renderItemsTab(ctx) {
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
           <button type="button" id="shopPurchaseCancel" class="btn">Cancel</button>
           <button type="button" id="shopPurchaseConfirm" class="btn btn-green">Confirm Purchase</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="shopReserveModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="shopReserveTitle" hidden>
+      <div class="card shop-modal-card">
+        <h3 id="shopReserveTitle">🔖 Reserve with Grimbold</h3>
+        <p>Item: <strong id="shopReserveItem"></strong><br>Deposit now: <strong id="shopReserveDeposit"></strong> (${db.RESERVATION_DEPOSIT_PERCENT}% of your price)</p>
+        <p class="muted small">Grimbold keeps it on the shelf through the next ${db.RESERVATION_HOLD_RESTOCKS} restocks. The deposit comes off the price when you buy it. It is <strong>not refunded</strong> if the reservation runs out or you give it up, but Grimbold returns it if someone else buys the last one first: anyone may still buy a reserved item. One reservation per character.</p>
+        <label for="shopReserveCharacter">Choose a character</label>
+        <select id="shopReserveCharacter" style="width: 100%; margin: 8px 0 12px;"><option value="">Loading characters...</option></select>
+        <p id="shopReserveFeedback" role="status" aria-live="polite"></p>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="shopReserveCancel" class="btn">Cancel</button>
+          <button type="button" id="shopReserveConfirm" class="btn btn-gold">Pay deposit &amp; reserve</button>
         </div>
       </div>
     </div>
@@ -351,6 +393,64 @@ module.exports = function renderItemsTab(ctx) {
           button.dataset.itemStock
         ));
       });
+      // Reserving: a deposit of 10% of the viewer's price.
+      (function () {
+        const modal = document.getElementById('shopReserveModal');
+        const select = document.getElementById('shopReserveCharacter');
+        const feedback = document.getElementById('shopReserveFeedback');
+        const confirmButton = document.getElementById('shopReserveConfirm');
+        let itemName = '';
+        document.querySelectorAll('.shop-reserve-button').forEach(button => button.addEventListener('click', async () => {
+          itemName = button.dataset.itemName;
+          const deposit = Math.max(1, Math.round(Number(button.dataset.itemFinalCp) * ${db.RESERVATION_DEPOSIT_PERCENT} / 100));
+          document.getElementById('shopReserveItem').textContent = itemName;
+          document.getElementById('shopReserveDeposit').textContent = formatShopCopper(deposit);
+          feedback.textContent = '';
+          modal.hidden = false;
+          confirmButton.disabled = true;
+          select.replaceChildren(new Option('Loading characters...', ''));
+          try {
+            const response = await fetch('/api/my-characters');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load your characters.');
+            select.replaceChildren(new Option('Select a character', ''));
+            data.characters.forEach(character => select.add(new Option(character.name + ' (' + formatShopCopper(character.gold_cp) + ')', character.id)));
+            if (!data.characters.length) feedback.textContent = 'You need a living character to reserve.';
+          } catch (error) {
+            feedback.textContent = error.message;
+          } finally {
+            confirmButton.disabled = select.options.length < 2;
+          }
+        }));
+        document.getElementById('shopReserveCancel').addEventListener('click', () => { modal.hidden = true; });
+        confirmButton.addEventListener('click', async () => {
+          if (!select.value) { feedback.textContent = 'Choose a character.'; return; }
+          confirmButton.disabled = true;
+          feedback.textContent = 'Grimbold reaches for a tag...';
+          try {
+            const response = await fetch('/api/shop/reserve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemName, characterId: Number(select.value) }) });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not reserve.');
+            feedback.textContent = 'Reserved! Deposit ' + data.depositFormatted + ' paid; purse left: ' + data.purseFormatted + '.';
+            window.setTimeout(() => window.location.reload(), 900);
+          } catch (error) {
+            feedback.textContent = error.message;
+            confirmButton.disabled = false;
+          }
+        });
+        document.querySelectorAll('.shop-reservation-cancel').forEach(button => button.addEventListener('click', async () => {
+          const refund = button.dataset.refund === '1';
+          const question = refund
+            ? 'Cancel the reservation of ' + button.dataset.item + ' and refund the ' + button.dataset.deposit + ' deposit?'
+            : 'Give up the reservation of ' + button.dataset.item + '? The ' + button.dataset.deposit + ' deposit is not refunded.';
+          if (!window.confirm(question)) return;
+          const response = await fetch('/api/shop/reservations/' + button.dataset.id + '/cancel', { method: 'POST' });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) { window.alert(data.error || 'Could not cancel.'); return; }
+          window.location.reload();
+        }));
+      })();
+
       document.getElementById('shopPurchaseCancel').addEventListener('click', () => {
         shopPurchaseModal.hidden = true;
       });

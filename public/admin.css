@@ -901,3 +901,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .level-breakdown .level-table { margin: 6px 0; font-size: 13px; }
 .level-breakdown .level-table th, .level-breakdown .level-table td { padding: 5px 8px; }
 .level-breakdown .level-xp { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Reservations at Grimbold's */
+.shop-reserve-button { margin-left: 4px; }
+.shop-reserved { margin-left: 4px; white-space: nowrap; }
+.shop-my-reservations { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid #d4af3766; border-radius: 6px; background: #2a2620; }
+.shop-my-reservations ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.shop-my-reservations summary { cursor: pointer; }

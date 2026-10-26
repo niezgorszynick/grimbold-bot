@@ -661,6 +661,28 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(sales)').all().map(column => column.name));
       if (!columns.has('gift_to_character_id')) db.exec('ALTER TABLE sales ADD COLUMN gift_to_character_id INTEGER');
     }
+  },
+  {
+    version: 23,
+    name: "Reserving items at Grimbold's (a deposit keeps them through restocks)",
+    up(db) {
+      db.exec(`
+        -- status: active, bought, cancelled (deposit kept), expired (deposit kept), refunded.
+        CREATE TABLE IF NOT EXISTS reservations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          item_id INTEGER NOT NULL,
+          item_name TEXT NOT NULL,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          player_id INTEGER NOT NULL,
+          deposit_cp INTEGER NOT NULL,
+          restocks_left INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          ended_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS reservations_active ON reservations (status, item_id);
+      `);
+    }
   }
 ];
 

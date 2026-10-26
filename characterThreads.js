@@ -1,5 +1,5 @@
 // characterThreads.js — Grimbold's notes in each character's thread in the
-// character channel (🧝┆soh-postaci): purchases, purse changes and gifts.
+// character channel (🧝┆soh-postaci): purchases, purse changes, gifts and reservations.
 //
 // A character's thread is the one stored on the character (an admin can set
 // it on the Players tab). Otherwise Grimbold looks for a thread whose name has
@@ -112,18 +112,19 @@ function purchaseMessage(result, buyerTag) {
   const quantity = result.quantity > 1 ? ` ×${result.quantity}` : '';
   const giftFor = result.gift ? ` as a gift for **${result.gift.to.name}**` : '';
   const each = result.quantity > 1 ? ` (${formatCp(result.finalUnitPriceCp)} each)` : '';
+  const deposit = result.depositUsedCp ? `, ${formatCp(result.depositUsedCp)} of it the deposit paid before` : '';
   const roll = result.discountPercent < 0
     ? ` — ${Math.abs(result.discountPercent)}% off for the weekly roll`
     : result.discountPercent > 0 ? ` — ${result.discountPercent}% surcharge for the weekly roll` : '';
   return {
-    text: `🪙 *Grimbold notes a purchase for ${result.character.name}:* **${result.item.name}**${quantity}${giftFor} for **${formatCp(result.totalCostCp)}**${each}${roll}. Purse left: **${formatCp(result.character.gold_cp)}**.`,
+    text: `🪙 *Grimbold notes a purchase for ${result.character.name}:* **${result.item.name}**${quantity}${giftFor} for **${formatCp(result.totalCostCp)}**${each}${roll}${deposit}. Purse left: **${formatCp(result.character.gold_cp)}**.`,
     embeds: [{
       title: '🪙 Grimbold notes a purchase',
       color: 0xd4af37,
       description: `*Grimbold licks his thumb and turns the ledger to ${result.character.name}'s page.*`,
       fields: [
         { name: 'Item', value: `**${result.item.name}**${quantity}${result.gift ? ` 🎁 for ${result.gift.to.name}` : ''}`, inline: true },
-        { name: 'Cost', value: `**${formatCp(result.totalCostCp)}**${each}${roll}`, inline: true },
+        { name: 'Cost', value: `**${formatCp(result.totalCostCp)}**${each}${roll}${deposit}`, inline: true },
         { name: 'Purse left', value: `**${formatCp(result.character.gold_cp)}**`, inline: true }
       ],
       footer: { text: buyerTag ? `Bought by ${buyerTag}` : "Grimbold's Emporium" },
@@ -200,6 +201,32 @@ function announceGift(gift) {
     .catch(error => ({ ok: false, reason: error.message }));
 }
 
+// A reservation at the counter: made, refunded (someone else bought the last
+// one, or the item left the shelf), run out, or given up.
+function reservationMessage(kind, reservation) {
+  const deposit = formatCp(reservation.depositCp);
+  const lines = {
+    reserved: [`🔖 *Grimbold ties a tag on **${reservation.item}** for ${reservation.character}.*`,
+      `Deposit: **${deposit}**, taken off the price when it's bought. Held through the next ${reservation.restocksLeft} restock${reservation.restocksLeft === 1 ? '' : 's'}.`],
+    refunded: [`🔖 *Grimbold slides ${reservation.character}'s deposit back across the counter.*`,
+      `**${reservation.item}** is gone from the shelf; the **${deposit}** deposit is returned.`],
+    expired: [`🔖 *Grimbold snips the tag off **${reservation.item}**.*`,
+      `${reservation.character}'s reservation ran out; the **${deposit}** deposit stays in his till.`],
+    cancelled: [`🔖 *Grimbold shrugs and snips the tag off **${reservation.item}**.*`,
+      `${reservation.character} gave up the reservation; the **${deposit}** deposit stays in his till.`]
+  }[kind];
+  return {
+    text: lines.join(' '),
+    embeds: [{ title: '🔖 A reservation at Grimbold\'s', color: kind === 'refunded' ? 0x23a55a : 0xd4af37, description: lines.join('\n'), timestamp: new Date().toISOString() }]
+  };
+}
+
+function announceReservation(kind, reservation) {
+  if (!reservation) return Promise.resolve({ ok: false, reason: 'No reservation.' });
+  return postToCharacterThread(reservation.characterId, reservationMessage(kind, reservation))
+    .catch(error => ({ ok: false, reason: error.message }));
+}
+
 // Never throws, and a slow Discord never holds up a purchase: callers may
 // wait for the result (to show it) or ignore it.
 function announcePurchase(result, { buyerTag } = {}) {
@@ -231,6 +258,8 @@ module.exports = {
   announceGoldChange,
   announceGift,
   giftMessages,
+  announceReservation,
+  reservationMessage,
   withinTime,
   purchaseMessage,
   goldChangeMessage

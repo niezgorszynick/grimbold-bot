@@ -96,22 +96,31 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
     const quote = quoteItem(item, buyerDiscordId);
     const totalCostCp = quote.unitPriceCp * qty;
     if (!Number.isSafeInteger(totalCostCp)) throw new PurchaseError('Purchase amount is too large.');
-    if (character.gold_cp < totalCostCp) {
+    // This character reserved it: the deposit already paid comes off.
+    const ownReservation = db.prepare("SELECT * FROM reservations WHERE item_id = ? AND character_id = ? AND status = 'active'").get(item.id, character.id);
+    const depositUsedCp = ownReservation ? Math.min(ownReservation.deposit_cp, totalCostCp) : 0;
+    const dueCp = totalCostCp - depositUsedCp;
+    if (character.gold_cp < dueCp) {
       throw new PurchaseError(
-        `Insufficient funds. ${character.name} has ${formatCp(character.gold_cp)}, but this costs ${formatCp(totalCostCp)}.`
+        `Insufficient funds. ${character.name} has ${formatCp(character.gold_cp)}, but this costs ${formatCp(dueCp)}${depositUsedCp ? ` (after the ${formatCp(depositUsedCp)} deposit)` : ''}.`
       );
     }
 
     if (recipient) {
-      db.prepare('UPDATE characters SET gold_cp = gold_cp - ? WHERE id = ?').run(totalCostCp, character.id);
+      db.prepare('UPDATE characters SET gold_cp = gold_cp - ? WHERE id = ?').run(dueCp, character.id);
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(addToSheet(recipient.sheet_data, item.name, qty, 'gift'), recipient.id);
     } else {
       db.prepare('UPDATE characters SET gold_cp = gold_cp - ?, sheet_data = ? WHERE id = ?')
-        .run(totalCostCp, addToSheet(character.sheet_data, item.name, qty), character.id);
+        .run(dueCp, addToSheet(character.sheet_data, item.name, qty), character.id);
     }
     if (item.stock !== null) {
       db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
     }
+    if (ownReservation) db.endReservation(ownReservation, 'bought');
+    // Someone else bought the last one: Grimbold refunds the reserver's deposit.
+    let refunded = null;
+    const othersReservation = item.stock !== null && item.stock - qty <= 0 ? db.activeReservationOfItem(item.id) : null;
+    if (othersReservation) refunded = db.endReservation(othersReservation, 'refunded', { refund: true, reason: `Deposit refunded: ${item.name} was sold to someone else` });
     db.prepare(`
       INSERT INTO sales (
         item_name, category, quantity, buyer_tag, buyer_id,
@@ -127,7 +136,9 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
 
     return {
       item,
-      character: { id: character.id, name: character.name, gold_cp: character.gold_cp - totalCostCp },
+      character: { id: character.id, name: character.name, gold_cp: character.gold_cp - dueCp },
+      depositUsedCp,
+      refundedReservation: refunded,
       quantity: qty,
       basePriceCp: item.price,
       discountPercent: quote.discountPercent,
@@ -139,4 +150,31 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
   })();
 }
 
-module.exports = { PurchaseError, quoteItem, getShoppingCharacters, findPlayerByDiscordId, purchaseItem };
+// Reserves a shelf item for one of the player's characters: a 10% deposit
+// of their own price now (it comes off the price when they buy), and the item
+// stays through the next two restocks (db/reservations.js).
+function reserveItem({ itemName, characterId, playerId, buyerDiscordId }) {
+  return db.transaction(() => {
+    const character = db.prepare('SELECT id, name, player_id, status, gold_cp FROM characters WHERE id = ?').get(Number(characterId));
+    if (!character || character.player_id !== Number(playerId)) throw new PurchaseError("Character not found or doesn't belong to you.");
+    if (character.status !== 'alive') throw new PurchaseError(`${character.name} is no longer among the living.`);
+    const item = db.prepare('SELECT * FROM items WHERE name = ? COLLATE NOCASE AND is_active = 1').get(String(itemName || '').trim());
+    if (!item) throw new PurchaseError('Item is not available in the shop.');
+    if (!db.RESERVABLE_SOURCES.includes(item.source)) throw new PurchaseError(`${item.name} is always on the shelf; there is no need to reserve it.`);
+    if (item.stock === 0) throw new PurchaseError(`${item.name} is sold out.`);
+    const mine = db.activeReservationOfCharacter(character.id);
+    if (mine) throw new PurchaseError(`${character.name} already has ${mine.item_name} reserved; buy it or cancel that reservation first.`);
+    const taken = db.activeReservationOfItem(item.id);
+    if (taken) throw new PurchaseError(`${item.name} is already reserved by someone else.`);
+    const depositCp = db.reservationDepositFor(quoteItem(item, buyerDiscordId).unitPriceCp);
+    if (character.gold_cp < depositCp) throw new PurchaseError(`The deposit is ${formatCp(depositCp)}, but ${character.name} has ${formatCp(character.gold_cp)}.`);
+    db.prepare('UPDATE characters SET gold_cp = gold_cp - ? WHERE id = ?').run(depositCp, character.id);
+    db.recordGoldChange({ characterId: character.id, user: { id: Number(playerId), role: 'player' }, oldCp: character.gold_cp, newCp: character.gold_cp - depositCp, reason: `Deposit: ${item.name} reserved at Grimbold's` });
+    const id = Number(db.prepare(`
+      INSERT INTO reservations (item_id, item_name, character_id, player_id, deposit_cp, restocks_left) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(item.id, item.name, character.id, character.player_id, depositCp, db.RESERVATION_HOLD_RESTOCKS).lastInsertRowid);
+    return { reservation: db.getReservation(id), purseCp: character.gold_cp - depositCp, priceCp: item.price };
+  })();
+}
+
+module.exports = { PurchaseError, quoteItem, getShoppingCharacters, findPlayerByDiscordId, purchaseItem, reserveItem };

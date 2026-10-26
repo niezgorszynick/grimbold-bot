@@ -17,6 +17,9 @@
 //             sold out).
 //   legacy  — rows from before sources existed: cleared by the next restock.
 //
+// A reserved item (db/reservations.js) stays where it is through the next two
+// restocks, whatever its source would do.
+//
 // At most one weekly event happens per restock (a chance roll, then a pick by
 // weight): a visiting merchant, a shortage (no new scrolls / magic items), a
 // sale on part of the shelf, or news only.
@@ -129,8 +132,8 @@ function scrollName(spell) {
 // { remove: [ids], keep: [{ id, weeks }], update: [{ id, stock, price }],
 // insert: [rows], partyLevel }. artisanGoods: active artisans' goods; event:
 // this week's event or null.
-function planRestock({ shelf, catalog, spells, config, level, artisanGoods = [], event = null, random = Math.random }) {
-  const plan = { remove: [], keep: [], update: [], insert: [], partyLevel: level };
+function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisanGoods = [], event = null, heldIds = [], random = Math.random }) {
+  const plan = { remove: [], keep: [], update: [], insert: [], held: [], partyLevel: level };
   const params = (event && event.params) || {};
   const shortage = event && event.kind === 'shortage' ? params.target : null;
   // A shopkeeper's price: whole gold from 10 gp, whole silver below that.
@@ -140,6 +143,10 @@ function planRestock({ shelf, catalog, spells, config, level, artisanGoods = [],
   const allowed = catalog.filter(row => row.min_level <= level && row.availability !== 'adventure' && row.tier !== 'service');
   const taken = new Set();
   const take = row => { taken.add(row.name.toLowerCase()); return row; };
+  // Reserved items: untouched (and their names taken); the rest restocks as usual.
+  const held = new Set(heldIds.map(Number));
+  wholeShelf.filter(item => held.has(item.id)).forEach(item => { plan.held.push(item.id); take(item); });
+  const shelf = wholeShelf.filter(item => !held.has(item.id));
 
   // Manual rows stay until sold out; their names are taken.
   for (const row of shelf.filter(item => !['mundane', 'staple', 'magic', 'scroll', 'artisan', 'event'].includes(item.source))) {
@@ -259,7 +266,8 @@ function runRestock({ random = Math.random } = {}) {
   const shelf = db.prepare('SELECT * FROM items').all();
   const catalog = db.prepare('SELECT * FROM catalog').all();
   const spells = Object.values(rules.getSpellCatalog()).filter(spell => Number.isInteger(spell.level));
-  const plan = planRestock({ shelf, catalog, spells, config, level, artisanGoods: activeArtisanGoods(), event, random });
+  const reservations = require('./reservations');
+  const plan = planRestock({ shelf, catalog, spells, config, level, artisanGoods: activeArtisanGoods(), event, heldIds: reservations.heldItemIds(), random });
   db.transaction(() => {
     const remove = db.prepare('DELETE FROM items WHERE id = ?');
     plan.remove.forEach(id => remove.run(id));
@@ -278,6 +286,8 @@ function runRestock({ random = Math.random } = {}) {
     `);
     plan.insert.forEach(row => insert.run(row));
   })();
+  // Reservations count down, run out, or are refunded if their item is gone.
+  const reserved = reservations.afterRestock();
   const newOf = source => plan.insert.filter(row => row.source === source).map(row => row.name);
   const artisanStock = [...plan.insert, ...plan.update].filter(row => row.source === 'artisan').length;
   return {
@@ -288,7 +298,8 @@ function runRestock({ random = Math.random } = {}) {
     mundane: newOf('mundane').length,
     artisanGoods: artisanStock,
     merchantGoods: newOf('event'),
-    event: event ? { title: event.title, announcement: event.announcement, kind: event.kind } : null
+    event: event ? { title: event.title, announcement: event.announcement, kind: event.kind } : null,
+    reserved
   };
 }
 

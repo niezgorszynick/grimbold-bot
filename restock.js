@@ -57,6 +57,10 @@ async function restockShop() {
   const summary = db.runRestock();
   console.log(`🛒 Restock completed (party level ${summary.partyLevel}): ${summary.newMagic.length} new magic items, ${summary.keptMagic} kept, ${summary.scrolls.length} scrolls, ${summary.mundane} mundane items, ${summary.artisanGoods} artisan goods${summary.event ? `; event: ${summary.event.title}` : ''}.`);
   await sendDiscordAnnouncement(summary);
+  // Reservations that ran out or were refunded (in the panel; the bot's notes need its client).
+  const threads = require('./characterThreads');
+  (summary.reserved ? summary.reserved.expired : []).forEach(reservation => threads.announceReservation('expired', reservation));
+  (summary.reserved ? summary.reserved.refunded : []).forEach(reservation => threads.announceReservation('refunded', reservation));
   return summary;
 }
 

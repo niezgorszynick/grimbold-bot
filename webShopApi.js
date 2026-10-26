@@ -1296,6 +1296,35 @@ router.post('/characters/:id/gold', async (req, res) => {
   }
 });
 
+// { itemName, characterId } — reserve a shelf item with a 10% deposit.
+router.post('/shop/reserve', (req, res) => {
+  const player = getSessionPlayer(req);
+  if (!player) return res.status(401).json({ error: 'Unauthorized' });
+  const { itemName, characterId } = req.body || {};
+  try {
+    const result = shop.reserveItem({ itemName, characterId, playerId: player.id, buyerDiscordId: player.discord_id });
+    require('./characterThreads').announceReservation('reserved', result.reservation);
+    return res.json({ ...result, depositFormatted: formatCp(result.reservation.depositCp), purseFormatted: formatCp(result.purseCp) });
+  } catch (error) {
+    if (error instanceof shop.PurchaseError) return res.status(400).json({ error: error.message });
+    console.error('Reservation failed:', error);
+    return res.status(500).json({ error: 'Could not reserve the item.' });
+  }
+});
+
+// A player gives up a reservation (deposit kept); a DM cancelling refunds it.
+router.post('/shop/reservations/:id/cancel', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const reservation = db.cancelReservation({ reservationId: req.params.id, user });
+    require('./characterThreads').announceReservation(reservation.status === 'refunded' ? 'refunded' : 'cancelled', reservation);
+    return res.json({ reservation });
+  } catch (error) {
+    return res.status(error.message === 'Forbidden.' ? 403 : 400).json({ error: error.message });
+  }
+});
+
 router.post('/shop/buy', async (req, res) => {
   const player = getSessionPlayer(req);
   if (!player) return res.status(401).json({ error: 'Unauthorized' });
@@ -1336,6 +1365,8 @@ router.post('/shop/buy', async (req, res) => {
     require('./characterThreads').announcePurchase(result, { buyerTag: player.discord_tag });
     // A gift: Grimbold hands it over in the recipient's thread too.
     if (result.gift) require('./characterThreads').announceGift(result.gift);
+    // The last one went to someone else: the reserver gets their deposit back.
+    if (result.refundedReservation) require('./characterThreads').announceReservation('refunded', result.refundedReservation);
     void sendGrimboldShopEmbed({
       channelId,
       item: result.item,
