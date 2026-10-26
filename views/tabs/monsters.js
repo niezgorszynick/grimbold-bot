@@ -21,9 +21,11 @@ function monsterPanel(monster) {
   return `
     <div class="monster-panel-actions">
       <a class="btn btn-small btn-green" href="/admin?tab=npcs&new_npc=1&base_monster=${encodeURIComponent(monster.name)}">+ New NPC from this statblock</a>
+      <button type="button" class="btn btn-small btn-gold" data-add-to-encounter="${escapeHtml(monster.name)}" ${Number.isInteger(monster.hitPoints) && !monster.summon ? '' : 'disabled title="A summoned creature: its numbers depend on the spell."'}>⚔ Add to encounter</button>
       ${npcs.length ? `<span class="muted small">NPCs based on it: ${npcs.map(npc => `<a href="/admin?tab=npcs#npc-${npc.id}">${escapeHtml(npc.name)}</a>`).join(', ')}</span>` : ''}
       <button type="button" class="btn btn-small btn-secondary" data-close-monster>Close</button>
     </div>
+    <div class="add-to-encounter" data-add-form hidden></div>
     ${renderStatblock(monster)}`;
 }
 
@@ -278,7 +280,102 @@ module.exports = function renderMonstersTab(ctx) {
           event.preventDefault();
           show(link.dataset.monsterLink);
         });
+        // "Add to encounter": a running adventure of yours, one of its
+        // encounters (or a new one), how many; then a link to its table.
+        const el = (tag, attrs, children) => {
+          const node = document.createElement(tag);
+          Object.entries(attrs || {}).forEach(([key, value]) => {
+            if (value === undefined || value === null || value === false) return;
+            if (key === 'text') node.textContent = value; else node.setAttribute(key, value === true ? '' : value);
+          });
+          [].concat(children || []).forEach(child => { if (child !== null && child !== undefined) node.append(child); });
+          return node;
+        };
+        const openAddForm = async (button, form) => {
+          if (!form.hidden) { form.hidden = true; return; }
+          const monster = button.dataset.addToEncounter;
+          form.hidden = false;
+          form.replaceChildren(el('p', { class: 'muted small', text: 'Loading your adventures…' }));
+          let adventures;
+          try {
+            const response = await fetch('/api/encounter-targets');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load your adventures.');
+            adventures = data.adventures;
+          } catch (error) {
+            form.replaceChildren(el('p', { class: 'sheet-message is-error', text: error.message }));
+            return;
+          }
+          if (!adventures.length) {
+            form.replaceChildren(el('p', { class: 'muted small', text: 'No running adventures of yours. Encounters belong to an adventure you are the DM of (or take one over on its table).' }));
+            return;
+          }
+          const adventure = el('select', { 'aria-label': 'Adventure' }, adventures.map(entry => el('option', { value: String(entry.id), text: entry.title + (entry.dm ? ' (' + entry.dm + ')' : '') })));
+          const encounter = el('select', { 'aria-label': 'Encounter' });
+          const newName = el('input', { type: 'text', maxlength: '100', placeholder: 'New encounter name', 'aria-label': 'New encounter name' });
+          const count = el('input', { type: 'number', min: '1', max: '20', value: '1', class: 'inventory-qty', 'aria-label': 'How many' });
+          const status = el('p', { class: 'sheet-message', role: 'status' });
+          const STATUS = { running: ' (running)', paused: ' (paused)', planned: '' };
+          const fillEncounters = () => {
+            const chosen = adventures.find(entry => String(entry.id) === adventure.value);
+            encounter.replaceChildren(...chosen.encounters.map(entry => el('option', { value: String(entry.id), text: entry.name + STATUS[entry.status] })),
+              el('option', { value: 'new', text: '+ New encounter…' }));
+            newName.hidden = encounter.value !== 'new';
+          };
+          adventure.addEventListener('change', fillEncounters);
+          encounter.addEventListener('change', () => { newName.hidden = encounter.value !== 'new'; if (!newName.hidden) newName.focus(); });
+          fillEncounters();
+          const api = async (url, body) => {
+            const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'The panel refused it.');
+            return data;
+          };
+          const add = el('button', { type: 'button', class: 'btn btn-small btn-green', text: 'Add' });
+          add.addEventListener('click', async () => {
+            const adventureId = Number(adventure.value);
+            const many = Number(count.value) || 1;
+            add.disabled = true;
+            status.classList.remove('is-error');
+            status.textContent = 'Adding…';
+            try {
+              let encounterId = encounter.value;
+              let encounterName = encounter.options[encounter.selectedIndex].text.replace(/ \\((running|paused)\\)$/, '');
+              if (encounterId === 'new') {
+                if (!newName.value.trim()) throw new Error('Name the new encounter.');
+                const table = await api('/api/adventures/' + adventureId + '/encounters', { name: newName.value });
+                const created = table.encounters.list.filter(entry => entry.name === newName.value.trim()).pop();
+                encounterId = created.id;
+                encounterName = created.name;
+              }
+              await api('/api/adventures/' + adventureId + '/encounters/' + encounterId + '/add', { monster, count: many });
+              status.replaceChildren(many + ' × ' + monster + ' added to ' + encounterName + '. ',
+                el('a', { href: '/admin?tab=adventures&table=' + adventureId, text: 'Open the adventure table →' }));
+              // A new encounter is now in the list for the next one.
+              const target = adventures.find(entry => entry.id === adventureId);
+              if (!target.encounters.some(entry => String(entry.id) === String(encounterId))) {
+                target.encounters.push({ id: encounterId, name: encounterName, status: 'planned' });
+                fillEncounters();
+                encounter.value = String(encounterId);
+                newName.hidden = true;
+                newName.value = '';
+              }
+            } catch (error) {
+              status.classList.add('is-error');
+              status.textContent = error.message;
+            } finally {
+              add.disabled = false;
+            }
+          });
+          form.replaceChildren(
+            el('strong', { class: 'small', text: '⚔ Add ' + monster + ' to an encounter' }),
+            el('div', { class: 'table-filter' }, [adventure, encounter, newName, el('label', { class: 'small' }, ['× ', count]), add]),
+            status
+          );
+        };
         view.addEventListener('click', event => {
+          const addButton = event.target.closest('[data-add-to-encounter]');
+          if (addButton) { openAddForm(addButton, view.querySelector('[data-add-form]')); return; }
           if (!event.target.closest('[data-close-monster]')) return;
           view.hidden = true;
           view.replaceChildren();

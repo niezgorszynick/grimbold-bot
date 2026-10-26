@@ -889,6 +889,13 @@ router.post('/monster-imports/:id/monsters', monsterImportRoute(({ user, body, p
 router.post('/monster-imports/:id/finish', monsterImportRoute(({ user, params }) => db.finishMonsterImport({ user, importId: params.id })));
 router.post('/monster-imports/:id/delete', monsterImportRoute(({ user, params }) => db.deleteMonsterImport({ user, importId: params.id })));
 
+// The DM's running adventures and their open encounters (Monsters tab: "Add to encounter").
+router.get('/encounter-targets', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  return res.json({ adventures: db.listEncounterTargets(user) });
+});
+
 // { npcId, text } — the DM speaks in the adventure's Discord thread.
 router.post('/adventures/:id/message', async (req, res) => {
   const user = getSessionApiUser(req);

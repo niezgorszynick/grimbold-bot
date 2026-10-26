@@ -544,7 +544,26 @@ function getVttEncounters({ key }) {
   };
 }
 
+// Where a DM can add a monster from the Monsters tab: the running adventures
+// whose secrets they hold (their own, or all for the Root DM), each with its
+// encounters that aren't over.
+function listEncounterTargets(user) {
+  const { getActiveAdventures, canSeeAdventureSecrets } = adventures();
+  return getActiveAdventures()
+    .filter(adventure => canSeeAdventureSecrets(adventure, user))
+    .map(adventure => ({
+      id: adventure.id,
+      title: adventure.title,
+      dm: adventure.dm_name || null,
+      encounters: db.prepare(`
+        SELECT id, name, status FROM encounters WHERE adventure_id = ? AND status != 'done'
+        ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, id
+      `).all(adventure.id)
+    }));
+}
+
 module.exports = {
+  listEncounterTargets,
   getVttEncounters,
   encountersForTable,
   createEncounter,

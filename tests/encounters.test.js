@@ -318,3 +318,21 @@ test('encounters pause and resume as they were; players leave the fight and roll
   table = db.endEncounter({ ...asDm, encounterId: first });
   assert.equal(table.encounters.list.find(e => e.id === first).status, 'done');
 });
+
+test('"Add to encounter" offers the running adventures whose secrets you hold, with their open encounters', () => {
+  const dm = createPlayer();
+  const otherDm = createPlayer('admin');
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('targets-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'targets-thread', title: 'The Salt Road', ownerDiscordId: 'targets-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const camp = db.createEncounter({ ...asDm, name: 'Camp' }).encounters.list[0].id;
+  const gone = db.createEncounter({ ...asDm, name: 'Old fight' }).encounters.list.find(e => e.name === 'Old fight').id;
+  db.addEncounterMonster({ ...asDm, encounterId: gone, monster: 'Practice Footpad' });
+  db.runEncounter({ ...asDm, encounterId: gone });
+  db.endEncounter({ ...asDm, encounterId: gone });
+
+  const mine = db.listEncounterTargets({ id: dm, role: 'player' }).find(entry => entry.id === adventure.id);
+  assert.deepEqual(mine.encounters.map(e => [e.id, e.name, e.status]), [[camp, 'Camp', 'planned']], 'finished ones are left out');
+  assert.ok(!db.listEncounterTargets({ id: otherDm, role: 'admin' }).some(entry => entry.id === adventure.id), "another DM doesn't see its encounters");
+  assert.ok(db.listEncounterTargets({ id: 0, role: 'admin' }).some(entry => entry.id === adventure.id), 'the Root DM does');
+});
