@@ -83,7 +83,7 @@ test('encounters: the DM plans them in secret, runs them, tracks HP and rolls', 
   assert.ok(table.encounters.statblocks['Practice Gazer'], "the NPC's base statblock too");
 
   const [first, second] = table.encounters.list[0].combatants;
-  db.setCombatantInitiative({ ...asDm, combatantId: second.id, initiative: 25 });
+  db.setCombatantInitiative({ ...asDm, combatantId: second.id, initiative: 50 }); // above any roll (d20 + 6)
   assert.throws(() => db.setCombatantInitiative({ ...asDm, combatantId: second.id, initiative: 'x' }), /whole number/);
   table = db.rollEncounterInitiative({ ...asDm, encounterId });
   encounter = table.encounters.list[0];

@@ -113,9 +113,12 @@
 
   function itemRow(item) {
     const key = item.index + '|' + item.name;
+    // How many the character has: changing it changes the sheet (a torch used
+    // up). Giving some away is the 🎁 form's own number.
     const quantity = el('input', {
       type: 'number', min: '1', max: '9999', value: String(item.quantity),
-      className: 'inventory-qty', 'aria-label': 'Quantity of ' + item.name
+      className: 'inventory-qty', 'aria-label': 'How many ' + item.name + ' you have',
+      title: 'How many you have. Changing it changes your sheet; to give some away, use 🎁.'
     });
     quantity.addEventListener('change', () => {
       const value = Number(quantity.value);
@@ -156,7 +159,7 @@
           title: item.bonuses.map(bonus => bonus.text).join('; ') + (item.bonusesActive ? '' : ' (not in use)'),
           text: item.bonuses[0].text + (item.bonuses.length > 1 ? ' +' + (item.bonuses.length - 1) : '')
         }) : null,
-        el('span', { className: 'inventory-controls' }, [wear, quantity, giftButton(key, item.nickname || item.name), remove])
+        el('span', { className: 'inventory-controls' }, [wear, el('label', { className: 'inventory-have muted small' }, ['have ', quantity]), giftButton(key, item.nickname || item.name), remove])
       ]),
       giving === key ? window.grimboldGiftForm({
         characterId, kind: 'item', index: item.index, name: item.name, itemName: item.nickname || item.name, max: item.quantity,

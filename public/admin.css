@@ -893,3 +893,4 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .gift-form select { max-width: 100%; }
 .gift-form .gift-note { width: 100%; }
 .gift-button { padding: 2px 6px; }
+.inventory-have { display: inline-flex; align-items: center; gap: 4px; }

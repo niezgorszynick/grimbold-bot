@@ -99,3 +99,12 @@ test('buying a gift at the counter: the buyer pays, the other sheet gets it', ()
   assert.match(threads.purchaseMessage(result, 'ola').text, /Gift Candle\*\* ×2 as a gift for \*\*Brin\*\*/);
   assert.match(threads.giftMessages(result.gift).recipient.text, /bought at the counter for 6 gp/);
 });
+
+test('giving one of two torches keeps the other', () => {
+  const ola = createPlayer();
+  const kael = addCharacter(ola, 'Kael', { sheet: { inventory: [{ name: 'Torch', quantity: 2, source: 'catalog' }] } });
+  const brin = addCharacter(createPlayer(), 'Brin');
+  db.giveItem({ characterId: kael, user: { id: ola, role: 'player' }, request: { toCharacterId: brin, kind: 'item', index: 0, name: 'Torch', quantity: 1 } });
+  assert.deepEqual(sheetOf(kael).inventory, [{ name: 'Torch', quantity: 1, source: 'catalog' }]);
+  assert.deepEqual(sheetOf(brin).inventory, [{ name: 'Torch', quantity: 1, source: 'catalog' }]);
+});

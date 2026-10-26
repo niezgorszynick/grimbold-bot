@@ -38,9 +38,9 @@
   // uid (magic), itemName, max (how many there are), onDone(result), onCancel() }
   window.grimboldGiftForm = function giftForm(options) {
     const select = el('select', { 'aria-label': 'Who the gift is for' }, [el('option', { value: '', text: 'Loading characters…' })]);
-    const quantity = options.max > 1
-      ? el('input', { type: 'number', min: '1', max: String(options.max), value: '1', className: 'inventory-qty', 'aria-label': 'How many to give' })
-      : null;
+    // Always shown, so it is clear how many go and how many there are.
+    const quantity = el('input', { type: 'number', min: '1', max: String(options.max), value: '1', className: 'inventory-qty', 'aria-label': 'How many to give' });
+    if (options.max <= 1) quantity.disabled = true;
     const note = el('input', { type: 'text', maxlength: '300', placeholder: 'A note with it (optional)', 'aria-label': 'Gift note', className: 'gift-note' });
     const status = el('p', { className: 'muted small', role: 'status' });
     const give = el('button', { type: 'button', className: 'btn btn-small btn-green', text: '🎁 Give' });
@@ -63,7 +63,7 @@
 
     give.addEventListener('click', async () => {
       if (!select.value) { status.textContent = 'Choose who the gift is for.'; return; }
-      const count = quantity ? Number(quantity.value) : 1;
+      const count = Number(quantity.value);
       if (!Number.isInteger(count) || count < 1 || count > options.max) { status.textContent = 'Give from 1 to ' + options.max + '.'; return; }
       const to = select.options[select.selectedIndex].text.replace(/ \(Lvl \d+\)$/, '');
       if (!window.confirm('Give ' + (count > 1 ? count + ' × ' : '') + options.itemName + ' to ' + to + '? It leaves this sheet.')) return;
@@ -88,7 +88,7 @@
 
     return el('div', { className: 'gift-form' }, [
       el('strong', { className: 'small', text: '🎁 Give ' + options.itemName + ' as a gift' }),
-      el('div', { className: 'vitals-actions' }, [select, quantity ? el('label', { className: 'small' }, ['× ', quantity]) : null]),
+      el('div', { className: 'vitals-actions' }, [select, el('label', { className: 'small' }, ['give ', quantity, ' of ' + options.max])]),
       note,
       el('div', { className: 'vitals-actions' }, [give, cancel]),
       status
