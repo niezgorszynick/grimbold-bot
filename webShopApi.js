@@ -72,21 +72,7 @@ async function sendGrimboldShopEmbed({
     timestamp: new Date().toISOString()
   };
 
-  try {
-    const response = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bot ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } })
-    });
-    if (!response.ok) {
-      console.error('[Grimbold] Discord API Error:', await response.text());
-    }
-  } catch (error) {
-    console.error('[Grimbold] Failed to send Discord purchase message:', error);
-  }
+  await require('./shopAnnouncements').postShopEmbed(embed, channelId);
 }
 
 // Gifts: who can receive one (every living character), and giving an item
@@ -1304,6 +1290,8 @@ router.post('/shop/reserve', (req, res) => {
   try {
     const result = shop.reserveItem({ itemName, characterId, playerId: player.id, buyerDiscordId: player.discord_id });
     require('./characterThreads').announceReservation('reserved', result.reservation);
+    // And for everyone, in the shop channel.
+    void require('./shopAnnouncements').announceReservationInShop('reserved', result.reservation, { priceCp: result.priceCp, by: player.discord_tag });
     return res.json({ ...result, depositFormatted: formatCp(result.reservation.depositCp), purseFormatted: formatCp(result.purseCp) });
   } catch (error) {
     if (error instanceof shop.PurchaseError) return res.status(400).json({ error: error.message });
@@ -1319,6 +1307,7 @@ router.post('/shop/reservations/:id/cancel', (req, res) => {
   try {
     const reservation = db.cancelReservation({ reservationId: req.params.id, user });
     require('./characterThreads').announceReservation(reservation.status === 'refunded' ? 'refunded' : 'cancelled', reservation);
+    void require('./shopAnnouncements').announceReservationInShop('released', reservation);
     return res.json({ reservation });
   } catch (error) {
     return res.status(error.message === 'Forbidden.' ? 403 : 400).json({ error: error.message });
@@ -1356,11 +1345,7 @@ router.post('/shop/buy', async (req, res) => {
       giftNote
     });
 
-    const channelId = process.env.ANNOUNCEMENT_CHANNEL ||
-      process.env.ANNOUNCEMENT_CHANNEL_ID ||
-      process.env.ANNOUNCMENT_CHANNEL ||
-      process.env.DISCORD_SHOP_CHANNEL_ID ||
-      process.env.CHANNEL_ID;
+    const channelId = require('./shopAnnouncements').shopChannelId();
     // Grimbold's receipt in the character's own thread.
     require('./characterThreads').announcePurchase(result, { buyerTag: player.discord_tag });
     // A gift: Grimbold hands it over in the recipient's thread too.

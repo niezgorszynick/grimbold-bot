@@ -114,3 +114,41 @@ test('a reserved item stays through two restocks, then the reservation runs out'
   assert.deepEqual(summary.reserved.refunded.map(entry => entry.id), [lampReservation.id]);
   assert.equal(gold(kael), 4000);
 });
+
+test('reservations are announced in the shop channel, and listed at the restock', async () => {
+  const announce = require('../shopAnnouncements');
+  const reservation = { item: 'Cloak of Mist', character: 'Kael', depositCp: 1000, restocksLeft: 2 };
+  const reserved = announce.reservationEmbed('reserved', reservation, { priceCp: 10000, by: 'ola' });
+  assert.equal(reserved.title, "🔖 Reserved at Grimbold's");
+  assert.deepEqual(reserved.fields.map(field => [field.name, field.value]), [
+    ['Item', '**Cloak of Mist** · 100 gp'], ['Reserved for', '🛡️ **Kael**'], ['Held', 'through the next 2 restocks'], ['Deposit', '10 gp (comes off the price)']
+  ]);
+  assert.match(reserved.footer.text, /Reserved by ola • Anyone may still buy it/);
+  assert.equal(announce.reservationEmbed('released', reservation).title, '🔖 Back on the open shelf');
+
+  const fields = announce.reservationRestockFields({
+    held: [{ item: 'Cloak of Mist', character: 'Kael', restocksLeft: 1 }, { item: 'Wand of Sparks', character: 'Brin', restocksLeft: 0 }],
+    expired: [{ item: 'Ring of Echoes', character: 'Odo' }],
+    refunded: []
+  });
+  assert.deepEqual(fields.map(field => field.name), ['🔖 Still reserved', '🔖 Reservations ended']);
+  assert.equal(fields[0].value, '**Cloak of Mist** for Kael (1 restock more)\n**Wand of Sparks** for Brin (last week)');
+  assert.deepEqual(announce.reservationRestockFields({ held: [], expired: [], refunded: [] }), []);
+
+  // Posted with the bot's token to the shop channel.
+  const sent = [];
+  const realFetch = global.fetch;
+  process.env.DISCORD_TOKEN = 'test-token';
+  process.env.ANNOUNCEMENT_CHANNEL = 'shop-channel';
+  global.fetch = async (url, options) => { sent.push({ url, options }); return { ok: true, text: async () => '' }; };
+  try {
+    assert.equal(await announce.announceReservationInShop('reserved', reservation, { priceCp: 10000 }), true);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.DISCORD_TOKEN;
+    delete process.env.ANNOUNCEMENT_CHANNEL;
+  }
+  assert.equal(sent[0].url, 'https://discord.com/api/v10/channels/shop-channel/messages');
+  assert.equal(sent[0].options.headers.Authorization, 'Bot test-token');
+  assert.equal(JSON.parse(sent[0].options.body).embeds[0].title, "🔖 Reserved at Grimbold's");
+});
