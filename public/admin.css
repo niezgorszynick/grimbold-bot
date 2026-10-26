@@ -922,3 +922,6 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .add-to-encounter a { color: #8ea1ff; }
 .add-to-encounter[hidden] { display: none; }
 .add-to-encounter .sheet-message:empty { display: none; }
+.roll-log li.is-monster strong { color: #f57731; }
+.dice-reveal { margin-top: 6px; }
+.dice-monsters-row[hidden] { display: none; }

@@ -712,6 +712,34 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS imported_monsters_import ON imported_monsters (import_id);
       `);
     }
+  },
+  {
+    version: 25,
+    name: "Monster rolls kept with the adventure; the DM can reveal them",
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS encounter_rolls (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          encounter_id INTEGER,
+          combatant TEXT NOT NULL,
+          label TEXT NOT NULL,
+          formula TEXT NOT NULL,
+          mode TEXT NOT NULL DEFAULT 'normal',
+          total INTEGER NOT NULL,
+          natural INTEGER,
+          text TEXT NOT NULL DEFAULT '',
+          revealed INTEGER NOT NULL DEFAULT 0,
+          -- 1, 2, 3… in the order rolls were revealed (Owlbear reads them after the last it saw).
+          reveal_seq INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          revealed_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS encounter_rolls_adventure ON encounter_rolls (adventure_id, id);
+        CREATE TRIGGER IF NOT EXISTS change_log_encounter_roll_update AFTER UPDATE ON encounter_rolls
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+      `);
+    }
   }
 ];
 

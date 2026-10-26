@@ -331,15 +331,18 @@ function vttPlayerForKey(key) {
   return row;
 }
 
-function getVttRolls({ key, after }) {
+// The DM's key also gets the monster rolls they revealed (afterReveal: the
+// last one seen), so the party sees them in Owlbear too.
+function getVttRolls({ key, after, afterReveal }) {
   const row = vttPlayerForKey(key);
   db.prepare('UPDATE vtt_keys SET last_used_at = CURRENT_TIMESTAMP WHERE player_id = ?').run(row.player_id);
   const latest = db.prepare('SELECT MAX(id) AS id FROM dice_rolls WHERE player_id = ?').get(row.player_id).id || 0;
+  const monsters = require('./encounters').getVttMonsterRolls({ playerId: row.player_id, afterReveal });
   const since = Number(after);
-  if (!Number.isSafeInteger(since) || since < 0) return { player: row.discord_tag, latest, rolls: [] };
+  if (!Number.isSafeInteger(since) || since < 0) return { player: row.discord_tag, latest, rolls: [], ...monsters };
   const rolls = db.prepare(`${ROLL_QUERY} WHERE r.player_id = ? AND r.id > ? ORDER BY r.id LIMIT 20`)
     .all(row.player_id, since).map(rollView);
-  return { player: row.discord_tag, latest, rolls };
+  return { player: row.discord_tag, latest, rolls, ...monsters };
 }
 
 module.exports = {

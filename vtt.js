@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.1.1';
+const VERSION = '1.2.0';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -42,7 +42,7 @@ router.get('/manifest.json', (req, res) => {
 router.get('/rolls', (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    return res.json(db.getVttRolls({ key: req.query.key, after: req.query.after }));
+    return res.json(db.getVttRolls({ key: req.query.key, after: req.query.after, afterReveal: req.query.afterReveal }));
   } catch (error) {
     return res.status(401).json({ error: error.message });
   }

@@ -498,17 +498,84 @@ function rollForCombatant({ adventureId, user, combatantId, request = {} }) {
   const result = rules.rollFormula(option.formula, { mode, critical });
   const count = db.prepare('SELECT COUNT(*) AS n FROM encounter_combatants WHERE encounter_id = ? AND monster_name = ?').get(row.encounter_id, row.monster_name || '').n;
   const name = row.name || defaultLabel(row, { [row.monster_name]: count });
+  const label = critical ? `${option.label} — critical` : option.label;
+  const text = rules.describeRoll(result);
+  // Kept with the adventure: secret until the DM reveals it, or shown at once
+  // when the DM's dice bar says "Monsters: shown" (request.reveal).
+  const reveal = Boolean(request.reveal);
+  const id = Number(db.prepare(`
+    INSERT INTO encounter_rolls (adventure_id, encounter_id, combatant, label, formula, mode, total, natural, text, revealed, reveal_seq, revealed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP END)
+  `).run(adventure.id, row.encounter_id, name, label, result.formula, mode, result.total, result.natural, text,
+    reveal ? 1 : 0, reveal ? nextRevealSeq() : null, reveal ? 1 : 0).lastInsertRowid);
   return {
-    roll: {
-      combatant: name,
-      label: critical ? `${option.label} — critical` : option.label,
-      formula: result.formula,
-      mode,
-      total: result.total,
-      natural: result.natural,
-      text: rules.describeRoll(result)
-    }
+    roll: { id, adventureId: adventure.id, combatant: name, label, formula: result.formula, mode, total: result.total, natural: result.natural, text, revealed: reveal }
   };
+}
+
+const nextRevealSeq = () => (db.prepare('SELECT MAX(reveal_seq) AS n FROM encounter_rolls').get().n || 0) + 1;
+
+// For the DM's Owlbear extension: monster rolls revealed in the running
+// adventures this key's player is the DM of, after the last one it saw
+// (afterReveal; without it, only where the feed stands now).
+function getVttMonsterRolls({ playerId, afterReveal }) {
+  const latest = db.prepare(`
+    SELECT MAX(r.reveal_seq) AS n FROM encounter_rolls r JOIN adventures a ON a.id = r.adventure_id WHERE a.dm_player_id = ?
+  `).get(Number(playerId)).n || 0;
+  const since = Number(afterReveal);
+  if (afterReveal === undefined || afterReveal === null || afterReveal === '' || !Number.isSafeInteger(since) || since < 0) return { latestReveal: latest, monsterRolls: [] };
+  const rows = db.prepare(`
+    SELECT r.* FROM encounter_rolls r JOIN adventures a ON a.id = r.adventure_id
+    WHERE a.dm_player_id = ? AND a.status = 'active' AND r.revealed = 1 AND r.reveal_seq > ? ORDER BY r.reveal_seq LIMIT 20
+  `).all(Number(playerId), since);
+  return {
+    latestReveal: Math.max(latest, ...rows.map(row => row.reveal_seq)),
+    monsterRolls: rows.map(row => ({
+      id: `monster-${row.id}`,
+      revealSeq: row.reveal_seq,
+      character: row.combatant,
+      label: row.label,
+      formula: row.formula,
+      mode: row.mode,
+      total: row.total,
+      natural: row.natural,
+      text: row.text,
+      private: false,
+      monster: true,
+      createdAt: row.created_at
+    }))
+  };
+}
+
+function encounterRollView(row) {
+  return {
+    id: row.id,
+    kind: 'monster',
+    character: row.combatant,
+    label: row.label,
+    formula: row.formula,
+    mode: row.mode,
+    total: row.total,
+    natural: row.natural,
+    text: row.text,
+    revealed: Boolean(row.revealed),
+    createdAt: row.created_at
+  };
+}
+
+// The adventure's monster rolls: all of them for its DM, the revealed ones for everyone else.
+function getEncounterRolls({ adventureId, secret, limit = 25 }) {
+  return db.prepare(`SELECT * FROM encounter_rolls WHERE adventure_id = ? ${secret ? '' : 'AND revealed = 1'} ORDER BY id DESC LIMIT ?`)
+    .all(Number(adventureId), Math.min(100, Number(limit) || 25)).map(encounterRollView);
+}
+
+// The DM shows a monster's roll to the party (it can't be hidden again).
+function revealEncounterRoll({ adventureId, user, rollId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const row = db.prepare('SELECT * FROM encounter_rolls WHERE id = ? AND adventure_id = ?').get(Number(rollId), adventure.id);
+  if (!row) throw new Error('That roll is not in this adventure.');
+  if (!row.revealed) db.prepare('UPDATE encounter_rolls SET revealed = 1, reveal_seq = ?, revealed_at = CURRENT_TIMESTAMP WHERE id = ?').run(nextRevealSeq(), row.id);
+  return { roll: encounterRollView({ ...row, revealed: 1 }) };
 }
 
 // The running encounters of the adventures this key's player is the DM of,
@@ -573,6 +640,9 @@ module.exports = {
   addEncounterNpc,
   removeCombatant,
   updateCombatant,
+  getEncounterRolls,
+  revealEncounterRoll,
+  getVttMonsterRolls,
   addEncounterCharacters,
   recordInitiativeRoll,
   runEncounter,

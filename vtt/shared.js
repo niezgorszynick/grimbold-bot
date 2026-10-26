@@ -33,10 +33,14 @@ export const store = {
   setKey(key) {
     write('key', key || null);
     write('after', null); // learn the latest roll again, don't replay old ones
+    write('afterReveal', null);
     write('status', null);
   },
   after: () => read('after', null),
   setAfter: id => write('after', id),
+  // The last monster roll the DM revealed that this room has seen.
+  afterReveal: () => read('afterReveal', null),
+  setAfterReveal: seq => write('afterReveal', seq),
   status: () => read('status', null),
   setStatus: status => write('status', status),
   // tracker: the GM's copy puts initiative rolls into Owlbear's initiative tracker.

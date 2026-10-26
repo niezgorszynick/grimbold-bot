@@ -52,6 +52,8 @@ OBR.onReady(async () => {
       url.searchParams.set('key', key);
       const after = store.after();
       if (after !== null) url.searchParams.set('after', String(after));
+      const afterReveal = store.afterReveal();
+      if (afterReveal !== null) url.searchParams.set('afterReveal', String(afterReveal));
       const response = await fetch(url, { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok) {
@@ -59,6 +61,15 @@ OBR.onReady(async () => {
         return;
       }
       store.setStatus({ ok: true, player: data.player, at: Date.now() });
+      // Monster rolls the DM revealed (their key only): sent like any roll.
+      if (afterReveal === null) {
+        store.setAfterReveal(data.latestReveal || 0);
+      } else {
+        for (const roll of data.monsterRolls || []) {
+          await OBR.broadcast.sendMessage(CHANNEL, roll, { destination: 'ALL' });
+          store.setAfterReveal(roll.revealSeq);
+        }
+      }
       // First contact: start from the newest roll instead of replaying history.
       if (after === null) {
         store.setAfter(data.latest);

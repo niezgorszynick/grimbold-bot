@@ -9,7 +9,7 @@ const { updateCharacterProgression } = require('./characters');
 const { getCharacterSnapshots } = require('./roster');
 const { getRecentRolls } = require('./dice');
 const { getAdventureNpcs } = require('./npcs');
-const { encountersForTable } = require('./encounters');
+const { encountersForTable, getEncounterRolls } = require('./encounters');
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 4000;
@@ -213,6 +213,8 @@ function getAdventureTable({ adventureId, user }) {
     }),
     // The party's latest rolls; private ones only for the DM (and the roller).
     rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.secret, viewerId: Number(user && user.id) || null }),
+    // Monster rolls: all for the DM (hidden ones to reveal), the revealed ones for the party.
+    encounterRolls: getEncounterRolls({ adventureId: adventure.id, secret: access.secret }),
     candidates,
     dmCharacters,
     // Notable NPCs with the party; stats and HP only for the DM.

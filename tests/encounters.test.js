@@ -336,3 +336,58 @@ test('"Add to encounter" offers the running adventures whose secrets you hold, w
   assert.ok(!db.listEncounterTargets({ id: otherDm, role: 'admin' }).some(entry => entry.id === adventure.id), "another DM doesn't see its encounters");
   assert.ok(db.listEncounterTargets({ id: 0, role: 'admin' }).some(entry => entry.id === adventure.id), 'the Root DM does');
 });
+
+test('monster rolls are kept secret until the DM reveals them', () => {
+  const dm = createPlayer();
+  const playerId = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('reveal-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'reveal-thread', title: 'Hidden Dice', ownerDiscordId: 'reveal-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const asPlayer = { adventureId: adventure.id, user: { id: playerId, role: 'player' } };
+  db.setPartyMember({ ...asDm, characterId: addCharacter(playerId, 'Kael', 3), inParty: true });
+  const encounterId = db.createEncounter({ ...asDm, name: 'Ambush' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId, monster: 'Practice Footpad' });
+  db.runEncounter({ ...asDm, encounterId });
+  const footpad = db.getAdventureTable(asDm).encounters.list[0].combatants[0];
+
+  const { roll } = db.rollForCombatant({ ...asDm, combatantId: footpad.id, request: { roll: 'actions:0:hit' } });
+  assert.equal(roll.revealed, false);
+  let dmRolls = db.getAdventureTable(asDm).encounterRolls;
+  assert.deepEqual(dmRolls.map(entry => [entry.id, entry.character, entry.label, entry.revealed, entry.kind]), [[roll.id, 'Practice Footpad', 'Dagger attack', false, 'monster']]);
+  assert.deepEqual(db.getAdventureTable(asPlayer).encounterRolls, [], 'the party sees nothing yet');
+
+  assert.throws(() => db.revealEncounterRoll({ ...asPlayer, rollId: roll.id }), /Forbidden/);
+  assert.throws(() => db.revealEncounterRoll({ ...asDm, rollId: 99999 }), /not in this adventure/);
+  db.revealEncounterRoll({ ...asDm, rollId: roll.id });
+  const seen = db.getAdventureTable(asPlayer).encounterRolls;
+  assert.deepEqual(seen.map(entry => [entry.character, entry.total, entry.revealed]), [['Practice Footpad', roll.total, true]]);
+  dmRolls = db.getAdventureTable(asDm).encounterRolls;
+  assert.equal(dmRolls[0].revealed, true);
+});
+
+test("revealed monster rolls reach the DM's Owlbear feed; 'Monsters: shown' reveals as they are rolled", () => {
+  const dm = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('feed-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'feed-thread', title: 'Feed', ownerDiscordId: 'feed-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const encounterId = db.createEncounter({ ...asDm, name: 'Ford' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId, monster: 'Practice Footpad' });
+  db.runEncounter({ ...asDm, encounterId });
+  const footpad = db.getAdventureTable(asDm).encounters.list[0].combatants[0];
+  const key = db.getVttKey({ playerId: dm });
+
+  // First contact learns where the feed stands; nothing is replayed.
+  const start = db.getVttRolls({ key });
+  assert.deepEqual(start.monsterRolls, []);
+  const hidden = db.rollForCombatant({ ...asDm, combatantId: footpad.id, request: { roll: 'actions:0:hit' } }).roll;
+  assert.deepEqual(db.getVttRolls({ key, after: start.latest, afterReveal: start.latestReveal }).monsterRolls, [], 'hidden rolls stay out');
+
+  const shown = db.rollForCombatant({ ...asDm, combatantId: footpad.id, request: { roll: 'initiative', reveal: true } }).roll;
+  assert.equal(shown.revealed, true);
+  db.revealEncounterRoll({ ...asDm, rollId: hidden.id });
+  const feed = db.getVttRolls({ key, after: start.latest, afterReveal: start.latestReveal });
+  assert.deepEqual(feed.monsterRolls.map(roll => [roll.id, roll.character, roll.label, roll.private]),
+    [[`monster-${shown.id}`, 'Practice Footpad', 'Initiative', false], [`monster-${hidden.id}`, 'Practice Footpad', 'Dagger attack', false]], 'in the order they were revealed');
+  assert.deepEqual(db.getVttRolls({ key, after: start.latest, afterReveal: feed.latestReveal }).monsterRolls, []);
+  assert.deepEqual(db.getVttRolls({ key: db.getVttKey({ playerId: createPlayer() }), after: 0, afterReveal: 0 }).monsterRolls, [], "only the DM's own adventures");
+});

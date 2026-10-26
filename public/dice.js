@@ -32,6 +32,10 @@
   let critical = false;
   let privateRoll = false;
   let busy = false;
+  // The DM's monster rolls: shown to the party as they are rolled, or kept hidden
+  // (each can still be revealed). Remembered in this browser.
+  let monstersShown = false;
+  try { monstersShown = localStorage.getItem('grimbold-monsters-shown') === '1'; } catch (error) { /* hidden */ }
 
   // ─── The dice bar ──────────────────────────────────────────────────────────
   const result = el('div', { className: 'dice-result', 'aria-live': 'polite' }, [el('span', { className: 'muted small', text: 'Click a bonus, attack or damage to roll.' })]);
@@ -43,6 +47,18 @@
   }));
   const critButton = el('button', { type: 'button', className: 'dice-toggle', text: 'Crit', title: 'Next damage roll is a critical hit (double dice)', onclick: () => { critical = !critical; sync(); } });
   const privateButton = el('button', { type: 'button', className: 'dice-toggle', text: '🔒 GM', title: 'Only the GM sees these rolls in Owlbear Rodeo', onclick: () => { privateRoll = !privateRoll; sync(); } });
+  const monstersButton = el('button', {
+    type: 'button', className: 'dice-toggle dice-monsters', hidden: true,
+    onclick: () => {
+      monstersShown = !monstersShown;
+      try { localStorage.setItem('grimbold-monsters-shown', monstersShown ? '1' : '0'); } catch (error) { /* not remembered */ }
+      sync();
+    }
+  });
+  // Its own row under the toggles; the adventure table shows it for the adventure's DM while a fight is on.
+  const monstersRow = el('div', { className: 'dice-bar-row dice-monsters-row', hidden: true }, [monstersButton]);
+  monstersButton.hidden = false;
+  window.grimboldDiceMonsterToggle = visible => { monstersRow.hidden = !visible; };
   const formula = el('input', { type: 'text', placeholder: '2d6+3', maxlength: '60', 'aria-label': 'Dice formula', className: 'dice-formula' });
   const customForm = el('form', { className: 'dice-custom' }, [formula, el('button', { type: 'submit', className: 'btn btn-small', text: 'Roll' })]);
   customForm.addEventListener('submit', event => {
@@ -54,6 +70,7 @@
   const collapse = el('button', { type: 'button', className: 'dice-collapse', text: '–', title: 'Hide the dice bar', onclick: () => { bar.classList.toggle('is-collapsed'); collapse.textContent = bar.classList.contains('is-collapsed') ? '🎲' : '–'; } });
   const bar = el('aside', { className: 'dice-bar', 'aria-label': 'Dice' }, [
     el('div', { className: 'dice-bar-row' }, [el('strong', { text: '🎲 Dice' }), el('span', { className: 'dice-toggles' }, [...modeButtons, critButton, privateButton]), collapse]),
+    monstersRow,
     result,
     el('div', { className: 'dice-bar-row' }, [singleCharacter ? customForm : null, keyButton])
   ]);
@@ -68,6 +85,11 @@
     modeButtons.forEach(button => button.classList.toggle('is-on', button.dataset.mode === mode));
     critButton.classList.toggle('is-on', critical);
     privateButton.classList.toggle('is-on', privateRoll);
+    monstersButton.classList.toggle('is-on', monstersShown);
+    monstersButton.textContent = monstersShown ? '👁 Monsters: shown' : '🔒 Monsters: hidden';
+    monstersButton.title = monstersShown
+      ? 'Monster rolls are shown to the party (roll log and Owlbear) as you roll them'
+      : 'Monster rolls stay hidden; reveal any of them afterwards';
   }
   sync();
 
@@ -122,11 +144,27 @@
       const response = await fetch('/api/adventures/' + adventureId + '/combatants/' + combatantId + '/roll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ mode, critical }, request))
+        body: JSON.stringify(Object.assign({ mode, critical, reveal: monstersShown }, request))
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not roll.');
-      showResult(Object.assign({}, data.roll, { character: data.roll.combatant, private: true }));
+      showResult(Object.assign({}, data.roll, { character: data.roll.combatant, private: !data.roll.revealed }));
+      // Kept secret; the DM may show it to the party now (or later from the table's roll log).
+      const reveal = el('button', { type: 'button', className: 'btn btn-small btn-secondary dice-reveal', text: data.roll.revealed ? 'Shown to the party' : '👁 Show the party', disabled: data.roll.revealed });
+      reveal.addEventListener('click', async () => {
+        reveal.disabled = true;
+        try {
+          const response = await fetch('/api/adventures/' + adventureId + '/encounter-rolls/' + data.roll.id + '/reveal', { method: 'POST' });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(body.error || 'Could not reveal the roll.');
+          reveal.textContent = 'Shown to the party';
+        } catch (error) {
+          reveal.textContent = error.message;
+          reveal.disabled = false;
+        }
+      });
+      result.append(reveal);
+      document.dispatchEvent(new CustomEvent('grimbold-monster-roll', { detail: data.roll }));
       if (critical && /damage/i.test(data.roll.label)) { critical = false; sync(); }
     } catch (error) {
       result.replaceChildren(el('span', { className: 'sheet-message is-error', text: error.message }));

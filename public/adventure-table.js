@@ -941,15 +941,23 @@
 
   // The party's latest rolls (made on their sheets or here by the DM).
   function rollLog() {
-    const rolls = data.rolls || [];
+    // The party's rolls and the monsters' (all for the DM, revealed ones for the party), newest first.
+    const rolls = [...(data.rolls || []), ...(data.encounterRolls || [])]
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)) || (b.id || 0) - (a.id || 0))
+      .slice(0, 30);
     if (!rolls.length) return el('p', { className: 'muted small', text: 'No rolls yet. Rolls made on the party\'s character sheets show up here.' });
     return el('section', { className: 'sheet-card roll-log' }, [
       el('h4', { text: 'Latest rolls' }),
-      el('ol', {}, rolls.map(roll => el('li', { className: roll.natural === 20 ? 'nat20' : roll.natural === 1 ? 'nat1' : null }, [
+      el('ol', {}, rolls.map(roll => el('li', { className: [roll.natural === 20 ? 'nat20' : roll.natural === 1 ? 'nat1' : '', roll.kind === 'monster' ? 'is-monster' : ''].join(' ').trim() || null }, [
         el('span', { className: 'roll-log-total', text: roll.total === null ? '🔒' : String(roll.total) }),
-        el('strong', { text: roll.character }), ' — ' + roll.label,
+        el('strong', { text: (roll.kind === 'monster' ? '⚔ ' : '') + roll.character }), ' — ' + roll.label,
         roll.mode && roll.mode !== 'normal' ? el('span', { className: 'muted small', text: ' (' + roll.mode + ')' }) : null,
         roll.private ? el('span', { className: 'tag gold', text: 'GM only' }) : null,
+        roll.kind === 'monster' && !roll.revealed ? el('span', { className: 'tag gold', text: '🔒 hidden' }) : null,
+        roll.kind === 'monster' && !roll.revealed && secretsOpen()
+          ? button('Reveal', () => act('/encounter-rolls/' + roll.id + '/reveal', {}, roll.character + ': ' + roll.label + ' is shown to the party.'), 'link-button small', { title: 'Show this roll to the party' })
+          : null,
+        roll.kind === 'monster' && roll.revealed && secretsOpen() ? el('span', { className: 'muted small', text: ' (shown)' }) : null,
         el('span', { className: 'muted small', text: ' ' + (roll.text || '').replace(/~~(\d+)~~/g, '($1)') + ' · ' + String(roll.createdAt || '').slice(11, 16) })
       ])))
     ]);
@@ -957,6 +965,8 @@
 
   function render() {
     if (!data) return;
+    // The dice bar's "Monsters: hidden / shown": for the DM while a fight is on.
+    if (window.grimboldDiceMonsterToggle) window.grimboldDiceMonsterToggle(secretsOpen() && Boolean(runningEncounter()));
     const adventure = data.adventure;
     const active = adventure.status === 'active';
     const statusTag = active
@@ -1011,8 +1021,9 @@
     ].filter(Boolean));
   }
 
-  // A roll made here shows in the log straight away.
+  // A roll made here shows in the log straight away (a monster's too, for the DM).
   document.addEventListener('grimbold-roll', () => load());
+  document.addEventListener('grimbold-monster-roll', () => load());
   load();
   // Not while the DM is typing (e.g. a damage amount): a reload rebuilds the
   // cards, so it waits until they leave the field.

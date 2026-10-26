@@ -863,6 +863,9 @@ router.post('/adventures/:id/combatants/:combatantId/initiative', encounterRoute
 // { action: damage | heal | tempHp, amount }
 router.post('/adventures/:id/combatants/:combatantId/hp', encounterRoute(({ adventureId, user, body, combatantId }) =>
   db.changeCombatantHp({ adventureId, user, combatantId, action: body.action, amount: body.amount })));
+// The DM shows a monster's roll to the party.
+router.post('/adventures/:id/encounter-rolls/:rollId/reveal', (req, res) => adventureRoute(({ adventureId, user }) =>
+  db.revealEncounterRoll({ adventureId, user, rollId: req.params.rollId }))(req, res));
 // { roll, mode, critical }
 router.post('/adventures/:id/combatants/:combatantId/roll', encounterRoute(({ adventureId, user, body, combatantId }) =>
   db.rollForCombatant({ adventureId, user, combatantId, request: body })));
