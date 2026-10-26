@@ -40,7 +40,7 @@ const SECTIONS = ['traits', 'actions', 'bonusActions', 'reactions', 'legendaryAc
 const signed = n => (n >= 0 ? `+${n}` : `${n}`);
 const d20 = modifier => `1d20${modifier ? signed(modifier) : ''}`;
 // "13 (3d6 + 3) Piercing damage" in an entry's text.
-const DAMAGE = /(\d+) \((\d+d\d+(?:\s*[+-]\s*\d+)?)\) ([A-Z][a-z]+) damage/g;
+const DAMAGE = /(\d+) \((\d+d\d+(?:\s*[+-]\s*\d+)?)\) ([A-Za-z]+) damage/g;
 
 // Everything a creature can roll, by id: "initiative", "save:dex",
 // "check:dex", "skill:Perception", and per statblock entry
@@ -69,7 +69,7 @@ function creatureRollOptions(source) {
         const formula = match[2].replace(/\s+/g, '');
         if (seen.has(formula + match[3])) continue;
         seen.add(formula + match[3]);
-        add(`${section}:${index}:damage:${n}`, `${entry.name} damage (${match[3]})`, formula, 'damage');
+        add(`${section}:${index}:damage:${n}`, `${entry.name} damage (${match[3][0].toUpperCase()}${match[3].slice(1)})`, formula, 'damage');
         n += 1;
       }
     });

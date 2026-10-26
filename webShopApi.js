@@ -867,6 +867,28 @@ router.post('/adventures/:id/combatants/:combatantId/hp', encounterRoute(({ adve
 router.post('/adventures/:id/combatants/:combatantId/roll', encounterRoute(({ adventureId, user, body, combatantId }) =>
   db.rollForCombatant({ adventureId, user, combatantId, request: body })));
 
+// Monster imports (DMs): a 5etools file sent in batches by the Monsters tab.
+function monsterImportRoute(handler) {
+  return (req, res) => {
+    const user = getSessionApiUser(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      return res.json(handler({ user, body: req.body || {}, params: req.params }));
+    } catch (error) {
+      if (error instanceof TypeError) {
+        console.error('Monster import failed:', error);
+        return res.status(500).json({ error: 'Could not import the monsters.' });
+      }
+      return res.status(/Only a DM/.test(error.message) ? 403 : 400).json({ error: error.message });
+    }
+  };
+}
+// { label, fileName, meta } → { importId }; then { monsters } batches; then finish.
+router.post('/monster-imports', monsterImportRoute(({ user, body }) => db.startMonsterImport({ user, label: body.label, fileName: body.fileName, meta: body.meta })));
+router.post('/monster-imports/:id/monsters', monsterImportRoute(({ user, body, params }) => db.addImportedMonsters({ user, importId: params.id, monsters: body.monsters })));
+router.post('/monster-imports/:id/finish', monsterImportRoute(({ user, params }) => db.finishMonsterImport({ user, importId: params.id })));
+router.post('/monster-imports/:id/delete', monsterImportRoute(({ user, params }) => db.deleteMonsterImport({ user, importId: params.id })));
+
 // { npcId, text } — the DM speaks in the adventure's Discord thread.
 router.post('/adventures/:id/message', async (req, res) => {
   const user = getSessionApiUser(req);

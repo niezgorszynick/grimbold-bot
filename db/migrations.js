@@ -683,6 +683,35 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS reservations_active ON reservations (status, item_id);
       `);
     }
+  },
+  {
+    version: 24,
+    name: 'Monsters imported from 5etools files',
+    up(db) {
+      db.exec(`
+        -- status: uploading (batches arriving), ready. meta: the file's _meta (homebrew sources).
+        CREATE TABLE IF NOT EXISTS monster_imports (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          label TEXT NOT NULL,
+          file_name TEXT NOT NULL DEFAULT '',
+          meta TEXT,
+          uploaded_by INTEGER,
+          status TEXT NOT NULL DEFAULT 'uploading',
+          monster_count INTEGER NOT NULL DEFAULT 0,
+          skipped TEXT NOT NULL DEFAULT '[]',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        -- raw: the creature as 5etools has it (converted by rules/fiveTools.js).
+        CREATE TABLE IF NOT EXISTS imported_monsters (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          import_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT '',
+          raw TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS imported_monsters_import ON imported_monsters (import_id);
+      `);
+    }
   }
 ];
 

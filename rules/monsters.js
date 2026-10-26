@@ -7,6 +7,10 @@
 // Source footer. The export has a few spellings to cope with: "XP 1 100",
 // "(25 XP; PB +2)", "0 (PB +2)", "XP 10 000, or 11 500 in Lair", and summons
 // with "None" for CR and formulas for AC and HP.
+//
+// Statblocks imported from 5etools files (rules/fiveTools.js, stored by
+// db/monsterImports.js) join the catalog after monsters.md's; a name already
+// taken gets its book code: "Goblin (MPMM)".
 
 const { loadContent } = require('./content');
 const { SKILLS } = require('./util');
@@ -174,7 +178,10 @@ function parseMonster(entry) {
     lore,
     habitat: footer.habitat || '',
     treasure: footer.treasure || '',
-    source: footer.source || ''
+    source: footer.source || '',
+    // For the source filter: monsters.md is the Monster Manual (2024).
+    sourceCode: 'XMM',
+    sourceName: 'Monster Manual (2024)'
   };
   for (const [section, body] of Object.entries(entry.sections || {})) {
     const key = SECTION_KEYS[section];
@@ -188,17 +195,33 @@ function parseMonster(entry) {
 
 let cache = null;
 let cacheSource = null;
+// Imported statblocks (db/monsterImports.js sets them).
+let extraMonsters = [];
+let extraVersion = 0;
+let cacheExtra = -1;
 
-// { name: monster } for every statblock in monsters.md ({} without the file).
+function setImportedMonsters(list) {
+  extraMonsters = Array.isArray(list) ? list : [];
+  extraVersion += 1;
+}
+
+// { name: monster } for every statblock: monsters.md, then the imported ones.
 function loadMonsters() {
   const entries = loadContent('monsters');
-  if (cache && cacheSource === entries) return cache;
+  if (cache && cacheSource === entries && cacheExtra === extraVersion) return cache;
   cache = {};
   for (const entry of Object.values(entries)) {
     const monster = parseMonster(entry);
     if (monster) cache[monster.name] = monster;
   }
+  for (const imported of extraMonsters) {
+    let name = imported.name;
+    if (Object.hasOwn(cache, name)) name = `${imported.name} (${imported.sourceCode || 'imported'})`;
+    for (let n = 2; Object.hasOwn(cache, name); n += 1) name = `${imported.name} (${imported.sourceCode || 'imported'} ${n})`;
+    cache[name] = { ...imported, name, bookName: imported.name };
+  }
   cacheSource = entries;
+  cacheExtra = extraVersion;
   return cache;
 }
 
@@ -222,9 +245,11 @@ function listMonsters() {
       xp: monster.xp,
       armorClass: monster.armorClass,
       hitPoints: monster.hitPoints,
-      habitat: monster.habitat
+      habitat: monster.habitat,
+      sourceCode: monster.sourceCode || '',
+      sourceName: monster.sourceName || ''
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-module.exports = { CREATURE_TYPES, XP_BY_CR, parseMonster, parseChallenge, loadMonsters, getMonster, listMonsters };
+module.exports = { CREATURE_TYPES, XP_BY_CR, parseMonster, parseChallenge, loadMonsters, getMonster, listMonsters, setImportedMonsters };

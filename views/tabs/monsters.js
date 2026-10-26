@@ -1,7 +1,8 @@
 // views/tabs/monsters.js — "Monsters" tab (DMs only): the Monster Manual
-// statblocks from rules/content/monsters.md, filtered by name, creature type,
-// CR and habitat. Picking one shows its statblock above the list; a DM can
-// start a Notable NPC from it.
+// statblocks from rules/content/monsters.md and those imported from 5etools
+// files (db/monsterImports.js), filtered by name, book, creature type, CR and
+// habitat. Picking one shows its statblock above the list; a DM can start a
+// Notable NPC from it. The import card sends a file's creatures in batches.
 
 'use strict';
 
@@ -29,7 +30,7 @@ function monsterPanel(monster) {
 function monsterRow(monster) {
   const habitats = monster.habitat.split(',').map(part => part.trim().toLowerCase()).filter(Boolean);
   return `
-    <tr data-name="${escapeHtml(monster.name.toLowerCase())}" data-type="${escapeHtml(monster.type)}" data-cr="${monster.summon ? -1 : monster.cr}" data-habitats="|${escapeHtml(habitats.join('|'))}|">
+    <tr data-name="${escapeHtml(monster.name.toLowerCase())}" data-type="${escapeHtml(monster.type)}" data-cr="${monster.summon ? -1 : monster.cr}" data-habitats="|${escapeHtml(habitats.join('|'))}|" data-source="${escapeHtml(monster.sourceName)}">
       <td><a href="${monsterHref(monster.name)}" data-monster-link="${escapeHtml(monster.name)}">${escapeHtml(monster.name)}</a></td>
       <td data-sort="${monster.summon ? -1 : monster.cr}">${escapeHtml(monster.crText)}</td>
       <td data-sort="${monster.xp}">${monster.summon ? '—' : thousands(monster.xp)}</td>
@@ -38,16 +39,116 @@ function monsterRow(monster) {
       <td data-sort="${monster.armorClass ?? -1}">${monster.armorClass ?? '—'}</td>
       <td data-sort="${monster.hitPoints ?? -1}">${monster.hitPoints ?? '—'}</td>
       <td class="small">${escapeHtml(monster.habitat)}</td>
+      <td class="small" title="${escapeHtml(monster.sourceName)}">${escapeHtml(monster.sourceCode || monster.sourceName)}</td>
     </tr>`;
+}
+
+// Imported 5etools files, and the form to import one. The browser reads the
+// file and sends its creatures in batches under the panel's request limit.
+function renderImports(imports) {
+  return `
+    <section class="card monster-imports">
+      <h3>Import from 5etools</h3>
+      <p class="muted small">A 5etools JSON file: a book's bestiary or a homebrew collection (creatures in a <code>"monster"</code> list). Its creatures join this list, encounters and NPC statblocks. They are kept on this server only; book text never goes into Git.</p>
+      <div class="table-filter">
+        <input type="file" id="monster-import-file" accept=".json,application/json" aria-label="5etools JSON file">
+        <input type="text" id="monster-import-label" maxlength="100" placeholder="Name it, e.g. Monsters of the Multiverse" aria-label="Import name">
+        <button type="button" class="btn btn-small btn-green" id="monster-import-start">Import</button>
+      </div>
+      <p class="sheet-message" id="monster-import-status" role="status"></p>
+      ${imports.length ? `<table class="monster-import-list">
+        <thead><tr><th>Import</th><th>Creatures</th><th>Skipped</th><th>By</th><th></th></tr></thead>
+        <tbody>${imports.map(entry => `<tr>
+          <td><strong>${escapeHtml(entry.label)}</strong><div class="muted small">${escapeHtml(entry.fileName)}${entry.sources.length ? ` · ${escapeHtml(entry.sources.join(', '))}` : ''}</div></td>
+          <td>${entry.monsters}</td>
+          <td>${entry.skipped.length ? `<details><summary>${entry.skipped.length}</summary><ul class="small">${entry.skipped.slice(0, 50).map(skip => `<li>${escapeHtml(skip.name)}: ${escapeHtml(skip.reason)}</li>`).join('')}</ul></details>` : '0'}</td>
+          <td class="small">${escapeHtml(entry.uploadedBy || '—')}<div class="muted">${escapeHtml(String(entry.createdAt || '').slice(0, 10))}</div></td>
+          <td><button type="button" class="btn btn-small btn-red monster-import-remove" data-id="${entry.id}" data-label="${escapeHtml(entry.label)}">Remove</button></td>
+        </tr>`).join('')}</tbody>
+      </table>` : ''}
+    </section>
+    <script>
+      (() => {
+        const file = document.getElementById('monster-import-file');
+        const label = document.getElementById('monster-import-label');
+        const start = document.getElementById('monster-import-start');
+        const status = document.getElementById('monster-import-status');
+        const say = (text, isError) => { status.textContent = text; status.classList.toggle('is-error', Boolean(isError)); };
+        const post = async (url, body) => {
+          const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || 'The panel refused it (error ' + response.status + ').');
+          return result;
+        };
+        file.addEventListener('change', () => {
+          if (file.files[0] && !label.value) label.value = file.files[0].name.replace(/\\.json$/i, '');
+        });
+        start.addEventListener('click', async () => {
+          const chosen = file.files[0];
+          if (!chosen) { say('Choose a 5etools JSON file first.', true); return; }
+          let data;
+          try {
+            data = JSON.parse(await chosen.text());
+          } catch (error) {
+            say('That is not a JSON file: ' + error.message, true);
+            return;
+          }
+          const monsters = Array.isArray(data.monster) ? data.monster : [];
+          if (!monsters.length) { say('No creatures in that file: 5etools keeps them in a "monster" list.', true); return; }
+          start.disabled = true;
+          try {
+            const { importId } = await post('/api/monster-imports', { label: label.value, fileName: chosen.name, meta: data._meta || null });
+            // Batches well under the panel's 100 KB request limit.
+            let batch = [];
+            let size = 0;
+            let sent = 0;
+            const flush = async () => {
+              if (!batch.length) return;
+              await post('/api/monster-imports/' + importId + '/monsters', { monsters: batch });
+              sent += batch.length;
+              say('Sending creatures… ' + sent + ' / ' + monsters.length);
+              batch = [];
+              size = 0;
+            };
+            for (const monster of monsters) {
+              const length = JSON.stringify(monster).length;
+              if (length > 90000) continue;
+              if (size + length > 80000 || batch.length >= 400) await flush();
+              batch.push(monster);
+              size += length;
+            }
+            await flush();
+            say('Reading the statblocks…');
+            const report = await post('/api/monster-imports/' + importId + '/finish', {});
+            say('Imported ' + report.imported + ' creatures' + (report.skipped.length ? ' (' + report.skipped.length + ' skipped; see the list)' : '') + '. Reloading…');
+            setTimeout(() => window.location.reload(), 1200);
+          } catch (error) {
+            say(error.message, true);
+            start.disabled = false;
+          }
+        });
+        document.querySelectorAll('.monster-import-remove').forEach(button => button.addEventListener('click', async () => {
+          if (!window.confirm('Remove "' + button.dataset.label + '" and its creatures? Encounters that use them keep their HP but lose the statblock.')) return;
+          try {
+            await post('/api/monster-imports/' + button.dataset.id + '/delete', {});
+            window.location.reload();
+          } catch (error) {
+            say(error.message, true);
+          }
+        }));
+      })();
+    </script>`;
 }
 
 module.exports = function renderMonstersTab(ctx) {
   const { req, isAdmin } = ctx;
   if (!isAdmin) return '<section class="card"><p class="muted">Monsters are for DMs.</p></section>';
   const monsters = rules.listMonsters();
+  const importCard = renderImports(db.listMonsterImports());
   if (!monsters.length) {
-    return `<section class="card"><h3>Monsters</h3><p class="muted">No monster statblocks on this server yet. Copy <code>rules/content/monsters.md</code> here (it stays out of Git, like <code>beasts.md</code>) and restart the panel.</p></section>`;
+    return `<section class="card"><h3>Monsters</h3><p class="muted">No monster statblocks on this server yet. Copy <code>rules/content/monsters.md</code> here (it stays out of Git, like <code>beasts.md</code>) and restart the panel, or import a 5etools file below.</p></section>${importCard}`;
   }
+  const sources = [...new Set(monsters.map(monster => monster.sourceName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const chosen = req.query.monster ? rules.getMonster(req.query.monster) : null;
   const types = rules.CREATURE_TYPES.filter(type => monsters.some(monster => monster.type === type));
   const crs = [...new Map(monsters.filter(monster => !monster.summon).map(monster => [monster.cr, monster.crText])).entries()].sort((a, b) => a[0] - b[0]);
@@ -56,9 +157,10 @@ module.exports = function renderMonstersTab(ctx) {
   return `
     <section class="card">
       <h3>Monsters</h3>
-      <p class="muted small">${monsters.length} statblocks from the Monster Manual. Only DMs see this tab. Pick a monster to read its statblock, or start a Notable NPC from it.</p>
+      <p class="muted small">${monsters.length} statblocks from ${sources.length === 1 ? escapeHtml(sources[0]) : `${sources.length} books`}. Only DMs see this tab. Pick a monster to read its statblock, or start a Notable NPC from it.</p>
       <div class="monster-filters">
         <input type="search" id="monster-search" placeholder="Search by name…" aria-label="Search monsters by name">
+        ${sources.length > 1 ? `<select id="monster-source" aria-label="Book"><option value="">Any book</option>${sources.map(source => `<option>${escapeHtml(source)}</option>`).join('')}</select>` : ''}
         <select id="monster-type" aria-label="Creature type"><option value="">Any type</option>${types.map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select>
         <label class="small">CR <select id="monster-cr-min" aria-label="Lowest CR"><option value="">any</option>${crOptions(null)}</select></label>
         <label class="small">to <select id="monster-cr-max" aria-label="Highest CR"><option value="">any</option>${crOptions(null)}</select></label>
@@ -73,7 +175,7 @@ module.exports = function renderMonstersTab(ctx) {
       <table class="monster-table" id="monster-table">
         <thead><tr>
           <th class="sortable">Name</th><th class="sortable">CR</th><th class="sortable">XP</th><th class="sortable">Type</th>
-          <th class="sortable">Size</th><th class="sortable">AC</th><th class="sortable">HP</th><th class="sortable">Habitat</th>
+          <th class="sortable">Size</th><th class="sortable">AC</th><th class="sortable">HP</th><th class="sortable">Habitat</th><th class="sortable">Book</th>
         </tr></thead>
         <tbody>${monsters.map(monsterRow).join('')}</tbody>
       </table>
@@ -82,8 +184,9 @@ module.exports = function renderMonstersTab(ctx) {
       (() => {
         const table = document.getElementById('monster-table');
         const view = document.getElementById('monster-view');
-        const controls = ['monster-search', 'monster-type', 'monster-cr-min', 'monster-cr-max', 'monster-habitat', 'monster-summons'].map(id => document.getElementById(id));
+        const controls = ['monster-search', 'monster-type', 'monster-cr-min', 'monster-cr-max', 'monster-habitat', 'monster-summons', 'monster-source'].map(id => document.getElementById(id)).filter(Boolean);
         const [search, type, crMin, crMax, habitat, summons] = controls;
+        const source = document.getElementById('monster-source');
         const count = document.getElementById('monster-count');
         const KEY = 'grimbold-monster-filters';
         try {
@@ -100,7 +203,8 @@ module.exports = function renderMonstersTab(ctx) {
             const visible = (!query || row.dataset.name.includes(query))
               && (!type.value || row.dataset.type === type.value)
               && (cr < 0 ? summons.checked && crMin.value === '' && crMax.value === '' : cr >= low && cr <= high)
-              && (!habitat.value || row.dataset.habitats.includes('|' + habitat.value + '|'));
+              && (!habitat.value || row.dataset.habitats.includes('|' + habitat.value + '|'))
+              && (!source || !source.value || row.dataset.source === source.value);
             row.hidden = !visible;
             if (visible) shown += 1;
           });
@@ -137,7 +241,8 @@ module.exports = function renderMonstersTab(ctx) {
           history.replaceState(null, '', '/admin?tab=monsters');
         });
       })();
-    </script>`;
+    </script>
+    ${importCard}`;
 };
 
 module.exports.monsterPanel = monsterPanel;
