@@ -115,6 +115,22 @@ router.post('/characters/:id/gift', async (req, res) => {
   }
 });
 
+// { confirmName } — a player deletes their own character (a DM any).
+router.post('/characters/:id/delete', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.removeCharacter({ characterId: req.params.id, user, confirmName: (req.body || {}).confirmName }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Character deletion failed:', error);
+      return res.status(500).json({ error: 'Could not delete the character.' });
+    }
+    const status = error.message === 'Forbidden.' ? 403 : error.message === 'Character not found.' ? 404 : 400;
+    return res.status(status).json({ error: error.message });
+  }
+});
+
 router.get('/my-characters', (req, res) => {
   const player = getSessionPlayer(req);
   if (!player) return res.status(401).json({ error: 'Unauthorized' });

@@ -827,7 +827,39 @@ updateCharacterWithAdventures: ({
 
     return run();
   },
-deleteCharacter: (id) => {
-    return db.prepare('DELETE FROM characters WHERE id = ?').run(id);
-  }
+deleteCharacter: (id) => removeCharacter({ characterId: id, user: { id: 0, role: 'admin' } }),
+removeCharacter
 };
+
+// Deletes a character: its player (who types its name to confirm) or a DM.
+// Not while gold or an item is held in an open auction; a player also not
+// while the character is in a running adventure's party (a DM deleting takes
+// them out of it). The database does not cascade, so what hangs on the
+// character goes too; finished adventures, sales and gifts keep their records.
+function removeCharacter({ characterId, user, confirmName }) {
+  return db.transaction(() => {
+    const character = db.prepare('SELECT id, name, player_id FROM characters WHERE id = ?').get(Number(characterId));
+    if (!character) throw new Error('Character not found.');
+    const isAdmin = Boolean(user && user.role === 'admin');
+    if (!isAdmin && character.player_id !== Number(user && user.id)) throw new Error('Forbidden.');
+    if (!isAdmin && String(confirmName || '').trim().toLowerCase() !== character.name.trim().toLowerCase()) {
+      throw new Error(`Type "${character.name}" to confirm.`);
+    }
+    const auction = db.prepare(`
+      SELECT item_name FROM auctions WHERE status = 'open' AND (seller_character_id = ? OR current_bidder_character_id = ?) LIMIT 1
+    `).get(character.id, character.id);
+    if (auction) throw new Error(`${character.name} has gold or an item held in the auction for ${auction.item_name}; wait until it ends (or withdraw it).`);
+    const running = db.prepare(`
+      SELECT a.title FROM adventure_party ap JOIN adventures a ON a.id = ap.adventure_id
+      WHERE ap.character_id = ? AND a.status = 'active' LIMIT 1
+    `).get(character.id);
+    if (running && !isAdmin) throw new Error(`${character.name} is in the party of "${running.title}", which is still running; ask its DM to take them out first.`);
+
+    db.prepare(`DELETE FROM encounter_combatants WHERE character_id = ? AND encounter_id IN
+      (SELECT e.id FROM encounters e JOIN adventures a ON a.id = e.adventure_id WHERE a.status = 'active')`).run(character.id);
+    db.prepare(`DELETE FROM adventure_party WHERE character_id = ? AND adventure_id IN
+      (SELECT id FROM adventures WHERE status = 'active')`).run(character.id);
+    db.prepare('DELETE FROM character_classes WHERE character_id = ?').run(character.id);
+    return { deleted: db.prepare('DELETE FROM characters WHERE id = ?').run(character.id).changes > 0, name: character.name };
+  })();
+}

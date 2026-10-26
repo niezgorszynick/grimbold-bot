@@ -266,6 +266,38 @@ module.exports = function renderCharacterSheetTab(ctx) {
           <script src="/admin/assets/character-spells.js" defer></script>
           <script src="/admin/assets/dice.js" defer></script>
         </section>
+        <section class="card sheet-delete">
+          <div class="sheet-section-heading">
+            <h4>Delete Character</h4>
+            <button id="delete-character" class="btn btn-red btn-small" type="button" data-id="${Number(characterToEdit.id)}" data-name="${escapeHtml(characterToEdit.name)}">Delete Character…</button>
+          </div>
+          <p class="muted small">Removes ${escapeHtml(characterToEdit.name)} for good: the sheet, purse, items and magic items. This can't be undone. Not possible while they are in a running adventure's party or have gold or an item in an open auction. Finished adventures, sales and gifts keep their records.</p>
+          <p class="sheet-message is-error" id="delete-character-message" role="status"></p>
+          <script>
+            (() => {
+              const button = document.getElementById('delete-character');
+              const status = document.getElementById('delete-character-message');
+              button.addEventListener('click', async () => {
+                const name = button.dataset.name;
+                const typed = window.prompt('This deletes ' + name + ' for good, with their sheet, purse and items. It cannot be undone.\\n\\nType the name to confirm: ' + name);
+                if (typed === null) return;
+                if (typed.trim().toLowerCase() !== name.trim().toLowerCase()) { status.textContent = 'The name did not match, so nothing was deleted.'; return; }
+                button.disabled = true;
+                try {
+                  const response = await fetch('/api/characters/' + button.dataset.id + '/delete', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmName: typed })
+                  });
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || 'Could not delete the character.');
+                  window.location.href = '/admin?tab=character-sheet&status=char_deleted';
+                } catch (error) {
+                  status.textContent = error.message;
+                  button.disabled = false;
+                }
+              });
+            })();
+          </script>
+        </section>
         <section class="card sheet-reset">
           <div class="sheet-section-heading">
             <h4>Reset Character</h4>
