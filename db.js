@@ -25,6 +25,7 @@ module.exports = {
   ...require('./db/dice'),
   ...require('./db/gold'),
   ...require('./db/npcs'),
+  ...require('./db/gifts'),
   ...require('./db/npcFiles'),
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),

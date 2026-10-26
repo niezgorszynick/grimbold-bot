@@ -53,6 +53,19 @@
   // Custom items whose weapon stats are being added.
   const editingWeapons = new Set();
   const openResults = new Set();
+  // The item whose gift form is open (its index|name).
+  let giving = null;
+
+  function afterGift(result) {
+    giving = null;
+    if (window.refreshCharacterMagicItems) window.refreshCharacterMagicItems();
+    if (window.refreshCharacterCombat) window.refreshCharacterCombat();
+    load().then(() => { message = result.message; isError = false; render(); });
+  }
+  function giftButton(key, label) {
+    if (!window.grimboldGiftForm) return null;
+    return button('🎁', () => { giving = giving === key ? null : key; render(); }, 'btn btn-small btn-secondary gift-button', { title: 'Give ' + label + ' to another character', 'aria-label': 'Give ' + label + ' as a gift' });
+  }
 
   async function request(method, body) {
     const response = await fetch('/api/characters/' + characterId + '/inventory', {
@@ -143,8 +156,12 @@
           title: item.bonuses.map(bonus => bonus.text).join('; ') + (item.bonusesActive ? '' : ' (not in use)'),
           text: item.bonuses[0].text + (item.bonuses.length > 1 ? ' +' + (item.bonuses.length - 1) : '')
         }) : null,
-        el('span', { className: 'inventory-controls' }, [wear, quantity, remove])
+        el('span', { className: 'inventory-controls' }, [wear, quantity, giftButton(key, item.nickname || item.name), remove])
       ]),
+      giving === key ? window.grimboldGiftForm({
+        characterId, kind: 'item', index: item.index, name: item.name, itemName: item.nickname || item.name, max: item.quantity,
+        onDone: afterGift, onCancel: () => { giving = null; render(); }
+      }) : null,
       open.has(key)
         ? el('div', { className: 'spell-details' }, [stats, item.description
           ? renderText(item.description)

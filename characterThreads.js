@@ -1,5 +1,5 @@
 // characterThreads.js — Grimbold's notes in each character's thread in the
-// character channel (🧝┆soh-postaci): purchases and purse changes.
+// character channel (🧝┆soh-postaci): purchases, purse changes and gifts.
 //
 // A character's thread is the one stored on the character (an admin can set
 // it on the Players tab). Otherwise Grimbold looks for a thread whose name has
@@ -110,18 +110,19 @@ async function postToCharacterThread(characterId, message) {
 
 function purchaseMessage(result, buyerTag) {
   const quantity = result.quantity > 1 ? ` ×${result.quantity}` : '';
+  const giftFor = result.gift ? ` as a gift for **${result.gift.to.name}**` : '';
   const each = result.quantity > 1 ? ` (${formatCp(result.finalUnitPriceCp)} each)` : '';
   const roll = result.discountPercent < 0
     ? ` — ${Math.abs(result.discountPercent)}% off for the weekly roll`
     : result.discountPercent > 0 ? ` — ${result.discountPercent}% surcharge for the weekly roll` : '';
   return {
-    text: `🪙 *Grimbold notes a purchase for ${result.character.name}:* **${result.item.name}**${quantity} for **${formatCp(result.totalCostCp)}**${each}${roll}. Purse left: **${formatCp(result.character.gold_cp)}**.`,
+    text: `🪙 *Grimbold notes a purchase for ${result.character.name}:* **${result.item.name}**${quantity}${giftFor} for **${formatCp(result.totalCostCp)}**${each}${roll}. Purse left: **${formatCp(result.character.gold_cp)}**.`,
     embeds: [{
       title: '🪙 Grimbold notes a purchase',
       color: 0xd4af37,
       description: `*Grimbold licks his thumb and turns the ledger to ${result.character.name}'s page.*`,
       fields: [
-        { name: 'Item', value: `**${result.item.name}**${quantity}`, inline: true },
+        { name: 'Item', value: `**${result.item.name}**${quantity}${result.gift ? ` 🎁 for ${result.gift.to.name}` : ''}`, inline: true },
         { name: 'Cost', value: `**${formatCp(result.totalCostCp)}**${each}${roll}`, inline: true },
         { name: 'Purse left', value: `**${formatCp(result.character.gold_cp)}**`, inline: true }
       ],
@@ -155,6 +156,50 @@ function goldChangeMessage(change) {
   };
 }
 
+// A gift, as Grimbold writes it in the giver's thread and in the recipient's.
+function giftMessages(gift) {
+  const what = `**${gift.item}**${gift.quantity > 1 ? ` ×${gift.quantity}` : ''}`;
+  const bought = gift.kind === 'shop' ? ` (bought at the counter for ${formatCp(gift.costCp)})` : '';
+  const note = gift.note ? ` With a note: “${gift.note}”` : '';
+  const embed = (title, description) => ({
+    title,
+    color: 0xe91e63,
+    description,
+    fields: [
+      { name: 'Gift', value: `${what}${bought}`, inline: false },
+      { name: 'From', value: gift.from.name, inline: true },
+      { name: 'To', value: gift.to.name, inline: true },
+      ...(gift.note ? [{ name: 'Note', value: gift.note.slice(0, 1000), inline: false }] : [])
+    ],
+    footer: { text: gift.givenBy ? `Given by ${gift.givenBy}` : "Grimbold's Emporium" },
+    timestamp: new Date().toISOString()
+  });
+  return {
+    giver: {
+      text: `🎁 *Grimbold notes a gift from ${gift.from.name}:* ${what} for **${gift.to.name}**${bought}.${note}`,
+      embeds: [embed('🎁 A gift given', `*Grimbold wraps the parcel in brown paper and makes a careful note on ${gift.from.name}'s page.*`)]
+    },
+    recipient: {
+      text: `🎁 *Grimbold hands ${gift.to.name} a parcel from ${gift.from.name}:* ${what}${bought}.${note}`,
+      embeds: [embed('🎁 A gift arrives', `*Grimbold slides a wrapped parcel across the counter to ${gift.to.name}. "From ${gift.from.name}," he says.*`)]
+    }
+  };
+}
+
+// Grimbold's note in both threads (a shop gift's buyer already has the receipt).
+function announceGift(gift) {
+  if (!gift) return Promise.resolve({ ok: false, reason: 'No gift.' });
+  const messages = giftMessages(gift);
+  const posts = [postToCharacterThread(gift.to.id, messages.recipient)];
+  if (gift.kind !== 'shop') posts.unshift(postToCharacterThread(gift.from.id, messages.giver));
+  return Promise.all(posts)
+    .then(results => {
+      const failed = results.find(result => !result.ok);
+      return failed || { ok: true };
+    })
+    .catch(error => ({ ok: false, reason: error.message }));
+}
+
 // Never throws, and a slow Discord never holds up a purchase: callers may
 // wait for the result (to show it) or ignore it.
 function announcePurchase(result, { buyerTag } = {}) {
@@ -184,6 +229,8 @@ module.exports = {
   postToCharacterThread,
   announcePurchase,
   announceGoldChange,
+  announceGift,
+  giftMessages,
   withinTime,
   purchaseMessage,
   goldChangeMessage

@@ -254,6 +254,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <h4>Equipment &amp; Items</h4>
             <div id="cs_purse" class="purse" data-character-id="${Number(characterToEdit.id)}"></div>
             <script src="/admin/assets/character-purse.js" defer></script>
+            <script src="/admin/assets/gift-form.js" defer></script>
             <div id="cs_inventory" class="inventory" data-character-id="${Number(characterToEdit.id)}">Loading items...</div>
             <script src="/admin/assets/character-inventory.js" defer></script>
             <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>

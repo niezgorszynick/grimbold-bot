@@ -164,6 +164,11 @@ module.exports = function renderItemsTab(ctx) {
         <select id="shopPurchaseCharacter" style="width: 100%; margin: 8px 0 12px;">
           <option value="">Loading characters...</option>
         </select>
+        <label for="shopPurchaseGift">🎁 A gift for… <span class="muted small">(optional: your character pays, theirs gets it)</span></label>
+        <select id="shopPurchaseGift" style="width: 100%; margin: 8px 0 6px;">
+          <option value="">No one: it's for my character</option>
+        </select>
+        <input id="shopPurchaseGiftNote" type="text" maxlength="300" placeholder="A note with the gift (optional)" style="width: 100%; margin: 0 0 12px;" hidden>
         <label for="shopPurchaseQuantity">Quantity</label>
         <input id="shopPurchaseQuantity" type="number" min="1" step="1" value="1" style="width: 100%; margin: 8px 0 12px;">
         <p id="shopPurchaseFeedback" role="status" aria-live="polite"></p>
@@ -244,7 +249,40 @@ module.exports = function renderItemsTab(ctx) {
       const shopPurchaseCharacter = document.getElementById('shopPurchaseCharacter');
       const shopPurchaseFeedback = document.getElementById('shopPurchaseFeedback');
       const shopPurchaseConfirm = document.getElementById('shopPurchaseConfirm');
+      const shopPurchaseGift = document.getElementById('shopPurchaseGift');
+      const shopPurchaseGiftNote = document.getElementById('shopPurchaseGiftNote');
       let selectedShopItemName = '';
+      let giftRecipients = null;
+
+      // Every living character, grouped by player, for "a gift for".
+      async function fillGiftRecipients() {
+        try {
+          if (!giftRecipients) {
+            const response = await fetch('/api/gift-recipients');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load the characters.');
+            giftRecipients = data.recipients;
+          }
+          shopPurchaseGift.replaceChildren(new Option("No one: it's for my character", ''));
+          const byPlayer = new Map();
+          giftRecipients.forEach(entry => {
+            if (!byPlayer.has(entry.player)) byPlayer.set(entry.player, []);
+            byPlayer.get(entry.player).push(entry);
+          });
+          byPlayer.forEach((characters, player) => {
+            const group = document.createElement('optgroup');
+            group.label = player;
+            characters.forEach(entry => group.append(new Option(entry.name + ' (Lvl ' + entry.level + ')', entry.id)));
+            shopPurchaseGift.append(group);
+          });
+        } catch (error) {
+          shopPurchaseGift.replaceChildren(new Option('Gifts unavailable right now', ''));
+        }
+      }
+      shopPurchaseGift.addEventListener('change', () => {
+        shopPurchaseGiftNote.hidden = !shopPurchaseGift.value;
+        shopPurchaseConfirm.textContent = shopPurchaseGift.value ? 'Buy as a gift' : 'Confirm Purchase';
+      });
 
       async function openShopPurchaseModal(itemName, price, finalPrice, discount, stock) {
         selectedShopItemName = itemName;
@@ -257,6 +295,11 @@ module.exports = function renderItemsTab(ctx) {
         document.getElementById('shopPurchaseQuantity').value = '1';
         document.getElementById('shopPurchaseQuantity').max = stock;
         shopPurchaseFeedback.textContent = '';
+        shopPurchaseGift.value = '';
+        shopPurchaseGiftNote.value = '';
+        shopPurchaseGiftNote.hidden = true;
+        shopPurchaseConfirm.textContent = 'Confirm Purchase';
+        fillGiftRecipients();
         shopPurchaseModal.hidden = false;
         shopPurchaseCharacter.replaceChildren(new Option('Loading characters...', ''));
         shopPurchaseConfirm.disabled = true;
@@ -318,6 +361,11 @@ module.exports = function renderItemsTab(ctx) {
           shopPurchaseFeedback.textContent = 'Choose a character and enter a valid quantity.';
           return;
         }
+        const giftToCharacterId = shopPurchaseGift.value ? Number(shopPurchaseGift.value) : null;
+        if (giftToCharacterId && giftToCharacterId === Number(characterId)) {
+          shopPurchaseFeedback.textContent = 'That is the same character: choose "No one" to buy it for yourself.';
+          return;
+        }
 
         shopPurchaseConfirm.disabled = true;
         shopPurchaseFeedback.textContent = 'Completing your purchase...';
@@ -325,12 +373,12 @@ module.exports = function renderItemsTab(ctx) {
           const response = await fetch('/api/shop/buy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemName: selectedShopItemName, characterId, quantity })
+            body: JSON.stringify({ itemName: selectedShopItemName, characterId, quantity, giftToCharacterId, giftNote: shopPurchaseGiftNote.value })
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Purchase failed.');
           shopPurchaseFeedback.textContent =
-            'Purchase complete! ' + data.transaction.totalCostFormatted +
+            (data.transaction.gift ? '🎁 A gift for ' + data.transaction.gift.to.name + '! ' : 'Purchase complete! ') + data.transaction.totalCostFormatted +
             ' paid. Remaining purse: ' + data.transaction.remainingPurseFormatted +
             '. Refreshing inventory...';
           window.setTimeout(() => window.location.reload(), 900);

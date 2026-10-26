@@ -27,7 +27,8 @@ async function sendGrimboldShopEmbed({
   buyerTag,
   discountPercent,
   finalUnitPriceCp,
-  totalCostCp
+  totalCostCp,
+  giftTo = null
 }) {
   const token = process.env.DISCORD_TOKEN;
   if (!token || !channelId) {
@@ -49,6 +50,7 @@ async function sendGrimboldShopEmbed({
         value: `🛡️ **${character.name}** (Lvl ${character.level} ${character.class || 'Adventurer'})`,
         inline: false
       },
+      ...(giftTo ? [{ name: '🎁 A gift for', value: `**${giftTo}**`, inline: false }] : []),
       { name: 'Purchased By', value: buyerTag, inline: true },
       {
         name: 'Discount',
@@ -86,6 +88,32 @@ async function sendGrimboldShopEmbed({
     console.error('[Grimbold] Failed to send Discord purchase message:', error);
   }
 }
+
+// Gifts: who can receive one (every living character), and giving an item
+// from a character's sheet: { toCharacterId, kind: 'item' | 'magic', index +
+// name or uid, quantity, note }.
+router.get('/gift-recipients', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  return res.json({ recipients: db.listGiftRecipients() });
+});
+
+router.post('/characters/:id/gift', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const result = db.giveItem({ characterId: req.params.id, user, request: req.body || {} });
+    const threads = require('./characterThreads');
+    const note = await threads.withinTime(threads.announceGift(result.gift));
+    return res.json({ ...result, note });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Gift failed:', error);
+      return res.status(500).json({ error: 'Could not give the gift.' });
+    }
+    const status = error.message === 'Forbidden.' ? 403 : error.message === 'Character not found.' ? 404 : 400;
+    return res.status(status).json({ error: error.message });
+  }
+});
 
 router.get('/my-characters', (req, res) => {
   const player = getSessionPlayer(req);
@@ -1256,7 +1284,7 @@ router.post('/shop/buy', async (req, res) => {
   const player = getSessionPlayer(req);
   if (!player) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { itemName, characterId, quantity } = req.body || {};
+  const { itemName, characterId, quantity, giftToCharacterId, giftNote } = req.body || {};
   if (typeof itemName !== 'string' || !itemName.trim() ||
       characterId === undefined || characterId === null || characterId === '') {
     return res.status(400).json({ error: 'Missing item name or character.' });
@@ -1278,7 +1306,9 @@ router.post('/shop/buy', async (req, res) => {
       buyerTag: player.discord_tag,
       buyerDiscordId: player.discord_id,
       characterId: parsedCharacterId,
-      playerId: player.id
+      playerId: player.id,
+      giftToCharacterId: giftToCharacterId || null,
+      giftNote
     });
 
     const channelId = process.env.ANNOUNCEMENT_CHANNEL ||
@@ -1288,6 +1318,8 @@ router.post('/shop/buy', async (req, res) => {
       process.env.CHANNEL_ID;
     // Grimbold's receipt in the character's own thread.
     require('./characterThreads').announcePurchase(result, { buyerTag: player.discord_tag });
+    // A gift: Grimbold hands it over in the recipient's thread too.
+    if (result.gift) require('./characterThreads').announceGift(result.gift);
     void sendGrimboldShopEmbed({
       channelId,
       item: result.item,
@@ -1296,7 +1328,8 @@ router.post('/shop/buy', async (req, res) => {
       buyerTag: player.discord_tag,
       discountPercent: result.discountPercent,
       finalUnitPriceCp: result.finalUnitPriceCp,
-      totalCostCp: result.totalCostCp
+      totalCostCp: result.totalCostCp,
+      giftTo: result.gift ? result.gift.to.name : null
     });
 
     return res.json({

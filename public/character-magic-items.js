@@ -23,6 +23,14 @@
     return node;
   }
   const button = (text, onclick, className = 'btn btn-small', title) => el('button', { type: 'button', className, text, onclick, title });
+  // The magic item whose gift form is open (its uid).
+  let giving = null;
+  function afterGift(result) {
+    giving = null;
+    if (window.refreshCharacterInventory) window.refreshCharacterInventory();
+    if (window.refreshCharacterCombat) window.refreshCharacterCombat();
+    load().then(() => { message = result.message; isError = false; render(); });
+  }
 
   // Minimal Markdown for item text: paragraphs, **bold**, *italic*.
   function renderText(text) {
@@ -162,6 +170,9 @@
       use.disabled = !canUse;
       controls.append(el('span', { className: 'muted small', text: 'Charges ' + item.charges.left + '/' + item.charges.max }), use);
     }
+    if (window.grimboldGiftForm) {
+      controls.append(button('🎁', () => { giving = giving === item.uid ? null : item.uid; render(); }, 'btn btn-small btn-secondary gift-button', 'Give ' + item.name + ' to another character'));
+    }
     if (view.canGrant) {
       if (item.charges && item.charges.left < item.charges.max) {
         controls.append(button('Restore charges', () => act({ action: 'restoreCharges', uid: item.uid })));
@@ -193,6 +204,10 @@
         ...badges,
         controls
       ]),
+      giving === item.uid ? window.grimboldGiftForm({
+        characterId, kind: 'magic', uid: item.uid, itemName: item.name, max: item.quantity || 1,
+        onDone: afterGift, onCancel: () => { giving = null; render(); }
+      }) : null,
       details
     ]);
   }

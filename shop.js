@@ -1,7 +1,8 @@
 // shop.js — Buying from Grimbold's counter. Used by both the web shop and the
 // Discord /buy command, so the price (with the buyer's weekly roll), stock,
 // the character's purse, their inventory and the sales ledger always change
-// together in one transaction.
+// together in one transaction. Bought as a gift (giftToCharacterId), the
+// buyer's character pays and the item goes to the other character's sheet.
 
 const db = require('./db');
 const { getUserRoll, getDiscount, applyModifier } = require('./rollTracker');
@@ -38,7 +39,7 @@ function findPlayerByDiscordId(discordId) {
 
 // Adds the item to the sheet: magic items to the Magic Items list, anything
 // else to the equipment list.
-function addToSheet(sheetJson, itemName, quantity) {
+function addToSheet(sheetJson, itemName, quantity, source = 'shop') {
   let sheet = {};
   try {
     sheet = JSON.parse(sheetJson || '{}') || {};
@@ -47,17 +48,17 @@ function addToSheet(sheetJson, itemName, quantity) {
   }
   const magic = rules.matchMagicItem(itemName);
   if (magic && (magic.variant || !magic.item.variants.length)) {
-    const magicItems = rules.grantMagicItem(sheet, { name: itemName, quantity, source: 'shop' });
+    const magicItems = rules.grantMagicItem(sheet, { name: itemName, quantity, source });
     return JSON.stringify({ ...sheet, magicItems });
   }
   const inventory = Array.isArray(sheet.inventory) ? sheet.inventory.map(row => ({ ...row })) : [];
   const existing = inventory.find(row => row.name === itemName && !row.description && !row.nickname);
   if (existing) existing.quantity += quantity;
-  else inventory.push({ name: itemName, quantity, source: 'shop' });
+  else inventory.push({ name: itemName, quantity, source });
   return JSON.stringify({ ...sheet, inventory });
 }
 
-function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag, buyerDiscordId }) {
+function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag, buyerDiscordId, giftToCharacterId = null, giftNote = '' }) {
   const qty = Number(quantity);
   if (!Number.isSafeInteger(qty) || qty <= 0) throw new PurchaseError('Invalid quantity.');
 
@@ -72,6 +73,16 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
     }
     if (character.status !== 'alive') {
       throw new PurchaseError(`${character.name} is no longer among the living and cannot shop.`);
+    }
+    let recipient = null;
+    let note = '';
+    if (giftToCharacterId !== null && giftToCharacterId !== undefined && giftToCharacterId !== '') {
+      try {
+        recipient = db.loadGiftRecipient(giftToCharacterId, character.id);
+        note = db.cleanGiftNote(giftNote);
+      } catch (error) {
+        throw new PurchaseError(error.message);
+      }
     }
 
     const item = db.prepare(`
@@ -91,20 +102,28 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
       );
     }
 
-    db.prepare('UPDATE characters SET gold_cp = gold_cp - ?, sheet_data = ? WHERE id = ?')
-      .run(totalCostCp, addToSheet(character.sheet_data, item.name, qty), character.id);
+    if (recipient) {
+      db.prepare('UPDATE characters SET gold_cp = gold_cp - ? WHERE id = ?').run(totalCostCp, character.id);
+      db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(addToSheet(recipient.sheet_data, item.name, qty, 'gift'), recipient.id);
+    } else {
+      db.prepare('UPDATE characters SET gold_cp = gold_cp - ?, sheet_data = ? WHERE id = ?')
+        .run(totalCostCp, addToSheet(character.sheet_data, item.name, qty), character.id);
+    }
     if (item.stock !== null) {
       db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
     }
     db.prepare(`
       INSERT INTO sales (
         item_name, category, quantity, buyer_tag, buyer_id,
-        base_price, discount_percent, final_price, total_paid, character_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        base_price, discount_percent, final_price, total_paid, character_id, gift_to_character_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       item.name, item.category, qty, buyerTag || '', String(buyerDiscordId || ''),
-      item.price, quote.discountPercent, quote.unitPriceCp, totalCostCp, character.id
+      item.price, quote.discountPercent, quote.unitPriceCp, totalCostCp, character.id, recipient ? recipient.id : null
     );
+    const gift = recipient
+      ? db.recordGift({ fromId: character.id, toId: recipient.id, itemName: item.name, quantity: qty, kind: 'shop', note, givenBy: Number(playerId), costCp: totalCostCp })
+      : null;
 
     return {
       item,
@@ -114,7 +133,8 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
       discountPercent: quote.discountPercent,
       finalUnitPriceCp: quote.unitPriceCp,
       totalCostCp,
-      remainingStock: item.stock !== null ? item.stock - qty : null
+      remainingStock: item.stock !== null ? item.stock - qty : null,
+      gift
     };
   })();
 }

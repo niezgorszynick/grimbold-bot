@@ -636,6 +636,31 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
       if (!columns.has('character_id')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN character_id INTEGER REFERENCES characters(id) ON DELETE CASCADE');
     }
+  },
+  {
+    version: 22,
+    name: 'Gifts between characters (and shop purchases bought for someone)',
+    up(db) {
+      db.exec(`
+        -- kind: item (equipment), magic (Magic Items), shop (bought as a gift; cost_cp paid by the giver).
+        CREATE TABLE IF NOT EXISTS gifts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          from_character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          to_character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          item_name TEXT NOT NULL,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          kind TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          given_by_player_id INTEGER,
+          cost_cp INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS gifts_from ON gifts (from_character_id);
+        CREATE INDEX IF NOT EXISTS gifts_to ON gifts (to_character_id);
+      `);
+      const columns = new Set(db.prepare('PRAGMA table_info(sales)').all().map(column => column.name));
+      if (!columns.has('gift_to_character_id')) db.exec('ALTER TABLE sales ADD COLUMN gift_to_character_id INTEGER');
+    }
   }
 ];
 
