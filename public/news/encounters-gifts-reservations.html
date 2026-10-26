@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-10-26">
+<title>Encounters, Gifts &amp; Reservations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 26 October 2026</span>
+    <h1>Encounters, Gifts &amp; Reservations</h1>
+    <p class="lede">Give your gear to friends, put an item on hold at Grimbold's counter, join fights from your own card, and see exactly how your level was earned. DMs get a monster catalog, an encounter builder and Owlbear's initiative tracker filled in for them.</p>
+  </header>
+
+  <section>
+    <h2>For everyone</h2>
+
+    <h3>🎁 Gifts</h3>
+    <ul>
+      <li>Every item and magic item on your sheet has a <strong>🎁</strong> button. Pick who it's for (any living character, yours too), how many, and add a note if you like.</li>
+      <li>Worn gear arrives put away; a magic item arrives unattuned but keeps its charges.</li>
+      <li>At the counter, the purchase window has <strong>"A gift for…"</strong>: your character pays, theirs gets it.</li>
+      <li>Grimbold notes every gift in both characters' Discord threads.</li>
+    </ul>
+    <div class="note">The number next to an item reads <strong>have</strong>: it is how many you own, and changing it changes your sheet. To give some away, use 🎁, which asks <em>give N of M</em>.</div>
+
+    <h3>🔖 Reserving at Grimbold's</h3>
+    <p>Saving up for something on the shelf? Magic items, scrolls and the visiting merchant's goods can be <strong>reserved</strong>, so they survive the weekly restock.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>What</th><th>How it works</th></tr></thead>
+        <tbody>
+          <tr><td>Deposit</td><td>10% of your price, paid now. It comes off the price when you buy.</td></tr>
+          <tr><td>Held for</td><td>The next 2 restocks, then the item leaves as usual.</td></tr>
+          <tr><td>Others</td><td>Can still buy it. If someone buys the last one, Grimbold refunds your deposit.</td></tr>
+          <tr><td>Run out or given up</td><td>The deposit stays in Grimbold's till.</td></tr>
+          <tr><td>Limit</td><td>One reservation per character, one reserver per item.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Your reservations are listed at the top of the shop. Grimbold announces each one in the shop channel, and the weekly restock lists what is still on hold.</p>
+
+    <h3>Your character sheet</h3>
+    <ul>
+      <li><strong>Portrait:</strong> upload one from the sheet header. It shows on the adventure table and the Players tab.</li>
+      <li><strong>How was this level reached?</strong> A folded line under your name opens a table of every adventure you finished, the XP it gave, the running total and the levels it brought, plus what the next level needs.</li>
+      <li><strong>Item bonuses:</strong> an item can carry its own bonus, such as +2 to History or Advantage on Religion checks, on skills, checks, saves or initiative. Mark it in use or put away.</li>
+      <li><strong>Off-hand attacks:</strong> the extra attack with a Light weapon has its own row, without the ability modifier (unless Two-Weapon Fighting adds it).</li>
+      <li><strong>Wood Elves</strong> have a Speed of 35 ft.</li>
+      <li><strong>Delete Character:</strong> you can delete your own characters at the bottom of the sheet, by typing the name. Not while they are in a running adventure or have an open auction.</li>
+    </ul>
+
+    <h3>Adventures and fights</h3>
+    <ul>
+      <li>The Adventures tab shows <strong>who took part</strong> under each adventure, running or finished.</li>
+      <li>On the adventure table you can <strong>roll from your own character's card</strong>: initiative, saves and attacks.</li>
+      <li>When the DM runs a fight, you see everyone in <strong>turn order</strong> and how hurt the enemies look (Unhurt, Wounded, Bloodied, Down), never their numbers.</li>
+      <li><strong>⚔ Join the fight</strong> on your card rolls your initiative and puts you in the order. <strong>Leave the fight</strong> takes you out again; roll to come back.</li>
+      <li>Your initiative rolls also go into <strong>Owlbear's initiative tracker</strong>, on the token with your character's name (or first name).</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>Running the table</h2>
+
+      <h3>Monsters</h3>
+      <ul>
+        <li>A <strong>Monsters</strong> tab with the Monster Manual statblocks: search, filter by type, CR and habitat, and open any statblock.</li>
+        <li><strong>+ New NPC from this statblock</strong>, or base an existing Notable NPC on one: empty stats are filled from it, and the NPC's card links to it.</li>
+      </ul>
+
+      <h3>Encounters</h3>
+      <ul>
+        <li>Plan encounters on the adventure table: monsters × count, Notable NPCs and party members, against the party's <strong>Low / Moderate / High XP budget</strong> (2024 rules).</li>
+        <li>Planned encounters are secret: only the adventure's DM and the Root DM see them. Other DMs only see that something is prepared.</li>
+        <li><strong>▶ Run</strong> puts the fight on the table: initiative order, HP buttons per creature, and the full statblock with dice. Monster rolls show in the dice bar for you only (Shift: advantage, Ctrl: disadvantage).</li>
+        <li><strong>✎</strong> renames a creature (to match its token) or changes its AC and HP.</li>
+        <li><strong>⏸ Pause</strong> keeps a fight exactly as it is for later; <strong>End encounter</strong> closes it.</li>
+        <li>Party members in a fight are outlined in red on their own cards, with their initiative box.</li>
+      </ul>
+
+      <h3>Owlbear</h3>
+      <ul>
+        <li>"Grimbold's Dice" (now 1.1.1, so reload it) puts the running encounter into Owlbear's <strong>initiative tracker</strong>: connect your own key, open the ⚔ Encounter box and press <strong>Put into the initiative tracker</strong>. Creatures are matched to tokens by name.</li>
+        <li>Players' initiative rolls go in on their own while your copy of the extension is open.</li>
+      </ul>
+
+      <h3>The adventure's own secrets</h3>
+      <ul>
+        <li>NPC stats, HP and hidden NPCs on the table are for <strong>the adventure's DM and the Root DM</strong>, since some DMs also play. Hide an NPC until you reveal it.</li>
+        <li><strong>Take over as DM</strong> when you run someone else's session; everyone sees who took over and when.</li>
+        <li><strong>Speak in the Discord thread</strong> as Grimbrandt, any name, or a Notable NPC with their portrait.</li>
+        <li>An adventure started in the panel can be <strong>linked to an open Discord thread</strong>.</li>
+      </ul>
+
+      <h3>The ledgers</h3>
+      <ul>
+        <li>The Sales Ledger has a <strong>🎁 Gifts</strong> log: who gave what to whom, how, and the note.</li>
+        <li>The shop lists <strong>all reservations</strong>; you can cancel one and refund its deposit.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>
