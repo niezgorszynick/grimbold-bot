@@ -160,7 +160,6 @@ module.exports = function renderMonstersTab(ctx) {
       <p class="muted small">${monsters.length} statblocks from ${sources.length === 1 ? escapeHtml(sources[0]) : `${sources.length} books`}. Only DMs see this tab. Pick a monster to read its statblock, or start a Notable NPC from it.</p>
       <div class="monster-filters">
         <input type="search" id="monster-search" placeholder="Search by name…" aria-label="Search monsters by name">
-        ${sources.length > 1 ? `<select id="monster-source" aria-label="Book"><option value="">Any book</option>${sources.map(source => `<option>${escapeHtml(source)}</option>`).join('')}</select>` : ''}
         <select id="monster-type" aria-label="Creature type"><option value="">Any type</option>${types.map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select>
         <label class="small">CR <select id="monster-cr-min" aria-label="Lowest CR"><option value="">any</option>${crOptions(null)}</select></label>
         <label class="small">to <select id="monster-cr-max" aria-label="Highest CR"><option value="">any</option>${crOptions(null)}</select></label>
@@ -168,6 +167,22 @@ module.exports = function renderMonstersTab(ctx) {
         <label class="small"><input type="checkbox" id="monster-summons"> summons</label>
         <span class="muted small" id="monster-count" role="status"></span>
       </div>
+      ${sources.length > 1 ? `
+      <details class="monster-books" id="monster-books" open>
+        <summary><strong>Books</strong> <span class="muted small" id="monster-books-summary"></span></summary>
+        <div class="monster-books-actions">
+          <button type="button" class="btn btn-small btn-secondary" data-books="all">All</button>
+          <button type="button" class="btn btn-small btn-secondary" data-books="clear">Clear</button>
+          <span class="muted small">Click books to show only those; none chosen shows every book.</span>
+        </div>
+        <div class="monster-book-chips">
+          ${sources.map(source => {
+            const inBook = monsters.filter(monster => monster.sourceName === source);
+            const code = inBook[0].sourceCode;
+            return `<button type="button" class="monster-book-chip" data-source="${escapeHtml(source)}" aria-pressed="false" title="${escapeHtml(code && code !== source ? `${source} (${code})` : source)}">${escapeHtml(source)} <span class="monster-book-count">${inBook.length}</span></button>`;
+          }).join('')}
+        </div>
+      </details>` : ''}
     </section>
     <section class="card monster-view" id="monster-view" ${chosen ? '' : 'hidden'}>${chosen ? monsterPanel(chosen) : ''}</section>
     ${req.query.monster && !chosen ? `<div class="alert red">There is no monster called “${escapeHtml(req.query.monster)}”.</div>` : ''}
@@ -184,15 +199,25 @@ module.exports = function renderMonstersTab(ctx) {
       (() => {
         const table = document.getElementById('monster-table');
         const view = document.getElementById('monster-view');
-        const controls = ['monster-search', 'monster-type', 'monster-cr-min', 'monster-cr-max', 'monster-habitat', 'monster-summons', 'monster-source'].map(id => document.getElementById(id)).filter(Boolean);
+        const controls = ['monster-search', 'monster-type', 'monster-cr-min', 'monster-cr-max', 'monster-habitat', 'monster-summons'].map(id => document.getElementById(id));
         const [search, type, crMin, crMax, habitat, summons] = controls;
-        const source = document.getElementById('monster-source');
         const count = document.getElementById('monster-count');
         const KEY = 'grimbold-monster-filters';
+        // Book chips (like 5etools): the chosen books, or every book when none is chosen.
+        const chips = [...document.querySelectorAll('.monster-book-chip')];
+        const books = new Set();
+        const booksSummary = document.getElementById('monster-books-summary');
         try {
           const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
           controls.forEach(control => { if (Object.hasOwn(saved, control.id)) control[control.type === 'checkbox' ? 'checked' : 'value'] = saved[control.id]; });
+          (Array.isArray(saved.books) ? saved.books : []).forEach(book => { if (chips.some(chip => chip.dataset.source === book)) books.add(book); });
+          const panel = document.getElementById('monster-books');
+          if (panel && saved.booksOpen === false) panel.open = false;
         } catch (error) { /* filters start empty */ }
+        const showChips = () => {
+          chips.forEach(chip => chip.setAttribute('aria-pressed', String(books.has(chip.dataset.source))));
+          if (booksSummary) booksSummary.textContent = books.size ? books.size + ' of ' + chips.length + ' chosen' : 'all ' + chips.length + ' books';
+        };
         const filter = () => {
           const query = search.value.trim().toLowerCase();
           const low = crMin.value === '' ? -Infinity : Number(crMin.value);
@@ -204,14 +229,33 @@ module.exports = function renderMonstersTab(ctx) {
               && (!type.value || row.dataset.type === type.value)
               && (cr < 0 ? summons.checked && crMin.value === '' && crMax.value === '' : cr >= low && cr <= high)
               && (!habitat.value || row.dataset.habitats.includes('|' + habitat.value + '|'))
-              && (!source || !source.value || row.dataset.source === source.value);
+              && (!books.size || books.has(row.dataset.source));
             row.hidden = !visible;
             if (visible) shown += 1;
           });
           count.textContent = shown + ' shown';
-          try { localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(controls.map(control => [control.id, control.type === 'checkbox' ? control.checked : control.value])))); } catch (error) { /* not remembered */ }
+          showChips();
+          const panel = document.getElementById('monster-books');
+          try {
+            localStorage.setItem(KEY, JSON.stringify({
+              ...Object.fromEntries(controls.map(control => [control.id, control.type === 'checkbox' ? control.checked : control.value])),
+              books: [...books],
+              booksOpen: panel ? panel.open : true
+            }));
+          } catch (error) { /* not remembered */ }
         };
         controls.forEach(control => control.addEventListener(control.type === 'search' ? 'input' : 'change', filter));
+        chips.forEach(chip => chip.addEventListener('click', () => {
+          if (books.has(chip.dataset.source)) books.delete(chip.dataset.source); else books.add(chip.dataset.source);
+          filter();
+        }));
+        document.querySelectorAll('[data-books]').forEach(button => button.addEventListener('click', () => {
+          books.clear();
+          if (button.dataset.books === 'all') chips.forEach(chip => books.add(chip.dataset.source));
+          filter();
+        }));
+        const booksPanel = document.getElementById('monster-books');
+        if (booksPanel) booksPanel.addEventListener('toggle', filter);
         table.refreshFilter = filter;
         filter();
 

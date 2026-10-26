@@ -908,3 +908,13 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .shop-my-reservations { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid #d4af3766; border-radius: 6px; background: #2a2620; }
 .shop-my-reservations ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 .shop-my-reservations summary { cursor: pointer; }
+
+/* Monsters: book chips (like 5etools' source filter) */
+.monster-books { margin-top: 10px; }
+.monster-books summary { cursor: pointer; }
+.monster-books-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.monster-book-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.monster-book-chip { border: 1px solid #3b5f8a; background: #1e2a38; color: #c9d6e6; border-radius: 3px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.monster-book-chip:hover { border-color: #5b8bc4; }
+.monster-book-chip[aria-pressed="true"] { background: #2f6db1; border-color: #4a8ad4; color: #fff; }
+.monster-book-count { opacity: 0.7; margin-left: 2px; }
