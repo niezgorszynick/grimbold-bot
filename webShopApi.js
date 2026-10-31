@@ -844,7 +844,7 @@ router.post('/adventures/:id/encounters/:encounterId/delete', encounterRoute(({ 
 router.post('/adventures/:id/encounters/:encounterId/add', encounterRoute(({ adventureId, user, body, encounterId }) => {
   if (body.npcId) return db.addEncounterNpc({ adventureId, user, encounterId, npcId: body.npcId });
   if (body.characterId || body.party) return db.addEncounterCharacters({ adventureId, user, encounterId, characterId: body.party ? null : body.characterId });
-  return db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, count: body.count });
+  return db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, statblockId: body.statblockId || null, count: body.count });
 }));
 router.post('/adventures/:id/encounters/:encounterId/run', encounterRoute(({ adventureId, user, encounterId }) => db.runEncounter({ adventureId, user, encounterId })));
 router.post('/adventures/:id/encounters/:encounterId/pause', encounterRoute(({ adventureId, user, encounterId }) => db.pauseEncounter({ adventureId, user, encounterId })));
@@ -863,6 +863,23 @@ router.post('/adventures/:id/combatants/:combatantId/initiative', encounterRoute
 // { action: damage | heal | tempHp, amount }
 router.post('/adventures/:id/combatants/:combatantId/hp', encounterRoute(({ adventureId, user, body, combatantId }) =>
   db.changeCombatantHp({ adventureId, user, combatantId, action: body.action, amount: body.amount })));
+// The adventure's own statblocks (homebrew, or catalog monsters changed for it).
+router.get('/adventures/:id/statblocks/:statblockId', (req, res) => adventureRoute(({ adventureId, user }) =>
+  db.getAdventureStatblock({ adventureId, user, statblockId: req.params.statblockId }))(req, res));
+// { draft, basedOn } — a new one.
+router.post('/adventures/:id/statblocks', adventureRoute(({ adventureId, user, body }) =>
+  db.saveAdventureStatblock({ adventureId, user, draft: body.draft, basedOn: body.basedOn || null })));
+// { monster } — a catalog monster copied, to change.
+router.post('/adventures/:id/statblocks/copy', adventureRoute(({ adventureId, user, body }) =>
+  db.copyMonsterToStatblock({ adventureId, user, monster: body.monster })));
+router.post('/adventures/:id/statblocks/:statblockId', (req, res) => adventureRoute(({ adventureId, user, body }) =>
+  db.saveAdventureStatblock({ adventureId, user, statblockId: req.params.statblockId, draft: body.draft }))(req, res));
+router.post('/adventures/:id/statblocks/:statblockId/delete', (req, res) => adventureRoute(({ adventureId, user }) =>
+  db.deleteAdventureStatblock({ adventureId, user, statblockId: req.params.statblockId }))(req, res));
+// { all } — this creature's statblock becomes the adventure's own (all: every one of its kind in the encounter).
+router.post('/adventures/:id/combatants/:combatantId/customize', (req, res) => adventureRoute(({ adventureId, user, body }) =>
+  db.customizeCombatant({ adventureId, user, combatantId: req.params.combatantId, all: Boolean(body.all) }))(req, res));
+
 // The DM shows a monster's roll to the party.
 router.post('/adventures/:id/encounter-rolls/:rollId/reveal', (req, res) => adventureRoute(({ adventureId, user }) =>
   db.revealEncounterRoll({ adventureId, user, rollId: req.params.rollId }))(req, res));

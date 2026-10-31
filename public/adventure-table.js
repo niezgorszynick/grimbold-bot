@@ -466,6 +466,186 @@
   }
 
   // Add monsters (a catalog name × count) or a Notable NPC.
+
+  // ─── The adventure's own statblocks (homebrew) ────────────────────────────
+  // A draft of plain fields; traits and actions one per paragraph,
+  // "Name. What it does." Attack, damage and save lines get dice like the book's.
+  const BLANK_DRAFT = {
+    name: '', size: 'Medium', type: 'Monstrosity', alignment: 'Unaligned', armorClass: 12, armorNote: '', hitPoints: 10, hitDice: '3d8',
+    speed: '30 ft.', initiative: '', str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, saves: '', skills: '', vulnerabilities: '',
+    resistances: '', immunities: '', senses: 'Passive Perception 10', languages: '', cr: '1/4',
+    traits: '', actions: '', bonusActions: '', reactions: '', legendaryActions: '', legendaryIntro: '', lore: ''
+  };
+  const ENTRY_HINT = 'One per paragraph (blank line between):\nRotting Beak. Melee Attack Roll: +5, reach 5 ft. Hit: 7 (1d8 + 3) Slashing damage.\nSweet Mist (Recharge 5–6). Wisdom Saving Throw: DC 11, … Failure: …';
+
+  // options: { statblockId (to edit) | draft (new), basedOn, title, onSaved(result) }
+  async function openStatblockEditor(options) {
+    let draft = options.draft;
+    let basedOn = options.basedOn || null;
+    if (options.statblockId) {
+      try {
+        const found = await api('/statblocks/' + options.statblockId);
+        draft = found.statblock.draft;
+        basedOn = found.statblock.basedOn;
+      } catch (error) {
+        message = error.message;
+        isError = true;
+        render();
+        return;
+      }
+    }
+    draft = Object.assign({}, BLANK_DRAFT, draft || {});
+    const fields = {};
+    const input = (key, attrs = {}) => {
+      const node = el(attrs.rows ? 'textarea' : 'input', Object.assign({ type: attrs.rows ? null : (attrs.type || 'text'), 'aria-label': attrs.label || key }, attrs, { label: null }));
+      node.value = draft[key] ?? '';
+      fields[key] = node;
+      return node;
+    };
+    const labelled = (text, node, wide) => el('label', { className: 'statblock-editor-field' + (wide ? ' is-wide' : '') }, [el('span', { text }), node]);
+    const status = el('p', { className: 'sheet-message', role: 'status' });
+    const close = () => modal.remove();
+    const save = button(options.statblockId ? 'Save statblock' : 'Save', async () => {
+      const values = Object.fromEntries(Object.entries(fields).map(([key, node]) => [key, node.value]));
+      save.disabled = true;
+      status.classList.remove('is-error');
+      status.textContent = 'Saving…';
+      try {
+        const result = await api(options.statblockId ? '/statblocks/' + options.statblockId : '/statblocks', { draft: values, basedOn });
+        data = result;
+        close();
+        if (options.onSaved) await options.onSaved(result);
+        else { message = (values.name || 'The statblock') + ' saved.'; isError = false; render(); }
+      } catch (error) {
+        status.classList.add('is-error');
+        status.textContent = error.message;
+        save.disabled = false;
+      }
+    }, 'btn btn-green');
+    const card = el('div', { className: 'card shop-modal-card statblock-editor' }, [
+      el('h3', { text: options.title || (options.statblockId ? 'Edit statblock' : 'New homebrew creature') }),
+      el('p', { className: 'muted small', text: (basedOn ? 'A copy of ' + basedOn + ' for this adventure only: the catalog keeps the original. ' : 'This adventure only. ') + 'Creatures already in encounters follow your changes (unhurt ones get the new HP).' }),
+      el('div', { className: 'statblock-editor-grid' }, [
+        labelled('Name', input('name', { maxlength: '100', required: true }), true),
+        labelled('Size', input('size', { maxlength: '40', list: 'statblock-sizes' })),
+        labelled('Type', input('type', { maxlength: '60', placeholder: 'Undead (Moander)' })),
+        labelled('Alignment', input('alignment', { maxlength: '60' })),
+        labelled('CR', input('cr', { maxlength: '5', placeholder: '1/2' })),
+        labelled('AC', input('armorClass', { type: 'number', min: '0', max: '40' })),
+        labelled('AC note', input('armorNote', { maxlength: '80', placeholder: 'natural armor' })),
+        labelled('HP', input('hitPoints', { type: 'number', min: '1', max: '5000' })),
+        labelled('HP dice', input('hitDice', { maxlength: '40', placeholder: '6d8 + 18' })),
+        labelled('Speed', input('speed', { maxlength: '80' })),
+        labelled('Initiative', input('initiative', { type: 'number', min: '-10', max: '30', placeholder: 'DEX' })),
+        ...['str', 'dex', 'con', 'int', 'wis', 'cha'].map(ability => labelled(ability.toUpperCase(), input(ability, { type: 'number', min: '1', max: '30' }))),
+        labelled('Saves', input('saves', { maxlength: '200', placeholder: 'Con +5, Wis +2 (others: the modifier)' }), true),
+        labelled('Skills', input('skills', { maxlength: '200', placeholder: 'Perception +4, Stealth +6' }), true),
+        labelled('Vulnerabilities', input('vulnerabilities', { maxlength: '200' })),
+        labelled('Resistances', input('resistances', { maxlength: '200' })),
+        labelled('Immunities', input('immunities', { maxlength: '200', placeholder: 'Poison; Poisoned' })),
+        labelled('Senses', input('senses', { maxlength: '200' }), true),
+        labelled('Languages', input('languages', { maxlength: '200' }), true)
+      ]),
+      el('datalist', { id: 'statblock-sizes' }, ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'].map(size => el('option', { value: size }))),
+      ...[['traits', 'Traits'], ['actions', 'Actions'], ['bonusActions', 'Bonus Actions'], ['reactions', 'Reactions'], ['legendaryActions', 'Legendary Actions']]
+        .map(([key, title]) => labelled(title, input(key, { rows: key === 'actions' ? '7' : '3', maxlength: '8000', placeholder: ENTRY_HINT }), true)),
+      labelled('Legendary intro', input('legendaryIntro', { maxlength: '600', placeholder: 'Legendary Action Uses: 3. Immediately after another creature’s turn…' }), true),
+      labelled('Notes / lore', input('lore', { rows: '2', maxlength: '4000' }), true),
+      status,
+      el('div', { className: 'vitals-actions' }, [save, button('Cancel', close, 'btn btn-secondary')])
+    ]);
+    const modal = el('div', { className: 'shop-modal statblock-editor-modal', role: 'dialog', 'aria-modal': 'true' }, card);
+    modal.addEventListener('click', event => { if (event.target === modal && window.confirm('Close without saving?')) close(); });
+    document.body.append(modal);
+    fields.name.focus();
+  }
+
+  // A creature's statblock, made the adventure's own (or its homebrew opened to edit).
+  async function customizeCreature(combatant, encounter) {
+    if (combatant.homebrewId) { openStatblockEditor({ statblockId: combatant.homebrewId }); return; }
+    const kind = combatant.monster;
+    const same = encounter.combatants.filter(other => other.kind === 'monster' && other.monster === kind && !other.homebrewId).length;
+    if (!window.confirm('Change ' + kind + "'s statblock for this adventure? The catalog keeps the original; this makes a copy you can edit.")) return;
+    const all = same > 1 && window.confirm('Use the changed statblock for all ' + same + ' ' + kind + ' in ' + encounter.name + '? (Cancel: only ' + combatant.label + '.)');
+    try {
+      const result = await api('/combatants/' + combatant.id + '/customize', { all });
+      data = result;
+      render();
+      openStatblockEditor({ statblockId: result.statblockId, title: 'Change ' + kind + ' for this adventure' });
+    } catch (error) {
+      message = error.message;
+      isError = true;
+      render();
+    }
+  }
+  const statblockButton = (combatant, encounter) => (combatant.kind === 'monster'
+    ? button('📜', () => customizeCreature(combatant, encounter), 'link-button small', {
+      title: combatant.homebrewId ? 'Edit this homebrew statblock' : "Change this creature's statblock (for this adventure only)",
+      'aria-label': 'Statblock of ' + combatant.label
+    })
+    : null);
+
+  // Add the adventure's homebrew (or a new one, or a changed catalog monster) to an encounter.
+  function homebrewControls(encounter, nameInput, countInput) {
+    const homebrew = (data.encounters && data.encounters.homebrew) || [];
+    const many = () => Number(countInput.value) || 1;
+    const addTo = async statblockId => {
+      try {
+        data = await api('/encounters/' + encounter.id + '/add', { statblockId, count: many() });
+        const added = ((data.encounters && data.encounters.homebrew) || []).find(entry => entry.id === statblockId);
+        message = many() + ' × ' + (added ? added.name : 'creature') + ' added to ' + encounter.name + '.';
+        isError = false;
+      } catch (error) {
+        message = error.message;
+        isError = true;
+      }
+      render();
+    };
+    const select = el('select', { 'aria-label': 'Homebrew creature to add' }, [
+      el('option', { value: '', text: '+ Homebrew…' }),
+      ...homebrew.map(entry => el('option', { value: String(entry.id), text: entry.name + ' (CR ' + entry.crText + ')' })),
+      el('option', { value: 'new', text: '+ New homebrew creature…' })
+    ]);
+    select.addEventListener('change', () => {
+      const value = select.value;
+      select.value = '';
+      if (value === 'new') openStatblockEditor({ draft: {}, onSaved: result => addTo(result.statblockId) });
+      else if (value) addTo(Number(value));
+    });
+    const customize = button('✎ Customize', async () => {
+      const monster = nameInput.value.trim();
+      if (!monster) { message = 'Type the catalog monster to change first (e.g. Black Bear).'; isError = true; render(); return; }
+      try {
+        const result = await api('/statblocks/copy', { monster });
+        data = result;
+        render();
+        openStatblockEditor({ statblockId: result.statblockId, title: 'Change ' + monster + ' for this adventure', onSaved: saved => addTo(saved.statblockId) });
+      } catch (error) {
+        message = error.message;
+        isError = true;
+        render();
+      }
+    }, 'btn btn-small btn-secondary', { title: 'Copy this catalog monster, change it, then add it (the catalog keeps the original)' });
+    return [customize, select];
+  }
+
+  // The adventure's homebrew, in the planner.
+  function homebrewList() {
+    const homebrew = (data.encounters && data.encounters.homebrew) || [];
+    if (!homebrew.length) return null;
+    return el('details', { className: 'encounter-homebrew' }, [
+      el('summary', { className: 'small', text: '📜 This adventure’s homebrew statblocks (' + homebrew.length + ')' }),
+      el('ul', {}, homebrew.map(entry => el('li', {}, [
+        el('strong', { text: entry.name }),
+        el('span', { className: 'muted small', text: ' CR ' + entry.crText + ' · ' + (entry.hitPoints ?? '?') + ' HP · AC ' + (entry.armorClass ?? '?') + (entry.basedOn ? ' · from ' + entry.basedOn : '') + (entry.uses ? ' · in ' + entry.uses + ' fight slot' + (entry.uses === 1 ? '' : 's') : '') }),
+        ' ', button('Edit', () => openStatblockEditor({ statblockId: entry.id }), 'link-button small'),
+        entry.uses ? null : button('Delete', () => {
+          if (window.confirm('Delete ' + entry.name + '?')) act('/statblocks/' + entry.id + '/delete', {}, entry.name + ' deleted.');
+        }, 'link-button small')
+      ])))
+    ]);
+  }
+
   function addControls(encounter) {
     monsterDatalist();
     const name = el('input', { type: 'text', list: 'encounter-monster-list', placeholder: 'Monster, e.g. Goblin Warrior', 'aria-label': 'Monster to add', className: 'encounter-monster-input' });
@@ -502,7 +682,7 @@
       act('/encounters/' + encounter.id + '/add', all ? { party: true } : { characterId: Number(partySelect.value) },
         (all ? 'The party joins ' : (chosen ? chosen.name : 'The character') + ' joins ') + encounter.name + '.');
     });
-    return el('div', { className: 'table-filter encounter-add' }, [name, el('label', { className: 'small' }, ['× ', count]), button('Add', add, 'btn btn-small'), npcs.length ? npcSelect : null, members.length ? partySelect : null]);
+    return el('div', { className: 'table-filter encounter-add' }, [name, el('label', { className: 'small' }, ['× ', count]), button('Add', add, 'btn btn-small'), ...homebrewControls(encounter, name, count), npcs.length ? npcSelect : null, members.length ? partySelect : null]);
   }
 
   // Rename a creature (e.g. to match its token in Owlbear) or change its AC and HP.
@@ -558,6 +738,8 @@
         ].filter(Boolean).join(' · ')
       }),
       ' ', combatant.kind === 'pc' ? null : editButton(combatant),
+      ' ', statblockButton(combatant, encounter),
+      combatant.homebrewId ? el('span', { className: 'tag', text: 'homebrew' }) : null,
       ' ', button('✕', () => act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' removed.'), 'link-button small', { title: 'Remove ' + combatant.label, 'aria-label': 'Remove ' + combatant.label }),
       combatant.customName ? el('span', { className: 'muted small', text: ' (' + combatant.defaultLabel + ')' }) : null,
       combatantEditor(combatant)
@@ -729,7 +911,7 @@
       el('header', { className: 'party-card-header' }, [
         initiative,
         el('div', { className: 'party-card-title' }, [
-          el('strong', { text: combatant.label }), ' ', editButton(combatant),
+          el('strong', { text: combatant.label }), ' ', editButton(combatant), ' ', statblockButton(combatant, runningEncounter()),
           sub || combatant.customName ? el('div', { className: 'muted small', text: [combatant.customName ? combatant.defaultLabel : null, sub].filter(Boolean).join(' · ') }) : null
         ]),
         button('✕', () => { if (window.confirm('Take ' + combatant.label + ' out of the fight?')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'); },
@@ -811,6 +993,7 @@
           el('span', { className: 'tag red', text: 'High ' + thousands(budget.high) })]
         : [el('span', { className: 'muted', text: 'Add the party to see the XP budget.' })]),
       el('div', { className: 'table-filter' }, [name, button('Create', create, 'btn btn-small btn-green')]),
+      homebrewList(),
       ...planned.map(plannedCard),
       done.length ? el('details', { className: 'encounter-done' }, [
         el('summary', { className: 'small', text: done.length + ' finished encounter' + (done.length === 1 ? '' : 's') }),

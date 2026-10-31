@@ -391,3 +391,70 @@ test("revealed monster rolls reach the DM's Owlbear feed; 'Monsters: shown' reve
   assert.deepEqual(db.getVttRolls({ key, after: start.latest, afterReveal: feed.latestReveal }).monsterRolls, []);
   assert.deepEqual(db.getVttRolls({ key: db.getVttKey({ playerId: createPlayer() }), after: 0, afterReveal: 0 }).monsterRolls, [], "only the DM's own adventures");
 });
+
+test("homebrew statblocks: the adventure's own, copied from the catalog or new; the catalog stays as it is", () => {
+  const dm = createPlayer();
+  const otherDm = createPlayer('admin');
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('brew-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'brew-thread', title: 'Pumpkins', ownerDiscordId: 'brew-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const encounterId = db.createEncounter({ ...asDm, name: 'Clearing' }).encounters.list[0].id;
+
+  // A catalog monster copied and changed: the catalog keeps the original.
+  let result = db.copyMonsterToStatblock({ ...asDm, monster: 'Practice Footpad' });
+  const copyId = result.statblockId;
+  const { statblock } = db.getAdventureStatblock({ ...asDm, statblockId: copyId });
+  assert.equal(statblock.basedOn, 'Practice Footpad');
+  const draft = { ...statblock.draft, name: 'Infected Ostrich', hitPoints: 19, hitDice: '3d8 + 6', cr: '1/2',
+    actions: 'Rotting Beak. Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Piercing damage plus 2 (1d4) Necrotic damage.',
+    traits: 'Spore Burst. When it dies, each creature within 5 feet makes a DC 11 Constitution saving throw or is Poisoned.' };
+  result = db.saveAdventureStatblock({ ...asDm, statblockId: copyId, draft });
+  assert.deepEqual(result.encounters.homebrew.map(entry => [entry.name, entry.basedOn, entry.crText, entry.xp, entry.hitPoints]),
+    [['Infected Ostrich', 'Practice Footpad', '1/2', 100, 19]]);
+  assert.equal(require('../rules').getMonster('Practice Footpad').hitPoints, 9, 'the catalog monster is untouched');
+
+  // A brand-new one, with checks.
+  assert.throws(() => db.saveAdventureStatblock({ ...asDm, draft: { name: '' } }), /name/);
+  assert.throws(() => db.saveAdventureStatblock({ ...asDm, draft: { name: 'X', hitPoints: 5, cr: '7/3' } }), /CR must be/);
+  assert.throws(() => db.saveAdventureStatblock({ ...asDm, draft: { name: 'X', hitPoints: 5, str: 40 } }), /STR must be/);
+  const moander = db.saveAdventureStatblock({ ...asDm, draft: {
+    name: 'Ostrich-Moander', size: 'Medium', type: 'Undead', alignment: 'Neutral Evil', armorClass: 13, hitPoints: 45, hitDice: '6d8 + 18',
+    speed: '50 ft.', initiative: 2, str: 16, dex: 14, con: 16, int: 3, wis: 10, cha: 6, resistances: 'Necrotic', immunities: 'Poison; Poisoned', cr: '1',
+    traits: 'Rotting Regeneration. At the start of its turn it regains 5 HP unless it took fire or radiant damage since its last turn.',
+    actions: 'Multiattack. Rotting Beak and Tendril.\n\nRotting Beak. Melee Attack Roll: +5, reach 5 ft. Hit: 7 (1d8 + 3) Slashing damage.\n\nTendril. Melee Attack Roll: +5, reach 10 ft. Hit: 6 (1d6 + 3) Necrotic damage.\n\nSweet Mist (Recharge 5–6). Wisdom Saving Throw: DC 11, each creature in a 15-foot Cone. Failure: Charmed until the end of its next turn.'
+  } }).statblockId;
+
+  // Into an encounter: dice, XP, and the party sees only the name.
+  db.addEncounterMonster({ ...asDm, encounterId, statblockId: moander });
+  result = db.addEncounterMonster({ ...asDm, encounterId, statblockId: copyId, count: 2 });
+  let encounter = result.encounters.list[0];
+  assert.deepEqual(encounter.combatants.map(c => [c.label, c.hpMax, c.armorClass]), [['Ostrich-Moander', 45, 13], ['Infected Ostrich 1', 19, 12], ['Infected Ostrich 2', 19, 12]]);
+  assert.equal(encounter.xp, 200 + 2 * 100);
+  db.runEncounter({ ...asDm, encounterId });
+  const table = db.getAdventureTable(asDm);
+  const block = table.encounters.statblocks[`custom:${moander}`];
+  assert.ok(block.rolls.some(roll => roll.id === 'actions:1:hit' && roll.formula === '1d20+5'));
+  assert.ok(block.rolls.some(roll => roll.id === 'actions:2:damage:0' && roll.label === 'Tendril damage (Necrotic)'));
+  assert.deepEqual(block.actions[3].save, { ability: 'Wisdom', dc: 11 });
+  const roll = db.rollForCombatant({ ...asDm, combatantId: encounter.combatants[0].id, request: { roll: 'actions:1:damage:0' } }).roll;
+  assert.equal(roll.formula, '1d8+3');
+
+  // Customize a catalog creature in a fight: a copy for it (and its kind), the others unchanged.
+  const second = db.createEncounter({ ...asDm, name: 'Ford' }).encounters.list.find(e => e.name === 'Ford').id;
+  db.addEncounterMonster({ ...asDm, encounterId: second, monster: 'Practice Footpad', count: 3 });
+  const footpads = db.getAdventureTable(asDm).encounters.list.find(e => e.id === second).combatants;
+  result = db.customizeCombatant({ ...asDm, combatantId: footpads[0].id, all: true });
+  encounter = result.encounters.list.find(e => e.id === second);
+  assert.ok(encounter.combatants.every(c => c.homebrewId === result.statblockId), 'all three of that kind');
+  // Editing it changes them, unhurt ones get the new HP.
+  db.changeCombatantHp({ ...asDm, combatantId: footpads[1].id, action: 'damage', amount: 3 });
+  const editDraft = db.getAdventureStatblock({ ...asDm, statblockId: result.statblockId }).statblock.draft;
+  result = db.saveAdventureStatblock({ ...asDm, statblockId: result.statblockId, draft: { ...editDraft, name: 'Bog Footpad', hitPoints: 15 } });
+  encounter = result.encounters.list.find(e => e.id === second);
+  assert.deepEqual(encounter.combatants.map(c => [c.label, c.hpCurrent, c.hpMax]), [['Bog Footpad 1', 15, 15], ['Bog Footpad 2', 6, 15], ['Bog Footpad 3', 15, 15]]);
+
+  // Only the adventure's DM; and not deleted while in use.
+  assert.throws(() => db.copyMonsterToStatblock({ adventureId: adventure.id, user: { id: otherDm, role: 'admin' }, monster: 'Practice Footpad' }), /Only this adventure's DM/);
+  assert.deepEqual(db.getAdventureTable({ adventureId: adventure.id, user: { id: otherDm, role: 'admin' } }).encounters.homebrew, undefined);
+  assert.throws(() => db.deleteAdventureStatblock({ ...asDm, statblockId: moander }), /in an encounter/);
+});

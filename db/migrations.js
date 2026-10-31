@@ -740,6 +740,31 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
       `);
     }
+  },
+  {
+    version: 26,
+    name: "Homebrew statblocks for one adventure (catalog monsters stay as they are)",
+    up(db) {
+      db.exec(`
+        -- data: the editable draft (rules/customMonsters.js). based_on: the catalog monster it was copied from.
+        CREATE TABLE IF NOT EXISTS adventure_statblocks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          based_on TEXT,
+          data TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS adventure_statblocks_adventure ON adventure_statblocks (adventure_id);
+        CREATE TRIGGER IF NOT EXISTS change_log_statblock_insert AFTER INSERT ON adventure_statblocks
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_statblock_update AFTER UPDATE ON adventure_statblocks
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+      `);
+      const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
+      if (!columns.has('statblock_id')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN statblock_id INTEGER');
+    }
   }
 ];
 

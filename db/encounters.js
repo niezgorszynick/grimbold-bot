@@ -47,9 +47,28 @@ function loadEncounter(adventure, encounterId) {
 
 const COMBATANT_QUERY = `
   SELECT ec.*, ch.name AS character_name, n.name AS npc_name, n.hp_max AS npc_hp_max, n.hp_current AS npc_hp_current, n.hp_temp AS npc_hp_temp,
-    n.armor_class AS npc_ac, n.abilities AS npc_abilities, n.base_monster AS npc_base, n.portrait_file AS npc_portrait
+    n.armor_class AS npc_ac, n.abilities AS npc_abilities, n.base_monster AS npc_base, n.portrait_file AS npc_portrait,
+    sb.data AS statblock_data, sb.based_on AS statblock_based_on
   FROM encounter_combatants ec LEFT JOIN npcs n ON n.id = ec.npc_id LEFT JOIN characters ch ON ch.id = ec.character_id
+    LEFT JOIN adventure_statblocks sb ON sb.id = ec.statblock_id
 `;
+
+// A homebrew statblock row (adventure_statblocks) as a monster; null if broken.
+function customMonsterOf(id, data, basedOn) {
+  try {
+    return rules.customMonsterFromDraft(JSON.parse(data), { id, basedOn });
+  } catch {
+    return null;
+  }
+}
+
+// The monster a combatant fights with: its homebrew statblock, or the catalog's.
+function monsterOfRow(row) {
+  if (row.statblock_id) return customMonsterOf(row.statblock_id, row.statblock_data, row.statblock_based_on);
+  return row.monster_name ? rules.getMonster(row.monster_name) : null;
+}
+// The key the table looks a combatant's statblock up by.
+const statblockKey = row => (row.statblock_id ? `custom:${row.statblock_id}` : row.monster_name || row.npc_base || null);
 
 function loadCombatant(adventure, combatantId) {
   const row = db.prepare(`${COMBATANT_QUERY} JOIN encounters e ON e.id = ec.encounter_id WHERE ec.id = ? AND e.adventure_id = ?`)
@@ -60,7 +79,7 @@ function loadCombatant(adventure, combatantId) {
 
 // What a combatant rolls with: its monster, the NPC's base statblock, or the NPC's scores.
 function rollSource(row) {
-  if (row.monster_name) return rules.getMonster(row.monster_name);
+  if (row.monster_name || row.statblock_id) return monsterOfRow(row);
   const base = row.npc_base ? rules.getMonster(row.npc_base) : null;
   return base || { abilities: readAbilities(row.npc_abilities) };
 }
@@ -82,7 +101,7 @@ function defaultLabel(row, counts) {
 // counts: how many of each monster are in the encounter (to number them).
 // row.name: the DM's own name for it (e.g. to match a token in Owlbear).
 function combatantView(row, counts, secret) {
-  const monster = row.monster_name ? rules.getMonster(row.monster_name) : null;
+  const monster = monsterOfRow(row);
   const label = row.name || defaultLabel(row, counts);
   const hp = hpOf(row);
   const condition = npcCondition({ hp_max: hp.max, hp_current: hp.current });
@@ -98,7 +117,8 @@ function combatantView(row, counts, secret) {
   const dex = (source && source.abilities && source.abilities.dex) || 10;
   return {
     ...view,
-    monster: row.monster_name || row.npc_base || null,
+    monster: statblockKey(row),
+    homebrewId: row.statblock_id || null,
     customName: row.name || null,
     defaultLabel: defaultLabel(row, counts),
     statblockFound: Boolean(base),
@@ -172,16 +192,19 @@ function encountersForTable({ adventureId, secret, manage, partyLevels }) {
   const statblocks = {};
   if (runningRow) {
     for (const row of byEncounter(runningRow.id)) {
-      const name = row.monster_name || row.npc_base;
-      const monster = name && !statblocks[name] ? rules.getMonster(name) : null;
-      if (monster) statblocks[name] = statblockWithRolls(monster);
+      const key = statblockKey(row);
+      if (!key || statblocks[key]) continue;
+      const monster = row.npc_id ? rules.getMonster(row.npc_base) : monsterOfRow(row);
+      if (monster) statblocks[key] = statblockWithRolls(monster);
     }
   }
   return {
     budget,
     partyLevels,
     list: encounters.map(encounter => encounterView(encounter, byEncounter(encounter.id), true, budget)),
-    statblocks
+    statblocks,
+    // The adventure's own statblocks (homebrew, or catalog monsters changed for it).
+    homebrew: listAdventureStatblocks(adventureId)
   };
 }
 
@@ -227,11 +250,13 @@ function roomFor(encounter, count) {
   if (size + count > MAX_COMBATANTS) throw new Error(`An encounter holds ${MAX_COMBATANTS} creatures at most.`);
 }
 
-// { monster, count }: that many of a catalog monster, each with full HP.
-function addEncounterMonster({ adventureId, user, encounterId, monster: name, count = 1 }) {
+// { monster, count } or { statblockId, count }: that many of a catalog monster
+// (or of the adventure's own statblock), each with full HP.
+function addEncounterMonster({ adventureId, user, encounterId, monster: name, statblockId = null, count = 1 }) {
   const adventure = secretAdventure(adventureId, user);
   const encounter = openEncounter(adventure, encounterId);
-  const monster = rules.getMonster(String(name || '').trim());
+  const custom = statblockId ? loadStatblock(adventure, statblockId) : null;
+  const monster = custom ? custom.monster : rules.getMonster(String(name || '').trim());
   if (!monster) throw new Error(`There is no monster called "${name}" in the catalog.`);
   if (monster.summon || !Number.isInteger(monster.hitPoints)) throw new Error(`${monster.name} is a summoned creature; its numbers depend on the spell.`);
   const many = Number(count);
@@ -239,12 +264,111 @@ function addEncounterMonster({ adventureId, user, encounterId, monster: name, co
   roomFor(encounter, many);
   db.transaction(() => {
     let number = db.prepare('SELECT COALESCE(MAX(number), 0) AS n FROM encounter_combatants WHERE encounter_id = ? AND monster_name = ?').get(encounter.id, monster.name).n;
-    const insert = db.prepare('INSERT INTO encounter_combatants (encounter_id, monster_name, number, hp_max, hp_current) VALUES (?, ?, ?, ?, ?)');
+    const insert = db.prepare('INSERT INTO encounter_combatants (encounter_id, monster_name, number, hp_max, hp_current, statblock_id) VALUES (?, ?, ?, ?, ?, ?)');
     for (let i = 0; i < many; i += 1) {
       number += 1;
-      insert.run(encounter.id, monster.name, number, monster.hitPoints, monster.hitPoints);
+      insert.run(encounter.id, monster.name, number, monster.hitPoints, monster.hitPoints, custom ? custom.id : null);
     }
   })();
+  return table(adventure, user);
+}
+
+// ─── The adventure's own statblocks ─────────────────────────────────────────
+function loadStatblock(adventure, statblockId) {
+  const row = db.prepare('SELECT * FROM adventure_statblocks WHERE id = ? AND adventure_id = ?').get(Number(statblockId), adventure.id);
+  if (!row) throw new Error('That statblock is not in this adventure.');
+  const monster = customMonsterOf(row.id, row.data, row.based_on);
+  if (!monster) throw new Error(`The statblock "${row.name}" can't be read; open it and save it again.`);
+  return { id: row.id, row, monster };
+}
+
+function listAdventureStatblocks(adventureId) {
+  return db.prepare(`
+    SELECT sb.*, (SELECT COUNT(*) FROM encounter_combatants ec WHERE ec.statblock_id = sb.id) AS uses
+    FROM adventure_statblocks sb WHERE sb.adventure_id = ? ORDER BY sb.name COLLATE NOCASE
+  `).all(Number(adventureId)).map(row => {
+    const monster = customMonsterOf(row.id, row.data, row.based_on);
+    return {
+      id: row.id,
+      name: row.name,
+      basedOn: row.based_on || null,
+      crText: monster ? monster.crText : '?',
+      xp: monster ? monster.xp : 0,
+      hitPoints: monster ? monster.hitPoints : null,
+      armorClass: monster ? monster.armorClass : null,
+      uses: row.uses
+    };
+  });
+}
+
+// The draft to edit (and the statblock it makes).
+function getAdventureStatblock({ adventureId, user, statblockId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const { row, monster } = loadStatblock(adventure, statblockId);
+  return { statblock: { id: row.id, basedOn: row.based_on || null, draft: JSON.parse(row.data), monster } };
+}
+
+// Saves a new statblock (no statblockId) or changes one. Creatures already in
+// encounters follow: their name, and their HP if they were unhurt.
+function saveAdventureStatblock({ adventureId, user, statblockId = null, draft, basedOn = null }) {
+  const adventure = secretAdventure(adventureId, user);
+  const existing = statblockId ? loadStatblock(adventure, statblockId) : null;
+  const based = existing ? existing.row.based_on : (basedOn && rules.getMonster(basedOn) ? rules.getMonster(basedOn).name : null);
+  const monster = rules.customMonsterFromDraft(draft || {}, { basedOn: based });
+  // Stored as the checked, tidied draft (what the editor shows next time).
+  const data = JSON.stringify(rules.draftFromMonster(monster));
+  let id;
+  db.transaction(() => {
+    if (existing) {
+      id = existing.id;
+      db.prepare('UPDATE adventure_statblocks SET name = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(monster.name, data, id);
+      db.prepare('UPDATE encounter_combatants SET monster_name = ? WHERE statblock_id = ?').run(monster.name, id);
+      db.prepare('UPDATE encounter_combatants SET hp_max = ?, hp_current = ? WHERE statblock_id = ? AND (hp_current IS NULL OR hp_current = hp_max)')
+        .run(monster.hitPoints, monster.hitPoints, id);
+      db.prepare('UPDATE encounter_combatants SET hp_max = ?, hp_current = MIN(hp_current, ?) WHERE statblock_id = ? AND hp_current < hp_max')
+        .run(monster.hitPoints, monster.hitPoints, id);
+    } else {
+      id = Number(db.prepare('INSERT INTO adventure_statblocks (adventure_id, name, based_on, data) VALUES (?, ?, ?, ?)')
+        .run(adventure.id, monster.name, based, data).lastInsertRowid);
+    }
+  })();
+  return { statblockId: id, ...table(adventure, user) };
+}
+
+// A catalog monster as the start of a new statblock (saved at once, to edit).
+function copyMonsterToStatblock({ adventureId, user, monster: name }) {
+  const adventure = secretAdventure(adventureId, user);
+  const monster = rules.getMonster(String(name || '').trim());
+  if (!monster) throw new Error(`There is no monster called "${name}" in the catalog.`);
+  if (monster.summon || !Number.isInteger(monster.hitPoints)) throw new Error(`${monster.name} is a summoned creature; its numbers depend on the spell.`);
+  return saveAdventureStatblock({ adventureId: adventure.id, user, draft: rules.draftFromMonster(monster), basedOn: monster.name });
+}
+
+// "Customize" a creature in an encounter: its statblock becomes the
+// adventure's own (copied from the catalog, or the one it already has), for
+// it alone or (all) every creature of that kind in the encounter.
+function customizeCombatant({ adventureId, user, combatantId, all = false }) {
+  const adventure = secretAdventure(adventureId, user);
+  const row = loadCombatant(adventure, combatantId);
+  if (!row.monster_name) throw new Error('Only monsters have a statblock to change here (NPCs: on the Notable NPCs tab).');
+  if (row.statblock_id) return { statblockId: row.statblock_id, ...table(adventure, user) };
+  const monster = rules.getMonster(row.monster_name);
+  if (!monster) throw new Error(`${row.monster_name} is not in the monster list on this server.`);
+  const created = saveAdventureStatblock({ adventureId: adventure.id, user, draft: rules.draftFromMonster(monster), basedOn: monster.name });
+  const targets = all
+    ? db.prepare('SELECT id FROM encounter_combatants WHERE encounter_id = ? AND monster_name = ? AND statblock_id IS NULL').all(row.encounter_id, row.monster_name).map(entry => entry.id)
+    : [row.id];
+  const link = db.prepare('UPDATE encounter_combatants SET statblock_id = ? WHERE id = ?');
+  db.transaction(() => targets.forEach(id => link.run(created.statblockId, id)))();
+  return { statblockId: created.statblockId, ...table(adventure, user) };
+}
+
+function deleteAdventureStatblock({ adventureId, user, statblockId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const { id, row } = loadStatblock(adventure, statblockId);
+  const uses = db.prepare('SELECT COUNT(*) AS n FROM encounter_combatants WHERE statblock_id = ?').get(id).n;
+  if (uses) throw new Error(`${row.name} is in an encounter (${uses} creature${uses === 1 ? '' : 's'}); take them out first.`);
+  db.prepare('DELETE FROM adventure_statblocks WHERE id = ?').run(id);
   return table(adventure, user);
 }
 
@@ -640,6 +764,11 @@ module.exports = {
   addEncounterNpc,
   removeCombatant,
   updateCombatant,
+  getAdventureStatblock,
+  saveAdventureStatblock,
+  copyMonsterToStatblock,
+  customizeCombatant,
+  deleteAdventureStatblock,
   getEncounterRolls,
   revealEncounterRoll,
   getVttMonsterRolls,
