@@ -1,34 +1,59 @@
-// commands/schedule.js — /schedule in an adventure's thread: the DM proposes
-// times (Polish time, typed loosely: "pt 20:00, sob 18:00") and Grimbrandt
-// posts a poll with buttons; or cancels the open poll or next session.
-// The rest (answers, locking a time in) happens on the poll message.
+// commands/schedule.js — /schedule, in an adventure's thread (Polish time):
+//   set      date + time picked from lists: book a known session at once
+//   move     the next session to a new date + time
+//   propose  up to 4 times ("22.11 20:00, 29.11 18:00"; the list shows how
+//            they were read); Grimbrandt posts a poll with buttons
+//   cancel   the open poll, or else the next session
+//   calendar your personal calendar link (anywhere)
+// Answers and locking a time in happen on the poll message (scheduleDiscord.js).
 
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../db');
-const { parseSessionTimes, discordTime } = require('../rules/schedule');
-const { pollMessage, deleteServerEvent } = require('../scheduleDiscord');
+const { parseSessionTimes, parseDateAndTime, dateSuggestions, timeSuggestions, describeSessionTimes, discordTime } = require('../rules/schedule');
+const { pollMessage, announceSessionChange, calendarMessage } = require('../scheduleDiscord');
+
+const EXAMPLES = 'Examples: `22.11 20:00, 29.11 18:00` · `pt 20:00` · `jutro 19:30` (Polish time).';
+
+const withDateTime = sub => sub
+  .addStringOption(option => option.setName('date').setDescription('Pick a day (type 22, 22.11 or sob to narrow the list)').setRequired(true).setAutocomplete(true))
+  .addStringOption(option => option.setName('time').setDescription('Start, Polish time (pick or type, e.g. 19:45)').setRequired(true).setAutocomplete(true))
+  .addNumberOption(option => option.setName('hours').setDescription('How long (default 4)').setMinValue(0.5).setMaxValue(12));
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('schedule')
-    .setDescription("Schedule this adventure's next session (in its thread)")
+    .setDescription("Schedule this adventure's sessions (in its thread)")
+    .addSubcommand(sub => withDateTime(sub.setName('set').setDescription('Book a session at a known date and time')))
+    .addSubcommand(sub => withDateTime(sub.setName('move').setDescription('Move the next session to another date and time')))
     .addSubcommand(sub => sub
       .setName('propose')
       .setDescription('Propose up to 4 times; everyone answers with buttons')
       .addStringOption(option => option
         .setName('times')
-        .setDescription('Polish time, comma-separated: "pt 20:00, sob 18:00", "jutro 19:30", "7.11 20:00"')
-        .setRequired(true))
-      .addNumberOption(option => option
-        .setName('hours')
-        .setDescription('How long the session lasts (default 4)')
-        .setMinValue(0.5)
-        .setMaxValue(12)))
-    .addSubcommand(sub => sub
-      .setName('cancel')
-      .setDescription('Cancel the open poll, or else the next session')),
+        .setDescription('Comma-separated, Polish time: 22.11 20:00, 29.11 18:00 (the list shows how they read)')
+        .setRequired(true)
+        .setAutocomplete(true))
+      .addNumberOption(option => option.setName('hours').setDescription('How long (default 4)').setMinValue(0.5).setMaxValue(12)))
+    .addSubcommand(sub => sub.setName('cancel').setDescription('Cancel the open poll, or else the next session'))
+    .addSubcommand(sub => sub.setName('calendar').setDescription('Your sessions in your own calendar (a link only you see)')),
+
+  // Date and time lists, and how a propose text was read.
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    let choices = [];
+    if (focused.name === 'date') choices = dateSuggestions(focused.value);
+    else if (focused.name === 'time') choices = timeSuggestions(focused.value);
+    else if (focused.name === 'times') {
+      const read = describeSessionTimes(focused.value);
+      choices = read.value ? [read] : [];
+    }
+    await interaction.respond(choices.slice(0, 25));
+  },
 
   async execute(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'calendar') return interaction.reply({ ephemeral: true, content: calendarMessage(interaction.user.id) });
+
     const adventure = db.adventureForThread(interaction.channelId);
     if (!adventure) {
       return interaction.reply({ ephemeral: true, content: "Use /schedule in an adventure's thread (the one Grimbrandt opened for it)." });
@@ -36,34 +61,64 @@ module.exports = {
     if (!db.canScheduleAdventure(adventure, interaction.user.id)) {
       return interaction.reply({ ephemeral: true, content: `Only the DM of *${adventure.title}* (or another DM) can schedule it.` });
     }
+    const by = { discordId: interaction.user.id };
+    const hoursGiven = interaction.options.getNumber('hours');
+    const minutes = hoursGiven ? Math.round(hoursGiven * 60) : null;
+    const clashNote = clashes => (clashes.length ? `⚠️ You're also in ${clashes.map(session => `*${session.adventure}* (${discordTime(session.startsAt)})`).join(', ')} then.` : null);
 
-    if (interaction.options.getSubcommand() === 'cancel') {
+    if (subcommand === 'set' || subcommand === 'move') {
+      let startsAt;
+      try {
+        startsAt = parseDateAndTime(interaction.options.getString('date'), interaction.options.getString('time'));
+      } catch (error) {
+        return interaction.reply({ ephemeral: true, content: `${error.message} Pick the date and time from the lists.` });
+      }
+      let result;
+      try {
+        result = subcommand === 'set'
+          ? db.bookSession({ adventureId: adventure.id, by, startsAt, minutes: minutes || db.SESSION_DEFAULT_MINUTES })
+          : db.moveSession({ adventureId: adventure.id, by, startsAt, minutes });
+      } catch (error) {
+        return interaction.reply({ ephemeral: true, content: error.message });
+      }
+      await interaction.reply({ ephemeral: true, content: subcommand === 'set' ? '📅 Booked.' : '📅 Moved.' });
+      const announced = await announceSessionChange(subcommand === 'set' ? 'booked' : 'moved', result.session, {
+        previousStartsAt: result.previousStartsAt, channel: interaction.channel, guild: interaction.guild
+      });
+      const notes = [announced.eventProblem ? `📅 Server event: ${announced.eventProblem}.` : null, clashNote(result.dmClashes)].filter(Boolean);
+      if (notes.length) await interaction.followUp({ ephemeral: true, content: notes.join('\n') });
+      return undefined;
+    }
+
+    if (subcommand === 'cancel') {
       const poll = db.openPollForAdventure(adventure.id);
       if (poll) {
         const closed = db.cancelSchedulePoll({ pollId: poll.id, byDiscordId: interaction.user.id });
         await editPollMessage(interaction, closed);
         return interaction.reply({ content: '📅 *Grimbrandt rolls the calendar back up.* The poll is cancelled.' });
       }
+      let session;
       try {
-        const session = db.cancelNextSession({ adventureId: adventure.id, byDiscordId: interaction.user.id });
-        await deleteServerEvent(interaction.guild, session.eventId);
-        return interaction.reply({ content: `📅 *Grimbrandt strikes the date out.* The session on ${discordTime(session.startsAt)} is cancelled.` });
+        session = db.cancelSession({ adventureId: adventure.id, by });
       } catch (error) {
         return interaction.reply({ ephemeral: true, content: error.message });
       }
+      await interaction.reply({ ephemeral: true, content: '📅 Cancelled.' });
+      await announceSessionChange('cancelled', session, { channel: interaction.channel, guild: interaction.guild });
+      return undefined;
     }
 
+    // propose
     let times;
     try {
       times = parseSessionTimes(interaction.options.getString('times'));
     } catch (error) {
-      return interaction.reply({ ephemeral: true, content: `${error.message}\nExamples: \`pt 20:00, sob 18:00\` · \`jutro 19:30\` · \`7.11 20:00\` (Polish time).` });
+      return interaction.reply({ ephemeral: true, content: `${error.message}\n${EXAMPLES}` });
     }
-    const minutes = Math.round((interaction.options.getNumber('hours') || 4) * 60);
     const previous = db.openPollForAdventure(adventure.id);
     let poll;
     try {
-      poll = db.createSchedulePoll({ adventureId: adventure.id, byDiscordId: interaction.user.id, times, minutes });
+      poll = db.createSchedulePoll({ adventureId: adventure.id, byDiscordId: interaction.user.id, times, minutes: minutes || db.SESSION_DEFAULT_MINUTES });
     } catch (error) {
       return interaction.reply({ ephemeral: true, content: error.message });
     }

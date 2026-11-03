@@ -10,6 +10,7 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const { db } = require('./connection');
 const { sessionsOverlap } = require('../rules/schedule');
 
@@ -36,6 +37,19 @@ function canSchedule(adventure, discordId) {
   if (adventure.dm_discord_id && adventure.dm_discord_id === String(discordId)) return true;
   const player = db.prepare('SELECT role FROM players WHERE discord_id = ?').get(String(discordId));
   return Boolean(player && player.role === 'admin');
+}
+
+// Who acts: { discordId } (Discord) or { user } (the panel). The adventure's DM, or any DM.
+function authorize(adventure, by) {
+  const ok = by && (by.discordId !== undefined && by.discordId !== null
+    ? canSchedule(adventure, by.discordId)
+    : Boolean(by.user && (by.user.role === 'admin' || (adventure.dm_player_id !== null && adventure.dm_player_id === Number(by.user.id)))));
+  if (!ok) throw new Error("Only this adventure's DM (or another DM) can schedule it.");
+}
+function actorDiscordId(by) {
+  if (by.discordId !== undefined && by.discordId !== null) return String(by.discordId);
+  const player = by.user && Number(by.user.id) > 0 ? db.prepare('SELECT discord_id FROM players WHERE id = ?').get(Number(by.user.id)) : null;
+  return player && player.discord_id ? player.discord_id : null;
 }
 
 const playerNameOf = discordId => {
@@ -74,7 +88,10 @@ function sessionView(row) {
     status: row.status,
     threadId: row.discord_thread_id || null,
     threadUrl: row.discord_thread_id && row.discord_guild_id ? `https://discord.com/channels/${row.discord_guild_id}/${row.discord_thread_id}` : null,
-    eventId: row.discord_event_id || null
+    eventId: row.discord_event_id || null,
+    minutes: Math.round((new Date(row.ends_at) - new Date(row.starts_at)) / 60000),
+    sequence: row.sequence || 0,
+    updatedAt: row.updated_at || row.created_at
   };
 }
 
@@ -204,14 +221,106 @@ function nextSessionForAdventure(adventureId, now = new Date()) {
   return row ? sessionView(row) : null;
 }
 
+function checkMinutes(minutes) {
+  const length = Number(minutes);
+  if (!Number.isInteger(length) || length < 30 || length > 12 * 60) throw new Error('A session lasts from half an hour to 12 hours.');
+  return length;
+}
+
+function checkStart(startsAt, now) {
+  const start = new Date(startsAt);
+  if (Number.isNaN(start.getTime())) throw new Error('That is not a time.');
+  if (start <= now) throw new Error('That time is in the past.');
+  return start;
+}
+
+// A known time booked straight away (no poll). Returns the session and the DM's clashes.
+function bookSession({ adventureId, by, startsAt, minutes = DEFAULT_MINUTES, now = new Date() }) {
+  const adventure = loadAdventure(adventureId);
+  if (adventure.status !== 'active') throw new Error('This adventure is no longer running.');
+  authorize(adventure, by);
+  const start = checkStart(startsAt, now);
+  const end = new Date(start.getTime() + checkMinutes(minutes) * 60000);
+  const id = Number(db.prepare(`
+    INSERT INTO sessions (adventure_id, starts_at, ends_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?)
+  `).run(adventure.id, start.toISOString(), end.toISOString(), actorDiscordId(by), now.toISOString()).lastInsertRowid);
+  const session = getSession(id);
+  return { session, dmClashes: adventure.dm_discord_id ? clashesFor(adventure.dm_discord_id, session.startsAt, session.endsAt, { exceptAdventureId: adventure.id }) : [] };
+}
+
+function loadSessionFor(by, { sessionId, adventureId, now }) {
+  const session = sessionId ? getSession(sessionId) : nextSessionForAdventure(adventureId, now);
+  if (!session || (adventureId && session.adventureId !== Number(adventureId))) throw new Error(sessionId ? 'That session is not in this adventure.' : 'This adventure has no session coming up.');
+  if (session.status !== 'scheduled') throw new Error('That session is cancelled.');
+  authorize(loadAdventure(session.adventureId), by);
+  return session;
+}
+
+// A session to a new time (its length kept unless given). Calendars and the
+// day-before reminder follow. Returns it, the time it had, and the DM's clashes.
+function moveSession({ sessionId = null, adventureId = null, by, startsAt, minutes = null, now = new Date() }) {
+  const session = loadSessionFor(by, { sessionId, adventureId, now });
+  const start = checkStart(startsAt, now);
+  const end = new Date(start.getTime() + checkMinutes(minutes === null || minutes === undefined ? session.minutes : minutes) * 60000);
+  db.prepare(`UPDATE sessions SET starts_at = ?, ends_at = ?, sequence = sequence + 1, reminded = 0, updated_at = ? WHERE id = ?`)
+    .run(start.toISOString(), end.toISOString(), now.toISOString(), session.id);
+  const moved = getSession(session.id);
+  const adventure = loadAdventure(moved.adventureId);
+  return {
+    session: moved,
+    previousStartsAt: session.startsAt,
+    dmClashes: adventure.dm_discord_id ? clashesFor(adventure.dm_discord_id, moved.startsAt, moved.endsAt, { exceptAdventureId: adventure.id }) : []
+  };
+}
+
+// Calls a session off (calendars show it cancelled; its server event goes).
+function cancelSession({ sessionId = null, adventureId = null, by, now = new Date() }) {
+  const session = loadSessionFor(by, { sessionId, adventureId, now });
+  db.prepare("UPDATE sessions SET status = 'cancelled', sequence = sequence + 1, updated_at = ? WHERE id = ?").run(now.toISOString(), session.id);
+  return getSession(session.id);
+}
+
 // The DM calls off the adventure's next session (its server event goes too).
 function cancelNextSession({ adventureId, byDiscordId, now = new Date() }) {
-  const adventure = loadAdventure(adventureId);
-  if (!canSchedule(adventure, byDiscordId)) throw new Error("Only this adventure's DM (or another DM) can cancel its session.");
-  const session = nextSessionForAdventure(adventure.id, now);
-  if (!session) throw new Error('This adventure has no session coming up.');
-  db.prepare("UPDATE sessions SET status = 'cancelled' WHERE id = ?").run(session.id);
-  return { ...session, status: 'cancelled' };
+  return cancelSession({ adventureId, by: { discordId: byDiscordId }, now });
+}
+
+// The Discord ids of the people in a session (to tag them).
+function sessionPeopleIds(sessionId) {
+  const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(Number(sessionId));
+  return row ? [...sessionPeople(row)] : [];
+}
+
+// The adventure's coming sessions (the panel's adventure table).
+function adventureSessions(adventureId, now = new Date()) {
+  return db.prepare(`${SESSION_QUERY} WHERE s.adventure_id = ? AND s.status = 'scheduled' AND s.ends_at > ? ORDER BY s.starts_at`)
+    .all(Number(adventureId), now.toISOString()).map(sessionView);
+}
+
+// ─── Personal calendar feeds ───────────────────────────────────────────────
+
+// The secret link of a Discord account (made the first time it's asked for).
+function calendarTokenFor(discordId) {
+  const id = String(discordId || '');
+  if (!id) throw new Error('A calendar link needs a Discord account.');
+  const existing = db.prepare('SELECT token FROM calendar_tokens WHERE discord_id = ?').get(id);
+  if (existing) return existing.token;
+  const token = crypto.randomBytes(18).toString('base64url');
+  db.prepare('INSERT INTO calendar_tokens (discord_id, token) VALUES (?, ?)').run(id, token);
+  return token;
+}
+
+// The sessions a feed shows: this person's, from a month ago on, cancelled ones
+// included (so calendars mark them cancelled). null for an unknown link.
+function calendarSessions(token, now = new Date()) {
+  const owner = typeof token === 'string' && token.length >= 16 ? db.prepare('SELECT discord_id FROM calendar_tokens WHERE token = ?').get(token) : null;
+  if (!owner) return null;
+  const since = new Date(now.getTime() - 30 * 86400000).toISOString();
+  const rows = db.prepare(`${SESSION_QUERY} WHERE s.ends_at > ? ORDER BY s.starts_at`).all(since);
+  return {
+    discordId: owner.discord_id,
+    sessions: rows.filter(row => sessionPeople(row).has(owner.discord_id)).map(sessionView)
+  };
 }
 
 // Upcoming sessions (the next `days`), each with who's in and any clashes
@@ -270,6 +379,13 @@ module.exports = {
   setSessionEvent,
   nextSessionForAdventure,
   cancelNextSession,
+  bookSession,
+  moveSession,
+  cancelSession,
+  adventureSessions,
+  sessionPeopleIds,
+  calendarTokenFor,
+  calendarSessions,
   upcomingSessions,
   takeDueReminders,
   sessionClashesFor: clashesFor

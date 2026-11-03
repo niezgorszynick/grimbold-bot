@@ -122,6 +122,108 @@ const discordShort = date => `<t:${Math.floor(new Date(date).getTime() / 1000)}:
 
 const overlaps = (aStart, aEnd, bStart, bEnd) => new Date(aStart) < new Date(bEnd) && new Date(bStart) < new Date(aEnd);
 
+const pad = n => String(n).padStart(2, '0');
+const PL_DAYS = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'];
+
+// A moment as the panel's date and time inputs want it (Polish time).
+function warsawInputs(date) {
+  const p = warsawParts(new Date(date));
+  return { date: `${p.year}-${pad(p.month)}-${pad(p.day)}`, time: `${pad(p.hour)}:${pad(p.minute)}` };
+}
+
+// "2026-11-22" + "20:00" (or anything parseSessionTime reads) → a Date.
+function parseDateAndTime(dateText, timeText, now = new Date()) {
+  const date = String(dateText || '').trim();
+  const time = String(timeText || '').trim();
+  if (!date) throw new Error('Pick a date.');
+  if (!time) throw new Error('Pick a time.');
+  const iso = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return parseSessionTime(iso ? `${iso[1]}-${iso[2]}-${iso[3]} ${time}` : `${date} ${time}`, now);
+}
+
+// Upcoming days for Discord's date picker: "Sun 22 Nov 2026" (value 2026-11-22),
+// narrowed by what was typed ("22", "22.11", "sob", "nov").
+function dateSuggestions(query, now = new Date(), { days = 180, limit = 25 } = {}) {
+  const typed = plain(query);
+  const today = warsawParts(now);
+  const out = [];
+  for (let ahead = 0; ahead < days && out.length < limit; ahead += 1) {
+    const day = new Date(Date.UTC(today.year, today.month - 1, today.day + ahead));
+    const [y, m, d, w] = [day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), day.getUTCDay()];
+    const name = `${SHORT_DAYS[w]} ${d} ${MONTHS[m - 1]} ${y}${ahead === 0 ? ' (today)' : ahead === 1 ? ' (tomorrow)' : ''}`;
+    const keys = [name, `${d}.${m}`, `${pad(d)}.${pad(m)}`, `${d}.${m}.${y}`, `${y}-${pad(m)}-${pad(d)}`, PL_DAYS[w], Object.keys(WEEKDAYS).filter(key => WEEKDAYS[key] === w).join(' ')].map(plain).join(' | ');
+    if (!typed || keys.split(' | ').some(key => key.startsWith(typed)) || keys.includes(typed)) out.push({ name, value: `${y}-${pad(m)}-${pad(d)}` });
+  }
+  return out;
+}
+
+// Times for Discord's time picker: half hours, evenings first; a typed "19:45" too.
+function timeSuggestions(query, { limit = 25 } = {}) {
+  const typed = plain(query).replace('.', ':');
+  const all = [];
+  for (const hour of [18, 19, 20, 21, 17, 16, 15, 14, 13, 12, 11, 10, 22, 23]) for (const minute of [0, 30]) all.push(`${pad(hour)}:${pad(minute)}`);
+  const own = parseClock(typed);
+  const list = all.filter(time => !typed || time.startsWith(typed) || time.replace(/^0/, '').startsWith(typed));
+  if (own && !list.includes(`${pad(own.hour)}:${pad(own.minute)}`)) list.unshift(`${pad(own.hour)}:${pad(own.minute)}`);
+  return list.slice(0, limit).map(time => ({ name: time, value: time }));
+}
+
+// How a /schedule propose text was read, as one suggestion: the times, or what's wrong.
+function describeSessionTimes(text, now = new Date()) {
+  if (!String(text || '').trim()) return { name: 'Type times, e.g. 22.11 20:00, 29.11 18:00 (Polish time)', value: '' };
+  try {
+    const times = parseSessionTimes(text, now);
+    const value = times.map(time => { const i = warsawInputs(time); return `${i.date} ${i.time}`; }).join(', ');
+    return { name: `✓ ${times.map(formatSessionTime).join(' · ')}`.slice(0, 100), value: value.slice(0, 100) };
+  } catch (error) {
+    return { name: `⚠ ${error.message}`.slice(0, 100), value: String(text).slice(0, 100) };
+  }
+}
+
+// ─── A calendar file (iCalendar) of sessions, for calendar subscriptions ───
+const icsText = text => String(text || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
+const icsTime = date => new Date(date).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+// Lines longer than 75 bytes continue on the next line, starting with a space.
+function foldLine(line) {
+  const bytes = Buffer.from(line, 'utf8');
+  if (bytes.length <= 75) return line;
+  const parts = [];
+  let current = '';
+  for (const char of line) {
+    if (Buffer.byteLength(current + char, 'utf8') > (parts.length ? 74 : 75)) { parts.push(current); current = ''; }
+    current += char;
+  }
+  parts.push(current);
+  return parts.join('\r\n ');
+}
+
+// sessions: from db/schedule.js. Each keeps its id (UID) across changes, with
+// SEQUENCE counting them, so subscribed calendars move or cancel the event.
+function sessionsCalendar(sessions, { name = "Grimbold's sessions", now = new Date() } = {}) {
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Grimbold//Adventure sessions//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    `X-WR-CALNAME:${icsText(name)}`, 'X-WR-TIMEZONE:Europe/Warsaw', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'
+  ];
+  for (const session of sessions) {
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:grimbold-session-${session.id}@grimbold`,
+      `DTSTAMP:${icsTime(now)}`,
+      `LAST-MODIFIED:${icsTime(session.updatedAt ? new Date(String(session.updatedAt).replace(' ', 'T') + (String(session.updatedAt).includes('Z') ? '' : 'Z')) : now)}`,
+      `SEQUENCE:${session.sequence || 0}`,
+      `DTSTART:${icsTime(session.startsAt)}`,
+      `DTEND:${icsTime(session.endsAt)}`,
+      `SUMMARY:${icsText(`${session.status === 'cancelled' ? '[Cancelled] ' : ''}${session.adventure}`)}`,
+      `DESCRIPTION:${icsText([`An adventure session${session.dm ? ` with ${session.dm} as DM` : ''}.`, session.threadUrl ? `Discord thread: ${session.threadUrl}` : ''].filter(Boolean).join('\n'))}`,
+      ...(session.threadUrl ? [`URL:${session.threadUrl}`, `LOCATION:${icsText(session.threadUrl)}`] : []),
+      `STATUS:${session.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'}`,
+      'END:VEVENT'
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return lines.map(foldLine).join('\r\n') + '\r\n';
+}
+
 module.exports = {
   SESSION_TIME_ZONE: ZONE,
   warsawParts,
@@ -132,5 +234,11 @@ module.exports = {
   discordTime,
   discordRelative,
   discordShort,
-  sessionsOverlap: overlaps
+  sessionsOverlap: overlaps,
+  warsawInputs,
+  parseDateAndTime,
+  dateSuggestions,
+  timeSuggestions,
+  describeSessionTimes,
+  sessionsCalendar
 };

@@ -880,6 +880,55 @@ router.post('/adventures/:id/statblocks/:statblockId/delete', (req, res) => adve
 router.post('/adventures/:id/combatants/:combatantId/customize', (req, res) => adventureRoute(({ adventureId, user, body }) =>
   db.customizeCombatant({ adventureId, user, combatantId: req.params.combatantId, all: Boolean(body.all) }))(req, res));
 
+// Sessions (the adventure's DM, or any DM): { date: 2026-11-22, time: 20:00, hours } in
+// Polish time. Booked, moved or cancelled here, they are announced in the
+// adventure's Discord thread and its server event follows, as from Discord.
+async function sessionRoute(req, res, action) {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body || {};
+  const by = { user };
+  try {
+    const minutes = body.hours === undefined || body.hours === '' || body.hours === null ? null : Math.round(Number(body.hours) * 60);
+    const startsAt = action === 'cancel' ? null : require('./rules/schedule').parseDateAndTime(body.date, body.time);
+    let result;
+    if (action === 'book') result = db.bookSession({ adventureId: req.params.id, by, startsAt, minutes: minutes || db.SESSION_DEFAULT_MINUTES });
+    else if (action === 'move') result = db.moveSession({ sessionId: req.params.sessionId, adventureId: Number(req.params.id), by, startsAt, minutes });
+    else result = { session: db.cancelSession({ sessionId: req.params.sessionId, adventureId: Number(req.params.id), by }) };
+    const kind = { book: 'booked', move: 'moved', cancel: 'cancelled' }[action];
+    const announced = await require('./scheduleDiscord').announceSessionChange(kind, result.session, { previousStartsAt: result.previousStartsAt || null })
+      .catch(() => ({ posted: false, eventProblem: 'Discord is not reachable' }));
+    return res.json({
+      ...db.getAdventureTable({ adventureId: Number(req.params.id), user }),
+      note: {
+        posted: announced.posted,
+        eventProblem: announced.eventProblem,
+        clashes: (result.dmClashes || []).map(session => session.adventure)
+      }
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Session change failed:', error);
+      return res.status(500).json({ error: 'Could not change the session.' });
+    }
+    return res.status(/Only this adventure/.test(error.message) ? 403 : 400).json({ error: error.message });
+  }
+}
+router.post('/adventures/:id/sessions', (req, res) => sessionRoute(req, res, 'book'));
+router.post('/adventures/:id/sessions/:sessionId', (req, res) => sessionRoute(req, res, 'move'));
+router.post('/adventures/:id/sessions/:sessionId/cancel', (req, res) => sessionRoute(req, res, 'cancel'));
+
+// Your personal calendar link (needs a Discord account on your player).
+router.get('/calendar-link', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const player = Number(user.id) > 0 ? db.prepare('SELECT discord_id FROM players WHERE id = ?').get(Number(user.id)) : null;
+  if (!player || !player.discord_id) return res.status(400).json({ error: 'Calendar links come with a Discord account; the Root DM has none.' });
+  const links = require('./scheduleDiscord').calendarLinks(player.discord_id);
+  if (!links) return res.status(400).json({ error: 'Calendar links need the panel address (PANEL_URL) set on the server.' });
+  return res.json(links);
+});
+
 // The DM shows a monster's roll to the party.
 router.post('/adventures/:id/encounter-rolls/:rollId/reveal', (req, res) => adventureRoute(({ adventureId, user }) =>
   db.revealEncounterRoll({ adventureId, user, rollId: req.params.rollId }))(req, res));

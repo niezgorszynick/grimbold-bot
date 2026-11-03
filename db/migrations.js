@@ -822,6 +822,24 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
       `);
     }
+  },
+  {
+    version: 28,
+    name: 'Sessions: changes counted for calendars; personal calendar feeds',
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(sessions)').all().map(column => column.name));
+      // sequence: bumped on every change, so calendars take the new version.
+      if (!columns.has('sequence')) db.exec('ALTER TABLE sessions ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0');
+      if (!columns.has('updated_at')) db.exec('ALTER TABLE sessions ADD COLUMN updated_at TEXT');
+      db.exec(`
+        -- A secret link per Discord account: its sessions as a calendar feed (/calendar/<token>.ics).
+        CREATE TABLE IF NOT EXISTS calendar_tokens (
+          discord_id TEXT PRIMARY KEY,
+          token TEXT NOT NULL UNIQUE,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    }
   }
 ];
 

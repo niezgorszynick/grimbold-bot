@@ -1,8 +1,9 @@
 // scheduleDiscord.js — Scheduling sessions in Discord (db/schedule.js holds
 // the data): the poll message in an adventure's thread with ✅ / 🤔 / ❌
-// buttons for each time and the DM's "lock in" menu, the announcement and the
-// Discord server event when a time is locked in, and Grimbrandt's reminder a
-// day before. Everything works from Discord alone; the panel shows the same.
+// buttons for each time and the DM's "lock in" menu; the announcement and the
+// Discord server event whenever a session is booked, moved or cancelled (from
+// Discord or the panel); "📅 Add to my calendar" (a personal calendar feed);
+// and Grimbrandt's reminder a day before.
 
 'use strict';
 
@@ -14,9 +15,15 @@ const db = require('./db');
 const { discordTime, discordRelative, formatSessionTime } = require('./rules/schedule');
 
 const REMINDER_EVERY_MS = 5 * 60 * 1000;
+let client = null;
 
 const names = list => (list.length ? list.map(entry => entry.name).join(', ') : '—');
 const hours = minutes => (minutes % 60 ? `${(minutes / 60).toFixed(1)} h` : `${minutes / 60} h`);
+
+// "📅 Add to my calendar": a button under every session announcement.
+const calendarRow = () => new ActionRowBuilder().addComponents(
+  new ButtonBuilder().setCustomId('sched:cal').setLabel('📅 Add to my calendar').setStyle(ButtonStyle.Secondary)
+);
 
 // The poll message: one field and one row of buttons per time, and the DM's menu.
 function pollMessage(poll) {
@@ -58,38 +65,110 @@ function pollMessage(poll) {
   return { embeds: [embed], components: rows };
 }
 
-// A Discord server event for a locked-in session; its id, or null (and why).
-async function createServerEvent(guild, session) {
-  if (!guild) return { id: null, problem: 'not in a server' };
+// ─── Server events ─────────────────────────────────────────────────────────
+
+const eventFields = session => ({
+  name: session.adventure.slice(0, 100),
+  scheduledStartTime: new Date(session.startsAt),
+  scheduledEndTime: new Date(session.endsAt),
+  privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+  entityType: GuildScheduledEventEntityType.External,
+  entityMetadata: { location: (session.threadUrl || 'Discord').slice(0, 100) },
+  description: `An adventure session${session.dm ? ` with ${session.dm} as DM` : ''}.${session.threadUrl ? ` Thread: ${session.threadUrl}` : ''}`.slice(0, 1000)
+});
+
+// The session's server event made, moved or deleted. Returns a problem, or null.
+async function syncServerEvent(guild, session, kind) {
+  if (!guild) return 'not in a server';
   try {
-    const event = await guild.scheduledEvents.create({
-      name: session.adventure.slice(0, 100),
-      scheduledStartTime: new Date(session.startsAt),
-      scheduledEndTime: new Date(session.endsAt),
-      privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-      entityType: GuildScheduledEventEntityType.External,
-      entityMetadata: { location: (session.threadUrl || 'Discord').slice(0, 100) },
-      description: `An adventure session${session.dm ? ` with ${session.dm} as DM` : ''}.${session.threadUrl ? ` Thread: ${session.threadUrl}` : ''}`.slice(0, 1000)
-    });
+    if (kind === 'cancelled') {
+      if (session.eventId) await guild.scheduledEvents.delete(session.eventId);
+      db.setSessionEvent(session.id, null);
+      return null;
+    }
+    if (kind === 'moved' && session.eventId) {
+      const { name, scheduledStartTime, scheduledEndTime } = eventFields(session);
+      await guild.scheduledEvents.edit(session.eventId, { name, scheduledStartTime, scheduledEndTime });
+      return null;
+    }
+    const event = await guild.scheduledEvents.create(eventFields(session));
     db.setSessionEvent(session.id, event.id);
-    return { id: event.id, problem: null };
+    return null;
   } catch (error) {
-    console.warn('[Schedule] Could not create the server event:', error.message);
-    return { id: null, problem: 'the bot needs the Manage Events permission' };
+    console.warn('[Schedule] Server event:', error.message);
+    return 'the bot needs the Manage Events permission';
   }
 }
 
-async function deleteServerEvent(guild, eventId) {
-  if (!guild || !eventId) return;
-  await guild.scheduledEvents.delete(eventId).catch(error => console.warn('[Schedule] Could not delete the server event:', error.message));
-}
+// ─── Announcing changes (from Discord or the panel) ─────────────────────────
 
 const clashText = clashes => clashes.map(session => `*${session.adventure}* (${discordTime(session.startsAt)})`).join(', ');
 
-// Buttons (sched:v:<optionId>:<answer>) and the DM's menu (sched:lock:<pollId>).
+// kind: booked | moved | cancelled. In the adventure's thread (with the
+// calendar button), and its server event. channel/guild: from the interaction,
+// or found by the bot (panel changes). Returns { posted, eventProblem }.
+async function announceSessionChange(kind, session, { previousStartsAt = null, tagged = [], maybe = [], channel = null, guild = null } = {}) {
+  let thread = channel;
+  if (!thread && client && session.threadId) thread = await client.channels.fetch(session.threadId).catch(() => null);
+  const server = guild || (thread && thread.guild) || null;
+  const lines = {
+    booked: `🗓️ *Grimbrandt circles the date twice.* **${session.adventure}**: ${discordTime(session.startsAt)} (${discordRelative(session.startsAt)}).`,
+    moved: `🗓️ *Grimbrandt scratches out a date and writes a new one.* **${session.adventure}** moves${previousStartsAt ? ` from ${discordTime(previousStartsAt)}` : ''} to **${discordTime(session.startsAt)}** (${discordRelative(session.startsAt)}).`,
+    cancelled: `🗓️ *Grimbrandt strikes the date out.* **${session.adventure}** on ${discordTime(session.startsAt)} is cancelled.`
+  };
+  let posted = false;
+  if (thread && typeof thread.send === 'function') {
+    // A poll's ✅ when locked in; otherwise everyone in the session (✅, DM, party).
+    const people = tagged.length ? tagged : db.sessionPeopleIds(session.id);
+    await thread.send({
+      content: lines[kind] + (people.length ? `\n✅ ${people.map(id => `<@${id}>`).join(' ')}` : '') + (maybe.length ? `\n🤔 maybe: ${names(maybe)}` : ''),
+      components: kind === 'cancelled' ? [] : [calendarRow()],
+      allowedMentions: { users: people }
+    }).then(() => { posted = true; }).catch(error => console.warn('[Schedule] Announcement failed:', error.message));
+  }
+  const eventProblem = await syncServerEvent(server, session, kind);
+  return { posted, eventProblem };
+}
+
+// ─── Calendar links ────────────────────────────────────────────────────────
+
+// The personal feed of a Discord account, and one-click links to subscribe.
+function calendarLinks(discordId) {
+  const base = String(process.env.PANEL_URL || '').replace(/\/+$/, '');
+  if (!base) return null;
+  const https = `${base}/calendar/${db.calendarTokenFor(discordId)}.ics`;
+  const webcal = https.replace(/^https?:/, 'webcal:');
+  return {
+    https,
+    webcal,
+    google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`,
+    outlook: `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=${encodeURIComponent("Grimbold's sessions")}`
+  };
+}
+
+function calendarMessage(discordId) {
+  const links = calendarLinks(discordId);
+  if (!links) return '📅 Calendar links need the panel address (PANEL_URL) set on the server; ask an admin.';
+  return [
+    '📅 **Your sessions as a calendar**: the ones you said ✅ to, DM, or have a character in. Changes and cancellations follow by themselves.',
+    `• Google Calendar: [subscribe](${links.google})`,
+    `• Outlook: [subscribe](${links.outlook})`,
+    `• Apple Calendar / iPhone: [subscribe](${links.webcal})`,
+    `• Other apps: add this address as a subscription: <${links.https}>`,
+    '-# Keep the link to yourself. Google can take some hours to pick up a change; Grimbrandt\'s reminder and the server event are instant.'
+  ].join('\n');
+}
+
+// ─── Buttons and the DM's menu ─────────────────────────────────────────────
+
+// Buttons (sched:v:<optionId>:<answer>, sched:cal) and the DM's menu (sched:lock:<pollId>).
 async function handleScheduleInteraction(interaction) {
   const parts = interaction.customId.split(':');
   try {
+    if (parts[1] === 'cal') {
+      await interaction.reply({ ephemeral: true, content: calendarMessage(interaction.user.id) });
+      return;
+    }
     if (parts[1] === 'v') {
       const name = (interaction.member && interaction.member.displayName) || interaction.user.globalName || interaction.user.username;
       const { poll, clashes } = db.voteOnSession({ optionId: Number(parts[2]), discordId: interaction.user.id, name, answer: parts[3] });
@@ -109,15 +188,11 @@ async function handleScheduleInteraction(interaction) {
       }
       const { session, option, poll, dmClashes } = db.confirmSessionOption({ pollId, optionId: Number(choice), byDiscordId: interaction.user.id });
       await interaction.update(pollMessage(poll));
-      const tagged = option.yes.map(entry => entry.discordId);
-      await interaction.channel.send({
-        content: `🗓️ *Grimbrandt circles the date twice.* **${session.adventure}**: ${discordTime(session.startsAt)} (${discordRelative(session.startsAt)}).` +
-          `${tagged.length ? `\n✅ ${tagged.map(id => `<@${id}>`).join(' ')}` : ''}${option.maybe.length ? `\n🤔 maybe: ${names(option.maybe)}` : ''}`,
-        allowedMentions: { users: tagged }
+      const result = await announceSessionChange('booked', session, {
+        tagged: option.yes.map(entry => entry.discordId), maybe: option.maybe, channel: interaction.channel, guild: interaction.guild
       });
-      const event = await createServerEvent(interaction.guild, session);
       const notes = [
-        event.id ? '📅 Added to the server\'s Events.' : `📅 No server event: ${event.problem}.`,
+        result.eventProblem ? `📅 No server event: ${result.eventProblem}.` : '📅 Added to the server\'s Events.',
         dmClashes.length ? `⚠️ You're also in ${clashText(dmClashes)} then.` : null
       ].filter(Boolean);
       await interaction.followUp({ ephemeral: true, content: notes.join('\n') });
@@ -129,11 +204,13 @@ async function handleScheduleInteraction(interaction) {
   }
 }
 
+// ─── Reminders ─────────────────────────────────────────────────────────────
+
 // The day-before note in each session's thread, tagging those who are in it.
-async function sendDueReminders(client, now = new Date()) {
+async function sendDueReminders(discordClient, now = new Date()) {
   for (const session of db.takeDueReminders(now)) {
     if (!session.threadId) continue;
-    const thread = await client.channels.fetch(session.threadId).catch(() => null);
+    const thread = await discordClient.channels.fetch(session.threadId).catch(() => null);
     if (!thread || typeof thread.send !== 'function') continue;
     await thread.send({
       content: `⏰ *Grimbrandt taps the calendar.* **${session.adventure}** starts ${discordRelative(session.startsAt)}, ${discordTime(session.startsAt)}.` +
@@ -143,10 +220,29 @@ async function sendDueReminders(client, now = new Date()) {
   }
 }
 
-function startScheduleReminders(client) {
-  const run = () => sendDueReminders(client).catch(error => console.warn('[Schedule] Reminders failed:', error.message));
+function startScheduleReminders(discordClient) {
+  client = discordClient;
+  const run = () => sendDueReminders(discordClient).catch(error => console.warn('[Schedule] Reminders failed:', error.message));
   run();
   return setInterval(run, REMINDER_EVERY_MS);
 }
 
-module.exports = { pollMessage, handleScheduleInteraction, createServerEvent, deleteServerEvent, sendDueReminders, startScheduleReminders };
+function setScheduleClient(discordClient) {
+  client = discordClient;
+}
+
+// Kept for /schedule cancel: the server event of a cancelled session.
+const deleteServerEvent = (guild, eventId) => syncServerEvent(guild, { id: null, eventId }, 'cancelled').then(() => undefined);
+
+module.exports = {
+  pollMessage,
+  calendarRow,
+  calendarLinks,
+  calendarMessage,
+  announceSessionChange,
+  handleScheduleInteraction,
+  deleteServerEvent,
+  sendDueReminders,
+  startScheduleReminders,
+  setScheduleClient
+};

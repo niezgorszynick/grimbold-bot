@@ -115,6 +115,8 @@ app.get('/avatars/npc/:file', (req, res) => {
 // DM Panel route
 // The Owlbear Rodeo extension (public, works without a panel login).
 app.use('/vtt', require('./vtt'));
+// Personal calendar feeds of adventure sessions (public; the token is the secret).
+app.use('/calendar', require('./calendar'));
 app.use('/api', webShopApiRouter);
 app.use('/admin', adminRouter);
 
@@ -146,6 +148,8 @@ require('./adventureThreads').registerAdventureThreads(client);
 require('./characterThreads').setCharacterThreadsClient(client);
 // Natural 1s and 20s from every source, in one channel (NAT_ROLLS_CHANNEL_ID).
 require('./naturalRolls').setNaturalRollsClient(client);
+// Session changes made in the panel are announced in the adventure's thread.
+require('./scheduleDiscord').setScheduleClient(client);
 // Auction news (listings, bids, results) and settling auctions that are due.
 require('./auctionNews').setAuctionNewsClient(client);
 

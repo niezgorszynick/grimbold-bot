@@ -188,6 +188,104 @@ test('in Discord: /schedule posts the poll, buttons answer it, the DM locks it i
   assert.equal(fake.calls.replies[0].ephemeral, true);
   fake = fakeInteraction({ userId: dmId, channelId: first.discord_thread_id, subcommand: 'cancel' });
   await scheduleCommand.execute(fake.interaction);
-  assert.match(fake.calls.replies[0].content, /cancelled/);
+  assert.match(fake.calls.replies[0].content, /Cancelled/);
+  assert.match(fake.calls.sent[0].content, /Wilki z Doliny\*\* on <t:\d+:F> is cancelled/);
   assert.deepEqual(fake.calls.events, [{ deleted: 'event-1' }]);
+});
+
+test('book, move and cancel straight away (Discord or panel); calendars follow with a change count', async () => {
+  const { dm, ola, tom, kael, first } = setUp();
+  const [dmId, olaId] = [dm, ola].map(discordIdOf);
+  db.setPartyMember({ adventureId: first.id, user: { id: 0, role: 'admin' }, characterId: kael, inParty: true });
+  const asPanelPlayer = { user: { id: tom, role: 'player' } };
+  const sunday = rules.parseDateAndTime('2026-11-22', '20:00', NOW);
+  assert.equal(sunday.toISOString(), '2026-11-22T19:00:00.000Z');
+
+  assert.throws(() => db.bookSession({ adventureId: first.id, by: asPanelPlayer, startsAt: sunday, now: NOW }), /Only this adventure's DM/);
+  assert.throws(() => db.bookSession({ adventureId: first.id, by: { discordId: dmId }, startsAt: new Date('2026-11-01T19:00:00Z'), now: NOW }), /in the past/);
+  const { session } = db.bookSession({ adventureId: first.id, by: { discordId: dmId }, startsAt: sunday, minutes: 180, now: NOW });
+  assert.deepEqual([session.startsAt, session.endsAt, session.sequence], ['2026-11-22T19:00:00.000Z', '2026-11-22T22:00:00.000Z', 0]);
+  assert.deepEqual(db.sessionPeopleIds(session.id).sort(), [dmId, olaId].sort(), 'its DM and the party');
+
+  // Moved from the panel (the DM's account): length kept, the reminder will go out again.
+  const moved = db.moveSession({ adventureId: first.id, by: { user: { id: dm, role: 'admin' } }, startsAt: rules.parseDateAndTime('2026-11-29', '18:00', NOW), now: NOW });
+  assert.deepEqual([moved.session.startsAt, moved.session.minutes, moved.session.sequence, moved.previousStartsAt], ['2026-11-29T17:00:00.000Z', 180, 1, '2026-11-22T19:00:00.000Z']);
+  assert.deepEqual(db.adventureSessions(first.id, NOW).map(entry => entry.id), [session.id]);
+
+  // Ola's calendar feed: the session, then marked cancelled.
+  const token = db.calendarTokenFor(olaId);
+  assert.equal(db.calendarTokenFor(olaId), token, 'one link per person');
+  assert.equal(db.calendarSessions('not-a-real-token-xyz', NOW), null);
+  assert.deepEqual(db.calendarSessions(token, NOW).sessions.map(entry => entry.adventure), ['Wilki z Doliny']);
+  assert.deepEqual(db.calendarSessions(db.calendarTokenFor('stranger'), NOW).sessions, [], "someone not in it doesn't get it");
+  const cancelled = db.cancelSession({ sessionId: session.id, by: { discordId: dmId }, now: NOW });
+  assert.deepEqual([cancelled.status, cancelled.sequence], ['cancelled', 2]);
+  const ics = rules.sessionsCalendar(db.calendarSessions(token, NOW).sessions, { now: NOW });
+  assert.match(ics, new RegExp(`UID:grimbold-session-${session.id}@grimbold`));
+  assert.match(ics, /SEQUENCE:2\r\n/);
+  assert.match(ics, /STATUS:CANCELLED/);
+  assert.match(ics, /SUMMARY:\[Cancelled\] Wilki z Doliny/);
+  assert.throws(() => db.moveSession({ sessionId: session.id, by: { discordId: dmId }, startsAt: sunday, now: NOW }), /cancelled/);
+
+  // The feed over HTTP, as a calendar app fetches it.
+  const express = require('express');
+  const app = express();
+  app.use('/calendar', require('../calendar'));
+  const server = app.listen(0);
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${base}/calendar/${token}.ics`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /text\/calendar/);
+    assert.match(await response.text(), /BEGIN:VCALENDAR[\s\S]*Wilki z Doliny/);
+    assert.equal((await fetch(`${base}/calendar/nope-nope-nope-nope.ics`)).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test('in Discord: date and time pickers, set and move, and the calendar button', async () => {
+  const { dm, ola, first } = setUp();
+  const [dmId, olaId] = [dm, ola].map(discordIdOf);
+  process.env.PANEL_URL = 'https://panel.example/';
+
+  // The pickers.
+  const responses = [];
+  const picker = (name, value, subcommand = 'set') => ({
+    options: { getFocused: () => ({ name, value }), getSubcommand: () => subcommand },
+    respond: async choices => responses.push(choices)
+  });
+  await scheduleCommand.autocomplete(picker('date', '22.11'));
+  assert.ok(responses[0].length >= 1 && /^\w{3} 22 \w{3} \d{4}/.test(responses[0][0].name));
+  await scheduleCommand.autocomplete(picker('time', '19'));
+  assert.deepEqual(responses[1].map(choice => choice.value), ['19:00', '19:30']);
+  await scheduleCommand.autocomplete(picker('times', 'pt 20:00, 31.11 18', 'propose'));
+  assert.match(responses[2][0].name, /^⚠ "31.11 18": there is no such date/);
+
+  // /schedule set with picked values: announced in the thread with the calendar button, a server event.
+  const date = rules.dateSuggestions('', new Date())[10].value;
+  let fake = fakeInteraction({ userId: dmId, channelId: first.discord_thread_id, subcommand: 'set', strings: { date, time: '20:00' } });
+  await scheduleCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /Booked/);
+  assert.match(fake.calls.sent[0].content, /circles the date twice/);
+  assert.equal(fake.calls.sent[0].components[0].toJSON().components[0].custom_id, 'sched:cal');
+  assert.equal(fake.calls.events.length, 1);
+  const booked = db.nextSessionForAdventure(first.id);
+  assert.equal(rules.warsawInputs(booked.startsAt).date, date);
+
+  // /schedule move edits the same server event.
+  const later = rules.dateSuggestions('', new Date())[12].value;
+  fake = fakeInteraction({ userId: dmId, channelId: first.discord_thread_id, subcommand: 'move', strings: { date: later, time: '18:30' } });
+  fake.interaction.guild.scheduledEvents.edit = async (id, changes) => fake.calls.events.push({ edited: id, start: changes.scheduledStartTime.toISOString() });
+  await scheduleCommand.execute(fake.interaction);
+  assert.match(fake.calls.sent[0].content, /moves from <t:\d+:F> to \*\*<t:\d+:F>\*\*/);
+  assert.deepEqual(fake.calls.events.map(entry => entry.edited), ['event-1']);
+
+  // The calendar button: personal links, only for the one who pressed it.
+  fake = fakeInteraction({ userId: olaId, customId: 'sched:cal' });
+  await scheduleDiscord.handleScheduleInteraction(fake.interaction);
+  assert.equal(fake.calls.replies[0].ephemeral, true);
+  const feed = `panel.example%2Fcalendar%2F${db.calendarTokenFor(olaId)}.ics`;
+  assert.ok(fake.calls.replies[0].content.includes(`https://calendar.google.com/calendar/r?cid=webcal%3A%2F%2F${feed}`), 'Google subscribes to the webcal feed');
+  assert.ok(fake.calls.replies[0].content.includes(`webcal://panel.example/calendar/${db.calendarTokenFor(olaId)}.ics`), 'Apple opens the webcal link');
 });

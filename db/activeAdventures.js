@@ -10,8 +10,8 @@ const { getCharacterSnapshots } = require('./roster');
 const { getRecentRolls } = require('./dice');
 const { getAdventureNpcs } = require('./npcs');
 const { encountersForTable, getEncounterRolls } = require('./encounters');
-const { nextSessionForAdventure, openPollForAdventure } = require('./schedule');
-const { formatSessionTime } = require('../rules/schedule');
+const { nextSessionForAdventure, openPollForAdventure, adventureSessions } = require('./schedule');
+const { formatSessionTime, warsawInputs } = require('../rules/schedule');
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 4000;
@@ -204,6 +204,10 @@ function getAdventureTable({ adventureId, user }) {
       const poll = adventure.status === 'active' ? openPollForAdventure(adventure.id) : null;
       return {
         nextSession: next ? { startsAt: next.startsAt, text: formatSessionTime(next.startsAt) } : null,
+        // Every coming session, to move or cancel (those who run the adventure).
+        sessions: access.manage && adventure.status === 'active'
+          ? adventureSessions(adventure.id).map(session => ({ id: session.id, text: formatSessionTime(session.startsAt), ...warsawInputs(session.startsAt), hours: session.minutes / 60 }))
+          : [],
         openPoll: poll ? { options: poll.options.map(option => ({ letter: option.letter, text: formatSessionTime(option.startsAt), yes: option.yes.length, maybe: option.maybe.length })) } : null
       };
     })(),

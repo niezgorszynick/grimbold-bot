@@ -1007,6 +1007,45 @@
     return section;
   }
 
+  // ─── Sessions (also /schedule in the Discord thread; each side shows the other's) ───
+  let scheduleOpen = false;
+  function sessionInputs(values) {
+    const date = el('input', { type: 'date', value: values.date || '', 'aria-label': 'Date' });
+    const time = el('input', { type: 'time', step: '900', value: values.time || '20:00', 'aria-label': 'Start (Polish time)' });
+    const hours = el('input', { type: 'number', min: '0.5', max: '12', step: '0.5', value: String(values.hours || 4), className: 'inventory-qty', 'aria-label': 'Hours' });
+    return { date, time, hours, nodes: [date, time, el('label', { className: 'small' }, [hours, ' h'])] };
+  }
+  function sessionMessage(result, done) {
+    const note = result.note || {};
+    return done + (note.posted ? ' Announced in the Discord thread.' : ' (Discord not reached: announce it yourself.)') +
+      (note.eventProblem ? ' Server event: ' + note.eventProblem + '.' : '') +
+      (note.clashes && note.clashes.length ? ' ⚠️ You are also in ' + note.clashes.join(', ') + ' then.' : '');
+  }
+  function scheduleSection() {
+    const schedule = data.schedule || {};
+    if (!data.canManage || data.adventure.status !== 'active') return null;
+    const sessions = schedule.sessions || [];
+    const book = sessionInputs({});
+    const rows = sessions.map(session => {
+      const inputs = sessionInputs(session);
+      return el('li', {}, [
+        el('strong', { text: session.text }), ' ',
+        el('span', { className: 'schedule-move' }, [...inputs.nodes,
+          button('Move', () => act('/sessions/' + session.id, { date: inputs.date.value, time: inputs.time.value, hours: inputs.hours.value }, result => sessionMessage(result, 'Session moved.')), 'btn btn-small'),
+          button('Cancel', () => {
+            if (window.confirm('Cancel the session on ' + session.text + '? Everyone in it is told in the thread.')) act('/sessions/' + session.id + '/cancel', {}, result => sessionMessage(result, 'Session cancelled.'));
+          }, 'btn btn-small btn-red')])
+      ]);
+    });
+    return el('details', { className: 'sheet-card schedule-panel', open: scheduleOpen || null, ontoggle: null }, [
+      el('summary', { text: '📅 Sessions' + (sessions.length ? ' (' + sessions.length + ' coming)' : '') }),
+      el('p', { className: 'muted small', text: "Polish time. Changes here are announced in the adventure's Discord thread and move its server event; /schedule there shows up here." }),
+      sessions.length ? el('ul', { className: 'schedule-list' }, rows) : el('p', { className: 'muted small', text: 'No session booked yet.' }),
+      el('div', { className: 'table-filter' }, [el('span', { className: 'small', text: 'Book a session:' }), ...book.nodes,
+        button('Book', () => act('/sessions', { date: book.date.value, time: book.time.value, hours: book.hours.value }, result => sessionMessage(result, 'Session booked.')), 'btn btn-small btn-green')])
+    ]);
+  }
+
   function finishForm() {
     const xp = el('input', { type: 'number', min: '1', max: '20', value: String(data.adventure.xp || 1), className: 'inventory-qty', 'aria-label': 'XP for each party member' });
     const reward = el('select', { 'aria-label': 'DM reward' });
@@ -1198,6 +1237,7 @@
       data.canManage && !adventure.threadUrl ? threadSection() : null,
       data.canManage && adventure.threadUrl ? speakSection() : null,
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null,
+      (() => { const section = scheduleSection(); if (section) section.addEventListener('toggle', () => { scheduleOpen = section.open; }); return section; })(),
       runningSection(),
       data.party.length
         ? el('div', { className: 'party-grid' }, data.party.map(memberCard))

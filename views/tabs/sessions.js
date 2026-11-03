@@ -44,6 +44,31 @@ module.exports = function renderSessionsTab(ctx) {
           </div>`).join('')}`).join('') : `<p class="muted">No sessions booked in the next ${days === 60 ? 'two months' : 'three weeks'}.</p>`}
     </section>
     <section class="card">
+      <h3>📅 In your own calendar</h3>
+      <p class="muted small">Your sessions (said ✅, DM, or in the party) in Google, Apple or Outlook. Moved and cancelled sessions follow by themselves; Google can take some hours to notice. In Discord: <code>/schedule calendar</code> or the 📅 button under a session.</p>
+      <div class="table-filter" id="calendar-links"><button type="button" class="btn btn-small" id="calendar-show">Show my calendar links</button></div>
+      <script>
+        (() => {
+          const box = document.getElementById('calendar-links');
+          document.getElementById('calendar-show').addEventListener('click', async () => {
+            try {
+              const response = await fetch('/api/calendar-link');
+              const links = await response.json();
+              if (!response.ok) throw new Error(links.error || 'No calendar link.');
+              const a = (href, text) => { const node = document.createElement('a'); node.href = href; node.textContent = text; node.target = '_blank'; node.rel = 'noopener'; node.className = 'btn btn-small btn-secondary'; return node; };
+              const copy = document.createElement('input');
+              Object.assign(copy, { type: 'text', readOnly: true, value: links.https });
+              copy.style.minWidth = '260px';
+              copy.addEventListener('focus', () => copy.select());
+              box.replaceChildren(a(links.google, 'Google Calendar'), a(links.webcal, 'Apple / iPhone'), a(links.outlook, 'Outlook'), copy);
+            } catch (error) {
+              box.textContent = error.message;
+            }
+          });
+        })();
+      </script>
+    </section>
+    <section class="card">
       <h3>Open polls</h3>
       ${polls.length ? polls.map(poll => `
         <div class="session-row">
