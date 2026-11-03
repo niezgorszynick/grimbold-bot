@@ -840,6 +840,62 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 29,
+    name: 'Campaigns: sessions outside adventure threads (a DM, members, a channel)',
+    up(db) {
+      db.exec(`
+        -- A campaign run apart from the panel's adventures; its sessions join the
+        -- same calendar, so clashes with one-shots show. channel_id: where Grimbrandt posts.
+        CREATE TABLE IF NOT EXISTS campaigns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          dm_discord_id TEXT NOT NULL,
+          dm_name TEXT NOT NULL DEFAULT '',
+          channel_id TEXT,
+          guild_id TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS campaign_members (
+          campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+          discord_id TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (campaign_id, discord_id)
+        );
+        -- Sessions now belong to an adventure or a campaign: the table is
+        -- rebuilt so adventure_id may be empty (its rows are kept).
+        DROP TRIGGER IF EXISTS change_log_session_insert;
+        DROP TRIGGER IF EXISTS change_log_session_update;
+        CREATE TABLE sessions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER REFERENCES adventures(id) ON DELETE CASCADE,
+          campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
+          poll_id INTEGER,
+          option_id INTEGER,
+          starts_at TEXT NOT NULL,
+          ends_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'scheduled',
+          discord_event_id TEXT,
+          reminded INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          sequence INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT
+        );
+        INSERT INTO sessions_new (id, adventure_id, poll_id, option_id, starts_at, ends_at, status, discord_event_id, reminded, created_by, created_at, sequence, updated_at)
+          SELECT id, adventure_id, poll_id, option_id, starts_at, ends_at, status, discord_event_id, reminded, created_by, created_at, sequence, updated_at FROM sessions;
+        DROP TABLE sessions;
+        ALTER TABLE sessions_new RENAME TO sessions;
+        CREATE INDEX IF NOT EXISTS sessions_time ON sessions (status, starts_at);
+        CREATE TRIGGER IF NOT EXISTS change_log_session_insert AFTER INSERT ON sessions WHEN NEW.adventure_id IS NOT NULL
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_session_update AFTER UPDATE ON sessions WHEN NEW.adventure_id IS NOT NULL
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+      `);
+    }
   }
 ];
 

@@ -60,6 +60,12 @@ const playerNameOf = discordId => {
 // Discord ids of the people in a session: ✅ to its time, its DM, its party's players.
 function sessionPeople(session) {
   const ids = new Set();
+  if (session.campaign_id) {
+    const campaign = db.prepare('SELECT dm_discord_id FROM campaigns WHERE id = ?').get(session.campaign_id);
+    if (campaign) ids.add(campaign.dm_discord_id);
+    db.prepare('SELECT discord_id FROM campaign_members WHERE campaign_id = ?').all(session.campaign_id).forEach(row => ids.add(row.discord_id));
+    return ids;
+  }
   if (session.option_id) {
     db.prepare("SELECT discord_id FROM session_votes WHERE option_id = ? AND answer = 'yes'").all(session.option_id).forEach(row => ids.add(row.discord_id));
   }
@@ -72,15 +78,21 @@ function sessionPeople(session) {
   return ids;
 }
 
+// A session of an adventure (its thread) or of a campaign (its channel).
 const SESSION_QUERY = `
-  SELECT s.*, a.title AS adventure_title, a.discord_thread_id, a.discord_guild_id, p.discord_tag AS dm_name
-  FROM sessions s JOIN adventures a ON a.id = s.adventure_id LEFT JOIN players p ON p.id = a.dm_player_id
+  SELECT s.*, COALESCE(a.title, cp.name) AS adventure_title,
+    COALESCE(a.discord_thread_id, cp.channel_id) AS discord_thread_id, COALESCE(a.discord_guild_id, cp.guild_id) AS discord_guild_id,
+    COALESCE(p.discord_tag, cp.dm_name) AS dm_name
+  FROM sessions s LEFT JOIN adventures a ON a.id = s.adventure_id LEFT JOIN players p ON p.id = a.dm_player_id
+    LEFT JOIN campaigns cp ON cp.id = s.campaign_id
 `;
 
 function sessionView(row) {
   return {
     id: row.id,
-    adventureId: row.adventure_id,
+    kind: row.campaign_id ? 'campaign' : 'adventure',
+    adventureId: row.adventure_id || null,
+    campaignId: row.campaign_id || null,
     adventure: row.adventure_title,
     dm: row.dm_name || null,
     startsAt: row.starts_at,
@@ -96,9 +108,10 @@ function sessionView(row) {
 }
 
 // Scheduled sessions (other than in `exceptAdventureId`) that overlap the time and that this person is in.
-function clashesFor(discordId, startsAt, endsAt, { exceptAdventureId = null } = {}) {
-  return db.prepare(`${SESSION_QUERY} WHERE s.status = 'scheduled' AND s.starts_at < ? AND s.ends_at > ? ${exceptAdventureId ? 'AND s.adventure_id != ?' : ''}`)
-    .all(...[endsAt, startsAt, ...(exceptAdventureId ? [Number(exceptAdventureId)] : [])])
+function clashesFor(discordId, startsAt, endsAt, { exceptAdventureId = null, exceptCampaignId = null } = {}) {
+  return db.prepare(`${SESSION_QUERY} WHERE s.status = 'scheduled' AND s.starts_at < ? AND s.ends_at > ?
+    ${exceptAdventureId ? 'AND (s.adventure_id IS NULL OR s.adventure_id != ?)' : ''} ${exceptCampaignId ? 'AND (s.campaign_id IS NULL OR s.campaign_id != ?)' : ''}`)
+    .all(...[endsAt, startsAt, ...(exceptAdventureId ? [Number(exceptAdventureId)] : []), ...(exceptCampaignId ? [Number(exceptCampaignId)] : [])])
     .filter(row => sessionPeople(row).has(String(discordId)))
     .map(sessionView);
 }
@@ -252,7 +265,8 @@ function loadSessionFor(by, { sessionId, adventureId, now }) {
   const session = sessionId ? getSession(sessionId) : nextSessionForAdventure(adventureId, now);
   if (!session || (adventureId && session.adventureId !== Number(adventureId))) throw new Error(sessionId ? 'That session is not in this adventure.' : 'This adventure has no session coming up.');
   if (session.status !== 'scheduled') throw new Error('That session is cancelled.');
-  authorize(loadAdventure(session.adventureId), by);
+  if (session.campaignId) authorizeCampaign(loadCampaign(session.campaignId), by);
+  else authorize(loadAdventure(session.adventureId), by);
   return session;
 }
 
@@ -265,11 +279,11 @@ function moveSession({ sessionId = null, adventureId = null, by, startsAt, minut
   db.prepare(`UPDATE sessions SET starts_at = ?, ends_at = ?, sequence = sequence + 1, reminded = 0, updated_at = ? WHERE id = ?`)
     .run(start.toISOString(), end.toISOString(), now.toISOString(), session.id);
   const moved = getSession(session.id);
-  const adventure = loadAdventure(moved.adventureId);
+  const dmDiscordId = moved.campaignId ? loadCampaign(moved.campaignId).dm_discord_id : loadAdventure(moved.adventureId).dm_discord_id;
   return {
     session: moved,
     previousStartsAt: session.startsAt,
-    dmClashes: adventure.dm_discord_id ? clashesFor(adventure.dm_discord_id, moved.startsAt, moved.endsAt, { exceptAdventureId: adventure.id }) : []
+    dmClashes: dmDiscordId ? clashesFor(dmDiscordId, moved.startsAt, moved.endsAt, moved.campaignId ? { exceptCampaignId: moved.campaignId } : { exceptAdventureId: moved.adventureId }) : []
   };
 }
 
@@ -283,6 +297,102 @@ function cancelSession({ sessionId = null, adventureId = null, by, now = new Dat
 // The DM calls off the adventure's next session (its server event goes too).
 function cancelNextSession({ adventureId, byDiscordId, now = new Date() }) {
   return cancelSession({ adventureId, by: { discordId: byDiscordId }, now });
+}
+
+// ─── Campaigns (sessions outside adventure threads) ────────────────────────
+
+// Who may start campaigns: DMs (panel admins), and the Discord ids in
+// CAMPAIGN_DM_IDS (comma-separated) for DMs without a panel account.
+function canRunCampaigns(discordId) {
+  const extra = String(process.env.CAMPAIGN_DM_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+  if (extra.includes(String(discordId))) return true;
+  const player = db.prepare('SELECT role FROM players WHERE discord_id = ?').get(String(discordId));
+  return Boolean(player && player.role === 'admin');
+}
+
+function loadCampaign(campaignId) {
+  const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(Number(campaignId));
+  if (!campaign) throw new Error('That campaign is not known.');
+  return campaign;
+}
+
+// Its DM, or any DM (admin) — as for adventures.
+function authorizeCampaign(campaign, by) {
+  const discordId = by && by.discordId !== undefined && by.discordId !== null ? String(by.discordId) : actorDiscordId(by || {});
+  const isAdmin = (by && by.user && by.user.role === 'admin') || (discordId && db.prepare("SELECT 1 FROM players WHERE discord_id = ? AND role = 'admin'").get(discordId));
+  if (!(discordId && discordId === campaign.dm_discord_id) && !isAdmin) throw new Error(`Only the DM of ${campaign.name} (or another DM) can do that.`);
+}
+
+function campaignView(campaign) {
+  return {
+    id: campaign.id,
+    name: campaign.name,
+    dmDiscordId: campaign.dm_discord_id,
+    dm: campaign.dm_name || playerNameOf(campaign.dm_discord_id) || null,
+    channelId: campaign.channel_id || null,
+    channelUrl: campaign.channel_id && campaign.guild_id ? `https://discord.com/channels/${campaign.guild_id}/${campaign.channel_id}` : null,
+    members: db.prepare('SELECT discord_id, name FROM campaign_members WHERE campaign_id = ? ORDER BY name COLLATE NOCASE').all(campaign.id)
+      .map(row => ({ discordId: row.discord_id, name: row.name || playerNameOf(row.discord_id) || 'someone' }))
+  };
+}
+
+function getCampaign(campaignId) {
+  return campaignView(loadCampaign(campaignId));
+}
+
+// { name, by: { discordId }, dmName, channelId, guildId } — the one who runs it is its DM.
+function createCampaign({ name, by, dmName = '', channelId = null, guildId = null }) {
+  const discordId = String(by && by.discordId ? by.discordId : '');
+  if (!discordId || !canRunCampaigns(discordId)) throw new Error('Only DMs can start a campaign (ask an admin to add you).');
+  const title = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!title) throw new Error('Give the campaign a name.');
+  if (db.prepare("SELECT 1 FROM campaigns WHERE name = ? COLLATE NOCASE AND status = 'active'").get(title)) throw new Error(`There is a campaign called ${title} already.`);
+  const id = Number(db.prepare('INSERT INTO campaigns (name, dm_discord_id, dm_name, channel_id, guild_id) VALUES (?, ?, ?, ?, ?)')
+    .run(title, discordId, String(dmName || '').slice(0, 80), channelId ? String(channelId) : null, guildId ? String(guildId) : null).lastInsertRowid);
+  return getCampaign(id);
+}
+
+// Campaigns a person can manage (theirs; every one for a DM), or every active one.
+function listCampaigns({ manageableBy = null } = {}) {
+  const rows = db.prepare("SELECT * FROM campaigns WHERE status = 'active' ORDER BY name COLLATE NOCASE").all();
+  return rows.filter(row => {
+    if (!manageableBy) return true;
+    try { authorizeCampaign(row, { discordId: manageableBy }); return true; } catch { return false; }
+  }).map(campaignView);
+}
+
+function setCampaignMember({ campaignId, by, discordId, name = '', member = true }) {
+  const campaign = loadCampaign(campaignId);
+  authorizeCampaign(campaign, by);
+  if (member) {
+    db.prepare(`INSERT INTO campaign_members (campaign_id, discord_id, name) VALUES (?, ?, ?)
+      ON CONFLICT(campaign_id, discord_id) DO UPDATE SET name = excluded.name`).run(campaign.id, String(discordId), String(name || '').slice(0, 80));
+  } else {
+    db.prepare('DELETE FROM campaign_members WHERE campaign_id = ? AND discord_id = ?').run(campaign.id, String(discordId));
+  }
+  return getCampaign(campaign.id);
+}
+
+// A campaign session at a known time; returns it and the DM's clashes.
+function bookCampaignSession({ campaignId, by, startsAt, minutes = DEFAULT_MINUTES, now = new Date() }) {
+  const campaign = loadCampaign(campaignId);
+  authorizeCampaign(campaign, by);
+  const start = checkStart(startsAt, now);
+  const end = new Date(start.getTime() + checkMinutes(minutes) * 60000);
+  const id = Number(db.prepare('INSERT INTO sessions (campaign_id, starts_at, ends_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?)')
+    .run(campaign.id, start.toISOString(), end.toISOString(), actorDiscordId(by), now.toISOString()).lastInsertRowid);
+  const session = getSession(id);
+  return { session, dmClashes: clashesFor(campaign.dm_discord_id, session.startsAt, session.endsAt, { exceptCampaignId: campaign.id }) };
+}
+
+// Coming campaign sessions: of one campaign, or the ones a person can manage.
+function campaignSessions({ campaignId = null, manageableBy = null, now = new Date() } = {}) {
+  const rows = db.prepare(`${SESSION_QUERY} WHERE s.campaign_id IS NOT NULL ${campaignId ? 'AND s.campaign_id = ?' : ''} AND s.status = 'scheduled' AND s.ends_at > ? ORDER BY s.starts_at`)
+    .all(...[...(campaignId ? [Number(campaignId)] : []), now.toISOString()]);
+  return rows.filter(row => {
+    if (!manageableBy) return true;
+    try { authorizeCampaign(loadCampaign(row.campaign_id), { discordId: manageableBy }); return true; } catch { return false; }
+  }).map(sessionView);
 }
 
 // The Discord ids of the people in a session (to tag them).
@@ -362,6 +472,13 @@ function listOpenPolls() {
 }
 
 module.exports = {
+  canRunCampaigns,
+  createCampaign,
+  getCampaign,
+  listCampaigns,
+  setCampaignMember,
+  bookCampaignSession,
+  campaignSessions,
   SESSION_ANSWERS: ANSWERS,
   listOpenPolls,
   SESSION_POLL_MAX_OPTIONS: MAX_OPTIONS,

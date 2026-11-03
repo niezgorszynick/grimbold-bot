@@ -26,13 +26,17 @@ module.exports = function renderSessionsTab(ctx) {
     if (last && last.key === key) last.sessions.push(session);
     else byDay.push({ key, title: dayTitle(session.startsAt), sessions: [session] });
   });
-  const link = (title, url, adventureId) => (url
-    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a> <a class="muted small" href="/admin?tab=adventures&table=${adventureId}">table</a>`
-    : `<a href="/admin?tab=adventures&table=${adventureId}">${escapeHtml(title)}</a>`);
+  const link = (title, url, adventureId) => {
+    // A campaign (no adventure table): its channel, if any, and a tag.
+    if (!adventureId) return `${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>` : `<strong>${escapeHtml(title)}</strong>`} <span class="tag">campaign</span>`;
+    return url
+      ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a> <a class="muted small" href="/admin?tab=adventures&table=${adventureId}">table</a>`
+      : `<a href="/admin?tab=adventures&table=${adventureId}">${escapeHtml(title)}</a>`;
+  };
   return `
     <section class="card">
       <h3>Sessions</h3>
-      <p class="muted small">Times in Polish time. DMs schedule in each adventure's Discord thread: <code>/schedule propose times:pt 20:00, sob 18:00</code>; everyone answers with the buttons, and the DM locks a time in. <code>/sessions</code> shows this list in Discord.</p>
+      <p class="muted small">Times in Polish time. DMs schedule in each adventure's Discord thread: <code>/schedule propose times:pt 20:00, sob 18:00</code>; everyone answers with the buttons, and the DM locks a time in. Campaigns outside the threads: <code>/campaign create</code>, then <code>/campaign set</code>. <code>/sessions</code> shows this list in Discord.</p>
       <p class="small"><a href="/admin?tab=sessions&days=${days === 60 ? 21 : 60}">${days === 60 ? 'Show the next 3 weeks' : 'Show the next 2 months'}</a></p>
       ${byDay.length ? byDay.map(day => `
         <h4 class="sessions-day">${escapeHtml(day.title)}</h4>

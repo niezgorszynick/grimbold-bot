@@ -5,6 +5,7 @@ const rules = require('../rules');
 const scheduleDiscord = require('../scheduleDiscord');
 const scheduleCommand = require('../commands/schedule');
 const sessionsCommand = require('../commands/sessions');
+const campaignCommand = require('../commands/campaign');
 
 // Tuesday 3 November 2026, 13:00 in Poland.
 const NOW = new Date('2026-11-03T12:00:00Z');
@@ -99,12 +100,13 @@ test('a poll: answers, the DM locks a time in, clashes are warned about, reminde
 
 // ─── Discord, with a stand-in for its objects ──────────────────────────────
 
-function fakeInteraction({ userId, channelId, customId, values, subcommand, strings = {}, numbers = {}, booleans = {} }) {
+function fakeInteraction({ userId, channelId, customId, values, subcommand, strings = {}, numbers = {}, booleans = {}, users = {} }) {
   const calls = { replies: [], updates: [], followUps: [], sent: [], events: [] };
   const interaction = {
     user: { id: userId, username: 'user', globalName: null },
     member: { displayName: `Name-${userId}` },
     channelId,
+    guildId: 'guild',
     customId,
     values,
     replied: false,
@@ -121,12 +123,16 @@ function fakeInteraction({ userId, channelId, customId, values, subcommand, stri
       getSubcommand: () => subcommand,
       getString: name => strings[name] ?? null,
       getNumber: name => numbers[name] ?? null,
-      getBoolean: name => booleans[name] ?? null
+      getBoolean: name => booleans[name] ?? null,
+      getUser: name => (users[name] ? { id: users[name], username: 'u', globalName: null, toString: () => `<@${users[name]}>` } : null),
+      getMember: name => (users[name] ? { displayName: `Name-${users[name]}` } : null)
     },
     reply: async message => { interaction.replied = true; calls.replies.push(message); },
     fetchReply: async () => ({ id: 'message-1', channelId }),
     update: async message => { interaction.replied = true; calls.updates.push(message); },
-    followUp: async message => { calls.followUps.push(message); }
+    followUp: async message => { calls.followUps.push(message); },
+    deferReply: async () => { interaction.deferred = true; },
+    editReply: async message => { calls.replies.push(typeof message === 'string' ? { content: message } : message); }
   };
   return { interaction, calls };
 }
@@ -288,4 +294,72 @@ test('in Discord: date and time pickers, set and move, and the calendar button',
   const feed = `panel.example%2Fcalendar%2F${db.calendarTokenFor(olaId)}.ics`;
   assert.ok(fake.calls.replies[0].content.includes(`https://calendar.google.com/calendar/r?cid=webcal%3A%2F%2F${feed}`), 'Google subscribes to the webcal feed');
   assert.ok(fake.calls.replies[0].content.includes(`webcal://panel.example/calendar/${db.calendarTokenFor(olaId)}.ics`), 'Apple opens the webcal link');
+});
+
+test('campaigns: sessions outside adventure threads, in the same calendar (clashes, feeds, /sessions)', async () => {
+  const { dm, ola, tom, kael, first } = setUp();
+  const [dmId, olaId, tomId] = [dm, ola, tom].map(discordIdOf);
+  db.setPartyMember({ adventureId: first.id, user: { id: 0, role: 'admin' }, characterId: kael, inParty: true });
+  const outsider = `campaign-dm-${dm}`;
+  const sunday = rules.parseDateAndTime('2026-11-22', '20:00', NOW);
+
+  // Only DMs, or those named in CAMPAIGN_DM_IDS, start campaigns.
+  assert.throws(() => db.createCampaign({ name: 'Klątwa Strahda', by: { discordId: outsider } }), /Only DMs/);
+  process.env.CAMPAIGN_DM_IDS = `123, ${outsider}`;
+  let fake = fakeInteraction({ userId: outsider, channelId: `campaign-channel-${dm}`, subcommand: 'create', strings: { name: 'Klątwa  Strahda' } });
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /\*\*Klątwa Strahda\*\*, DM <@/);
+  const campaign = db.listCampaigns({ manageableBy: outsider }).find(entry => entry.name === 'Klątwa Strahda');
+  assert.ok(campaign);
+  assert.throws(() => db.createCampaign({ name: 'klątwa strahda', by: { discordId: outsider } }), /already/);
+
+  // Players: only its DM (or another DM) adds them.
+  fake = fakeInteraction({ userId: olaId, subcommand: 'add', strings: { campaign: String(campaign.id) }, users: { player: olaId } });
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /Only the DM of Klątwa Strahda/);
+  fake = fakeInteraction({ userId: outsider, subcommand: 'add', strings: { campaign: String(campaign.id) }, users: { player: olaId } });
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /is in \*\*Klątwa Strahda\*\* \(1 players\)/);
+  db.setCampaignMember({ campaignId: campaign.id, by: { discordId: dmId }, discordId: tomId, name: 'Tom' });
+  db.setCampaignMember({ campaignId: campaign.id, by: { discordId: outsider }, discordId: tomId, member: false });
+  assert.deepEqual(db.getCampaign(campaign.id).members.map(m => m.discordId), [olaId]);
+
+  // The one-shot Ola is in, then a campaign session at the same time: a clash.
+  db.bookSession({ adventureId: first.id, by: { discordId: dmId }, startsAt: sunday, now: NOW });
+  const date = rules.dateSuggestions('', new Date())[10].value;
+  fake = fakeInteraction({ userId: outsider, channelId: 'elsewhere', subcommand: 'set', strings: { campaign: String(campaign.id), date, time: '20:00' }, numbers: { hours: 3 } });
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /Booked/);
+  assert.equal(fake.calls.events.length, 1, 'a server event');
+  assert.match(fake.calls.events[0].description, /^A campaign session/);
+  const [booked] = db.campaignSessions({ campaignId: campaign.id });
+  assert.deepEqual([booked.kind, booked.adventure, booked.minutes, booked.threadId], ['campaign', 'Klątwa Strahda', 180, `campaign-channel-${dm}`]);
+  assert.deepEqual(db.sessionPeopleIds(booked.id).sort(), [outsider, olaId].sort());
+
+  const { session: atSunday } = db.bookCampaignSession({ campaignId: campaign.id, by: { discordId: outsider }, startsAt: sunday, now: NOW });
+  const listed = db.upcomingSessions({ now: NOW, days: 30, discordId: olaId });
+  assert.deepEqual(listed.filter(entry => entry.startsAt === sunday.toISOString()).map(entry => [entry.kind, entry.clashes.map(c => c.adventure)]),
+    [['adventure', ['Klątwa Strahda']], ['campaign', ['Wilki z Doliny']]]);
+  assert.deepEqual(db.calendarSessions(db.calendarTokenFor(olaId), NOW).sessions.map(entry => entry.adventure).sort(), ['Klątwa Strahda', 'Klątwa Strahda', 'Wilki z Doliny']);
+  assert.deepEqual(db.calendarSessions(db.calendarTokenFor(tomId), NOW).sessions, [], 'Tom left');
+
+  // Move and cancel, picked from the list of its sessions.
+  const responses = [];
+  await campaignCommand.autocomplete({ user: { id: outsider }, options: { getFocused: () => ({ name: 'session', value: 'strahd' }), getSubcommand: () => 'move' }, respond: async choices => responses.push(choices) });
+  assert.deepEqual(responses[0].map(choice => choice.value), [String(booked.id), String(atSunday.id)].sort((a, b) => (db.getSession(a).startsAt < db.getSession(b).startsAt ? -1 : 1)));
+  fake = fakeInteraction({ userId: olaId, subcommand: 'cancel', strings: { session: String(atSunday.id) } });
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /Only the DM/);
+  fake = fakeInteraction({ userId: outsider, channelId: `campaign-channel-${dm}`, subcommand: 'move', strings: { session: String(atSunday.id), date: '2026-11-29', time: '18:00' } });
+  fake.interaction.guild.scheduledEvents.edit = async () => {};
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /Moved/);
+  assert.match(fake.calls.sent[0].content, /Klątwa Strahda\*\* moves/);
+  fake = fakeInteraction({ userId: dmId, channelId: `campaign-channel-${dm}`, subcommand: 'cancel', strings: { session: String(atSunday.id) } });
+  await campaignCommand.execute(fake.interaction);
+  assert.equal(db.getSession(atSunday.id).status, 'cancelled', 'another DM can too');
+  fake = fakeInteraction({ userId: outsider, subcommand: 'cancel', strings: { session: String(db.nextSessionForAdventure(first.id).id) } });
+  await campaignCommand.execute(fake.interaction);
+  assert.match(fake.calls.replies[0].content, /Pick the session/, "an adventure's session is not a campaign's");
+  delete process.env.CAMPAIGN_DM_IDS;
 });

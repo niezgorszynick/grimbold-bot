@@ -74,7 +74,7 @@ const eventFields = session => ({
   privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
   entityType: GuildScheduledEventEntityType.External,
   entityMetadata: { location: (session.threadUrl || 'Discord').slice(0, 100) },
-  description: `An adventure session${session.dm ? ` with ${session.dm} as DM` : ''}.${session.threadUrl ? ` Thread: ${session.threadUrl}` : ''}`.slice(0, 1000)
+  description: `${session.kind === 'campaign' ? 'A campaign session' : 'An adventure session'}${session.dm ? ` with ${session.dm} as DM` : ''}.${session.threadUrl ? ` ${session.kind === 'campaign' ? 'Channel' : 'Thread'}: ${session.threadUrl}` : ''}`.slice(0, 1000)
 });
 
 // The session's server event made, moved or deleted. Returns a problem, or null.
