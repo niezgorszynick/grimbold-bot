@@ -1,0 +1,276 @@
+// db/schedule.js — Scheduling adventure sessions. A DM proposes a few times
+// in the adventure's Discord thread (or the panel); anyone answers each one
+// ✅ can / 🤔 maybe / ❌ can't; the DM locks one in and it becomes a session
+// (with a Discord server event and a reminder a day before). Clashes are
+// warned about, never blocked: a person is "in" a session if they said ✅ to
+// its time, are its DM, or have a character in its adventure's party.
+//
+// People are known by their Discord id (a vote needs no panel account);
+// those with a players row are matched to it.
+
+'use strict';
+
+const { db } = require('./connection');
+const { sessionsOverlap } = require('../rules/schedule');
+
+const ANSWERS = ['yes', 'maybe', 'no'];
+const MAX_OPTIONS = 4;
+const DEFAULT_MINUTES = 240;
+
+function loadAdventure(adventureId) {
+  const adventure = db.prepare(`
+    SELECT a.*, p.discord_id AS dm_discord_id, p.discord_tag AS dm_name FROM adventures a
+    LEFT JOIN players p ON p.id = a.dm_player_id WHERE a.id = ?
+  `).get(Number(adventureId));
+  if (!adventure) throw new Error('Adventure not found.');
+  return adventure;
+}
+
+function adventureForThread(threadId) {
+  const row = db.prepare('SELECT id FROM adventures WHERE discord_thread_id = ?').get(String(threadId));
+  return row ? loadAdventure(row.id) : null;
+}
+
+// May this Discord user schedule for the adventure? Its DM, or any DM (admin).
+function canSchedule(adventure, discordId) {
+  if (adventure.dm_discord_id && adventure.dm_discord_id === String(discordId)) return true;
+  const player = db.prepare('SELECT role FROM players WHERE discord_id = ?').get(String(discordId));
+  return Boolean(player && player.role === 'admin');
+}
+
+const playerNameOf = discordId => {
+  const player = db.prepare('SELECT discord_tag FROM players WHERE discord_id = ?').get(String(discordId));
+  return player ? player.discord_tag : null;
+};
+
+// Discord ids of the people in a session: ✅ to its time, its DM, its party's players.
+function sessionPeople(session) {
+  const ids = new Set();
+  if (session.option_id) {
+    db.prepare("SELECT discord_id FROM session_votes WHERE option_id = ? AND answer = 'yes'").all(session.option_id).forEach(row => ids.add(row.discord_id));
+  }
+  const adventure = loadAdventure(session.adventure_id);
+  if (adventure.dm_discord_id) ids.add(adventure.dm_discord_id);
+  db.prepare(`
+    SELECT DISTINCT p.discord_id FROM adventure_party ap JOIN characters c ON c.id = ap.character_id JOIN players p ON p.id = c.player_id
+    WHERE ap.adventure_id = ? AND p.discord_id IS NOT NULL
+  `).all(session.adventure_id).forEach(row => ids.add(row.discord_id));
+  return ids;
+}
+
+const SESSION_QUERY = `
+  SELECT s.*, a.title AS adventure_title, a.discord_thread_id, a.discord_guild_id, p.discord_tag AS dm_name
+  FROM sessions s JOIN adventures a ON a.id = s.adventure_id LEFT JOIN players p ON p.id = a.dm_player_id
+`;
+
+function sessionView(row) {
+  return {
+    id: row.id,
+    adventureId: row.adventure_id,
+    adventure: row.adventure_title,
+    dm: row.dm_name || null,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    status: row.status,
+    threadId: row.discord_thread_id || null,
+    threadUrl: row.discord_thread_id && row.discord_guild_id ? `https://discord.com/channels/${row.discord_guild_id}/${row.discord_thread_id}` : null,
+    eventId: row.discord_event_id || null
+  };
+}
+
+// Scheduled sessions (other than in `exceptAdventureId`) that overlap the time and that this person is in.
+function clashesFor(discordId, startsAt, endsAt, { exceptAdventureId = null } = {}) {
+  return db.prepare(`${SESSION_QUERY} WHERE s.status = 'scheduled' AND s.starts_at < ? AND s.ends_at > ? ${exceptAdventureId ? 'AND s.adventure_id != ?' : ''}`)
+    .all(...[endsAt, startsAt, ...(exceptAdventureId ? [Number(exceptAdventureId)] : [])])
+    .filter(row => sessionPeople(row).has(String(discordId)))
+    .map(sessionView);
+}
+
+// ─── Polls ─────────────────────────────────────────────────────────────────
+
+// { adventureId, byDiscordId, times: [Date], minutes } — the DM proposes times.
+function createSchedulePoll({ adventureId, byDiscordId, times, minutes = DEFAULT_MINUTES }) {
+  const adventure = loadAdventure(adventureId);
+  if (adventure.status !== 'active') throw new Error('This adventure is no longer running.');
+  if (!canSchedule(adventure, byDiscordId)) throw new Error("Only this adventure's DM (or another DM) can schedule it.");
+  if (!Array.isArray(times) || !times.length || times.length > MAX_OPTIONS) throw new Error(`Propose from 1 to ${MAX_OPTIONS} times.`);
+  const length = Number(minutes);
+  if (!Number.isInteger(length) || length < 30 || length > 12 * 60) throw new Error('A session lasts from half an hour to 12 hours.');
+  const id = db.transaction(() => {
+    // A new poll replaces an open one for the same adventure.
+    db.prepare("UPDATE session_polls SET status = 'replaced' WHERE adventure_id = ? AND status = 'open'").run(adventure.id);
+    const pollId = Number(db.prepare('INSERT INTO session_polls (adventure_id, created_by, minutes) VALUES (?, ?, ?)')
+      .run(adventure.id, String(byDiscordId), length).lastInsertRowid);
+    const insert = db.prepare('INSERT INTO session_options (poll_id, starts_at, ends_at) VALUES (?, ?, ?)');
+    times.forEach(time => {
+      const start = new Date(time);
+      insert.run(pollId, start.toISOString(), new Date(start.getTime() + length * 60000).toISOString());
+    });
+    return pollId;
+  })();
+  return getSchedulePoll(id);
+}
+
+function setPollMessage(pollId, { channelId, messageId }) {
+  db.prepare('UPDATE session_polls SET channel_id = ?, message_id = ? WHERE id = ?').run(String(channelId), String(messageId), Number(pollId));
+}
+
+function getSchedulePoll(pollId) {
+  const poll = db.prepare('SELECT * FROM session_polls WHERE id = ?').get(Number(pollId));
+  if (!poll) return null;
+  const adventure = loadAdventure(poll.adventure_id);
+  const options = db.prepare('SELECT * FROM session_options WHERE poll_id = ? ORDER BY starts_at').all(poll.id);
+  return {
+    id: poll.id,
+    status: poll.status,
+    minutes: poll.minutes,
+    chosenOptionId: poll.chosen_option_id || null,
+    channelId: poll.channel_id || null,
+    messageId: poll.message_id || null,
+    adventure: { id: adventure.id, title: adventure.title, dm: adventure.dm_name || null, dmDiscordId: adventure.dm_discord_id || null, threadId: adventure.discord_thread_id || null },
+    options: options.map((option, index) => {
+      const votes = db.prepare('SELECT * FROM session_votes WHERE option_id = ? ORDER BY updated_at').all(option.id);
+      const of = answer => votes.filter(vote => vote.answer === answer).map(vote => ({ discordId: vote.discord_id, name: vote.name }));
+      // Who said ✅ or 🤔 here but is booked elsewhere then.
+      const clashes = votes.filter(vote => vote.answer !== 'no').flatMap(vote => clashesFor(vote.discord_id, option.starts_at, option.ends_at, { exceptAdventureId: adventure.id })
+        .map(session => ({ discordId: vote.discord_id, name: vote.name, adventure: session.adventure, startsAt: session.startsAt })));
+      return { id: option.id, letter: 'ABCD'[index], startsAt: option.starts_at, endsAt: option.ends_at, yes: of('yes'), maybe: of('maybe'), no: of('no'), clashes };
+    })
+  };
+}
+
+function openPollForAdventure(adventureId) {
+  const row = db.prepare("SELECT id FROM session_polls WHERE adventure_id = ? AND status = 'open' ORDER BY id DESC").get(Number(adventureId));
+  return row ? getSchedulePoll(row.id) : null;
+}
+
+// One person's answer to one time. Returns the poll, and what that person
+// already has at that time (when they said ✅ or 🤔).
+function voteOnSession({ optionId, discordId, name, answer }) {
+  if (!ANSWERS.includes(answer)) throw new Error('Answer yes, maybe or no.');
+  const option = db.prepare('SELECT o.*, p.status AS poll_status, p.adventure_id FROM session_options o JOIN session_polls p ON p.id = o.poll_id WHERE o.id = ?').get(Number(optionId));
+  if (!option) throw new Error('That time is no longer in a poll.');
+  if (option.poll_status !== 'open') throw new Error('This poll is closed.');
+  const label = String(name || playerNameOf(discordId) || 'someone').slice(0, 80);
+  db.prepare(`
+    INSERT INTO session_votes (option_id, discord_id, name, answer) VALUES (?, ?, ?, ?)
+    ON CONFLICT(option_id, discord_id) DO UPDATE SET answer = excluded.answer, name = excluded.name, updated_at = CURRENT_TIMESTAMP
+  `).run(option.id, String(discordId), label, answer);
+  const clashes = answer === 'no' ? [] : clashesFor(discordId, option.starts_at, option.ends_at, { exceptAdventureId: option.adventure_id });
+  return { poll: getSchedulePoll(option.poll_id), clashes };
+}
+
+// The DM locks a time in: it becomes a session. Returns it, the people who
+// said ✅ and 🤔 (to tag), and the DM's own clashes (a warning).
+function confirmSessionOption({ pollId, optionId, byDiscordId }) {
+  const poll = getSchedulePoll(pollId);
+  if (!poll) throw new Error('That poll is gone.');
+  if (poll.status !== 'open') throw new Error('This poll is closed.');
+  const adventure = loadAdventure(poll.adventure.id);
+  if (!canSchedule(adventure, byDiscordId)) throw new Error("Only this adventure's DM (or another DM) can lock in a time.");
+  const option = poll.options.find(entry => entry.id === Number(optionId));
+  if (!option) throw new Error('That time is not in this poll.');
+  const sessionId = db.transaction(() => {
+    db.prepare("UPDATE session_polls SET status = 'confirmed', chosen_option_id = ? WHERE id = ?").run(option.id, poll.id);
+    return Number(db.prepare(`
+      INSERT INTO sessions (adventure_id, poll_id, option_id, starts_at, ends_at, created_by) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(adventure.id, poll.id, option.id, option.startsAt, option.endsAt, String(byDiscordId)).lastInsertRowid);
+  })();
+  const dmClashes = adventure.dm_discord_id ? clashesFor(adventure.dm_discord_id, option.startsAt, option.endsAt, { exceptAdventureId: adventure.id }) : [];
+  return { session: getSession(sessionId), option, poll: getSchedulePoll(poll.id), dmClashes };
+}
+
+function cancelSchedulePoll({ pollId, byDiscordId }) {
+  const poll = getSchedulePoll(pollId);
+  if (!poll || poll.status !== 'open') throw new Error('This poll is closed already.');
+  if (!canSchedule(loadAdventure(poll.adventure.id), byDiscordId)) throw new Error("Only this adventure's DM (or another DM) can cancel it.");
+  db.prepare("UPDATE session_polls SET status = 'cancelled' WHERE id = ?").run(poll.id);
+  return getSchedulePoll(poll.id);
+}
+
+// ─── Sessions ──────────────────────────────────────────────────────────────
+
+function getSession(id) {
+  const row = db.prepare(`${SESSION_QUERY} WHERE s.id = ?`).get(Number(id));
+  return row ? sessionView(row) : null;
+}
+
+function setSessionEvent(sessionId, eventId) {
+  db.prepare('UPDATE sessions SET discord_event_id = ? WHERE id = ?').run(eventId ? String(eventId) : null, Number(sessionId));
+}
+
+function nextSessionForAdventure(adventureId, now = new Date()) {
+  const row = db.prepare(`${SESSION_QUERY} WHERE s.adventure_id = ? AND s.status = 'scheduled' AND s.ends_at > ? ORDER BY s.starts_at`).get(Number(adventureId), now.toISOString());
+  return row ? sessionView(row) : null;
+}
+
+// The DM calls off the adventure's next session (its server event goes too).
+function cancelNextSession({ adventureId, byDiscordId, now = new Date() }) {
+  const adventure = loadAdventure(adventureId);
+  if (!canSchedule(adventure, byDiscordId)) throw new Error("Only this adventure's DM (or another DM) can cancel its session.");
+  const session = nextSessionForAdventure(adventure.id, now);
+  if (!session) throw new Error('This adventure has no session coming up.');
+  db.prepare("UPDATE sessions SET status = 'cancelled' WHERE id = ?").run(session.id);
+  return { ...session, status: 'cancelled' };
+}
+
+// Upcoming sessions (the next `days`), each with who's in and any clashes
+// between them; mine: only those this Discord user is in.
+function upcomingSessions({ now = new Date(), days = 14, discordId = null } = {}) {
+  const until = new Date(now.getTime() + days * 86400000).toISOString();
+  const rows = db.prepare(`${SESSION_QUERY} WHERE s.status = 'scheduled' AND s.ends_at > ? AND s.starts_at < ? ORDER BY s.starts_at`)
+    .all(now.toISOString(), until);
+  const people = new Map(rows.map(row => [row.id, sessionPeople(row)]));
+  const nameOf = id => {
+    const vote = db.prepare('SELECT name FROM session_votes WHERE discord_id = ? ORDER BY updated_at DESC').get(id);
+    return playerNameOf(id) || (vote && vote.name) || 'someone';
+  };
+  return rows
+    .filter(row => !discordId || people.get(row.id).has(String(discordId)))
+    .map(row => {
+      const mine = people.get(row.id);
+      const clashes = rows.filter(other => other.id !== row.id && sessionsOverlap(row.starts_at, row.ends_at, other.starts_at, other.ends_at))
+        .flatMap(other => [...mine].filter(id => people.get(other.id).has(id)).map(id => ({ name: nameOf(id), adventure: other.adventure_title })));
+      return { ...sessionView(row), people: [...mine].map(nameOf), clashes };
+    });
+}
+
+// Sessions starting within a day that haven't had their reminder; marks them.
+function takeDueReminders(now = new Date()) {
+  const soon = new Date(now.getTime() + 24 * 3600000).toISOString();
+  const rows = db.prepare(`${SESSION_QUERY} WHERE s.status = 'scheduled' AND s.reminded = 0 AND s.starts_at > ? AND s.starts_at <= ?`).all(now.toISOString(), soon);
+  const mark = db.prepare('UPDATE sessions SET reminded = 1 WHERE id = ?');
+  return rows.map(row => {
+    mark.run(row.id);
+    return { ...sessionView(row), people: [...sessionPeople(row)] };
+  });
+}
+
+// Every open poll (the panel's Sessions tab).
+function listOpenPolls() {
+  return db.prepare("SELECT p.id FROM session_polls p JOIN adventures a ON a.id = p.adventure_id WHERE p.status = 'open' AND a.status = 'active' ORDER BY p.id")
+    .all().map(row => getSchedulePoll(row.id));
+}
+
+module.exports = {
+  SESSION_ANSWERS: ANSWERS,
+  listOpenPolls,
+  SESSION_POLL_MAX_OPTIONS: MAX_OPTIONS,
+  SESSION_DEFAULT_MINUTES: DEFAULT_MINUTES,
+  adventureForThread,
+  canScheduleAdventure: canSchedule,
+  createSchedulePoll,
+  setPollMessage,
+  getSchedulePoll,
+  openPollForAdventure,
+  voteOnSession,
+  confirmSessionOption,
+  cancelSchedulePoll,
+  getSession,
+  setSessionEvent,
+  nextSessionForAdventure,
+  cancelNextSession,
+  upcomingSessions,
+  takeDueReminders,
+  sessionClashesFor: clashesFor
+};

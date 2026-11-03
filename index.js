@@ -167,6 +167,8 @@ for (const file of commandFiles) {
 // ─── Ready ────────────────────────────────────────────────────────────────────
 
 client.once('clientReady', () => {
+  // Session reminders a day before (scheduleDiscord.js).
+  require('./scheduleDiscord').startScheduleReminders(client);
   console.log(`\n🏪  ${client.user.tag} is open for business! (SQLite Backend Active)\n`);
 });
 
@@ -182,6 +184,12 @@ client.on('interactionCreate', async interaction => {
     } catch (error) {
       console.error(`[ERROR] Autocomplete for /${interaction.commandName}:`, error);
     }
+    return;
+  }
+
+  // Scheduling: the poll buttons and the DM's lock-in menu (scheduleDiscord.js).
+  if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('sched:')) {
+    await require('./scheduleDiscord').handleScheduleInteraction(interaction);
     return;
   }
 

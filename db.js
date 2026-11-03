@@ -28,6 +28,7 @@ module.exports = {
   ...require('./db/gifts'),
   ...require('./db/reservations'),
   ...require('./db/monsterImports'),
+  ...require('./db/schedule'),
   ...require('./db/npcFiles'),
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),

@@ -765,6 +765,63 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
       if (!columns.has('statblock_id')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN statblock_id INTEGER');
     }
+  },
+  {
+    version: 27,
+    name: 'Scheduling sessions: polls in the Discord thread, confirmed sessions',
+    up(db) {
+      db.exec(`
+        -- status: open, confirmed, cancelled, replaced (a newer poll took over). created_by: a Discord id.
+        CREATE TABLE IF NOT EXISTS session_polls (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          created_by TEXT NOT NULL,
+          minutes INTEGER NOT NULL DEFAULT 240,
+          status TEXT NOT NULL DEFAULT 'open',
+          chosen_option_id INTEGER,
+          channel_id TEXT,
+          message_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS session_polls_adventure ON session_polls (adventure_id, status);
+        -- Times are ISO moments (UTC).
+        CREATE TABLE IF NOT EXISTS session_options (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          poll_id INTEGER NOT NULL REFERENCES session_polls(id) ON DELETE CASCADE,
+          starts_at TEXT NOT NULL,
+          ends_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS session_options_poll ON session_options (poll_id);
+        -- answer: yes, maybe, no. name: the Discord name at the time of the answer.
+        CREATE TABLE IF NOT EXISTS session_votes (
+          option_id INTEGER NOT NULL REFERENCES session_options(id) ON DELETE CASCADE,
+          discord_id TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          answer TEXT NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (option_id, discord_id)
+        );
+        -- status: scheduled, cancelled. reminded: the day-before note went out.
+        CREATE TABLE IF NOT EXISTS sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          poll_id INTEGER,
+          option_id INTEGER,
+          starts_at TEXT NOT NULL,
+          ends_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'scheduled',
+          discord_event_id TEXT,
+          reminded INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS sessions_time ON sessions (status, starts_at);
+        CREATE TRIGGER IF NOT EXISTS change_log_session_insert AFTER INSERT ON sessions
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_session_update AFTER UPDATE ON sessions
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+      `);
+    }
   }
 ];
 

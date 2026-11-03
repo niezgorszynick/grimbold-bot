@@ -1180,6 +1180,11 @@
             adventure.threadUrl ? ' · ' : null,
             adventure.threadUrl ? el('a', { href: adventure.threadUrl, target: '_blank', rel: 'noopener', text: 'Discord thread ↗' }) : null
           ]),
+          data.schedule && data.schedule.nextSession
+            ? el('p', { className: 'adventure-next-session' }, ['📅 Next session: ', el('strong', { text: data.schedule.nextSession.text }), el('span', { className: 'muted small', text: ' (Polish time)' })])
+            : data.schedule && data.schedule.openPoll
+              ? el('p', { className: 'adventure-next-session muted small', text: '📅 Poll open in the Discord thread: ' + data.schedule.openPoll.options.map(option => option.letter + ' ' + option.text + ' (' + option.yes + '✅)').join(' · ') })
+              : (active && data.canManage ? el('p', { className: 'muted small', text: '📅 No session set: use /schedule propose in the Discord thread.' }) : null),
           (data.dmChanges || []).length ? el('p', { className: 'muted small' }, data.dmChanges.map(change => 'Taken over by ' + change.to + (change.from ? ' from ' + change.from : '') + ' on ' + String(change.at).slice(0, 10) + '. ')) : null
         ]),
         el('div', { className: 'muted small adventure-refresh' }, [

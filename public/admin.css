@@ -936,3 +936,11 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .encounter-homebrew { margin-top: 10px; }
 .encounter-homebrew summary { cursor: pointer; color: #949ba4; }
 .encounter-homebrew ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* Sessions (scheduling) */
+.adventure-next-session { margin: 4px 0 0; }
+.sessions-day { margin: 14px 0 6px; color: #d4af37; font-size: 15px; }
+.session-row { display: grid; gap: 3px; padding: 8px 10px; border-radius: 6px; background: #232428; margin-bottom: 6px; }
+.session-row.has-clash { border-left: 3px solid #f0b232; }
+.session-row a { color: #8ea1ff; }
+.session-poll-options { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; }

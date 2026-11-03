@@ -31,6 +31,7 @@ module.exports = {
   ...require('./monsters'),
   ...require('./fiveTools'),
   ...require('./customMonsters'),
+  ...require('./schedule'),
   ...require('./encounters'),
   ...require('./shopCatalog'),
   ...require('./itemBonuses'),

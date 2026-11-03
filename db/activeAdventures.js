@@ -10,6 +10,8 @@ const { getCharacterSnapshots } = require('./roster');
 const { getRecentRolls } = require('./dice');
 const { getAdventureNpcs } = require('./npcs');
 const { encountersForTable, getEncounterRolls } = require('./encounters');
+const { nextSessionForAdventure, openPollForAdventure } = require('./schedule');
+const { formatSessionTime } = require('../rules/schedule');
 
 const MAX_TITLE = 200;
 const MAX_NOTES = 4000;
@@ -196,6 +198,15 @@ function getAdventureTable({ adventureId, user }) {
       notes: adventure.description || ''
     },
     canManage: access.manage,
+    // Scheduling (set in the Discord thread with /schedule): the next session and an open poll.
+    schedule: (() => {
+      const next = adventure.status === 'active' ? nextSessionForAdventure(adventure.id) : null;
+      const poll = adventure.status === 'active' ? openPollForAdventure(adventure.id) : null;
+      return {
+        nextSession: next ? { startsAt: next.startsAt, text: formatSessionTime(next.startsAt) } : null,
+        openPoll: poll ? { options: poll.options.map(option => ({ letter: option.letter, text: formatSessionTime(option.startsAt), yes: option.yes.length, maybe: option.maybe.length })) } : null
+      };
+    })(),
     // Players roll for their own characters at the table (initiative and the rest).
     viewerId: Number(user && user.id) || 0,
     // The adventure's secrets (NPC stats, hidden NPCs): its DM and the Root DM.
