@@ -918,6 +918,57 @@ router.post('/adventures/:id/sessions', (req, res) => sessionRoute(req, res, 'bo
 router.post('/adventures/:id/sessions/:sessionId', (req, res) => sessionRoute(req, res, 'move'));
 router.post('/adventures/:id/sessions/:sessionId/cancel', (req, res) => sessionRoute(req, res, 'cancel'));
 
+// Campaigns (their DM, or any DM, Root included): sessions and players, as
+// with /campaign in Discord; changes are announced in the campaign's channel.
+router.get('/campaigns', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  return res.json(db.campaignsForPanel(user));
+});
+async function campaignRoute(req, res, action) {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body || {};
+  const by = { user };
+  const campaignId = Number(req.params.id);
+  try {
+    if (action === 'member') {
+      const discordId = String(body.discordId || '');
+      if (!discordId) throw new Error('Pick a player.');
+      const player = db.prepare('SELECT discord_tag FROM players WHERE discord_id = ?').get(discordId);
+      db.setCampaignMember({ campaignId, by, discordId, name: player ? player.discord_tag : '', member: body.member !== false });
+      return res.json(db.campaignsForPanel(user));
+    }
+    if (req.params.sessionId) {
+      const session = db.getSession(Number(req.params.sessionId));
+      if (!session || session.campaignId !== campaignId) throw new Error('That session is not in this campaign.');
+    }
+    const minutes = body.hours === undefined || body.hours === '' || body.hours === null ? null : Math.round(Number(body.hours) * 60);
+    const startsAt = action === 'cancel' ? null : require('./rules/schedule').parseDateAndTime(body.date, body.time);
+    let result;
+    if (action === 'book') result = db.bookCampaignSession({ campaignId, by, startsAt, minutes: minutes || db.SESSION_DEFAULT_MINUTES });
+    else if (action === 'move') result = db.moveSession({ sessionId: Number(req.params.sessionId), by, startsAt, minutes });
+    else result = { session: db.cancelSession({ sessionId: Number(req.params.sessionId), by }) };
+    const kind = { book: 'booked', move: 'moved', cancel: 'cancelled' }[action];
+    const announced = await require('./scheduleDiscord').announceSessionChange(kind, result.session, { previousStartsAt: result.previousStartsAt || null })
+      .catch(() => ({ posted: false, eventProblem: 'Discord is not reachable' }));
+    return res.json({
+      ...db.campaignsForPanel(user),
+      note: { posted: announced.posted, eventProblem: announced.eventProblem, clashes: (result.dmClashes || []).map(session => session.adventure) }
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Campaign change failed:', error);
+      return res.status(500).json({ error: 'Could not change the campaign.' });
+    }
+    return res.status(/^Only the DM/.test(error.message) ? 403 : 400).json({ error: error.message });
+  }
+}
+router.post('/campaigns/:id/members', (req, res) => campaignRoute(req, res, 'member'));
+router.post('/campaigns/:id/sessions', (req, res) => campaignRoute(req, res, 'book'));
+router.post('/campaigns/:id/sessions/:sessionId', (req, res) => campaignRoute(req, res, 'move'));
+router.post('/campaigns/:id/sessions/:sessionId/cancel', (req, res) => campaignRoute(req, res, 'cancel'));
+
 // Your personal calendar link (needs a Discord account on your player).
 router.get('/calendar-link', (req, res) => {
   const user = getSessionApiUser(req);

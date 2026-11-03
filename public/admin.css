@@ -949,3 +949,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .schedule-list { margin: 6px 0; padding-left: 18px; display: grid; gap: 6px; }
 .schedule-move { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 6px; }
 .schedule-panel input[type=date], .schedule-panel input[type=time] { color-scheme: dark; }
+
+#campaigns-panel[hidden] { display: none; }
+.campaign-block { border-top: 1px solid var(--border, #333); padding-top: 10px; margin-top: 10px; }
+.campaign-block input[type=date], .campaign-block input[type=time] { color-scheme: dark; }
+.campaign-members { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }

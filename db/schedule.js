@@ -353,11 +353,13 @@ function createCampaign({ name, by, dmName = '', channelId = null, guildId = nul
 }
 
 // Campaigns a person can manage (theirs; every one for a DM), or every active one.
+// manageableBy: a Discord id, or a panel { user }.
 function listCampaigns({ manageableBy = null } = {}) {
   const rows = db.prepare("SELECT * FROM campaigns WHERE status = 'active' ORDER BY name COLLATE NOCASE").all();
+  const by = manageableBy && typeof manageableBy === 'object' ? manageableBy : { discordId: manageableBy };
   return rows.filter(row => {
     if (!manageableBy) return true;
-    try { authorizeCampaign(row, { discordId: manageableBy }); return true; } catch { return false; }
+    try { authorizeCampaign(row, by); return true; } catch { return false; }
   }).map(campaignView);
 }
 
@@ -393,6 +395,28 @@ function campaignSessions({ campaignId = null, manageableBy = null, now = new Da
     if (!manageableBy) return true;
     try { authorizeCampaign(loadCampaign(row.campaign_id), { discordId: manageableBy }); return true; } catch { return false; }
   }).map(sessionView);
+}
+
+// The panel's Campaigns card: the campaigns this account runs (every one for
+// DMs, Root included), each with its coming sessions as the date and time
+// inputs want them, and the players with a Discord account to add.
+function campaignsForPanel(user, now = new Date()) {
+  const { warsawInputs, formatSessionTime } = require('../rules/schedule');
+  const by = { user };
+  const campaigns = listCampaigns({ manageableBy: by }).map(campaign => ({
+    ...campaign,
+    sessions: campaignSessions({ campaignId: campaign.id, now })
+      .map(session => ({ id: session.id, text: formatSessionTime(session.startsAt), ...warsawInputs(session.startsAt), hours: session.minutes / 60 }))
+  }));
+  const runs = user.role === 'admin' || canRunCampaigns(actorDiscordId(by) || '');
+  return {
+    campaigns,
+    canCreate: runs,
+    players: campaigns.length
+      ? db.prepare("SELECT discord_id, discord_tag FROM players WHERE discord_id IS NOT NULL AND discord_id != '' ORDER BY discord_tag COLLATE NOCASE").all()
+        .map(row => ({ discordId: row.discord_id, name: row.discord_tag || row.discord_id }))
+      : []
+  };
 }
 
 // The Discord ids of the people in a session (to tag them).
@@ -479,6 +503,7 @@ module.exports = {
   setCampaignMember,
   bookCampaignSession,
   campaignSessions,
+  campaignsForPanel,
   SESSION_ANSWERS: ANSWERS,
   listOpenPolls,
   SESSION_POLL_MAX_OPTIONS: MAX_OPTIONS,

@@ -47,6 +47,8 @@ module.exports = function renderSessionsTab(ctx) {
             ${session.clashes.length ? `<div class="small">⚠️ ${escapeHtml([...new Set(session.clashes.map(clash => `${clash.name} is also in ${clash.adventure}`))].join('; '))}</div>` : ''}
           </div>`).join('')}`).join('') : `<p class="muted">No sessions booked in the next ${days === 60 ? 'two months' : 'three weeks'}.</p>`}
     </section>
+    <section class="card" id="campaigns-panel" hidden></section>
+    <script src="/admin/assets/campaigns.js" defer></script>
     <section class="card">
       <h3>📅 In your own calendar</h3>
       <p class="muted small">Your sessions (said ✅, DM, or in the party) in Google, Apple or Outlook. Moved and cancelled sessions follow by themselves; Google can take some hours to notice. In Discord: <code>/schedule calendar</code> or the 📅 button under a session.</p>

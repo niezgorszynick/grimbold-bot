@@ -363,3 +363,54 @@ test('campaigns: sessions outside adventure threads, in the same calendar (clash
   assert.match(fake.calls.replies[0].content, /Pick the session/, "an adventure's session is not a campaign's");
   delete process.env.CAMPAIGN_DM_IDS;
 });
+
+test('campaigns in the panel: their DM (a player account) and Root book, move, cancel and add players', async () => {
+  const { dm, ola, tom } = setUp();
+  const [olaId, tomId] = [ola, tom].map(discordIdOf);
+  const campaignDm = createPlayer();
+  for (const id of [campaignDm, ola]) db.prepare("UPDATE players SET password_hash = 'x' WHERE id = ?").run(id);
+  const campaignDmId = discordIdOf(campaignDm);
+  process.env.CAMPAIGN_DM_IDS = campaignDmId;
+  const campaign = db.createCampaign({ name: `Rime ${dm}`, by: { discordId: campaignDmId } });
+
+  const express = require('express');
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')), ...(req.get('x-user') === '0' ? { role: 'admin', username: 'root' } : {}) } }; next(); });
+  app.use('/api', require('../webShopApi'));
+  const server = app.listen(0);
+  const call = (userId, path, body) => fetch(`http://127.0.0.1:${server.address().port}/api/campaigns${path}`, {
+    method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'x-user': String(userId) }, body: body ? JSON.stringify(body) : undefined
+  }).then(async response => ({ status: response.status, body: await response.json() }));
+  try {
+    const mine = (await call(campaignDm, '')).body;
+    assert.deepEqual(mine.campaigns.map(entry => entry.name), [campaign.name]);
+    assert.ok(mine.players.some(player => player.discordId === olaId), 'players to add');
+    assert.deepEqual((await call(ola, '')).body.campaigns, [], "a player sees no one's campaigns");
+    assert.ok((await call(0, '')).body.campaigns.some(entry => entry.id === campaign.id), 'Root sees every campaign');
+
+    assert.equal((await call(ola, `/${campaign.id}/members`, { discordId: olaId })).status, 403);
+    let result = await call(campaignDm, `/${campaign.id}/members`, { discordId: olaId });
+    assert.deepEqual(result.body.campaigns.find(entry => entry.id === campaign.id).members.map(m => m.discordId), [olaId]);
+    await call(0, `/${campaign.id}/members`, { discordId: tomId });
+    await call(0, `/${campaign.id}/members`, { discordId: tomId, member: false });
+
+    const date = rules.dateSuggestions('', new Date())[10].value;
+    result = await call(campaignDm, `/${campaign.id}/sessions`, { date, time: '19:00', hours: 3 });
+    assert.equal(result.status, 200);
+    const [session] = result.body.campaigns.find(entry => entry.id === campaign.id).sessions;
+    assert.deepEqual([session.date, session.time, session.hours], [date, '19:00', 3]);
+    assert.equal(result.body.note.posted, false, 'no Discord here');
+    assert.deepEqual(db.sessionPeopleIds(session.id).sort(), [campaignDmId, olaId].sort());
+
+    result = await call(0, `/${campaign.id}/sessions/${session.id}`, { date, time: '20:30' });
+    assert.equal(result.body.campaigns.find(entry => entry.id === campaign.id).sessions[0].time, '20:30', 'Root moves it; the length stays');
+    assert.equal((await call(campaignDm, `/${campaign.id + 999}/sessions/${session.id}/cancel`, {})).status, 400, 'the session must be in that campaign');
+    result = await call(campaignDm, `/${campaign.id}/sessions/${session.id}/cancel`, {});
+    assert.deepEqual(result.body.campaigns.find(entry => entry.id === campaign.id).sessions, []);
+    assert.equal(db.getSession(session.id).status, 'cancelled');
+  } finally {
+    server.close();
+    delete process.env.CAMPAIGN_DM_IDS;
+  }
+});
