@@ -1,7 +1,8 @@
 // views/tabs/changelog.js — "Changelog" tab: the news pages in public/news
 // (also public at /news/<name>), newest first, the chosen one shown in the tab.
 // A page's date comes from <meta name="news-date" content="YYYY-MM-DD">, its
-// summary from its first class="lede" paragraph.
+// summary from its first class="lede" paragraph; pages of one day are ordered by
+// <meta name="news-order" content="1"> (lowest first), then title.
 
 'use strict';
 
@@ -27,9 +28,10 @@ function readPages() {
       name: file.replace(/\.html$/i, ''),
       title: plain((html.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || file),
       date,
+      order: Number((html.match(/<meta name="news-order" content="(\d+)"/) || [])[1] || 99),
       summary: plain((html.match(/class="lede">([\s\S]*?)<\/p>/i) || [])[1] || '')
     };
-  }).sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+  }).sort((a, b) => b.date.localeCompare(a.date) || a.order - b.order || a.title.localeCompare(b.title));
 }
 
 module.exports = function renderChangelogTab(ctx) {

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-03">
+<meta name="news-order" content="2">
+<title>Your Campaign in the Calendar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 3 November 2026 · for Vatokilogodzin</span>
+    <h1>Your Campaign in the Calendar</h1>
+    <p class="lede">Your campaign's sessions can now go into Grimbold's calendar without an adventure thread. Some of your players also play one-shots, so their sessions and yours now sit in one calendar. Grimbrandt warns about clashes, tags your players, reminds them the day before, and puts your sessions in their own calendars.</p>
+  </header>
+
+  <section>
+    <h2>Setting it up (once)</h2>
+    <ol>
+      <li>Go to the Discord channel where your campaign's news should appear and run <code>/campaign create name:</code> with the campaign's name. Grimbrandt will post all its session news in that channel.</li>
+      <li>Add your players one by one: <code>/campaign add campaign:</code> (pick it from the list) <code>player:</code> <em>@someone</em>. Take someone off with <code>/campaign remove</code>.</li>
+    </ol>
+    <p>Players get tagged in your announcements and see your sessions in <code>/sessions</code> and in their calendar links.</p>
+  </section>
+
+  <section>
+    <h2>Booking, moving, cancelling (Discord)</h2>
+    <dl class="cmds">
+      <dt><code>/campaign set</code></dt><dd>Book a session: pick the campaign, a <strong>date</strong> and a <strong>time</strong>; <strong>hours</strong> is optional (4 by default).</dd>
+      <dt><code>/campaign move</code></dt><dd>Pick the session from the list, then the new date and time. Its length stays unless you give new hours.</dd>
+      <dt><code>/campaign cancel</code></dt><dd>Pick the session from the list.</dd>
+      <dt><code>/campaign info</code></dt><dd>The campaign's players and coming sessions, visible only to you.</dd>
+    </dl>
+    <div class="note">Times are <strong>Polish time</strong>. Dates and times come from lists, so there's nothing to mistype. In the date box, type <code>22</code>, <code>22.11</code> or <code>sob</code> to narrow the list. For the time, pick one or type it, for example <code>19:45</code>.</div>
+  </section>
+
+  <section>
+    <h2>What happens on each change</h2>
+    <ul>
+      <li>Grimbrandt posts in your campaign's channel and tags you and your players. Booked and moved sessions come with a <strong>📅 Add to my calendar</strong> button.</li>
+      <li>A <strong>Discord server event</strong> is created, moved or deleted to match.</li>
+      <li><strong>A day before</strong>, Grimbrandt reminds everyone in the channel.</li>
+      <li>Your players' calendar links update automatically, and a cancelled session is marked <strong>[Cancelled]</strong>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Clashes</h2>
+    <p>If you book a time when you're already in another session, Grimbrandt warns you privately. The panel's Sessions tab shows which players are double-booked, whether the other session is a one-shot or your campaign. Warnings never block a booking: you decide.</p>
+  </section>
+
+  <section>
+    <h2>The same from the panel</h2>
+    <p>In the panel, the <strong>Sessions</strong> tab has a <strong>📜 Campaigns</strong> card with your campaign:</p>
+    <ul>
+      <li><strong>Book a session</strong> with a date, a time and hours, and <strong>Move</strong> or <strong>Cancel</strong> any coming session.</li>
+      <li>Add players from a list (panel players with a Discord account) or remove one with <strong>×</strong>.</li>
+      <li>Every change is announced in your Discord channel, the same as from Discord.</li>
+    </ul>
+    <div class="note">The card needs a panel login that's linked to your Discord account. If you don't have one, or the card doesn't appear, ask Maciej.</div>
+  </section>
+
+  <section>
+    <h2>Your own calendar</h2>
+    <p><code>/schedule calendar</code> (in any channel), or the 📅 button under an announcement, gives you a private link to subscribe to in Google, Apple or Outlook. It shows your campaign and any one-shots you're in.</p>
+    <p class="ask">The other DMs and the Root DM can step in and manage your campaign if you need a hand.</p>
+  </section>
+</div>
+</body>
+</html>
