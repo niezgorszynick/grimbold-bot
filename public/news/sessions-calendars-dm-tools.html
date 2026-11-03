@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-03">
+<title>Sessions, Calendars &amp; DM Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 3 November 2026</span>
+    <h1>Sessions, Calendars &amp; DM Tools</h1>
+    <p class="lede">Session dates now live in one place. Answer the DM's poll with a button, get tagged and reminded, and see every session in your own calendar, with a warning if you're in two games at once. Campaigns outside the adventure threads share the same calendar. DMs get 5etools imports, homebrew statblocks and hidden monster rolls.</p>
+  </header>
+
+  <section>
+    <h2>For everyone</h2>
+
+    <h3>Picking a date</h3>
+    <p>When your DM proposes times, Grimbrandt posts a poll in the adventure's Discord thread with up to four times, each shown in your own clock.</p>
+    <ul>
+      <li>Under each time, click <strong>✅ can</strong>, <strong>🤔 maybe</strong> or <strong>❌ can't</strong>. Click again to change your answer; the newest one counts.</li>
+      <li>If you're already in another session at that time, Grimbrandt tells you privately. Your answer still counts, so let the DMs know if you'd rather swap.</li>
+      <li>The DM locks one time in, and the poll shows the chosen time and who's coming.</li>
+    </ul>
+
+    <h3>Once a date is set</h3>
+    <ul>
+      <li>Grimbrandt posts it in the thread and <strong>tags everyone in it</strong>: those who said ✅, the DM and the party.</li>
+      <li>A <strong>Discord server event</strong> appears too. Click <em>Interested</em> if you want Discord's own reminder.</li>
+      <li>If the date moves or the session is cancelled, Grimbrandt posts that in the thread, and the event follows.</li>
+      <li><strong>A day before</strong>, Grimbrandt posts a reminder and tags everyone in the session.</li>
+    </ul>
+
+    <h3>📅 In your own calendar</h3>
+    <p>Get your sessions in Google Calendar, Apple Calendar or Outlook. Changes and cancellations update there automatically.</p>
+    <dl class="cmds">
+      <dt><strong>📅 Add to my calendar</strong></dt><dd>The button under each session announcement in Discord.</dd>
+      <dt><code>/schedule calendar</code></dt><dd>Works in any channel.</dd>
+      <dt>Sessions tab</dt><dd>In the panel: <strong>Show my calendar links</strong>.</dd>
+    </dl>
+    <ul>
+      <li>Each shows <strong>your own links</strong>, visible only to you. Pick your calendar app and subscribe once.</li>
+      <li>Your calendar holds the sessions you said ✅ to, the ones you DM, the ones your character is in the party for, and the sessions of any campaign you're a player in.</li>
+      <li>A moved session moves in your calendar; a cancelled one shows as <strong>[Cancelled]</strong>.</li>
+      <li>Google Calendar can take a few hours to pick up a change. Grimbrandt's posts and the server event change immediately.</li>
+    </ul>
+    <div class="note">Keep your calendar link to yourself: anyone who has it can see your sessions.</div>
+
+    <h3>Who plays when</h3>
+    <dl class="cmds">
+      <dt><code>/sessions</code></dt><dd>Sessions in the next two weeks, visible only to you. Add <code>mine:True</code> for just the ones you're in.</dd>
+      <dt>Sessions tab</dt><dd>In the panel: sessions by day for the next 3 weeks (or 2 months), who's in each, any clashes, and the polls still open.</dd>
+    </dl>
+
+    <h3>In fights</h3>
+    <p>The DM can keep monster rolls hidden. In the adventure table's roll log they show as <strong>🔒</strong> until the DM reveals them, sometimes after the fact.</p>
+  </section>
+
+  <section>
+    <h2>Campaigns</h2>
+    <p>Some of you also play in a campaign that runs outside the adventure threads. Its sessions now sit in the same calendar as the one-shots, so a clash between the two shows up for everyone. Its players get the same tags, reminders and calendar entries.</p>
+
+    <h3>For the campaign's DM</h3>
+    <ol>
+      <li>Go to the Discord channel where the campaign's news should appear and run <code>/campaign create name:</code> with the campaign's name. Grimbrandt will post all its session news there.</li>
+      <li>Add players with <code>/campaign add campaign:</code> (pick it from the list) <code>player:</code> <em>@someone</em>. Take someone off with <code>/campaign remove</code>.</li>
+    </ol>
+    <dl class="cmds">
+      <dt><code>/campaign set</code></dt><dd>Book a session: pick the campaign, a <strong>date</strong> and a <strong>time</strong>; <strong>hours</strong> is optional (4 by default).</dd>
+      <dt><code>/campaign move</code></dt><dd>Pick the session from the list, then the new date and time. Its length stays unless you give new hours.</dd>
+      <dt><code>/campaign cancel</code></dt><dd>Pick the session from the list.</dd>
+      <dt><code>/campaign info</code></dt><dd>The campaign's players and coming sessions, visible only to you.</dd>
+    </dl>
+    <ul>
+      <li>Each change is posted in the campaign's channel, tagging you and your players, with a <strong>📅 Add to my calendar</strong> button. The Discord server event follows, and a reminder goes out a day before.</li>
+      <li>If you book a time when you're already in another session, Grimbrandt warns you privately. Warnings never block a booking: you decide.</li>
+      <li>In the panel, the <strong>Sessions</strong> tab has a <strong>📜 Campaigns</strong> card for the same things: book, move and cancel sessions, and add or remove players. Changes there are announced in Discord too. The card needs a panel login linked to your Discord account; ask Maciej if it doesn't appear.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>Running the table</h2>
+
+      <h3>Scheduling an adventure</h3>
+      <p>Run these in the adventure's Discord thread. The adventure's DM or any DM can use them. Times are <strong>Polish time</strong>.</p>
+      <dl class="cmds">
+        <dt><code>/schedule propose</code></dt><dd>Up to 4 times, for example <code>22.11 20:00, 29.11 18:00</code> (also <code>pt 20:00</code> or <code>jutro 19:30</code>). The suggestion list shows how Grimbrandt read them before you send. Pick the winner from <strong>DM: lock in a time…</strong>.</dd>
+        <dt><code>/schedule set</code></dt><dd>Book a known date at once. The date and time are picked from lists; hours is optional (4 by default).</dd>
+        <dt><code>/schedule move</code></dt><dd>Move the next session to a new date and time.</dd>
+        <dt><code>/schedule cancel</code></dt><dd>Cancels the open poll, or else the next session.</dd>
+      </dl>
+      <ul>
+        <li>In the panel, a running adventure's table has a <strong>📅 Sessions</strong> section where you can book, move and cancel with date pickers. Changes from either side show on the other, and panel changes are announced in the thread.</li>
+        <li>Clashes are warned about (to the voter, to you, and on the Sessions tab) but never block.</li>
+        <li>Any DM can manage any campaign, from Discord or the 📜 Campaigns card.</li>
+      </ul>
+
+      <h3>Monsters</h3>
+      <ul>
+        <li><strong>Import from 5etools</strong> (Monsters tab): choose a 5etools JSON file (a book's bestiary or a homebrew collection), give it a name and press <strong>Import</strong>. Its creatures join the catalog, encounters, NPC statblocks and dice. Imported files stay on the server; book text never goes into Git.</li>
+        <li><strong>Book filter:</strong> chips above the list filter by source, several at once, with <strong>All</strong> / <strong>Clear</strong>. Your choice is remembered.</li>
+        <li><strong>⚔ Add to encounter</strong> on any statblock adds it to an open encounter in your running adventure, or to a new one.</li>
+      </ul>
+
+      <h3>Homebrew statblocks</h3>
+      <p>Homebrew statblocks belong to the adventure. The shared catalog never changes.</p>
+      <ul>
+        <li><strong>✎ Customize</strong> in the encounter planner: type a catalog monster (say, Black Bear), change it in the editor, and it's added to the encounter. The catalog keeps the original.</li>
+        <li><strong>+ Homebrew…</strong> adds one you've already made; <strong>+ New homebrew creature…</strong> starts one from scratch. Its entries come with dice ready to roll.</li>
+        <li><strong>📜 This adventure's homebrew statblocks</strong> lists them with <strong>Edit</strong>, and <strong>Delete</strong> for ones no fight uses.</li>
+      </ul>
+
+      <h3>Monster rolls: hidden or shown</h3>
+      <ul>
+        <li>Monster rolls are stored with the adventure. Hidden ones show to the party as <strong>🔒</strong> in the roll log.</li>
+        <li><strong>Reveal</strong> next to a hidden roll shows it to the party, in the roll log and in Owlbear, right away or later.</li>
+        <li>During a running fight, the dice bar has a toggle, <strong>🔒 Monsters: hidden</strong> / <strong>👁 Monsters: shown</strong>, for whether new monster rolls go out as you roll them. You can reveal a hidden roll either way.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>
