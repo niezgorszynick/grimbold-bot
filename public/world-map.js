@@ -262,6 +262,8 @@
       markClass = 'wm-reveal';
     }
     if (marked.length) svg.append(svgEl('g', { class: markClass }, marked.map(hex => svgEl('polygon', { points: corners(hex, g) }))));
+    // DMs see which hexes everyone knows.
+    if (data.dm && (data.publicHexes || []).length) svg.append(svgEl('g', { class: 'wm-public' }, data.publicHexes.map(hex => svgEl('polygon', { points: corners(hex, g) }))));
     // Markers (several in one hex sit side by side).
     const byHex = new Map();
     data.markers.forEach(marker => { if (!byHex.has(marker.hex)) byHex.set(marker.hex, []); byHex.get(marker.hex).push(marker); });
@@ -365,8 +367,12 @@
       el('h4', { text: 'Hex ' + selected }),
       !known ? el('p', { className: 'muted small', text: 'Not explored yet.' }) : null,
       visits.length ? el('ul', { className: 'small wm-visits' }, visits.map(visit => el('li', {
-        text: (visit.character || 'You (as DM)') + (visit.via ? ' · ' + visit.via : ' · revealed by a DM')
+        text: visit.everyone ? 'Known to everyone' : (visit.character || 'You (as DM)') + (visit.via ? ' · ' + visit.via : ' · revealed by a DM')
       }))) : null,
+      data.dm ? el('label', { className: 'small wm-public-toggle' }, [
+        el('input', { type: 'checkbox', checked: (data.publicHexes || []).includes(selected), onchange: event => act('/public-hexes', { hex: selected, on: event.target.checked }, event.target.checked ? selected + ' is revealed to everyone.' : selected + ' is no longer revealed to everyone.') }),
+        ' Revealed to everyone (e.g. the main hub)'
+      ]) : null,
       markers.length ? el('ul', { className: 'wm-marker-list' }, markers.map(marker => el('li', {}, [
         el('strong', { text: (ICON_NAMES[marker.icon] || '').split(' ')[0] + ' ' + marker.name }),
         data.dm ? el('span', { className: 'tag' + (marker.secret ? '' : ' green'), text: marker.secret ? 'secret' : 'shown' }) : null,

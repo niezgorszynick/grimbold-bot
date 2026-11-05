@@ -945,6 +945,19 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 31,
+    name: 'World map: hexes revealed to everyone (the main hub)',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS map_public_hexes (
+          hex TEXT PRIMARY KEY,
+          revealed_by INTEGER,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    }
   }
 ];
 

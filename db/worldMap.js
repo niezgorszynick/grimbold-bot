@@ -2,7 +2,8 @@
 // drawn on it), DMs' markers, and fog of war for players. A player sees the
 // hexes any of their characters visited: those of the adventures they were in
 // the party of (each adventure's route, marked by its DM), the adventures they
-// DMed, and hexes a DM revealed to one of their characters by hand. Worked out
+// DMed, hexes a DM revealed to one of their characters by hand, and hexes
+// revealed to everyone (the main hub). Worked out
 // from party membership each time, so it follows party changes.
 // DMs (admins) see the whole map, every marker, and edit it all.
 
@@ -145,7 +146,18 @@ function setCharacterHex({ user, characterId, hex, on = true }) {
   else db.prepare('DELETE FROM character_hexes WHERE character_id = ? AND hex = ?').run(character.id, cell);
 }
 
-// Why a player knows each hex: [{ hex, character, via }] (via: an adventure's title, or null when a DM revealed it).
+// A hex every player sees (the main hub, well-known places).
+function setPublicHex({ user, hex, on = true }) {
+  requireDm(user);
+  const cell = parseHex(hex);
+  if (on) db.prepare('INSERT OR IGNORE INTO map_public_hexes (hex, revealed_by) VALUES (?, ?)').run(cell, Number(user.id));
+  else db.prepare('DELETE FROM map_public_hexes WHERE hex = ?').run(cell);
+}
+
+const publicHexes = () => db.prepare('SELECT hex FROM map_public_hexes ORDER BY hex').all().map(row => row.hex);
+
+// Why a player knows each hex: [{ hex, character, via }] (via: an adventure's title, or null when a DM revealed it);
+// hexes known to everyone come as { hex, everyone: true }.
 function playerVisits(playerId) {
   return db.prepare(`
     SELECT ah.hex, c.name AS character, a.title AS via FROM adventure_hexes ah
@@ -158,7 +170,8 @@ function playerVisits(playerId) {
     UNION
     SELECT ch.hex, c.name AS character, NULL AS via FROM character_hexes ch JOIN characters c ON c.id = ch.character_id
       WHERE c.player_id = ?
-  `).all(Number(playerId), Number(playerId), Number(playerId));
+  `).all(Number(playerId), Number(playerId), Number(playerId))
+    .concat(publicHexes().map(hex => ({ hex, character: null, via: null, everyone: true })));
 }
 
 // ─── What one viewer sees ─────────────────────────────────────────────────
@@ -189,6 +202,7 @@ function getWorldMap({ user, asPlayerId = null }) {
     return {
       ...base,
       revealed: null,
+      publicHexes: publicHexes(),
       markers: markers.map(marker => markerView(marker, true)),
       routes,
       characters: db.prepare(`SELECT c.id, c.name, p.discord_tag AS player FROM characters c JOIN players p ON p.id = c.player_id ORDER BY c.name COLLATE NOCASE`).all()
@@ -227,5 +241,6 @@ module.exports = {
   deleteMapMarker,
   setAdventureHex,
   setCharacterHex,
+  setPublicHex,
   getWorldMap
 };

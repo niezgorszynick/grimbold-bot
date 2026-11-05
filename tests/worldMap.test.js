@@ -105,3 +105,20 @@ test('the map over HTTP: the image, the grid, and no secrets for players', async
     server.close();
   }
 });
+
+test('hexes revealed to everyone: every player sees them (and their shown markers), whatever adventures they went on', () => {
+  const sam = createPlayer();
+  character(sam, 'Sam');
+  const asSam = { id: sam, role: 'player' };
+  db.saveMapMarker({ user: root, hex: '15.3', name: 'Grimbold\'s Emporium', icon: 'city', secret: false });
+  assert.deepEqual(db.getWorldMap({ user: asSam }).revealed, []);
+  assert.throws(() => db.setPublicHex({ user: asSam, hex: '15.3' }), /Only a DM/);
+  db.setPublicHex({ user: root, hex: '15.3' });
+  const map = db.getWorldMap({ user: asSam });
+  assert.deepEqual(map.revealed, ['15.3']);
+  assert.deepEqual(map.visits, [{ hex: '15.3', character: null, via: null, everyone: true }]);
+  assert.deepEqual(map.markers.map(marker => marker.name), ['Grimbold\'s Emporium']);
+  assert.deepEqual(db.getWorldMap({ user: root }).publicHexes, ['15.3']);
+  db.setPublicHex({ user: root, hex: '15.3', on: false });
+  assert.deepEqual(db.getWorldMap({ user: asSam }).revealed, []);
+});

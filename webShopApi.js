@@ -1003,6 +1003,7 @@ router.post('/map/markers', mapRoute(({ user, body }) => { db.saveMapMarker({ us
 router.post('/map/markers/:id', mapRoute(({ user, body, params }) => { db.saveMapMarker({ user, ...body, id: params.id }); }));
 router.post('/map/markers/:id/delete', mapRoute(({ user, params }) => { db.deleteMapMarker({ user, id: params.id }); }));
 router.post('/map/adventures/:id/hexes', mapRoute(({ user, body, params }) => { db.setAdventureHex({ user, adventureId: params.id, hex: body.hex, on: body.on !== false }); }));
+router.post('/map/public-hexes', mapRoute(({ user, body }) => { db.setPublicHex({ user, hex: body.hex, on: body.on !== false }); }));
 router.post('/map/characters/:id/hexes', mapRoute(({ user, body, params }) => { db.setCharacterHex({ user, characterId: params.id, hex: body.hex, on: body.on !== false }); }));
 
 // Your personal calendar link (needs a Discord account on your player).

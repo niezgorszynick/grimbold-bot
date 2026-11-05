@@ -982,3 +982,5 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .wm-grid-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
 .wm-settings summary { cursor: pointer; font-weight: 600; }
 @media (max-width: 900px) { .wm-viewport { height: auto; aspect-ratio: 6 / 5; max-height: 75vh; } }
+.wm-public polygon { fill: rgba(46, 204, 113, 0.12); stroke: #2ecc71; stroke-width: 2.5; stroke-dasharray: 8 5; pointer-events: none; }
+.wm-public-toggle { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
