@@ -998,6 +998,11 @@ router.get('/map/image', (req, res) => {
   return res.sendFile(found.file);
 });
 router.post('/map/image', express.raw({ type: () => true, limit: db.MAP_MAX_BYTES }), mapRoute(({ user, body }) => { db.saveMapImage({ user, buffer: body }); }));
+// The same in pieces (the web server in front refuses big requests): start, pieces, finish.
+router.post('/map/uploads', mapRoute(({ user, body }) => db.startMapUpload({ user, size: body.size })));
+router.post('/map/uploads/:id/pieces', express.raw({ type: () => true, limit: 600 * 1024 }), (req, res, next) =>
+  mapRoute(({ user, body, params }) => db.addMapUploadPiece({ user, uploadId: params.id, offset: req.query.offset, buffer: body }))(req, res, next));
+router.post('/map/uploads/:id/finish', mapRoute(({ user, params }) => { db.finishMapUpload({ user, uploadId: params.id }); }));
 router.post('/map/grid', mapRoute(({ user, body }) => { db.saveMapGrid({ user, ...body }); }));
 router.post('/map/markers', mapRoute(({ user, body }) => { db.saveMapMarker({ user, ...body, id: null }); }));
 router.post('/map/markers/:id', mapRoute(({ user, body, params }) => { db.saveMapMarker({ user, ...body, id: params.id }); }));

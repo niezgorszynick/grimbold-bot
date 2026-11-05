@@ -59,6 +59,55 @@ function saveMapImage({ user, buffer }) {
   return { imageUrl: imageUrl(name) };
 }
 
+// Uploads in pieces: the web server in front (nginx) refuses big requests,
+// so the browser sends the image in parts that are joined here.
+const MAP_UPLOAD_PIECE_BYTES = 512 * 1024;
+const partFile = uploadId => path.join(dir(), `upload-${uploadId}.part`);
+function checkUploadId(uploadId) {
+  if (!/^[a-f0-9]{24}$/.test(String(uploadId || ''))) throw new Error('That upload is not known; start again.');
+  return String(uploadId);
+}
+
+function startMapUpload({ user, size }) {
+  requireDm(user);
+  const bytes = Number(size);
+  if (!Number.isInteger(bytes) || bytes < 1) throw new Error('Choose an image to upload.');
+  if (bytes > MAP_MAX_BYTES) throw new Error('The map can be 25 MB at most.');
+  fs.mkdirSync(dir(), { recursive: true });
+  // Parts left behind by uploads that never finished (over a day old).
+  fs.readdirSync(dir()).filter(name => name.endsWith('.part')).forEach(name => {
+    const file = path.join(dir(), name);
+    if (Date.now() - fs.statSync(file).mtimeMs > 86400000) fs.rmSync(file, { force: true });
+  });
+  const uploadId = crypto.randomBytes(12).toString('hex');
+  fs.writeFileSync(partFile(uploadId), Buffer.alloc(0));
+  return { uploadId, pieceBytes: MAP_UPLOAD_PIECE_BYTES };
+}
+
+// offset: where this piece goes (the bytes received so far), so a repeated piece is caught.
+function addMapUploadPiece({ user, uploadId, offset, buffer }) {
+  requireDm(user);
+  const file = partFile(checkUploadId(uploadId));
+  if (!fs.existsSync(file)) throw new Error('That upload is not known; start again.');
+  if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAP_UPLOAD_PIECE_BYTES) throw new Error('A piece of the upload is the wrong size.');
+  const received = fs.statSync(file).size;
+  if (Number(offset) !== received) throw new Error('The upload got out of step; start again.');
+  if (received + buffer.length > MAP_MAX_BYTES) throw new Error('The map can be 25 MB at most.');
+  fs.appendFileSync(file, buffer);
+  return { received: received + buffer.length };
+}
+
+function finishMapUpload({ user, uploadId }) {
+  requireDm(user);
+  const file = partFile(checkUploadId(uploadId));
+  if (!fs.existsSync(file)) throw new Error('That upload is not known; start again.');
+  try {
+    return saveMapImage({ user, buffer: fs.readFileSync(file) });
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+}
+
 function imageUrl(name) {
   return name ? `/api/map/image?v=${encodeURIComponent(name)}` : null;
 }
@@ -235,6 +284,9 @@ module.exports = {
   MAP_MARKER_ICONS: MARKER_ICONS,
   parseMapHex: parseHex,
   saveMapImage,
+  startMapUpload,
+  addMapUploadPiece,
+  finishMapUpload,
   getMapImageFile,
   saveMapGrid,
   saveMapMarker,

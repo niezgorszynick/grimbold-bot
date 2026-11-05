@@ -100,9 +100,28 @@
       headers: body && !raw ? { 'Content-Type': 'application/json' } : (raw ? { 'Content-Type': body.type || 'application/octet-stream' } : {}),
       body: body ? (raw ? body : JSON.stringify(body)) : undefined
     });
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      // Not from Grimbold: the web server in front refused it (often for size).
+      throw new Error(response.status === 413 ? 'The server refused the upload as too large.' : 'The server answered ' + response.status + '; try again.');
+    }
     if (!response.ok) throw new Error(result.error || 'Could not load the map.');
     return result;
+  }
+
+  // The image in pieces (the web server in front refuses big requests).
+  async function uploadImage(file) {
+    const { uploadId, pieceBytes } = await api('/uploads', { size: file.size });
+    for (let offset = 0; offset < file.size; offset += pieceBytes) {
+      message = 'Uploading… ' + Math.round(offset / file.size * 100) + '%';
+      isError = false;
+      const status = root.querySelector('.sheet-message');
+      if (status) status.textContent = message;
+      await api('/uploads/' + uploadId + '/pieces?offset=' + offset, file.slice(offset, offset + pieceBytes), true);
+    }
+    return api('/uploads/' + uploadId + '/finish', {});
   }
   async function act(path, body, done, raw) {
     try {
@@ -449,8 +468,17 @@
       el('summary', { text: '⚙ Map image and grid' }),
       el('div', { className: 'table-filter' }, [file, button('Upload', () => {
         if (!file.files[0]) { message = 'Choose the map image first.'; isError = true; render(); return; }
-        image.url = null;
-        act('/image', file.files[0], 'Map image uploaded.', true);
+        const chosen = file.files[0];
+        message = 'Uploading… 0%';
+        isError = false;
+        render();
+        uploadImage(chosen).then(async result => {
+          data = result;
+          image.url = null;
+          message = 'Map image uploaded.';
+          await loadImage();
+          render();
+        }).catch(error => { message = error.message; isError = true; render(); });
       }, 'btn btn-small btn-green')]),
       el('p', { className: 'muted small', text: 'Line the grid up with the map: hex 1.1 is the top-left hex; its centre is x, y in image pixels, and the size is from a hex’s centre to a corner. The grid shows while this is open.' }),
       el('div', { className: 'wm-grid-fields' }, [field('cols', 'Columns', '1'), field('rows', 'Rows', '1'), field('originX', 'Hex 1.1 x', '0.5'), field('originY', 'Hex 1.1 y', '0.5'), field('size', 'Size', '0.1')]),

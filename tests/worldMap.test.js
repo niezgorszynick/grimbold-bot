@@ -122,3 +122,35 @@ test('hexes revealed to everyone: every player sees them (and their shown marker
   db.setPublicHex({ user: root, hex: '15.3', on: false });
   assert.deepEqual(db.getWorldMap({ user: asSam }).revealed, []);
 });
+
+test('a big map image goes up in pieces (the web server in front refuses big requests)', async () => {
+  const big = Buffer.concat([PNG, Buffer.alloc(1200 * 1024, 7)]);
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')), ...(req.get('x-user') === '0' ? { role: 'admin', username: 'root' } : {}) } }; next(); });
+  app.use('/api', require('../webShopApi'));
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}/api/map`;
+  const post = (path, body, raw) => fetch(base + path, {
+    method: 'POST', headers: { 'x-user': '0', 'Content-Type': raw ? 'application/octet-stream' : 'application/json' }, body: raw ? body : JSON.stringify(body)
+  }).then(async response => ({ status: response.status, body: await response.json() }));
+  try {
+    assert.equal((await post('/uploads', { size: 30 * 1024 * 1024 })).status, 400, 'over 25 MB');
+    const { uploadId, pieceBytes } = (await post('/uploads', { size: big.length })).body;
+    assert.equal(pieceBytes, 512 * 1024);
+    let offset = 0;
+    for (; offset < big.length; offset += pieceBytes) {
+      const piece = await post(`/uploads/${uploadId}/pieces?offset=${offset}`, big.subarray(offset, offset + pieceBytes), true);
+      assert.equal(piece.status, 200);
+    }
+    assert.equal((await post(`/uploads/${uploadId}/pieces?offset=0`, big.subarray(0, 10), true)).status, 400, 'a repeated piece is caught');
+    const done = await post(`/uploads/${uploadId}/finish`, {});
+    assert.equal(done.status, 200);
+    assert.match(done.body.imageUrl, /^\/api\/map\/image\?v=world-.+\.png$/);
+    const image = await fetch(base + '/image', { headers: { 'x-user': '0' } });
+    assert.equal(Buffer.from(await image.arrayBuffer()).length, big.length);
+    assert.equal((await post(`/uploads/${uploadId}/finish`, {})).status, 400, 'the parts are gone');
+  } finally {
+    server.close();
+  }
+});
