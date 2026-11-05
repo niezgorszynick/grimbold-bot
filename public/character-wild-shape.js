@@ -86,7 +86,7 @@
     ]);
   }
 
-  function statBlock(block, live) {
+  function statBlock(block, live, abilityNote) {
     const roll = roller(live);
     const skills = block.proficientSkills.map((skill, index) => [index ? ', ' : '', roll('skill:' + skill, skill + ' ' + signed(block.skills[skill]), skill + ' check')]).flat();
     return el('div', { className: 'beast-block' }, [
@@ -107,7 +107,7 @@
           el('tr', {}, [el('th', { text: 'Save' }), ...ABILITIES.map(ability => el('td', {}, roll('save:' + ability, signed(block.saves[ability]), ability.toUpperCase() + ' save')))])
         ])
       ]),
-      el('p', { className: 'muted small', text: 'STR, DEX and CON are the beast\'s; INT, WIS and CHA, your proficiencies and Hit Points stay yours.' }),
+      el('p', { className: 'muted small', text: abilityNote || 'STR, DEX and CON are the beast\'s; INT, WIS and CHA, your proficiencies and Hit Points stay yours.' }),
       skills.length ? el('p', { className: 'small' }, [el('strong', { text: 'Skills ' }), ...skills]) : null,
       block.senses ? el('p', { className: 'small' }, [el('strong', { text: 'Senses ' }), block.senses]) : null,
       featureList('Traits', block.traits, block, live),
@@ -237,6 +237,43 @@
     ]);
   }
 
+  // Circle of the Titan: Behemoth, Leviathan and Insectoid, always available.
+  function titanSection() {
+    const titan = view.titan;
+    const card = form => {
+      const active = view.active === form.name;
+      const shown = active || open.has('titan:' + form.name);
+      return el('li', { className: 'beast-form' + (active ? ' is-active' : '') }, [
+        el('div', { className: 'beast-form-head' }, [
+          el('div', {}, [
+            el('strong', { text: form.name }),
+            el('span', { className: 'muted small', text: ' · AC ' + form.block.armorClass + ' · ' + form.block.speed })
+          ]),
+          el('div', { className: 'beast-form-buttons' }, [
+            active
+              ? el('button', { type: 'button', className: 'btn btn-small btn-secondary', text: 'Revert', onclick: () => act(() => vitals({ action: 'revertWildShape' }), 'You are back in your true form.') })
+              : el('button', {
+                type: 'button', className: 'btn btn-small btn-green', text: 'Transform', disabled: view.uses.left < 1 || view.hp.current === 0,
+                title: view.uses.left < 1 ? 'No Wild Shape uses left: one comes back on a Short Rest, all on a Long Rest.' : 'Bonus Action: spend one use of Wild Shape',
+                onclick: () => act(() => vitals({ action: 'wildShape', form: form.name }), 'You rise as the ' + form.name + ' and gain ' + titan.rules.tempHp + ' temporary HP.')
+              }),
+            active ? null : el('button', {
+              type: 'button', className: 'btn btn-small btn-secondary', text: shown ? 'Hide stats' : 'Stats', 'aria-expanded': String(shown),
+              onclick: () => { const key = 'titan:' + form.name; if (open.has(key)) open.delete(key); else open.add(key); render(); }
+            })
+          ])
+        ]),
+        shown ? statBlock(form.block, active, 'STR and DEX equal your WIS; CON, INT, WIS and CHA, your proficiencies and Hit Points stay yours.') : null
+      ]);
+    };
+    return el('div', { className: 'starry-form' }, [
+      el('h5', { text: 'Titan Form' }),
+      el('p', { className: 'muted small', text: 'Instead of a beast: Bonus Action, spends a Wild Shape use, ' + titan.rules.tempHp + ' temporary HP; size ' + titan.rules.sizes.join(' or ') + '. Your Circle of the Titan spells can be cast in this form.' }),
+      el('ul', { className: 'beast-forms' }, titan.forms.map(card)),
+      el('h5', { text: 'Beast forms' })
+    ]);
+  }
+
   function render() {
     if (!view || !view.available) {
       root.hidden = true;
@@ -256,6 +293,7 @@
     body.replaceChildren(...[
       summary,
       view.starry ? starrySection() : null,
+      view.titan ? titanSection() : null,
       active,
       view.hasBeastList ? null : el('p', { className: 'sheet-message is-error', text: 'The beast list (rules/content/beasts.md) is not on this server yet. Ask the DM.' }),
       view.known.length ? el('ul', { className: 'beast-forms' }, view.known.map(formRow)) : el('p', { className: 'muted small', text: 'No forms learned yet.' }),

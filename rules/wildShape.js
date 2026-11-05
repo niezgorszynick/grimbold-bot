@@ -328,7 +328,102 @@ function constellations(status, { wisMod, spellAttack }) {
   ];
 }
 
+// ─── Circle of the Titan (Unearthed Arcana 2026) ─────────────────────────────
+// Titan Form: instead of a learned beast, a Wild Shape use can become a
+// Behemoth, Leviathan or Insectoid. Their numbers follow the druid: STR and DEX
+// equal WIS, AC is a base plus the WIS modifier, Rend uses the spell attack.
+
+const TITAN_FORMS = ['Behemoth', 'Leviathan', 'Insectoid'];
+
+// null unless a Circle of the Titan druid of level 3+.
+function titanFormRules(classRows) {
+  const druid = (classRows || []).find(row => row.className === 'Druid' && row.subclassName === 'Circle of the Titan');
+  if (!druid || druid.level < 3) return null;
+  const level = druid.level;
+  return {
+    druidLevel: level,
+    tempHp: 2 * level,
+    sizes: ['Large', ...(level >= 10 ? ['Huge'] : []), ...(level >= 14 ? ['Gargantuan'] : [])],
+    multiattack: level >= 5,
+    direImpact: level >= 6,
+    primalHavoc: level >= 10,
+    monstrousAppetite: level >= 14
+  };
+}
+
+const feature = (name, text) => ({ name, text });
+
+// A Titan Form as a beast for wildShapeBlock. own: the druid's { wis, con }
+// scores; spellAttack: the Druid spell attack bonus.
+function titanFormBeast(name, status, { own, spellAttack }) {
+  if (!status || !TITAN_FORMS.includes(name)) return null;
+  const wisMod = abilityModifier(own.wis);
+  const level = status.druidLevel;
+  const shape = {
+    Behemoth: { ac: 11, speed: '40 ft., Climb 40 ft.', damage: 'Slashing' },
+    Leviathan: { ac: 10, speed: '40 ft., Swim 40 ft.', damage: 'Bludgeoning' },
+    Insectoid: { ac: 8, speed: '40 ft., Fly 40 ft.', damage: 'Piercing' }
+  }[name];
+  const traits = {
+    Behemoth: [
+      feature('Siege Monster', 'Double damage to objects and structures.'),
+      status.primalHavoc ? feature('Rampager', 'The first time on a turn you enter the space of a smaller enemy: STR save against your spell save DC or Prone; already Prone, it takes 2d6 Bludgeoning instead.') : null
+    ],
+    Leviathan: [
+      feature('Amphibious', 'You breathe air and water.'),
+      status.primalHavoc ? feature('Toxic Stench', 'Creatures you choose that start their turn within 10 ft.: CON save against your spell save DC or 2d4 Poison and Poisoned until the start of their next turn.') : null
+    ],
+    Insectoid: [
+      feature('Flyby', "No Opportunity Attacks when you fly out of an enemy's reach."),
+      status.primalHavoc ? feature('Hive Mind', 'When you take this form, link telepathically with up to your Druid level of creatures you can see.') : null
+    ]
+  }[name].filter(Boolean);
+  if (status.direImpact) traits.push(feature('Shock Wave', 'When you take the form, or as a Bonus Action spending a level 1+ spell slot: creatures within 15 ft. make a CON save against your spell save DC or fall Prone.'));
+  if (status.primalHavoc) traits.push(feature('Above It All', 'While Huge or larger, Difficult Terrain from snow, ice, rubble or undergrowth costs no extra movement.'));
+  if (status.monstrousAppetite) {
+    traits.push(feature('Grappling Rend', 'Once per turn while Huge or larger, a Rend hit can Grapple the target (escape DC = your spell save DC), one at a time.'));
+    traits.push(feature('Swallow', 'Bonus Action while Gargantuan: a Large or smaller creature you grapple makes a STR save or is swallowed (Blinded, Restrained, Total Cover, 2d8 Acid each of your turns). Up to your WIS modifier at once; needs Concentration.'));
+  }
+  const bonus = wisMod ? (wisMod > 0 ? '+' + wisMod : String(wisMod)) : '';
+  const rend = {
+    name: 'Rend',
+    text: `Melee spell attack, reach 10 ft.: 1d8${bonus} ${shape.damage} damage.` + (status.direImpact ? ' Elemental Rend: Acid, Cold, Fire, Lightning or Thunder instead, if you like.' : ''),
+    attack: { kind: 'melee', bonus: spellAttack, reach: 'reach 10 ft.', damage: { formula: '1d8' + bonus, type: shape.damage, text: `1d8${bonus} ${shape.damage}`, others: [] } }
+  };
+  const actions = [
+    status.multiattack ? feature('Multiattack', 'Two Rend attacks.') : null,
+    rend,
+    name === 'Behemoth' ? feature('Incandescent Breath', 'Spend a level 1+ spell slot: a 5 × 60 ft. Line, DEX save against your spell save DC, 2d8 Radiant per slot level + WIS (half on a success).') : null,
+    name === 'Insectoid' ? feature('Energizing Pollen', 'Spend a level 1+ spell slot: divide 2d8 + 5 × slot level Hit Points among creatures within 15 ft.') : null
+  ].filter(Boolean);
+  return {
+    name,
+    titan: true,
+    typeLine: `${status.sizes.join(', ')} Monstrosity (Titan Form)`,
+    size: status.sizes[status.sizes.length - 1],
+    armorClass: shape.ac + wisMod,
+    speed: shape.speed,
+    fly: name === 'Insectoid',
+    swim: name === 'Leviathan',
+    abilities: { str: own.wis, dex: own.wis, con: own.con },
+    saves: {},
+    skills: {},
+    senses: 'Darkvision 60 ft.',
+    cr: '—',
+    traits,
+    actions,
+    bonusActions: [],
+    reactions: name === 'Leviathan'
+      ? [feature('Ink Cloud', 'When you take damage, spend a level 1+ spell slot: a 15-ft. Cube of ink (Heavily Obscured, 1 minute) around you, and move up to your Speed.')]
+      : [],
+    note: `Lasts as Wild Shape; ${2 * level} temporary HP. Your Circle of the Titan spells can be cast in this form.`
+  };
+}
+
 module.exports = {
+  TITAN_FORMS,
+  titanFormRules,
+  titanFormBeast,
   CONSTELLATIONS,
   starryFormRules,
   constellations,

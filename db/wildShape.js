@@ -37,11 +37,22 @@ function classesOf(character) {
 function activeWildShape(character, sheetData) {
   const form = typeof sheetData.wildShapeForm === 'string' ? sheetData.wildShapeForm : null;
   if (!form) return null;
-  const beast = rules.getBeast(form);
-  if (!beast) return { name: form, missing: true };
   const classes = classesOf(character);
+  const beast = titanBeast(character, sheetData, form) || rules.getBeast(form);
+  if (!beast) return { name: form, missing: true };
   const initiative = rules.initiativeOf({ classes, sheetData }).total;
   return rules.wildShapeBlock(beast, { classes, sheetData, status: rules.wildShapeRules(classes), initiative });
+}
+
+// Circle of the Titan: one Titan Form as a beast, built from the druid's WIS,
+// CON and Druid spell attack. null for other druids and other forms.
+function titanBeast(character, sheetData, form) {
+  const classes = classesOf(character);
+  const status = rules.titanFormRules(classes);
+  if (!status || !rules.TITAN_FORMS.includes(form)) return null;
+  const druid = rules.getSpellSources({ classes, species: character.race, sheetData }).find(source => source.key === 'Druid');
+  const own = { wis: rules.effectiveAbilityScore(sheetData, 'wis'), con: rules.effectiveAbilityScore(sheetData, 'con') };
+  return rules.titanFormBeast(form, status, { own, spellAttack: druid ? druid.attackBonus : rules.abilityModifier(own.wis) });
 }
 
 // Circle of the Stars: Starry Form (the constellation now, if any), what each
@@ -82,6 +93,18 @@ function view(character, sheetData) {
     uses: uses ? { max: uses.max, left: uses.max - Math.min(uses.max, vitals.resourcesUsed.wildShape || 0) } : { max: 0, left: 0 },
     active: vitals.wildShapeForm,
     starry: starryFormState(character, sheetData),
+    // Circle of the Titan: the three Titan Forms, always available.
+    titan: (() => {
+      const titan = rules.titanFormRules(classes);
+      if (!titan) return null;
+      return {
+        rules: titan,
+        forms: rules.TITAN_FORMS.map(name => {
+          const beast = titanBeast(character, sheetData, name);
+          return { name, note: beast.note, block: rules.wildShapeBlock(beast, { classes, sheetData, status, initiative }) };
+        })
+      };
+    })(),
     hp: { current: vitals.hpCurrent, temp: vitals.hpTemp },
     known: known.map(name => {
       const beast = beasts[name];

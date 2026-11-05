@@ -170,6 +170,20 @@ router.get('/characters/:id', (req, res) => {
   });
 });
 
+// The subclass features a character has, with their text (rules/content/subclasses.md).
+router.get('/characters/:id/subclass-features', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const character = db.prepare('SELECT id, player_id, class, subclass, level FROM characters WHERE id = ?').get(Number(req.params.id));
+  if (!character) return res.status(404).json({ error: 'Character not found.' });
+  if (!isAdmin(user) && character.player_id !== user.id) return res.status(403).json({ error: 'Forbidden.' });
+  const rows = db.getCharacterClasses(character.id);
+  const classes = rows.length
+    ? rows.map(row => ({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level }))
+    : [{ className: character.class, subclassName: character.subclass || null, level: character.level }];
+  return res.json({ subclasses: rules.subclassFeatureTexts(classes) });
+});
+
 // Rule-derived values (max HP, hit dice, slots) for a stored character.
 // Returns null when the character's classes are not in the rules (legacy data).
 function vitalsContextFor(character, sheetData) {

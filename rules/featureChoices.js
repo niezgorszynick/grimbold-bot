@@ -109,6 +109,8 @@ const SUBCLASS_FEATURES = {
     }]
   },
   Assassin: { 3: [{ name: "Assassin's Tools", kind: 'grant', tools: ['Disguise Kit', "Poisoner's Kit"] }] },
+  // Diabolical Gift: Infernal (a character who already knows it may take another language; the DM adds it).
+  'Hell Knight': { 3: [{ name: "Devil's Tongue", kind: 'grant', languages: ['Infernal'] }] },
   Armorer: { 3: [{ name: 'Tools of the Trade', kind: 'grant', armor: ['Heavy armor'], tools: ["Smith's Tools"] }] },
   'Battle Smith': { 3: [{ name: 'Tools of the Trade', kind: 'grant', weapons: ['Martial weapons'], tools: ["Smith's Tools"] }] },
   Alchemist: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Alchemist's Supplies"] }] },

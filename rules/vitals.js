@@ -19,7 +19,7 @@ const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
 const { classResources, recoverResources } = require('./classResources');
-const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS } = require('./wildShape');
+const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS, titanFormRules, TITAN_FORMS } = require('./wildShape');
 
 const MAX_EXHAUSTION = 6;
 
@@ -245,14 +245,16 @@ function changeResource(vitals, key, delta, { resources }) {
 
 // Wild Shape (Bonus Action): spends a use, gives Temporary HP (druid level, or
 // 3 × for Circle of the Moon) and puts the druid in a learned form. Using it
-// again in a form switches to the new one.
+// again in a form switches to the new one. A Circle of the Titan druid can take
+// a Titan Form instead (no learning needed; 2 × druid level Temporary HP).
 function takeWildShape(vitals, form, context) {
   const status = context.wildShape;
   if (!status) throw new Error('Only a Druid of level 2 or higher has Wild Shape.');
-  if (!status.known.includes(form)) throw new Error('Learn that form first.');
+  const titan = status.titan && TITAN_FORMS.includes(form);
+  if (!titan && !status.known.includes(form)) throw new Error('Learn that form first.');
   if (vitals.hpCurrent === 0) throw new Error("You can't Wild Shape at 0 Hit Points.");
   const spent = changeResource(vitals, 'wildShape', 1, context).vitals;
-  const withTemp = setTempHp(spent, status.tempHp).vitals;
+  const withTemp = setTempHp(spent, titan ? status.titan.tempHp : status.tempHp).vitals;
   return { vitals: { ...withTemp, wildShapeForm: form, starryForm: null }, events: ['wildShape'] };
 }
 
@@ -353,7 +355,7 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     // Wild Shape: limits by druid level, and the forms learned.
     wildShape: (() => {
       const status = wildShapeRules(classRows);
-      return status ? { ...status, known: knownForms(sheetData) } : null;
+      return status ? { ...status, known: knownForms(sheetData), titan: titanFormRules(classRows) } : null;
     })(),
     // Circle of the Stars: Starry Form and Cosmic Omen.
     starry: starryFormRules(classRows)

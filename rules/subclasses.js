@@ -1,4 +1,5 @@
-// rules/subclasses.js — Subclasses per class (2024 PHB, plus supplements for Artificer).
+// rules/subclasses.js — Subclasses per class (2024 PHB, plus supplements for Artificer,
+// and the Unearthed Arcana 2026 "Villainous Options" playtest subclasses).
 
 const DND_CLASSES_AND_SUBCLASSES = {
   'Artificer': [
@@ -24,6 +25,7 @@ const DND_CLASSES_AND_SUBCLASSES = {
   'Cleric': [
     'Life Domain',
     'Light Domain',
+    'Pestilence Domain',
     'Trickery Domain',
     'War Domain'
   ],
@@ -31,12 +33,14 @@ const DND_CLASSES_AND_SUBCLASSES = {
     'Circle of the Land',
     'Circle of the Moon',
     'Circle of the Sea',
-    'Circle of the Stars'
+    'Circle of the Stars',
+    'Circle of the Titan'
   ],
   'Fighter': [
     'Battle Master',
     'Champion',
     'Eldritch Knight',
+    'Hell Knight',
     'Psi Warrior'
   ],
   'Monk': [
@@ -66,6 +70,7 @@ const DND_CLASSES_AND_SUBCLASSES = {
   'Sorcerer': [
     'Aberrant Sorcery',
     'Clockwork Sorcery',
+    'Demonic Sorcery',
     'Draconic Sorcery',
     'Wild Magic Sorcery'
   ],
@@ -83,4 +88,39 @@ const DND_CLASSES_AND_SUBCLASSES = {
   ]
 };
 
-module.exports = { DND_CLASSES_AND_SUBCLASSES };
+// Subclasses from playtest material (shown as such on the sheet).
+const PLAYTEST_SUBCLASSES = {
+  'Pestilence Domain': 'Unearthed Arcana 2026: Villainous Options',
+  'Circle of the Titan': 'Unearthed Arcana 2026: Villainous Options',
+  'Hell Knight': 'Unearthed Arcana 2026: Villainous Options',
+  'Demonic Sorcery': 'Unearthed Arcana 2026: Villainous Options'
+};
+
+// The features a character's subclasses give up to their class levels, with
+// their text from rules/content/subclasses.md (kept off Git: book and playtest
+// wording). An entry is "## Subclass", its features "### Level 3: Name".
+// classRows: [{ className, subclassName, level }]. [] without the file.
+function subclassFeatureTexts(classRows) {
+  const { loadContent } = require('./content');
+  const entries = loadContent('subclasses');
+  return (classRows || []).filter(row => row.subclassName && entries[row.subclassName]).map(row => {
+    const entry = entries[row.subclassName];
+    const features = Object.entries(entry.sections).map(([heading, text]) => {
+      const match = heading.match(/^Level\s+(\d+)\s*:\s*(.+)$/i);
+      return match ? { level: Number(match[1]), name: match[2].trim(), text } : null;
+    }).filter(feature => feature && feature.level <= row.level);
+    return {
+      subclass: row.subclassName,
+      className: row.className,
+      level: row.level,
+      source: PLAYTEST_SUBCLASSES[row.subclassName] || null,
+      intro: entry.description,
+      features,
+      // What comes later, by name only.
+      upcoming: Object.keys(entry.sections).map(heading => heading.match(/^Level\s+(\d+)\s*:\s*(.+)$/i))
+        .filter(match => match && Number(match[1]) > row.level).map(match => ({ level: Number(match[1]), name: match[2].trim() }))
+    };
+  });
+}
+
+module.exports = { DND_CLASSES_AND_SUBCLASSES, PLAYTEST_SUBCLASSES, subclassFeatureTexts };

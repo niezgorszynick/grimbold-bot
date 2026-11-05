@@ -12,6 +12,7 @@ const SUBCLASS_SPELLS = {
   'Life Domain': [[3, ['Aid', 'Bless', 'Cure Wounds', 'Lesser Restoration']], [5, ['Mass Healing Word', 'Revivify']], [7, ['Aura of Life', 'Death Ward']], [9, ['Greater Restoration', 'Mass Cure Wounds']]],
   'Light Domain': [[3, ['Burning Hands', 'Faerie Fire', 'Scorching Ray', 'See Invisibility']], [5, ['Daylight', 'Fireball']], [7, ['Arcane Eye', 'Wall of Fire']], [9, ['Flame Strike', 'Scrying']]],
   'Trickery Domain': [[3, ['Charm Person', 'Disguise Self', 'Invisibility', 'Pass without Trace']], [5, ['Hypnotic Pattern', 'Nondetection']], [7, ['Confusion', 'Dimension Door']], [9, ['Dominate Person', 'Modify Memory']]],
+  'Pestilence Domain': [[3, ['Detect Poison and Disease', 'Protection from Poison', 'Ray of Enfeeblement', 'Ray of Sickness']], [5, ['Stinking Cloud', 'Vampiric Touch']], [7, ['Blight', 'Giant Insect']], [9, ['Contagion', 'Insect Plague']]],
   'War Domain': [[3, ['Guiding Bolt', 'Magic Weapon', 'Shield of Faith', 'Spiritual Weapon']], [5, ["Crusader's Mantle", 'Spirit Guardians']], [7, ['Fire Shield', 'Freedom of Movement']], [9, ['Hold Monster', 'Steel Wind Strike']]],
   // Paladin
   'Oath of Devotion': [[3, ['Protection from Evil and Good', 'Shield of Faith']], [5, ['Aid', 'Zone of Truth']], [9, ['Beacon of Hope', 'Dispel Magic']], [13, ['Freedom of Movement', 'Guardian of Faith']], [17, ['Commune', 'Flame Strike']]],
@@ -23,6 +24,8 @@ const SUBCLASS_SPELLS = {
   'Circle of the Sea': [[3, ['Fog Cloud', 'Gust of Wind', 'Ray of Frost', 'Thunderwave']], [5, ['Lightning Bolt', 'Water Breathing']], [7, ['Control Water', 'Ice Storm']], [9, ['Conjure Elemental', 'Hold Monster']]],
   // Star Map.
   'Circle of the Stars': [[3, ['Guidance', 'Guiding Bolt']]],
+  // Castable in Titan Form too.
+  'Circle of the Titan': [[3, ['Cure Wounds', 'Longstrider', 'Thaumaturgy']], [5, ['Fear']], [7, ['Stoneskin']], [9, ['Destructive Wave']]],
   // Warlock
   'Archfey Patron': [[3, ['Calm Emotions', 'Faerie Fire', 'Misty Step', 'Phantasmal Force', 'Sleep']], [5, ['Blink', 'Plant Growth']], [7, ['Dominate Beast', 'Greater Invisibility']], [9, ['Dominate Person', 'Seeming']]],
   'Celestial Patron': [[3, ['Aid', 'Cure Wounds', 'Guiding Bolt', 'Lesser Restoration', 'Light', 'Sacred Flame']], [5, ['Daylight', 'Revivify']], [7, ['Guardian of Faith', 'Wall of Fire']], [9, ['Greater Restoration', 'Summon Celestial']]],
@@ -31,6 +34,7 @@ const SUBCLASS_SPELLS = {
   // Sorcerer
   'Aberrant Sorcery': [[3, ['Arms of Hadar', 'Calm Emotions', 'Detect Thoughts', 'Dissonant Whispers', 'Mind Sliver']], [5, ['Hunger of Hadar', 'Sending']], [7, ["Evard's Black Tentacles", 'Summon Aberration']], [9, ["Rary's Telepathic Bond", 'Telekinesis']]],
   'Clockwork Sorcery': [[3, ['Aid', 'Alarm', 'Lesser Restoration', 'Protection from Evil and Good']], [5, ['Dispel Magic', 'Protection from Energy']], [7, ['Freedom of Movement', 'Summon Construct']], [9, ['Greater Restoration', 'Wall of Force']]],
+  'Demonic Sorcery': [[3, ['Detect Magic', 'Entangle', 'Misty Step', 'Spider Climb']], [5, ['Dispel Magic', 'Gaseous Form']], [7, ['Confusion', 'Hallucinatory Terrain']], [9, ['Contact Other Plane', 'Hallow']]],
   'Draconic Sorcery': [[3, ['Alter Self', 'Chromatic Orb', 'Command', "Dragon's Breath"]], [5, ['Fear', 'Fly']], [7, ['Arcane Eye', 'Charm Monster']], [9, ['Legend Lore', 'Summon Dragon']]],
   // Ranger
   'Fey Wanderer': [[3, ['Charm Person']], [5, ['Misty Step']], [9, ['Summon Fey']], [13, ['Dimension Door']], [17, ['Mislead']]],

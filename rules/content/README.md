@@ -10,7 +10,7 @@ simply treated as empty.
 ## Book text stays out of Git
 
 Text copied from the D&D books can't be published, and this repository is public.
-`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md` and `monsters.md` are listed in
+`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md`, `monsters.md` and `subclasses.md` are listed in
 `.gitignore`: keep them locally and copy them to the server yourself (for example
 `scp rules/content/magic_items.md vps:/var/www/grimbold-bot/rules/content/`).
 Add other book-text files to `.gitignore` the same way.
@@ -18,6 +18,9 @@ Add other book-text files to `.gitignore` the same way.
 A committed `<category>.fallback.md` (e.g. `spells.fallback.md`) holds short
 summaries in our own words. They are only used where the main file has no entry
 or says "No description available."
+
+`subclasses.md` holds subclass feature text: `## Subclass` entries whose features are
+`### Level 3: Feature Name` sections, shown on the character sheet up to the class level.
 
 ## Format
 

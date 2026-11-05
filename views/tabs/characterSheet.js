@@ -290,6 +290,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <section class="sheet-card sheet-features-card" data-collapse="features">
                 <h4>Class Features &amp; Species Traits</h4>
                 <div id="cs_auto_features" class="sheet-auto-features" aria-live="polite"></div>
+                <div id="cs_subclass_features" data-character-id="${Number(characterToEdit.id)}" hidden></div>
+                <script src="/admin/assets/subclass-features.js" defer></script>
                 <label class="sheet-notes-label">Additional notes<textarea id="cs_features" rows="5" maxlength="10000" placeholder="Record additional features, choices, or reminders..."></textarea></label>
               </section>
             </div>
