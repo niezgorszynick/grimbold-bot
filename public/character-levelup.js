@@ -330,7 +330,10 @@
       const kindLabel = { general: 'General', origin: 'Origin', epicBoon: 'Epic Boon', fightingStyle: 'Fighting Style' };
       const featSelect = selectBox(feats.map(f => f.name), {
         placeholder: '-- Choose Feat --',
-        labels: name => name + ' (' + kindLabel[feats.find(f => f.name === name).kind] + ')',
+        labels: name => {
+          const feat = feats.find(f => f.name === name);
+          return name + ' (' + (feat.path ? 'Path of the ' + feat.path + ', playtest' : kindLabel[feat.kind]) + ')';
+        },
         disabledReasons: reasons
       });
       const extra = el('div');
@@ -372,6 +375,11 @@
           });
           fields.push(field('Skill proficiency or Expertise', skill));
           getters.skill = () => skill.value;
+        }
+        if (feat && feat.spellAbilityChoice) {
+          const ability = selectBox(['int', 'wis', 'cha'], { placeholder: '-- Spellcasting ability --', labels: a => ABILITY_NAMES[a] });
+          fields.push(field('Spellcasting ability for its spells', ability));
+          getters.spellAbility = () => ability.value;
         }
         const origin = feat && rulesData.originFeats[feat.name];
         if (origin && origin.grants.spells) {

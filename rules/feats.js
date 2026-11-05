@@ -125,8 +125,42 @@ const GENERAL_FEATS = {
   Telekinetic: { abilityIncrease: MENTAL, grants: { spells: { cantrips: ['Mage Hand'] } } },
   Telepathic: { abilityIncrease: MENTAL, grants: { spells: { fixed: ['Detect Thoughts'], freeEach: 1 } } },
   'War Caster': { prerequisite: { spellcasting: true }, abilityIncrease: MENTAL },
-  'Weapon Master': { abilityIncrease: STR_DEX }
+  'Weapon Master': { abilityIncrease: STR_DEX },
+  ...PATH_FEATS()
 };
+
+// Paths of Villainy (Unearthed Arcana 2026: Villainous Options): an Initiate
+// feat first, then others of the same path, and Ascension at level 12+ with two
+// of them. Prerequisites: { weaponMastery }, { level }, { feats: [names] },
+// { pathFeats: n } (feats of the same path already taken). Spell grants:
+// ability — a fixed spellcasting ability; chooseAbility — picked with the feat;
+// cost — cast without a slot by spending that resource (Death Points);
+// freeEach: 'abilityMod' — free casts equal to the ability modifier.
+function PATH_FEATS() {
+  const deathPoint = { key: 'deathPoints', amount: 1, label: '1 Death Point' };
+  const knight = (spell, extra = {}) => ({ path: 'Death Knight', ...extra, grants: { spells: { fixed: [spell], ability: 'cha', cost: deathPoint } } });
+  const afterKnight = { feats: ['Death Knight Initiate'] };
+  const afterLich = { feats: ['Lich Initiate'] };
+  return {
+    'Death Knight Initiate': {
+      ...knight('Wrathful Smite'), prerequisite: { weaponMastery: true }, abilityIncrease: ['str', 'cha'],
+      grants: { deathPoints: true, spells: { fixed: ['Wrathful Smite'], ability: 'cha', cost: deathPoint } }
+    },
+    'Dread Authority': { ...knight('Command'), prerequisite: afterKnight, abilityIncrease: ['con', 'cha'] },
+    'Harbinger of Doom': { ...knight('Bane'), prerequisite: afterKnight, abilityIncrease: ['str', 'con', 'cha'] },
+    'Deathly Presence': { ...knight('Fear'), prerequisite: { ...afterKnight, level: 8 }, abilityIncrease: ['str', 'con', 'cha'] },
+    'Unholy Steed': { ...knight('Find Steed'), prerequisite: { ...afterKnight, level: 8 }, abilityIncrease: ['str', 'con'] },
+    'Death Knight Ascension': { path: 'Death Knight', prerequisite: { level: 12, pathFeats: 2 }, abilityIncrease: ['str', 'cha'], grants: { hellfireOrb: true } },
+    'Lich Initiate': { path: 'Lich', prerequisite: { spellcasting: true }, abilityIncrease: MENTAL },
+    'Arcane Restoration': { path: 'Lich', prerequisite: afterLich, abilityIncrease: MENTAL, grants: { essenceRejuvenation: true } },
+    'Transfer Life': { path: 'Lich', prerequisite: afterLich, abilityIncrease: MENTAL },
+    'Undead Grasp': { path: 'Lich', prerequisite: afterLich, abilityIncrease: MENTAL, grants: { spells: { cantrips: ['Chill Touch'], chooseAbility: true } } },
+    'Lich Ascension': {
+      path: 'Lich', prerequisite: { level: 12, pathFeats: 2 }, abilityIncrease: MENTAL,
+      grants: { spells: { fixed: ['Fear'], chooseAbility: true, freeEach: 'abilityMod' } }
+    }
+  };
+}
 const GENERAL_FEAT_LEVEL = 4;
 
 // Fighting Style feats: chosen with the Fighting Style feature (Fighter 1,

@@ -18,7 +18,7 @@ const { calculateMaxHp, getHitDicePool } = require('./hitPoints');
 const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
-const { classResources, recoverResources } = require('./classResources');
+const { classResources, featResources, recoverResources } = require('./classResources');
 const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS, titanFormRules, TITAN_FORMS } = require('./wildShape');
 
 const MAX_EXHAUSTION = 6;
@@ -351,7 +351,10 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     pact: spellSlots.pact,
     resourceful,
     // Channel Divinity, Rage, Second Wind, ...
-    resources: classResources(classRows, ability => abilityScore(sheetData, ability)),
+    resources: [
+      ...classResources(classRows, ability => abilityScore(sheetData, ability)),
+      ...featResources(feats, classRows, ability => abilityScore(sheetData, ability))
+    ],
     // Wild Shape: limits by druid level, and the forms learned.
     wildShape: (() => {
       const status = wildShapeRules(classRows);

@@ -154,24 +154,33 @@ function getSpellSources(character) {
       });
       continue;
     }
-    // Fey-Touched, Shadow-Touched, Telepathic, Telekinetic, Ritual Caster.
+    // Fey-Touched, Shadow-Touched, Telepathic, Telekinetic, Ritual Caster, and
+    // the Path of Villainy feats (Death Knight spells cost a Death Point instead
+    // of a slot; Lich Ascension casts Fear free WIS/INT/CHA-modifier times).
     const spells = featGrants(feat).spells;
     if (!spells || sources.some(source => source.key === name)) continue;
     const choose = spells.choose || null;
+    const ability = spells.ability || feat.spellAbility || feat.ability || 'int';
+    const numbers = castingNumbers(ability);
+    const costly = spells.cost ? (spells.fixed || []) : [];
     sources.push({
       kind: 'feat',
       key: name,
       label: name,
       list: 'any',
       filter: choose ? { schools: choose.schools || null, ritual: Boolean(choose.ritual) } : null,
-      ...castingNumbers(feat.ability || 'int'),
+      ...numbers,
       alwaysPrepared: [...(spells.cantrips || []), ...(spells.fixed || [])],
       cantripLimit: 0,
       preparedLimit: choose ? (choose.count === 'proficiency' ? pb : choose.count) : 0,
       maxSpellLevel: choose ? choose.level : 0,
       minSpellLevel: choose ? choose.level : 0,
       changeRule: 'never',
-      freeEach: spells.freeEach || 0
+      freeEach: spells.freeEach === 'abilityMod' ? Math.max(1, numbers.attackBonus - pb) : (spells.freeEach || 0),
+      ...(costly.length ? {
+        freeUsesBySpell: Object.fromEntries(costly.map(spell => [spell, 'atWill'])),
+        resourceCosts: Object.fromEntries(costly.map(spell => [spell, spells.cost]))
+      } : {})
     });
   }
 

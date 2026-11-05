@@ -84,11 +84,24 @@ function featIneligibility(name, { classes, sheetData, scores, totalLevel }) {
   if (prerequisite.training && !armorTrainingOf(classes, sheetData).has(prerequisite.training)) {
     return `Requires ${prerequisite.training} training.`;
   }
+  // Paths of Villainy.
+  if (prerequisite.level && totalLevel < prerequisite.level) return `Requires level ${prerequisite.level}.`;
+  if (prerequisite.weaponMastery && !classes.some(row => ((getClass(row.className) || {}).features || {})[1]?.includes('Weapon Mastery'))) {
+    return 'Requires the Weapon Mastery feature.';
+  }
+  const missing = (prerequisite.feats || []).find(feat => !owned.includes(feat));
+  if (missing) return `Requires the ${missing} feat.`;
+  if (prerequisite.pathFeats) {
+    const path = general.path;
+    const taken = owned.filter(feat => (GENERAL_FEATS[feat] || {}).path === path).length;
+    if (taken < prerequisite.pathFeats) return `Requires ${prerequisite.pathFeats} Path of the ${path} feats.`;
+  }
   return null;
 }
 
 function featKind(name) {
   if (EPIC_BOONS[name]) return 'epicBoon';
+  if ((GENERAL_FEATS[name] || {}).path) return 'path';
   if (ORIGIN_FEATS[name]) return 'origin';
   if (FIGHTING_STYLE_FEATS[name]) return 'fightingStyle';
   return 'general';
@@ -110,6 +123,9 @@ function listFeats(context, { allowBoons }) {
       abilityIncrease: data ? data.abilityIncrease : null,
       skillChoice: grants.skillChoice ? grants.skillChoice.options : null,
       skillExpert: Boolean(grants.expertise),
+      // Undead Grasp, Lich Ascension: the spells' ability is chosen with the feat.
+      spellAbilityChoice: Boolean(grants.spells && grants.spells.chooseAbility),
+      path: (GENERAL_FEATS[name] || {}).path || null,
       unavailable: featIneligibility(name, context)
     };
   });
@@ -255,6 +271,10 @@ function resolveImprovement(improvement, context, { allowBoons }) {
     feat.skill = skill;
   }
   if (grants.tools) result.addedTools = grants.tools.filter(tool => !proficientTools.has(tool));
+  if (grants.spells && grants.spells.chooseAbility) {
+    if (!['int', 'wis', 'cha'].includes(request.spellAbility)) throw new Error(`Choose Intelligence, Wisdom or Charisma as the spellcasting ability for ${name}.`);
+    feat.spellAbility = request.spellAbility;
+  }
   // Origin feats taken at a level-up use the same choices as at creation.
   if (ORIGIN_FEATS[name]) {
     const origin = ORIGIN_FEATS[name];

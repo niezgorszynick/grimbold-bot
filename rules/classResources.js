@@ -126,6 +126,31 @@ function classResources(classRows, scoreOf) {
   return result;
 }
 
+// Uses that come from feats (the Paths of Villainy). feats: the character's
+// feats (rules/feats.js collectCharacterFeats); same shape as classResources.
+function featResources(feats, classRows, scoreOf) {
+  const { featName } = require('./feats');
+  const names = new Set((feats || []).map(featName));
+  const totalLevel = (classRows || []).reduce((sum, row) => sum + row.level, 0);
+  const pb = proficiencyBonus(Math.max(1, totalLevel));
+  const cha = abilityModifier(scoreOf('cha'));
+  const result = [];
+  if (names.has('Death Knight Initiate')) {
+    result.push({
+      key: 'deathPoints', name: 'Death Points', source: 'Path of the Death Knight', max: pb, recovery: 'long', pool: true,
+      text: 'Spend 1 to cast a Death Knight feat spell without a spell slot (Wrathful Smite, Command, Bane, Fear, Find Steed).' +
+        (names.has('Death Knight Ascension') ? ` Hellfire Orb: Magic action, spend 1–5, a 20-ft. Sphere within 120 ft.: DEX save (DC ${8 + cha + pb}), 2d6 Fire + 2d6 Necrotic per point (half on a success).` : '')
+    });
+  }
+  if (names.has('Arcane Restoration')) {
+    result.push({
+      key: 'essenceRejuvenation', name: 'Essence Rejuvenation', source: 'Path of the Lich', max: 1, recovery: 'short', pool: false,
+      text: 'When Soul Siphon consumes a soul: recover spell slots with a combined level of up to 4.'
+    });
+  }
+  return result;
+}
+
 // Uses spent after a rest. used: { key: count }; kind: 'short' | 'long'.
 function recoverResources(used, resources, kind) {
   const next = {};
@@ -139,4 +164,4 @@ function recoverResources(used, resources, kind) {
   return next;
 }
 
-module.exports = { CLASS_RESOURCES: RESOURCES, classResources, recoverResources };
+module.exports = { CLASS_RESOURCES: RESOURCES, classResources, featResources, recoverResources };
