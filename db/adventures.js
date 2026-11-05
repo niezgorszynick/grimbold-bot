@@ -11,7 +11,18 @@ function xpOrOne(value) {
   return Number.isInteger(xp) && xp >= 0 ? xp : 1;
 }
 
+const isRootDm = user => Boolean(user && user.role === 'admin' && Number(user.id) === 0);
+
+// Editing a finished adventure (and deleting a cancelled one): its own DM, or the Root DM.
+function canEditAdventure(adventure, user) {
+  if (isRootDm(user)) return true;
+  return Boolean(user && user.role === 'admin' && adventure && adventure.dm_player_id !== null && Number(adventure.dm_player_id) === Number(user.id));
+}
+
 module.exports = {
+  canEditAdventure,
+  // Deleting a finished adventure (it takes XP back): the Root DM only.
+  canDeleteAdventure: (adventure, user) => (adventure && adventure.status === 'completed' ? isRootDm(user) : canEditAdventure(adventure, user)),
   getAdventureById: (id) => {
     return db.prepare('SELECT * FROM adventures WHERE id = ?').get(Number(id));
   },
@@ -19,7 +30,7 @@ module.exports = {
     const rows = db.prepare('SELECT character_id FROM adventure_rewards WHERE adventure_id = ?').all(Number(adventureId));
     return rows.map(r => r.character_id);
   },
-  updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, dm_character_id, character_ids }) => {
+  updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, dm_character_id, character_ids, user }) => {
     const run = db.transaction(() => {
       const advId = Number(adventure_id);
       const newXp = xpOrOne(xp_awarded);
@@ -32,6 +43,7 @@ module.exports = {
       if (!oldAdv) {
         throw new Error(`Adventure #${advId} not found.`);
       }
+      if (!canEditAdventure(oldAdv, user)) throw new Error('Only the DM who ran this adventure (or the Root DM) can edit it.');
       // Running adventures award XP when they are finished, not here.
       if (oldAdv.status && oldAdv.status !== 'completed') {
         throw new Error('This adventure is still running: finish it from its adventure table.');
@@ -173,8 +185,9 @@ module.exports = {
     SELECT a.*, p.discord_tag AS dm_name FROM adventures a LEFT JOIN players p ON a.dm_player_id = p.id
     WHERE a.status = 'cancelled' ORDER BY a.id DESC
   `).all(),
-  // A test or mistaken adventure, gone for good (DMs). A finished one's XP and
-  // DM reward are taken back first. A running one must be cancelled before
+  // A test or mistaken adventure, gone for good: a finished one by the Root DM
+  // only (its XP and DM reward are taken back first), a cancelled one also by
+  // the DM who would have run it. A running one must be cancelled before
   // (that tags its Discord thread, so the bot doesn't open it again). Its
   // party, sessions, encounters and map routes go with it.
   deleteAdventure: ({ adventureId, user }) => {
@@ -183,6 +196,11 @@ module.exports = {
       const adventure = db.prepare('SELECT * FROM adventures WHERE id = ?').get(Number(adventureId));
       if (!adventure) throw new Error('Adventure not found.');
       if (adventure.status === 'active') throw new Error(`${adventure.title} is still running: cancel it from its adventure table first, then delete it.`);
+      if (!module.exports.canDeleteAdventure(adventure, user)) {
+        throw new Error(adventure.status === 'completed'
+          ? 'Only the Root DM can delete a finished adventure.'
+          : 'Only the DM of this adventure (or the Root DM) can delete it.');
+      }
       const rewards = adventure.status === 'completed'
         ? db.prepare('SELECT character_id, xp FROM adventure_rewards WHERE adventure_id = ?').all(adventure.id)
         : [];

@@ -16,8 +16,10 @@ function renderAdventureTable(adventureId, isAdmin) {
     </div>`;
 }
 
-// Deleting a test or mistaken adventure (DMs): asks first, saying what is taken back.
-function deleteButton(adventure, party = []) {
+// Deleting a test or mistaken adventure: asks first, saying what is taken back.
+// Finished ones: the Root DM only; cancelled ones: also the DM who'd have run it.
+function deleteButton(adventure, user, party = []) {
+  if (!db.canDeleteAdventure(adventure, user)) return '';
   const members = (party || []).filter(member => !member.dmReward);
   const question = adventure.status === 'completed'
     ? `Delete "${adventure.title}" for good? ${members.length ? `${members.length} character(s) lose its ${adventure.xp_awarded} XP and the DM reward is taken back.` : 'Its DM reward is taken back.'} This can't be undone.`
@@ -29,7 +31,7 @@ function deleteButton(adventure, party = []) {
 }
 
 // Cancelled adventures (they never happened): listed so test ones can be deleted.
-function cancelledCard() {
+function cancelledCard(user) {
   const cancelled = db.getCancelledAdventures();
   if (!cancelled.length) return '';
   return `
@@ -44,7 +46,7 @@ function cancelledCard() {
                 <td>${escapeHtml(adventure.created_at || '')}</td>
                 <td><strong>${escapeHtml(adventure.title)}</strong></td>
                 <td>${adventure.dm_name ? escapeHtml(adventure.dm_name) : '<em>None</em>'}</td>
-                <td style="text-align: right;">${deleteButton(adventure)}</td>
+                <td style="text-align: right;">${deleteButton(adventure, user)}</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -114,13 +116,21 @@ module.exports = function renderAdventuresTab(ctx) {
   let editingAdventure = null;
   let editingParticipantIds = [];
 
+  let editRefused = false;
   if (Number.isSafeInteger(editAdvId) && editAdvId > 0) {
     editingAdventure = db.getAdventureById(editAdvId) || null;
+    // Only the DM who ran it (or the Root DM) edits a finished adventure.
+    if (editingAdventure && !db.canEditAdventure(editingAdventure, currentUser)) {
+      editingAdventure = null;
+      editRefused = true;
+    }
     if (editingAdventure) {
       editingParticipantIds = db.getAdventureParticipantIds(editAdvId);
     }
   }
-  if (req.query.edit_adv && !editingAdventure) {
+  if (editRefused) {
+    ctx.setStatusBanner('<div class="alert red">Only the DM who ran this adventure (or the Root DM) can edit it.</div>');
+  } else if (req.query.edit_adv && !editingAdventure) {
     ctx.setStatusBanner('<div class="alert red">Adventure not found. It may have been deleted.</div>');
   }
 
@@ -239,10 +249,10 @@ module.exports = function renderAdventuresTab(ctx) {
               ${editingAdventure ? '<a href="/admin?tab=adventures" class="btn" style="display: inline-block; margin-top: 8px;">Cancel Edit</a>' : ''}
             </form>
             <script>
-              // Zero XP is allowed. Grimbrandt just wants it on record that he asked.
+              // Zero XP is allowed; Grimbrandt only checks it was meant.
               document.querySelectorAll('[data-zero-xp-check]').forEach(input => input.form.addEventListener('submit', event => {
                 if (Number(input.value) !== 0) return;
-                const sure = window.confirm('Grimbrandt lowers his quill. Zero XP? Nothing at all? The whole party walks out with bruises, stories and not one single point to show for it.\\n\\nAre you SURE? It is not his place to judge, only to remember.');
+                const sure = window.confirm('Grimbrandt pauses, quill in the air. Zero XP for this one?\\n\\nIt is not his place to judge, only to remember.');
                 if (!sure) event.preventDefault();
               }));
             </script>
@@ -288,13 +298,13 @@ module.exports = function renderAdventuresTab(ctx) {
               <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>None</em>'}</td>
               <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
               <td>${escapeHtml(adv.description || '—')}</td>
-              ${isAdmin ? `<td style="text-align: right; white-space: nowrap;"><a class="btn btn-small btn-gold" href="/admin?tab=adventures&edit_adv=${adv.id}">Edit</a> ${deleteButton(adv, finishedParties[adv.id])}</td>` : ''}
+              ${isAdmin ? `<td style="text-align: right; white-space: nowrap;">${db.canEditAdventure(adv, currentUser) ? `<a class="btn btn-small btn-gold" href="/admin?tab=adventures&edit_adv=${adv.id}">Edit</a>` : ''} ${deleteButton(adv, currentUser, finishedParties[adv.id])}</td>` : ''}
             </tr>
           `).join('')}
         </tbody>
       </table>
     </div>
-    ${isAdmin ? cancelledCard() : ''}
+    ${isAdmin ? cancelledCard(currentUser) : ''}
   `;
   return contentHtml;
 };

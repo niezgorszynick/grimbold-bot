@@ -504,7 +504,8 @@ router.post(['/adventures/update', '/adventures/edit'], (req, res) => {
       xp_awarded: parseInt(xp_awarded, 10),
       dm_player_id: dm_player_id ? parseInt(dm_player_id, 10) : null,
       dm_character_id: dm_character_id ? parseInt(dm_character_id, 10) : null,
-      character_ids: assignedCharIds
+      character_ids: assignedCharIds,
+      user: req.session.user
     });
 
     res.redirect('/admin?tab=adventures&status=adventure_updated');

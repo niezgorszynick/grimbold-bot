@@ -40,14 +40,26 @@ test('deleting test adventures: finished ones give their XP and DM reward back; 
 
   assert.throws(() => db.deleteAdventure({ adventureId: finished, user: { id: ola, role: 'player' } }), /Only a DM/);
   assert.throws(() => db.deleteAdventure({ adventureId: running, user: asDm }), /still running: cancel it/);
+  // Finished adventures: the Root DM only, even for the DM who ran it.
+  assert.throws(() => db.deleteAdventure({ adventureId: finished, user: asDm }), /Only the Root DM/);
+  // Cancelled ones: their own DM or Root, not another DM.
+  const otherDm = { id: createPlayer('admin'), role: 'admin' };
+  assert.throws(() => db.deleteAdventure({ adventureId: cancelled, user: otherDm }), /Only the DM of this adventure/);
 
-  assert.deepEqual(db.deleteAdventure({ adventureId: finished, user: asDm }), { title: 'Test', xpTakenBack: 1 });
+  // Editing a finished adventure: its own DM or Root, not another DM.
+  const edit = user => db.updateAdventure({ adventure_id: second, title: 'teścik', description: '', xp_awarded: 1, dm_player_id: dm, dm_character_id: dmHero, character_ids: [kael], user });
+  assert.throws(() => edit(otherDm), /Only the DM who ran this adventure/);
+  assert.doesNotThrow(() => edit(asDm));
+  assert.doesNotThrow(() => edit(root));
+  assert.deepEqual([db.canEditAdventure(db.getAdventureById(second), otherDm), db.canDeleteAdventure(db.getAdventureById(second), asDm)], [false, false]);
+
+  assert.deepEqual(db.deleteAdventure({ adventureId: finished, user: root }), { title: 'Test', xpTakenBack: 1 });
   assert.deepEqual([xpOf(kael), pointsOf(dm)], [3, points], 'its XP and DM point taken back');
   assert.equal(db.getAdventureById(finished), undefined);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM adventure_hexes WHERE adventure_id = ?').get(finished).n, 0, 'its map route goes too');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM adventure_rewards WHERE adventure_id = ?').get(finished).n, 0);
 
-  db.deleteAdventure({ adventureId: second, user: asDm });
+  db.deleteAdventure({ adventureId: second, user: root });
   assert.deepEqual([xpOf(kael), xpOf(dmHero)], [2, 2], 'back where they started');
   db.deleteAdventure({ adventureId: cancelled, user: asDm });
   assert.deepEqual(db.getCancelledAdventures(), []);

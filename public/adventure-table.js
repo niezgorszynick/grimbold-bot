@@ -1046,10 +1046,8 @@
     ]);
   }
 
-  // Zero XP is allowed. Grimbrandt just wants it on record that he asked.
-  const ZERO_XP_QUESTION = count => 'Grimbrandt lowers his quill. Zero XP? Nothing at all? ' +
-    (count === 1 ? 'That poor soul' : 'These ' + count + ' souls') + ' walked out with bruises, stories and not one single point to show for it.\n\n' +
-    'Are you SURE? It is not his place to judge, only to remember.';
+  // Zero XP is allowed; Grimbrandt only checks it was meant.
+  const ZERO_XP_QUESTION = 'Grimbrandt pauses, quill in the air. Zero XP for this one?\n\nIt is not his place to judge, only to remember.';
 
   function finishForm() {
     const xp = el('input', { type: 'number', min: '0', max: '20', value: String(data.adventure.xp ?? 1), className: 'inventory-qty', 'aria-label': 'XP for each party member' });
@@ -1061,7 +1059,7 @@
     notes.value = data.adventure.notes || '';
     const finish = button('Finish adventure & award XP', async () => {
       const count = data.party.length;
-      if (Number(xp.value) === 0 && !window.confirm(ZERO_XP_QUESTION(count))) return;
+      if (Number(xp.value) === 0 && !window.confirm(ZERO_XP_QUESTION)) return;
       if (!window.confirm('Finish "' + title.value + '"? ' + count + ' character' + (count === 1 ? '' : 's') + ' get ' + xp.value + ' XP each.')) return;
       const result = await act('/finish', { xp: Number(xp.value), dmCharacterId: reward.value ? Number(reward.value) : null, notes: notes.value, title: title.value },
         res => 'Adventure finished: ' + res.party + ' character(s) got ' + res.xp + ' XP.');

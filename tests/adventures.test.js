@@ -14,6 +14,7 @@ function createFighter(playerId, name) {
   return db.insertStartingCharacter(playerId, character);
 }
 
+const ROOT = { id: 0, role: 'admin' };
 const row = id => db.prepare('SELECT level, xp FROM characters WHERE id = ?').get(id);
 const classLevels = id => db.getCharacterClasses(id).map(c => `${c.class_name} ${c.class_level}`).join(', ');
 const adventure = (characterIds, xp, extra = {}) => db.recordAdventure({
@@ -55,7 +56,7 @@ test('lowering adventure XP undoes the newest level-ups', () => {
 
   const update = xp => db.updateAdventure({
     adventure_id: adventureId, title: 'Crypt', description: 'test', xp_awarded: xp,
-    dm_player_id: null, dm_character_id: null, character_ids: [id]
+    dm_player_id: null, dm_character_id: null, character_ids: [id], user: ROOT
   });
   update(3); // back to level 4
   assert.equal(classLevels(id), 'Fighter 4');
@@ -75,7 +76,7 @@ test('removing a participant takes back their XP', () => {
   const adventureId = adventure([kept, removed], 3);
   db.updateAdventure({
     adventure_id: adventureId, title: 'Crypt', description: 'test', xp_awarded: 3,
-    dm_player_id: null, dm_character_id: null, character_ids: [kept]
+    dm_player_id: null, dm_character_id: null, character_ids: [kept], user: ROOT
   });
   assert.equal(row(kept).xp, 3);
   assert.deepEqual(row(removed), { level: 3, xp: 0 });

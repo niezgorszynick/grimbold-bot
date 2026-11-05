@@ -41,7 +41,7 @@ test('an adventure can award 0 XP: nobody gains any, it is on record, and Grimbr
 
     await threads.announceAdventureEnd(adventure.id);
     assert.match(posts[posts.length - 1].content, /Brunhilda/);
-    assert.match(posts[posts.length - 1].content, /0 XP|zero|nothing/i);
+    assert.match(posts[posts.length - 1].content, /no XP|zero|experience/i);
   } finally {
     threads.setClientForTests(null);
   }

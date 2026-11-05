@@ -100,7 +100,7 @@ test('finishing awards XP to the party and the DM reward; nothing before that', 
   db.setPartyMember({ ...asDm, characterId: a, inParty: true });
   db.setPartyMember({ ...asDm, characterId: b, inParty: true });
   assert.equal(xpOf(a), 2, 'no XP while the adventure runs');
-  assert.throws(() => db.updateAdventure({ adventure_id: adventure.id, title: 'x', xp_awarded: 1, character_ids: [a] }), /still running/);
+  assert.throws(() => db.updateAdventure({ adventure_id: adventure.id, title: 'x', xp_awarded: 1, character_ids: [a], user: { id: 0, role: 'admin' } }), /still running/);
   assert.throws(() => db.finishAdventure({ ...asDm, xp: 1, dmCharacterId: a }), /DM's own characters/);
   assert.throws(() => db.finishAdventure({ ...asDm, xp: -1 }), /from 0 to 20/);
   assert.throws(() => db.finishAdventure({ ...asDm, xp: 21 }), /from 0 to 20/);
