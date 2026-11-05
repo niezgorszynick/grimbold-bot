@@ -958,6 +958,22 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    version: 32,
+    name: 'World map: a marker can belong to several adventures',
+    up(db) {
+      db.exec(`
+        -- Replaces map_markers.adventure_id (kept, no longer used).
+        CREATE TABLE IF NOT EXISTS map_marker_adventures (
+          marker_id INTEGER NOT NULL REFERENCES map_markers(id) ON DELETE CASCADE,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          PRIMARY KEY (marker_id, adventure_id)
+        );
+        INSERT OR IGNORE INTO map_marker_adventures (marker_id, adventure_id)
+          SELECT id, adventure_id FROM map_markers WHERE adventure_id IS NOT NULL;
+      `);
+    }
   }
 ];
 

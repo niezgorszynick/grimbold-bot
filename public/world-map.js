@@ -54,6 +54,10 @@
   let showGrid = remember('grimbold-map-grid') === 'on';
   let image = { url: null, width: 0, height: 0, fogUrl: null };
   let view = null;              // the visible part of the map: { x, y, w, h } in image pixels
+  let painting = null;          // { on, hexes } while dragging across hexes with a tool
+  let fillArmed = false;        // the next click fills hexes that look alike
+  let pendingFill = null;       // { hexes } found by a fill, waiting for Apply
+  let paintLayer = null;
 
   // ─── Geometry ─────────────────────────────────────────────────────────
   const grid = () => gridDraft || data.grid;
@@ -269,18 +273,8 @@
       }
     }
     // Highlights for the tool in use.
-    let marked = [];
-    let markClass = '';
-    if (mode === 'route') {
-      const route = (data.routes || []).find(entry => entry.id === routeId);
-      marked = route ? route.hexes : [];
-      markClass = 'wm-route';
-    } else if (mode === 'reveal') {
-      const character = (data.characters || []).find(entry => entry.id === characterId);
-      marked = character ? character.hexes : [];
-      markClass = 'wm-reveal';
-    }
-    if (marked.length) svg.append(svgEl('g', { class: markClass }, marked.map(hex => svgEl('polygon', { points: corners(hex, g) }))));
+    const tool = target();
+    if (tool && tool.hexes.length) svg.append(svgEl('g', { class: tool.className }, tool.hexes.map(hex => svgEl('polygon', { points: corners(hex, g) }))));
     // DMs see which hexes everyone knows.
     if (data.dm && (data.publicHexes || []).length) svg.append(svgEl('g', { class: 'wm-public' }, data.publicHexes.map(hex => svgEl('polygon', { points: corners(hex, g) }))));
     // Markers (several in one hex sit side by side).
@@ -302,15 +296,53 @@
     });
     svg.append(markerLayer);
     if (selected) svg.append(svgEl('polygon', { class: 'wm-selected', points: corners(selected, g) }));
+    paintLayer = svgEl('g', { class: 'wm-paint' });
+    svg.append(paintLayer);
+    drawPaint();
     wireMap(svg);
     return svg;
   }
 
+  // The tool in use: the hexes it marks and where changes go (null in Look).
+  function target() {
+    if (!data) return null;
+    if (mode === 'route' && routeId) {
+      const route = (data.routes || []).find(entry => entry.id === routeId);
+      return route && { hexes: route.hexes, path: '/adventures/' + routeId + '/hexes', className: 'wm-route', on: n => n + ' added to ' + route.title + "'s route.", off: n => n + ' taken off ' + route.title + "'s route." };
+    }
+    if (mode === 'reveal' && characterId) {
+      const character = (data.characters || []).find(entry => entry.id === characterId);
+      return character && { hexes: character.hexes, path: '/characters/' + characterId + '/hexes', className: 'wm-reveal', on: n => n + ' revealed to ' + character.name + '.', off: n => n + ' hidden again from ' + character.name + '.' };
+    }
+    if (mode === 'everyone' && data.dm) {
+      return { hexes: data.publicHexes || [], path: '/public-hexes', className: 'wm-everyone', on: n => n + ' revealed to everyone.', off: n => n + ' no longer revealed to everyone.' };
+    }
+    return null;
+  }
+  const hexCount = list => (list.length === 1 ? 'Hex ' + list[0] : list.length + ' hexes');
+  function applyHexes(list, on) {
+    const tool = target();
+    if (!tool || !list.length) return;
+    selected = list[list.length - 1];
+    act(tool.path, { hexes: list, on }, on ? tool.on(hexCount(list)) : tool.off(hexCount(list)));
+  }
+
+  // Hexes being painted, or found by a fill.
+  function drawPaint() {
+    if (!paintLayer) return;
+    const list = painting ? painting.hexes : pendingFill ? pendingFill.hexes : [];
+    paintLayer.setAttribute('class', 'wm-paint' + (painting && !painting.on ? ' is-off' : ''));
+    paintLayer.replaceChildren(...list.map(hex => svgEl('polygon', { points: corners(hex) })));
+  }
+
   // Drag to move, wheel or pinch to zoom, click (without dragging) to pick a hex.
+  // With a tool: click or drag across hexes to mark them (starting on a marked
+  // hex takes them off); the right mouse button or two fingers move the map.
   function wireMap(node) {
     const pointers = new Map();
     let moved = 0;
     let pinch = null;
+    node.addEventListener('contextmenu', event => { if (target()) event.preventDefault(); });
     node.addEventListener('wheel', event => {
       event.preventDefault();
       const point = toImage(event);
@@ -319,10 +351,22 @@
     node.addEventListener('pointerdown', event => {
       try { node.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (pointers.size === 1) moved = 0;
+      if (pointers.size === 1) {
+        moved = 0;
+        const tool = target();
+        const point = toImage(event);
+        const hex = hexAt(point.x, point.y);
+        if (tool && !fillArmed && event.button === 0 && hex) {
+          painting = { on: !tool.hexes.includes(hex), hexes: [hex] };
+          pendingFill = null;
+          drawPaint();
+        }
+      }
       if (pointers.size === 2) {
+        painting = null;
+        drawPaint();
         const [a, b] = [...pointers.values()];
-        pinch = Math.hypot(a.x - b.x, a.y - b.y);
+        pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       }
     });
     node.addEventListener('pointermove', event => {
@@ -333,14 +377,27 @@
       if (pointers.size === 2 && pinch) {
         const [a, b] = [...pointers.values()];
         const distance = Math.hypot(a.x - b.x, a.y - b.y);
-        const middle = toImage({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 });
-        zoom(pinch / distance, middle.x, middle.y);
-        pinch = distance;
+        const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const point = toImage({ clientX: middle.x, clientY: middle.y });
+        zoom(pinch.distance / distance, point.x, point.y);
+        view.x -= (middle.x - pinch.x) * view.w / node.clientWidth;
+        view.y -= (middle.y - pinch.y) * view.w / node.clientWidth;
+        applyView();
+        pinch = { distance, x: middle.x, y: middle.y };
         moved += 10;
         return;
       }
-      const scale = view.w / node.clientWidth;
       moved += Math.abs(now.x - last.x) + Math.abs(now.y - last.y);
+      if (painting) {
+        const point = toImage(event);
+        const hex = hexAt(point.x, point.y);
+        if (hex && !painting.hexes.includes(hex)) {
+          painting.hexes.push(hex);
+          drawPaint();
+        }
+        return;
+      }
+      const scale = view.w / node.clientWidth;
       view.x -= (now.x - last.x) * scale;
       view.y -= (now.y - last.y) * scale;
       applyView();
@@ -349,26 +406,110 @@
       const wasClick = pointers.size === 1 && moved < 6;
       pointers.delete(event.pointerId);
       if (pointers.size < 2) pinch = null;
-      if (wasClick && event.type === 'pointerup') pickHex(hexAt(toImage(event).x, toImage(event).y));
+      if (painting) {
+        const done = painting;
+        painting = null;
+        if (event.type === 'pointerup') applyHexes(done.hexes, done.on);
+        else drawPaint();
+        return;
+      }
+      if (wasClick && event.type === 'pointerup') {
+        const point = toImage(event);
+        pickHex(hexAt(point.x, point.y));
+      }
     };
     node.addEventListener('pointerup', release);
     node.addEventListener('pointercancel', release);
   }
 
+  // ─── Fill: connected hexes that look like the clicked one ─────────────
+  let pixels = null;
+  function imagePixels() {
+    if (pixels && pixels.url === image.url) return Promise.resolve(pixels);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(img, 0, 0);
+        pixels = { url: image.url, width: canvas.width, height: canvas.height, data: context.getImageData(0, 0, canvas.width, canvas.height).data };
+        resolve(pixels);
+      };
+      img.onerror = () => reject(new Error('Could not read the map image.'));
+      img.src = image.url;
+    });
+  }
+  // A hex's average colour, from points inside it (away from the grid lines).
+  function hexColour(hex, px) {
+    const g = grid();
+    const [col, row] = hex.split('.').map(Number);
+    const c = centre(col, row, g);
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let count = 0;
+    for (let dx = -3; dx <= 3; dx += 1) {
+      for (let dy = -3; dy <= 3; dy += 1) {
+        const x = Math.round(c.x + dx * g.size * 0.17);
+        const y = Math.round(c.y + dy * g.size * 0.17);
+        if (x < 0 || y < 0 || x >= px.width || y >= px.height) continue;
+        const i = (y * px.width + x) * 4;
+        red += px.data[i];
+        green += px.data[i + 1];
+        blue += px.data[i + 2];
+        count += 1;
+      }
+    }
+    return count ? [red / count, green / count, blue / count] : null;
+  }
+  const colourDistance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  function neighbours(hex) {
+    const g = grid();
+    const [col, row] = hex.split('.').map(Number);
+    const c = centre(col, row, g);
+    return [30, 90, 150, 210, 270, 330]
+      .map(degrees => hexAt(c.x + SQ3 * g.size * Math.cos(degrees * Math.PI / 180), c.y + SQ3 * g.size * Math.sin(degrees * Math.PI / 180)))
+      .filter(Boolean);
+  }
+  // Spreads from hex to neighbour while the colour stays close (to the
+  // neighbour it came from, and not too far from the first hex).
+  async function similarHexes(start) {
+    const px = await imagePixels();
+    const first = hexColour(start, px);
+    if (!first) return [start];
+    const seen = new Set([start]);
+    const found = [start];
+    const queue = [[start, first]];
+    while (queue.length) {
+      const [hex, colour] = queue.shift();
+      neighbours(hex).forEach(next => {
+        if (seen.has(next)) return;
+        seen.add(next);
+        const nextColour = hexColour(next, px);
+        if (nextColour && colourDistance(nextColour, colour) < 24 && colourDistance(nextColour, first) < 60) {
+          found.push(next);
+          queue.push([next, nextColour]);
+        }
+      });
+    }
+    return found;
+  }
+
   function pickHex(hex) {
     if (!hex) return;
-    if (mode === 'route' && routeId) {
-      const route = data.routes.find(entry => entry.id === routeId);
-      const on = !route.hexes.includes(hex);
+    if (fillArmed && target()) {
+      fillArmed = false;
       selected = hex;
-      act('/adventures/' + routeId + '/hexes', { hex, on }, (on ? hex + ' added to ' : hex + ' taken off ') + route.title + "'s route.");
-      return;
-    }
-    if (mode === 'reveal' && characterId) {
-      const character = data.characters.find(entry => entry.id === characterId);
-      const on = !character.hexes.includes(hex);
-      selected = hex;
-      act('/characters/' + characterId + '/hexes', { hex, on }, (on ? hex + ' revealed to ' : hex + ' hidden again from ') + character.name + '.');
+      similarHexes(hex).then(found => {
+        const known = new Set(target().hexes);
+        const fresh = found.filter(entry => !known.has(entry));
+        pendingFill = fresh.length ? { hexes: fresh } : null;
+        message = fresh.length ? '' : 'Every hex like ' + hex + ' is marked already.';
+        isError = false;
+        render();
+      }).catch(error => { message = error.message; isError = true; render(); });
       return;
     }
     selected = selected === hex ? null : hex;
@@ -377,71 +518,105 @@
   }
 
   // ─── The side panel ───────────────────────────────────────────────────
+  const adventureLink = adventure => el('a', { className: 'wm-chip', href: '/admin?tab=adventures&table=' + adventure.id, text: adventure.title, title: adventure.status === 'active' ? 'Running' : 'Finished' });
+
   function hexPanel() {
-    if (!selected) return el('p', { className: 'muted small', text: data.dm ? 'Click a hex to see or add markers.' : 'Click a hex to see what you know about it.' });
+    if (!selected) return el('p', { className: 'wm-card muted small', text: data.dm ? 'Click a hex to see or add markers.' : 'Click a hex to see what you know about it.' });
     const markers = data.markers.filter(marker => marker.hex === selected);
     const known = !data.revealed || data.revealed.includes(selected);
     const visits = (data.visits || []).filter(visit => visit.hex === selected);
-    return el('div', { className: 'wm-hex' }, [
-      el('h4', { text: 'Hex ' + selected }),
+    const isPublic = (data.publicHexes || []).includes(selected);
+    // DMs: every adventure here, by its route or a marker's link.
+    const here = new Map();
+    if (data.dm) {
+      (data.routes || []).filter(route => route.hexes.includes(selected)).forEach(route => here.set(route.id, route));
+      markers.forEach(marker => (marker.adventures || []).forEach(adventure => here.set(adventure.id, adventure)));
+    }
+    return el('div', { className: 'wm-card wm-hex' }, [
+      el('div', { className: 'wm-card-head' }, [
+        el('h4', { text: 'Hex ' + selected }),
+        data.dm ? button(isPublic ? '🌍 Everyone sees it' : '🌍 Reveal to everyone', () => act('/public-hexes', { hex: selected, on: !isPublic }, isPublic ? selected + ' is no longer revealed to everyone.' : selected + ' is revealed to everyone.'),
+          'wm-pill' + (isPublic ? ' is-on' : ''), { title: isPublic ? 'Every player sees this hex; click to undo' : 'Every player will see this hex (the main hub, the sea)' }) : null
+      ]),
       !known ? el('p', { className: 'muted small', text: 'Not explored yet.' }) : null,
       visits.length ? el('ul', { className: 'small wm-visits' }, visits.map(visit => el('li', {
         text: visit.everyone ? 'Known to everyone' : (visit.character || 'You (as DM)') + (visit.via ? ' · ' + visit.via : ' · revealed by a DM')
       }))) : null,
-      data.dm ? el('label', { className: 'small wm-public-toggle' }, [
-        el('input', { type: 'checkbox', checked: (data.publicHexes || []).includes(selected), onchange: event => act('/public-hexes', { hex: selected, on: event.target.checked }, event.target.checked ? selected + ' is revealed to everyone.' : selected + ' is no longer revealed to everyone.') }),
-        ' Revealed to everyone (e.g. the main hub)'
-      ]) : null,
-      markers.length ? el('ul', { className: 'wm-marker-list' }, markers.map(marker => el('li', {}, [
-        el('strong', { text: (ICON_NAMES[marker.icon] || '').split(' ')[0] + ' ' + marker.name }),
-        data.dm ? el('span', { className: 'tag' + (marker.secret ? '' : ' green'), text: marker.secret ? 'secret' : 'shown' }) : null,
-        data.dm && marker.adventure ? el('span', { className: 'muted small', text: ' · ' + marker.adventure }) : null,
-        marker.note ? el('p', { className: 'small', text: marker.note }) : null,
-        data.dm ? el('span', {}, [
-          button('Edit', () => { editingMarker = marker.id; render(); }, 'link-button small'), ' ',
-          button('Delete', () => { if (window.confirm('Delete the marker ' + marker.name + '?')) act('/markers/' + marker.id + '/delete', {}, marker.name + ' deleted.'); }, 'link-button small')
-        ]) : null
-      ]))) : (known ? el('p', { className: 'muted small', text: 'No markers here.' }) : null),
-      data.dm ? (editingMarker ? markerForm() : button('+ Marker here', () => { editingMarker = 'new'; render(); }, 'btn btn-small btn-green')) : null
+      here.size ? el('div', { className: 'wm-chips' }, [el('span', { className: 'muted small', text: 'Adventures here:' }), ...[...here.values()].map(adventureLink)]) : null,
+      markers.map(marker => editingMarker === marker.id ? markerForm() : el('div', { className: 'wm-marker-card' + (marker.secret ? ' is-secret' : '') }, [
+        el('div', { className: 'wm-marker-head' }, [
+          el('strong', { text: (ICON_NAMES[marker.icon] || '').split(' ')[0] + ' ' + marker.name }),
+          data.dm ? el('span', { className: 'wm-icon-buttons' }, [
+            button('✎', () => { editingMarker = marker.id; render(); }, 'wm-icon-button', { title: 'Edit ' + marker.name, 'aria-label': 'Edit ' + marker.name }),
+            button('🗑', () => { if (window.confirm('Delete the marker ' + marker.name + '?')) act('/markers/' + marker.id + '/delete', {}, marker.name + ' deleted.'); }, 'wm-icon-button', { title: 'Delete ' + marker.name, 'aria-label': 'Delete ' + marker.name })
+          ]) : null
+        ]),
+        data.dm ? el('div', { className: 'wm-chips' }, [
+          el('span', { className: 'tag' + (marker.secret ? '' : ' green'), text: marker.secret ? 'secret' : 'shown' }),
+          ...(marker.adventures || []).map(adventureLink)
+        ]) : null,
+        marker.note ? el('p', { className: 'small wm-note', text: marker.note }) : null
+      ])),
+      !markers.length && known && !data.dm ? el('p', { className: 'muted small', text: 'Nothing marked here.' }) : null,
+      data.dm ? (editingMarker === 'new' ? markerForm() : button('+ Marker', () => { editingMarker = 'new'; render(); }, 'btn btn-small btn-secondary')) : null
     ]);
   }
 
   function markerForm() {
-    const marker = editingMarker === 'new' ? { hex: selected, name: '', icon: 'site', note: '', adventureId: null, secret: true } : data.markers.find(entry => entry.id === editingMarker);
+    const marker = editingMarker === 'new' ? { hex: selected, name: '', icon: 'site', note: '', adventures: [], secret: true } : data.markers.find(entry => entry.id === editingMarker);
     if (!marker) return null;
     const name = el('input', { type: 'text', maxlength: '80', value: marker.name, placeholder: 'Name', 'aria-label': 'Marker name' });
     const icon = el('select', { 'aria-label': 'Icon' }, data.icons.map(key => el('option', { value: key, text: ICON_NAMES[key] || key, selected: key === marker.icon })));
-    const note = el('textarea', { rows: '3', maxlength: '1000', placeholder: 'Note (players see it when shown)', 'aria-label': 'Note' });
+    const note = el('textarea', { rows: '2', maxlength: '1000', placeholder: 'Note (players see it when shown)', 'aria-label': 'Note' });
     note.value = marker.note || '';
-    const adventure = el('select', { 'aria-label': 'Adventure' }, [el('option', { value: '', text: 'No adventure' }),
-      ...(data.routes || []).map(entry => el('option', { value: String(entry.id), text: entry.title + (entry.status === 'active' ? ' (running)' : ''), selected: entry.id === marker.adventureId }))]);
+    const linked = new Set((marker.adventures || []).map(adventure => adventure.id));
+    const boxes = (data.routes || []).map(adventure => ({ id: adventure.id, input: el('input', { type: 'checkbox', checked: linked.has(adventure.id) }), adventure }));
     const shown = el('input', { type: 'checkbox', checked: !marker.secret });
     const save = () => {
-      const body = { hex: selected, name: name.value, icon: icon.value, note: note.value, adventureId: adventure.value ? Number(adventure.value) : null, secret: !shown.checked };
+      const body = { hex: selected, name: name.value, icon: icon.value, note: note.value, adventureIds: boxes.filter(box => box.input.checked).map(box => box.id), secret: !shown.checked };
       editingMarker = null;
       act(marker.id ? '/markers/' + marker.id : '/markers', body, 'Marker saved.');
     };
     return el('div', { className: 'wm-form' }, [
-      name, icon, note, adventure,
+      el('div', { className: 'wm-form-row' }, [name, icon]),
+      note,
+      boxes.length ? el('details', { className: 'wm-adventure-picks', open: linked.size ? true : null }, [
+        el('summary', { className: 'small', text: 'Adventures here' + (linked.size ? ' (' + linked.size + ')' : '') }),
+        el('div', { className: 'wm-adventure-list' }, boxes.map(box => el('label', { className: 'small' }, [box.input, ' ' + box.adventure.title + (box.adventure.status === 'active' ? ' (running)' : '')])))
+      ]) : null,
       el('label', { className: 'small' }, [shown, " Shown to players who've been here"]),
-      el('div', {}, [button('Save', save, 'btn btn-small btn-green'), ' ', button('Cancel', () => { editingMarker = null; render(); }, 'btn btn-small btn-secondary')])
+      el('div', { className: 'wm-form-row' }, [button('Save', save, 'btn btn-small btn-green'), button('Cancel', () => { editingMarker = null; render(); }, 'btn btn-small btn-secondary')])
     ]);
   }
 
   function toolsPanel() {
     const routes = data.routes || [];
     if (!data.dm && !routes.length) return null;
-    const modeButton = (key, text) => button(text, () => { mode = key; render(); }, 'btn btn-small' + (mode === key ? '' : ' btn-secondary'));
-    const routeSelect = el('select', { 'aria-label': 'Adventure', onchange: event => { routeId = Number(event.target.value) || null; render(); } }, [
-      el('option', { value: '', text: 'Pick an adventure…' }),
-      ...routes.map(entry => el('option', { value: String(entry.id), text: entry.title + ' (' + entry.hexes.length + ')', selected: entry.id === routeId }))]);
-    const characterSelect = data.dm ? el('select', { 'aria-label': 'Character', onchange: event => { characterId = Number(event.target.value) || null; render(); } }, [
-      el('option', { value: '', text: 'Pick a character…' }),
-      ...data.characters.map(entry => el('option', { value: String(entry.id), text: entry.name + ' (' + entry.player + ')', selected: entry.id === characterId }))]) : null;
-    return el('div', { className: 'wm-tools' }, [
-      el('div', { className: 'wm-modes' }, [modeButton('look', '🔍 Look'), modeButton('route', '🧭 Adventure route'), data.dm ? modeButton('reveal', '👁 Reveal to a character') : null]),
-      mode === 'route' ? el('div', {}, [routeSelect, el('p', { className: 'muted small', text: 'Click hexes to add them to the route or take them off. Everyone in the party sees them, and anyone added to the party later.' })]) : null,
-      mode === 'reveal' && characterSelect ? el('div', {}, [characterSelect, el('p', { className: 'muted small', text: 'Click hexes to reveal them to this character (or hide them again). Hexes from adventures are on the routes.' })]) : null
+    const modes = [['look', '🔍', 'Look', 'Look around and edit markers'], ['route', '🧭', 'Route', "Mark an adventure's route (its party sees it)"]];
+    if (data.dm) modes.push(['reveal', '👁', 'Character', 'Reveal hexes to one character'], ['everyone', '🌍', 'Everyone', 'Reveal hexes to every player']);
+    const segment = el('div', { className: 'wm-seg', role: 'group', 'aria-label': 'Map tool' }, modes.map(([key, emoji, label, title]) => button(emoji + ' ' + label, () => {
+      mode = key; fillArmed = false; pendingFill = null; render();
+    }, mode === key ? 'is-on' : '', { title, 'aria-pressed': mode === key ? 'true' : 'false' })));
+    const tool = target();
+    const picker = mode === 'route'
+      ? el('select', { 'aria-label': 'Adventure', onchange: event => { routeId = Number(event.target.value) || null; render(); } }, [
+        el('option', { value: '', text: 'Pick an adventure…' }),
+        ...routes.map(entry => el('option', { value: String(entry.id), text: entry.title + ' (' + entry.hexes.length + ')', selected: entry.id === routeId }))])
+      : mode === 'reveal' && data.dm
+        ? el('select', { 'aria-label': 'Character', onchange: event => { characterId = Number(event.target.value) || null; render(); } }, [
+          el('option', { value: '', text: 'Pick a character…' }),
+          ...data.characters.map(entry => el('option', { value: String(entry.id), text: entry.name + ' (' + entry.player + ')', selected: entry.id === characterId }))])
+        : null;
+    const fill = tool ? el('div', { className: 'wm-fill' }, pendingFill
+      ? [el('span', { className: 'small', text: '🌊 ' + pendingFill.hexes.length + ' hexes found' }),
+        button('Apply', () => { const list = pendingFill.hexes; pendingFill = null; applyHexes(list, true); }, 'btn btn-small btn-green'),
+        button('Cancel', () => { pendingFill = null; render(); }, 'btn btn-small btn-secondary')]
+      : [button(fillArmed ? '🌊 Click a hex…' : '🌊 Fill', () => { fillArmed = !fillArmed; render(); }, 'btn btn-small' + (fillArmed ? '' : ' btn-secondary'), { title: 'Click a hex next: every connected hex that looks like it (a sea, a forest) is found' })]) : null;
+    return el('div', { className: 'wm-card wm-tools' }, [
+      segment,
+      picker,
+      tool ? el('p', { className: 'muted small', text: 'Click or drag across hexes; drag from a marked hex to unmark. Right-drag moves the map.' }) : null,
+      fill
     ]);
   }
 
@@ -451,8 +626,8 @@
     const asSelect = el('select', { 'aria-label': 'See the map as', onchange: event => { asPlayer = Number(event.target.value) || null; mode = 'look'; selected = null; reload(); } }, [
       el('option', { value: '', text: 'DM view (everything)' }),
       ...players.map(player => el('option', { value: String(player.id), text: 'As ' + player.name, selected: player.id === asPlayer }))]);
-    return el('div', { className: 'wm-dm' }, [
-      el('label', { className: 'small' }, ['See the map ', asSelect]),
+    return el('div', { className: 'wm-card wm-dm' }, [
+      el('label', { className: 'small wm-form-row' }, [el('span', { text: 'View' }), asSelect]),
       data.dm ? settingsPanel() : null
     ]);
   }

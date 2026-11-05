@@ -137,6 +137,7 @@ function saveMapGrid({ user, cols, rows, originX, originY, size }) {
 
 // ─── Markers ──────────────────────────────────────────────────────────────
 
+// The adventures (for DMs) come with the marker; players never see them.
 function markerView(row, dm) {
   return {
     id: row.id,
@@ -144,27 +145,39 @@ function markerView(row, dm) {
     name: row.name,
     icon: row.icon,
     note: row.note,
-    ...(dm ? { secret: Boolean(row.secret), adventureId: row.adventure_id, adventure: row.adventure_title || null } : {})
+    ...(dm ? {
+      secret: Boolean(row.secret),
+      adventures: db.prepare(`SELECT a.id, a.title, a.status FROM map_marker_adventures ma JOIN adventures a ON a.id = ma.adventure_id
+        WHERE ma.marker_id = ? ORDER BY a.id`).all(row.id)
+    } : {})
   };
 }
 
-// { id? , hex, name, icon, note, adventureId, secret } — a new marker, or changes to one.
-function saveMapMarker({ user, id = null, hex, name, icon = 'site', note = '', adventureId = null, secret = true }) {
+// { id? , hex, name, icon, note, adventureIds, secret } — a new marker, or changes to one.
+function saveMapMarker({ user, id = null, hex, name, icon = 'site', note = '', adventureIds = [], secret = true }) {
   requireDm(user);
   const cell = parseHex(hex);
   const title = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   if (!title) throw new Error('Give the marker a name.');
   if (!MARKER_ICONS.includes(icon)) throw new Error('Pick one of the marker icons.');
-  const adventure = adventureId ? db.prepare('SELECT id FROM adventures WHERE id = ?').get(Number(adventureId)) : null;
-  if (adventureId && !adventure) throw new Error('That adventure is not known.');
-  const values = [cell, title, icon, String(note || '').trim().slice(0, 1000), adventure ? adventure.id : null, secret ? 1 : 0];
-  if (id) {
-    const changed = db.prepare('UPDATE map_markers SET hex = ?, name = ?, icon = ?, note = ?, adventure_id = ?, secret = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(...values, Number(id));
-    if (!changed.changes) throw new Error('That marker is gone.');
-    return Number(id);
-  }
-  return Number(db.prepare('INSERT INTO map_markers (hex, name, icon, note, adventure_id, secret, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(...values, Number(user.id)).lastInsertRowid);
+  const adventures = [...new Set((Array.isArray(adventureIds) ? adventureIds : []).map(Number))];
+  adventures.forEach(adventureId => {
+    if (!db.prepare('SELECT 1 FROM adventures WHERE id = ?').get(adventureId)) throw new Error('That adventure is not known.');
+  });
+  const values = [cell, title, icon, String(note || '').trim().slice(0, 1000), secret ? 1 : 0];
+  return db.transaction(() => {
+    let markerId = Number(id);
+    if (id) {
+      const changed = db.prepare('UPDATE map_markers SET hex = ?, name = ?, icon = ?, note = ?, secret = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(...values, markerId);
+      if (!changed.changes) throw new Error('That marker is gone.');
+      db.prepare('DELETE FROM map_marker_adventures WHERE marker_id = ?').run(markerId);
+    } else {
+      markerId = Number(db.prepare('INSERT INTO map_markers (hex, name, icon, note, secret, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(...values, Number(user.id)).lastInsertRowid);
+    }
+    const link = db.prepare('INSERT INTO map_marker_adventures (marker_id, adventure_id) VALUES (?, ?)');
+    adventures.forEach(adventureId => link.run(markerId, adventureId));
+    return markerId;
+  })();
 }
 
 function deleteMapMarker({ user, id }) {
@@ -174,33 +187,45 @@ function deleteMapMarker({ user, id }) {
 
 // ─── Routes and reveals ───────────────────────────────────────────────────
 
+// One hex ("9.6") or several (hexes: [...], painted or filled at once; at most the whole grid).
+function cellsOf(hex, hexes) {
+  const grid = gridOf(settingsRow());
+  const list = Array.isArray(hexes) ? hexes : [hex];
+  if (!list.length || list.length > grid.cols * grid.rows) throw new Error('Pick the hexes to change.');
+  return [...new Set(list.map(entry => parseHex(entry, grid)))];
+}
+
 // The adventure's DM or any DM marks the hexes it went through.
-function setAdventureHex({ user, adventureId, hex, on = true }) {
+function setAdventureHex({ user, adventureId, hex, hexes, on = true }) {
   const adventure = db.prepare('SELECT id, dm_player_id FROM adventures WHERE id = ?').get(Number(adventureId));
   if (!adventure) throw new Error('Adventure not found.');
   if (!isAdmin(user) && !(adventure.dm_player_id !== null && adventure.dm_player_id === Number(user && user.id))) {
     throw new Error("Only this adventure's DM (or another DM) can mark its route.");
   }
-  const cell = parseHex(hex);
-  if (on) db.prepare('INSERT OR IGNORE INTO adventure_hexes (adventure_id, hex) VALUES (?, ?)').run(adventure.id, cell);
-  else db.prepare('DELETE FROM adventure_hexes WHERE adventure_id = ? AND hex = ?').run(adventure.id, cell);
+  const change = on
+    ? db.prepare('INSERT OR IGNORE INTO adventure_hexes (adventure_id, hex) VALUES (?, ?)')
+    : db.prepare('DELETE FROM adventure_hexes WHERE adventure_id = ? AND hex = ?');
+  const cells = cellsOf(hex, hexes);
+  db.transaction(() => cells.forEach(cell => change.run(adventure.id, cell)))();
 }
 
-function setCharacterHex({ user, characterId, hex, on = true }) {
+function setCharacterHex({ user, characterId, hex, hexes, on = true }) {
   requireDm(user);
   const character = db.prepare('SELECT id FROM characters WHERE id = ?').get(Number(characterId));
   if (!character) throw new Error('Character not found.');
-  const cell = parseHex(hex);
-  if (on) db.prepare('INSERT OR IGNORE INTO character_hexes (character_id, hex, revealed_by) VALUES (?, ?, ?)').run(character.id, cell, Number(user.id));
-  else db.prepare('DELETE FROM character_hexes WHERE character_id = ? AND hex = ?').run(character.id, cell);
+  const cells = cellsOf(hex, hexes);
+  const insert = db.prepare('INSERT OR IGNORE INTO character_hexes (character_id, hex, revealed_by) VALUES (?, ?, ?)');
+  const remove = db.prepare('DELETE FROM character_hexes WHERE character_id = ? AND hex = ?');
+  db.transaction(() => cells.forEach(cell => (on ? insert.run(character.id, cell, Number(user.id)) : remove.run(character.id, cell))))();
 }
 
 // A hex every player sees (the main hub, well-known places).
-function setPublicHex({ user, hex, on = true }) {
+function setPublicHex({ user, hex, hexes, on = true }) {
   requireDm(user);
-  const cell = parseHex(hex);
-  if (on) db.prepare('INSERT OR IGNORE INTO map_public_hexes (hex, revealed_by) VALUES (?, ?)').run(cell, Number(user.id));
-  else db.prepare('DELETE FROM map_public_hexes WHERE hex = ?').run(cell);
+  const cells = cellsOf(hex, hexes);
+  const insert = db.prepare('INSERT OR IGNORE INTO map_public_hexes (hex, revealed_by) VALUES (?, ?)');
+  const remove = db.prepare('DELETE FROM map_public_hexes WHERE hex = ?');
+  db.transaction(() => cells.forEach(cell => (on ? insert.run(cell, Number(user.id)) : remove.run(cell))))();
 }
 
 const publicHexes = () => db.prepare('SELECT hex FROM map_public_hexes ORDER BY hex').all().map(row => row.hex);
@@ -233,7 +258,7 @@ function getWorldMap({ user, asPlayerId = null }) {
   const dm = isAdmin(user) && !asPlayerId;
   const viewerId = isAdmin(user) && asPlayerId ? Number(asPlayerId) : Number(user && user.id);
   const markers = db.prepare(`
-    SELECT m.*, a.title AS adventure_title FROM map_markers m LEFT JOIN adventures a ON a.id = m.adventure_id ORDER BY m.hex, m.name COLLATE NOCASE
+    SELECT m.* FROM map_markers m ORDER BY m.hex, m.name COLLATE NOCASE
   `).all();
   const base = { grid, imageUrl: imageUrl(row.image_file), icons: MARKER_ICONS, dm };
 

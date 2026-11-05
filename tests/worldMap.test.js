@@ -32,7 +32,7 @@ test('fog of war: a player sees the routes of their parties, the adventures they
   assert.throws(() => db.setCharacterHex({ user: { id: tom, role: 'player' }, characterId: kael, hex: '1.1' }), /Only a DM/);
   db.setCharacterHex({ user: root, characterId: brin, hex: '6.7' });
 
-  const shown = db.saveMapMarker({ user: root, hex: '9.6', name: 'Port', icon: 'city', note: 'Harbour', secret: false, adventureId: wolves.id });
+  const shown = db.saveMapMarker({ user: root, hex: '9.6', name: 'Port', icon: 'city', note: 'Harbour', secret: false, adventureIds: [wolves.id, ruins.id] });
   db.saveMapMarker({ user: root, hex: '9.7', name: 'Den', icon: 'danger', secret: true });
   db.saveMapMarker({ user: root, hex: '12.12', name: 'Shrine', icon: 'star', secret: false });
   assert.throws(() => db.saveMapMarker({ user: asOla, hex: '1.1', name: 'Mine' }), /Only a DM/);
@@ -63,7 +63,10 @@ test('fog of war: a player sees the routes of their parties, the adventures they
   const dmMap = db.getWorldMap({ user: root });
   assert.equal(dmMap.revealed, null);
   assert.deepEqual(dmMap.markers.map(marker => [marker.name, marker.secret]), [['Shrine', false], ['Port', false], ['Den', true]]);
-  assert.equal(dmMap.markers.find(marker => marker.name === 'Port').adventure, 'Wilki');
+  assert.deepEqual(dmMap.markers.find(marker => marker.name === 'Port').adventures.map(adventure => adventure.title), ['Wilki', 'Ruiny'], 'several adventures in one place');
+  db.saveMapMarker({ user: root, id: shown, hex: '9.6', name: 'Port', icon: 'city', note: 'Harbour', secret: false, adventureIds: [ruins.id] });
+  assert.deepEqual(db.getWorldMap({ user: root }).markers.find(marker => marker.name === 'Port').adventures.map(adventure => adventure.title), ['Ruiny']);
+  assert.throws(() => db.saveMapMarker({ user: root, hex: '1.1', name: 'X', adventureIds: [99999] }), /not known/);
   const asPlayer = db.getWorldMap({ user: root, asPlayerId: ola });
   assert.deepEqual([asPlayer.revealed, asPlayer.asPlayerId], [['6.7'], ola]);
 });
@@ -153,4 +156,25 @@ test('a big map image goes up in pieces (the web server in front refuses big req
   } finally {
     server.close();
   }
+});
+
+test('many hexes at once (painted or filled): to everyone, a route, or one character', () => {
+  const kit = createPlayer();
+  const hero = character(kit, 'Hero');
+  const asKit = { id: kit, role: 'player' };
+  const sea = ['10.1', '11.1', '12.1', '12.2'];
+  db.setPublicHex({ user: root, hexes: sea });
+  assert.deepEqual(db.getWorldMap({ user: asKit }).revealed.sort(), [...sea].sort());
+  db.setPublicHex({ user: root, hexes: ['11.1', '12.2'], on: false });
+  assert.deepEqual(db.getWorldMap({ user: asKit }).revealed.sort(), ['10.1', '12.1']);
+  assert.throws(() => db.setPublicHex({ user: root, hexes: ['1.1', '99.1'] }), /no hex "99.1"/);
+  assert.deepEqual(db.getWorldMap({ user: asKit }).revealed.sort(), ['10.1', '12.1'], 'a bad hex changes nothing');
+  assert.throws(() => db.setPublicHex({ user: root, hexes: [] }), /Pick the hexes/);
+
+  db.setCharacterHex({ user: root, characterId: hero, hexes: ['2.2', '2.3'] });
+  const trip = db.createAdventureFromThread({ threadId: `map-c-${kit}`, title: 'Trip', ownerDiscordId: null }).adventure;
+  db.setAdventureHex({ user: root, adventureId: trip.id, hexes: ['3.3', '3.4'] });
+  db.setPartyMember({ adventureId: trip.id, user: root, characterId: hero, inParty: true });
+  assert.deepEqual(db.getWorldMap({ user: asKit }).revealed.sort(), ['10.1', '12.1', '2.2', '2.3', '3.3', '3.4']);
+  db.setPublicHex({ user: root, hexes: ['10.1', '12.1'], on: false });
 });
