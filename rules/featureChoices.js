@@ -14,7 +14,8 @@
 //   expertise — Expertise in `count` skills you're proficient in (from `options` if set)
 //   languages — learn `count` languages
 //   tools     — gain proficiency in `count` tools from a TOOL_CATEGORIES category
-//   grant     — no choice: fixed skills, tools, languages, weapons, armor
+//   grant     — no choice: fixed skills, tools, languages, weapons, armor;
+//               `orLanguage`: another language instead if the granted one is known
 
 const { SKILL_NAMES, ABILITIES, abilityModifier } = require('./util');
 const { getClass } = require('./classes');
@@ -109,8 +110,8 @@ const SUBCLASS_FEATURES = {
     }]
   },
   Assassin: { 3: [{ name: "Assassin's Tools", kind: 'grant', tools: ['Disguise Kit', "Poisoner's Kit"] }] },
-  // Diabolical Gift: Infernal (a character who already knows it may take another language; the DM adds it).
-  'Hell Knight': { 3: [{ name: "Devil's Tongue", kind: 'grant', languages: ['Infernal'] }] },
+  // Diabolical Gift: Infernal, or another language if you already know it.
+  'Hell Knight': { 3: [{ name: "Devil's Tongue", kind: 'grant', languages: ['Infernal'], orLanguage: true }] },
   Armorer: { 3: [{ name: 'Tools of the Trade', kind: 'grant', armor: ['Heavy armor'], tools: ["Smith's Tools"] }] },
   'Battle Smith': { 3: [{ name: 'Tools of the Trade', kind: 'grant', weapons: ['Martial weapons'], tools: ["Smith's Tools"] }] },
   Alchemist: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Alchemist's Supplies"] }] },
@@ -136,7 +137,9 @@ function describe(feature, source, level) {
           : options || (feature.kind === 'expertise' ? SKILL_NAMES : null),
     grants: feature.kind === 'grant'
       ? { skills: feature.skills || [], tools: feature.tools || [], languages: feature.languages || [], weapons: feature.weapons || [], armor: feature.armor || [] }
-      : null
+      : null,
+    // A language to pick only if the granted one is already known.
+    orLanguage: feature.orLanguage ? ALL_LANGUAGES.filter(language => !(feature.languages || []).includes(language)) : null
   };
 }
 
@@ -232,6 +235,15 @@ function applyFeatureChoices(sheetData, features, picks) {
       added.skills = (raw.skills || []).filter(skill => !skills.has(skill));
       added.tools = (raw.tools || []).filter(tool => !tools.has(tool));
       added.languages = (raw.languages || []).filter(language => !languages.has(language));
+      // Hell Knight: Infernal already known, so another language of their choice.
+      if (raw.orLanguage && (raw.languages || []).every(language => languages.has(language))) {
+        const pick = choices[feature.id];
+        if (typeof pick !== 'string' || !ALL_LANGUAGES.includes(pick) || languages.has(pick)) {
+          throw new Error(`${label}: you already know ${raw.languages.join(', ')}; choose another language.`);
+        }
+        added.languages = [pick];
+        value = pick;
+      }
       added.weapons = raw.weapons || [];
       added.armor = raw.armor || [];
     }

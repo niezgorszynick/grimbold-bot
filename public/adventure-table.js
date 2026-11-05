@@ -195,6 +195,22 @@
     ]);
   }
 
+  // Resistances (and immunities), creature type and senses, in one short line.
+  // A conditional one shows its condition, faded unless it's on now.
+  function defensesLine(defenses) {
+    const shown = (defenses || []).filter(item => ['type', 'resistance', 'immunity', 'condition', 'sense'].includes(item.kind));
+    if (!shown.length) return null;
+    const prefix = { type: '', resistance: 'Resist ', immunity: 'Immune ', condition: 'Immune ', sense: '' };
+    return el('p', { className: 'small party-defenses', title: 'Defenses' }, ['🛡 ', ...shown.flatMap((item, index) => [
+      index ? ' · ' : '',
+      el('span', {
+        className: item.when && !item.active ? 'muted' : null,
+        title: item.source + (item.when ? ' — ' + item.when : ''),
+        text: prefix[item.kind] + item.text + (item.when ? ' (' + item.when + ')' : '')
+      })
+    ])]);
+  }
+
   function memberCard(member) {
     rollingFor = member;
     try {
@@ -255,6 +271,7 @@
       fightActions(member, fighter),
       hpBlock(member.hp),
       data.canManage && data.adventure.status === 'active' && member.hp && member.status === 'alive' ? hpActions(member) : null,
+      defensesLine(member.defenses),
       el('div', { className: 'party-stats' }, [
         stat('AC', member.armorClass, 'Armor Class'),
         stat('Init', signed(member.initiative), 'Initiative', 'initiative'),

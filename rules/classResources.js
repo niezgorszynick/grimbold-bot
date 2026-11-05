@@ -9,10 +9,14 @@
 //   shortOne — one use back on a Short Rest, all on a Long Rest
 //   long     — all uses back on a Long Rest only
 // `pool: true` marks points spent several at a time (Lay On Hands, Focus
-// Points, Sorcery Points, Healing Light dice).
+// Points, Sorcery Points, Healing Light dice). `rolls({ level, mods, pb })`
+// gives dice the sheet can roll for the feature: [{ key, label, formula }]
+// (roll id "resource:<key>:<roll key>", see db/dice.js). An entry with max 0
+// has no uses, only text and rolls (Soul Siphon).
 
 const { atLevel, abilityModifier, proficiencyBonus } = require('./util');
 const { getClass } = require('./classes');
+const { spellcastingFor } = require('./spellcasting');
 
 const table = (className, key) => level => atLevel(getClass(className).resources[key], level);
 const modMin1 = ability => ({ mods }) => Math.max(1, mods[ability]);
@@ -36,6 +40,7 @@ const RESOURCES = [
   { key: 'wardingFlare', name: 'Warding Flare', subclass: 'Light Domain', minLevel: 3, max: modMin1('wis'), recovery: 'long',
     text: () => 'Reaction: impose Disadvantage on an attack roll against you or a creature within 30 ft.' },
   { key: 'virulentBurst', name: 'Virulent Burst', subclass: 'Pestilence Domain', minLevel: 6, max: modMin1('wis'), recovery: 'long',
+    rolls: () => [{ key: 'toxic', label: 'Toxic Infection (Necrotic or Poison)', formula: '3d6' }],
     text: () => 'Reaction when an enemy within 60 ft. drops to 0 HP: plague bursts from it (10-ft. Emanation, 20 ft. if it had Exhaustion). CON save or Incapacitated (Speed 0) until the end of its next turn, or 3d6 Necrotic or Poison damage.' },
   { key: 'verminForm', name: 'Vermin Form', subclass: 'Pestilence Domain', minLevel: 17, max: () => 1, recovery: 'long',
     text: () => 'Bonus Action, 10 minutes: a Medium swarm of pests. Immune to Grappled, Paralyzed, Prone and Restrained; Resistance to Bludgeoning, Piercing and Slashing; Climb Speed; bites for your WIS modifier. A level 5+ spell slot restores the use.' },
@@ -54,6 +59,10 @@ const RESOURCES = [
   { key: 'indomitable', name: 'Indomitable', className: 'Fighter', minLevel: 9, max: ({ level }) => table('Fighter', 'indomitable')(level), recovery: 'long',
     text: ({ level }) => `Reroll a failed saving throw with a +${level} bonus.` },
   { key: 'infernalWound', name: 'Infernal Wound', subclass: 'Hell Knight', minLevel: 3, max: modMin1('con'), recovery: 'short',
+    rolls: ({ level }) => [
+      { key: 'die', label: 'Infernal Wound die (Fire)', formula: '1d6' },
+      ...(level >= 15 ? [{ key: 'blister', label: 'Blister of Avernus: another d6 (Fire)', formula: '1d6' }] : [])
+    ],
     text: ({ level }) => 'Once per turn, a hit with your Hellfire Weapon: +1d6 Fire damage, and the target takes 1d6 Fire at the start of each of its turns for 1 minute (until healed or stanched).' +
       (level >= 7 ? ' Roll a 6: Purulence of Minauros, Rupture of Cania or Stygian Gangrene.' : '') +
       (level >= 15 ? ' Blister of Avernus: each 6 adds another d6 (up to three).' : '') +
@@ -119,7 +128,8 @@ function classResources(classRows, scoreOf) {
         max,
         recovery,
         pool: Boolean(resource.pool),
-        text: resource.text(context)
+        text: resource.text(context),
+        rolls: resource.rolls ? resource.rolls(context) : []
       });
     }
   }
@@ -139,13 +149,31 @@ function featResources(feats, classRows, scoreOf) {
     result.push({
       key: 'deathPoints', name: 'Death Points', source: 'Path of the Death Knight', max: pb, recovery: 'long', pool: true,
       text: 'Spend 1 to cast a Death Knight feat spell without a spell slot (Wrathful Smite, Command, Bane, Fear, Find Steed).' +
-        (names.has('Death Knight Ascension') ? ` Hellfire Orb: Magic action, spend 1–5, a 20-ft. Sphere within 120 ft.: DEX save (DC ${8 + cha + pb}), 2d6 Fire + 2d6 Necrotic per point (half on a success).` : '')
+        (names.has('Death Knight Ascension') ? ` Hellfire Orb: Magic action, spend 1–5, a 20-ft. Sphere within 120 ft.: DEX save (DC ${8 + cha + pb}), 2d6 Fire + 2d6 Necrotic per point (half on a success).` : ''),
+      rolls: [
+        ...(names.has('Deathly Presence') ? [{ key: 'awful', label: 'Awful Presence: Fear with a Death Point (Psychic)', formula: '2d6' }] : []),
+        ...(names.has('Death Knight Ascension')
+          ? [1, 2, 3, 4, 5].map(points => ({ key: `orb${points}`, label: `Hellfire Orb, ${points} point${points > 1 ? 's' : ''} (Fire + Necrotic)`, formula: `${2 * points}d6+${2 * points}d6` }))
+          : [])
+      ]
+    });
+  }
+  // The Lich feats use "your spellcasting ability": the first spellcasting class's.
+  const caster = (classRows || []).map(row => spellcastingFor(row.className, row.subclassName)).find(Boolean);
+  const spellMod = caster && caster.ability ? abilityModifier(scoreOf(caster.ability))
+    : Math.max(...['int', 'wis', 'cha'].map(ability => abilityModifier(scoreOf(ability))));
+  if (names.has('Lich Initiate')) {
+    result.push({
+      key: 'soulSiphon', name: 'Soul Siphon', source: 'Path of the Lich', max: 0, recovery: 'long', pool: false,
+      text: 'Reducing a Humanoid enemy to 0 HP (or one within 10 ft. dropping): on your next turn, the first creature you hit takes extra Necrotic damage.' +
+        (names.has('Transfer Life') ? ` Soul Transference: a creature within 60 ft. gains ${Math.max(1, pb + spellMod)} temporary HP.` : ''),
+      rolls: [{ key: 'siphon', label: 'Soul Siphon (Necrotic)', formula: `1d6${spellMod >= 0 ? '+' : ''}${spellMod}` }]
     });
   }
   if (names.has('Arcane Restoration')) {
     result.push({
       key: 'essenceRejuvenation', name: 'Essence Rejuvenation', source: 'Path of the Lich', max: 1, recovery: 'short', pool: false,
-      text: 'When Soul Siphon consumes a soul: recover spell slots with a combined level of up to 4.'
+      text: 'When Soul Siphon consumes a soul: recover spell slots with a combined level of up to 4.', rolls: []
     });
   }
   return result;

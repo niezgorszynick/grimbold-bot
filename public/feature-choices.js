@@ -47,6 +47,13 @@
 
     if (feature.kind === 'grant') {
       box.append(el('p', { className: 'muted small', text: 'Gained automatically. ' + grantText(feature.grants) }));
+      if (feature.orLanguage) {
+        // Only if the granted language is already known (e.g. a Hell Knight who speaks Infernal).
+        const other = el('select', { 'aria-label': feature.name + ': another language' });
+        other.append(new Option('-- Only if you already know ' + feature.grants.languages.join(', ') + ' --', ''), ...feature.orLanguage.map(language => new Option(language, language)));
+        box.append(el('div', { className: 'feature-selects' }, [other]));
+        return { id: feature.id, element: box, value: () => other.value || true, set: value => { if (typeof value === 'string') other.value = value; } };
+      }
       return { id: feature.id, element: box, value: () => true, set: () => {} };
     }
 

@@ -152,6 +152,8 @@
       const parts = ['Cast ' + spell.name + via + '.'];
       result.events.forEach(event => { if (EVENT_TEXT[event]) parts.push(EVENT_TEXT[event]); });
       if (result.events.includes('concentrating')) parts.push('Concentrating on ' + spell.name + '.');
+      // E.g. a Death Point's extra effect.
+      if (result.note) parts.push(result.note);
       return parts.join(' ');
     });
   }

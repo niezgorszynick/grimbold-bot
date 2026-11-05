@@ -376,6 +376,11 @@
           fields.push(field('Skill proficiency or Expertise', skill));
           getters.skill = () => skill.value;
         }
+        if (feat && feat.cantripChoice) {
+          const cantrip = selectBox(feat.cantripChoice, { placeholder: '-- Another cantrip (you know Chill Touch) --' });
+          fields.push(field('Cantrip', cantrip));
+          getters.cantrip = () => cantrip.value;
+        }
         if (feat && feat.spellAbilityChoice) {
           const ability = selectBox(['int', 'wis', 'cha'], { placeholder: '-- Spellcasting ability --', labels: a => ABILITY_NAMES[a] });
           fields.push(field('Spellcasting ability for its spells', ability));

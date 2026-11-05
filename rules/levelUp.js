@@ -63,6 +63,25 @@ function armorTrainingOf(classes, sheetData) {
   return training;
 }
 
+// Cantrips the character knows now (any source). species: for lineage spells.
+function knownCantrips(classes, sheetData, species = '') {
+  const state = spellbook.readSpellcasting(sheetData);
+  const known = new Set();
+  for (const source of spellbook.getSpellSources({ classes, species, sheetData })) {
+    spellbook.listOf(state, source).cantrips.forEach(name => known.add(name));
+  }
+  return known;
+}
+
+// Undead Grasp: every cantrip, when Chill Touch is already known (one of them
+// instead); null otherwise.
+function undeadGraspCantrips(context) {
+  if (!knownCantrips(context.classes, context.sheetData, context.species).has('Chill Touch')) return null;
+  const known = knownCantrips(context.classes, context.sheetData, context.species);
+  return Object.values(require('./spells').getSpellCatalog()).filter(spell => spell.level === 0 && !known.has(spell.name))
+    .map(spell => spell.name).sort();
+}
+
 // Returns null when the character qualifies, otherwise the reason they do not.
 function featIneligibility(name, { classes, sheetData, scores, totalLevel }) {
   const owned = collectCharacterFeats(sheetData).map(featName);
@@ -125,6 +144,7 @@ function listFeats(context, { allowBoons }) {
       skillExpert: Boolean(grants.expertise),
       // Undead Grasp, Lich Ascension: the spells' ability is chosen with the feat.
       spellAbilityChoice: Boolean(grants.spells && grants.spells.chooseAbility),
+      cantripChoice: name === 'Undead Grasp' ? undeadGraspCantrips(context) : null,
       path: (GENERAL_FEATS[name] || {}).path || null,
       unavailable: featIneligibility(name, context)
     };
@@ -150,7 +170,7 @@ function getLevelUpOptions(state) {
       unavailable.push({ className, reason: error.message });
       continue;
     }
-    const nextContext = { classes: plan.classes, sheetData, scores, totalLevel: plan.totalLevel };
+    const nextContext = { classes: plan.classes, sheetData, scores, totalLevel: plan.totalLevel, species };
     const needsImprovement = plan.choices.includes('abilityScoreImprovementOrFeat') || plan.choices.includes('epicBoon');
     options.push({
       className,
@@ -275,6 +295,13 @@ function resolveImprovement(improvement, context, { allowBoons }) {
     if (!['int', 'wis', 'cha'].includes(request.spellAbility)) throw new Error(`Choose Intelligence, Wisdom or Charisma as the spellcasting ability for ${name}.`);
     feat.spellAbility = request.spellAbility;
   }
+  if (name === 'Undead Grasp') {
+    const others = undeadGraspCantrips(context);
+    if (others) {
+      if (!others.includes(request.cantrip)) throw new Error('You already know Chill Touch: choose another cantrip for Undead Grasp.');
+      feat.cantrip = request.cantrip;
+    }
+  }
   // Origin feats taken at a level-up use the same choices as at creation.
   if (ORIGIN_FEATS[name]) {
     const origin = ORIGIN_FEATS[name];
@@ -393,7 +420,7 @@ function applyLevelUp(state, request) {
   const needsImprovement = plan.choices.includes('abilityScoreImprovementOrFeat') || plan.choices.includes('epicBoon');
   if (needsImprovement) {
     const resolved = resolveImprovement(body.improvement, {
-      classes: nextClasses, sheetData, scores, totalLevel: plan.totalLevel
+      classes: nextClasses, sheetData, scores, totalLevel: plan.totalLevel, species
     }, { allowBoons: plan.choices.includes('epicBoon') });
     entry.increases = resolved.increases;
     entry.feat = resolved.feat;

@@ -91,3 +91,72 @@ test('Lich: Undead Grasp gives Chill Touch, Lich Ascension free Fear casts by th
   const options = rules.getLevelUpOptions({ classes: [{ className: 'Wizard', subclassName: 'Evoker', level: 7 }], earnedLevel: 8, species: 'Human', sheetData: { abilities: scoresOf({ int: 16 }), levelHistory: [feat('Lich Initiate', { ability: 'int' })] } });
   assert.ok(options.options.find(entry => entry.className === 'Wizard').feats.find(entry => entry.name === 'Undead Grasp').spellAbilityChoice);
 });
+
+test('feature dice: Infernal Wound, Hellfire Orb, Awful Presence, Soul Siphon; the Death Point rider after a cast', () => {
+  const rollsOf = (classRows, sheetData, key) => {
+    const resource = rules.deriveVitalsContext({ species: 'Human', sheetData, classRows }).resources.find(entry => entry.key === key);
+    return resource ? Object.fromEntries(resource.rolls.map(roll => [roll.key, roll.formula])) : null;
+  };
+  assert.deepEqual(rollsOf([{ className: 'Fighter', subclassName: 'Hell Knight', level: 7 }], { abilities: scoresOf({ con: 14 }) }, 'infernalWound'), { die: '1d6' });
+  assert.deepEqual(rollsOf([{ className: 'Fighter', subclassName: 'Hell Knight', level: 15 }], { abilities: scoresOf({ con: 14 }) }, 'infernalWound'), { die: '1d6', blister: '1d6' });
+  assert.deepEqual(rollsOf([{ className: 'Cleric', subclassName: 'Pestilence Domain', level: 6 }], { abilities: scoresOf({ wis: 16 }) }, 'virulentBurst'), { toxic: '3d6' });
+
+  const knight = { abilities: scoresOf({ str: 16, cha: 14 }), levelHistory: [feat('Death Knight Initiate', { ability: 'str' }), feat('Deathly Presence', { ability: 'cha' }), feat('Death Knight Ascension', { ability: 'str' })] };
+  const points = rollsOf([{ className: 'Fighter', subclassName: 'Champion', level: 12 }], knight, 'deathPoints');
+  assert.deepEqual([points.awful, points.orb1, points.orb5], ['2d6', '2d6+2d6', '10d6+10d6']);
+  assert.deepEqual(rollsOf([{ className: 'Fighter', subclassName: 'Champion', level: 4 }], { abilities: scoresOf({}), levelHistory: [feat('Death Knight Initiate', { ability: 'str' })] }, 'deathPoints'), {});
+
+  const lich = { abilities: scoresOf({ int: 18, wis: 12 }), levelHistory: [feat('Lich Initiate', { ability: 'int' }), feat('Transfer Life', { ability: 'int' })] };
+  const siphon = rules.deriveVitalsContext({ species: 'Human', sheetData: lich, classRows: [{ className: 'Wizard', subclassName: 'Evoker', level: 8 }] }).resources.find(entry => entry.key === 'soulSiphon');
+  assert.deepEqual([siphon.max, siphon.rolls[0].formula], [0, '1d6+4'], 'no uses; INT is the Wizard spellcasting ability');
+  assert.match(siphon.text, /7 temporary HP/, 'Transfer Life: PB 3 + INT 4');
+
+  // Rolled on the server from the sheet, and the rider comes back with the cast.
+  const player = createPlayer();
+  const id = db.insertStartingCharacter(player, rules.buildStartingCharacter({
+    name: 'Varr', species: 'Human', size: 'Medium', className: 'Fighter', subclass: 'Hell Knight', fightingStyle: 'Defense',
+    background: 'Soldier', generationMethod: 'Standard Array',
+    baseScores: { str: 15, dex: 13, con: 14, int: 8, wis: 10, cha: 12 }, backgroundBonuses: { str: 2, con: 1 },
+    versatileFeat: { name: 'Alert' }, speciesSkills: ['Insight'], classSkills: ['Perception', 'Survival'],
+    backgroundTool: 'Dice', languages: ['Dwarvish', 'Orc'], classEquipment: 'A', backgroundEquipment: 'A'
+  }));
+  const rolled = db.rollForCharacter({ characterId: id, user: { id: player, role: 'player' }, request: { roll: 'resource:infernalWound:die' } });
+  assert.ok(rolled.total >= 1 && rolled.total <= 6);
+  assert.equal(rolled.label, 'Infernal Wound die (Fire)');
+  db.recordAdventure({ title: 'Oath', description: '', xp_awarded: 3, dm_player_id: null, dm_character_id: null, character_ids: [id] });
+  const who = { id, player_id: player, is_admin: false };
+  db.levelUpCharacter({ ...who, request: { className: 'Fighter', improvement: { type: 'feat', name: 'Death Knight Initiate', ability: 'cha' } } });
+  const cast = db.castCharacterSpell({ ...who, request: { source: 'Death Knight Initiate', spell: 'Wrathful Smite', free: true } });
+  assert.match(cast.note, /Disadvantage on Wisdom saves/);
+});
+
+test('"if you already have it": a Hell Knight who speaks Infernal picks another language; Undead Grasp another cantrip', () => {
+  const [tongue] = rules.featuresAtLevel('Fighter', 'Hell Knight', 3);
+  assert.ok(tongue.orLanguage.includes('Abyssal') && !tongue.orLanguage.includes('Infernal'));
+  const apply = (languages, pick) => rules.applyFeatureChoices({ languages }, [tongue], pick ? { [tongue.id]: pick } : {}).sheetData.languages;
+  assert.deepEqual(apply(['Common'], 'Abyssal'), ['Common', 'Infernal'], 'Infernal when new; the pick is ignored');
+  assert.throws(() => apply(['Common', 'Infernal']), /already know Infernal; choose another language/);
+  assert.throws(() => apply(['Common', 'Infernal'], 'Common'), /choose another language/);
+  assert.deepEqual(apply(['Common', 'Infernal'], 'Abyssal'), ['Common', 'Infernal', 'Abyssal']);
+
+  const classes = [{ className: 'Wizard', subclassName: 'Evoker', level: 7 }];
+  const sheetData = {
+    abilities: scoresOf({ int: 16 }),
+    levelHistory: [feat('Lich Initiate', { ability: 'int' })],
+    spellcasting: { classes: { Wizard: { cantrips: ['Chill Touch', 'Fire Bolt', 'Light', 'Mage Hand'], prepared: [], spellbook: [] } } }
+  };
+  const grasp = rules.getLevelUpOptions({ classes, earnedLevel: 8, species: 'Human', sheetData })
+    .options.find(entry => entry.className === 'Wizard').feats.find(entry => entry.name === 'Undead Grasp');
+  assert.ok(grasp.cantripChoice.includes('Ray of Frost'));
+  assert.ok(!grasp.cantripChoice.includes('Chill Touch') && !grasp.cantripChoice.includes('Fire Bolt'), 'only cantrips not known yet');
+  const fresh = rules.getLevelUpOptions({ classes, earnedLevel: 8, species: 'Human', sheetData: { ...sheetData, spellcasting: { classes: { Wizard: { cantrips: ['Fire Bolt'], prepared: [], spellbook: [] } } } } })
+    .options.find(entry => entry.className === 'Wizard').feats.find(entry => entry.name === 'Undead Grasp');
+  assert.equal(fresh.cantripChoice, null, 'Chill Touch not known: nothing to pick');
+
+  const state = { classes, earnedLevel: 8, species: 'Human', sheetData };
+  const improvement = { type: 'feat', name: 'Undead Grasp', ability: 'int', spellAbility: 'int' };
+  assert.throws(() => rules.applyLevelUp(state, { className: 'Wizard', improvement }), /choose another cantrip/);
+  const leveled = rules.applyLevelUp(state, { className: 'Wizard', improvement: { ...improvement, cantrip: 'Ray of Frost' } });
+  const source = rules.getSpellSources({ classes: leveled.classes, species: 'Human', sheetData: leveled.sheetData }).find(entry => entry.key === 'Undead Grasp');
+  assert.deepEqual(source.alwaysPrepared, ['Ray of Frost']);
+});

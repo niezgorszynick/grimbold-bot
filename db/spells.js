@@ -108,7 +108,12 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
       nextSheet = { ...nextSheet, ...outcome.vitals };
     }
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
-    return { spell: result.spell.name, events: result.events, slotChange: result.slotChange, spells: buildView(character, nextSheet) };
+    return {
+      spell: result.spell.name, events: result.events, slotChange: result.slotChange,
+      // E.g. a Death Point's extra effect, to show with the cast.
+      note: (result.resourceCost && result.resourceCost.note) || null,
+      spells: buildView(character, nextSheet)
+    };
   })();
 }
 

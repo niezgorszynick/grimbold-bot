@@ -314,6 +314,21 @@
     const rows = vitals.resources.map(resource => {
       const left = resource.max - resource.used;
       let control;
+      // Dice of the feature (Infernal Wound, Hellfire Orb, Soul Siphon, ...).
+      const rolls = (resource.rolls || []).length
+        ? el('p', { className: 'small vitals-resource-rolls' }, resource.rolls.flatMap((roll, index) => [
+          index ? ' · ' : '',
+          el('button', { type: 'button', className: 'roll-link', 'data-roll': 'resource:' + resource.key + ':' + roll.key, title: 'Roll ' + roll.label, text: roll.label + ' ' + roll.formula })
+        ]))
+        : null;
+      if (!resource.max) {
+        // No uses to count: only what it does, and its dice.
+        return el('div', { className: 'vitals-resource' }, [
+          el('div', { className: 'vitals-slot-row' }, [el('span', { className: 'vitals-slot-label' }, [el('strong', { text: resource.name })])]),
+          el('p', { className: 'muted small vitals-resource-text', text: resource.text }),
+          rolls
+        ]);
+      }
       if (resource.pool) {
         const amount = el('input', { type: 'number', min: '1', max: String(resource.max), value: '1', 'aria-label': resource.name + ' amount' });
         const read = () => Number(amount.value) || 1;
@@ -336,7 +351,8 @@
           control,
           el('span', { className: 'muted small', text: left + ' / ' + resource.max + ' left' })
         ]),
-        el('p', { className: 'muted small vitals-resource-text', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' })
+        el('p', { className: 'muted small vitals-resource-text', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' }),
+        rolls
       ]);
     });
     return el('div', { className: 'vitals-slots vitals-resources' }, [
@@ -357,6 +373,28 @@
     ]);
   }
 
+  // Resistances, immunities, senses, creature type, save Advantages.
+  const DEFENSE_LABELS = [
+    ['type', 'Creature type'], ['resistance', 'Resistances'], ['immunity', 'Immunities'], ['condition', 'Condition immunities'],
+    ['sense', 'Senses'], ['advantage', 'Advantage on'], ['note', 'Also']
+  ];
+  function renderDefenses() {
+    const defenses = vitals.defenses || [];
+    if (!defenses.length) return null;
+    const rows = DEFENSE_LABELS.map(([kind, label]) => {
+      const items = defenses.filter(item => item.kind === kind);
+      if (!items.length) return null;
+      return el('p', { className: 'small vitals-defense-row' }, [
+        el('strong', { text: label + ': ' }),
+        ...items.flatMap((item, index) => [
+          index ? ', ' : '',
+          el('span', { className: item.when && !item.active ? 'muted' : '', title: item.source, text: item.text + (item.when ? ' (' + item.when + (item.active ? ', now' : '') + ')' : '') })
+        ])
+      ]);
+    }).filter(Boolean);
+    return el('div', { className: 'vitals-defenses' }, [el('h5', { text: 'Defenses' }), ...rows]);
+  }
+
   function render() {
     if (!vitals) return;
     syncInspiration();
@@ -365,6 +403,7 @@
       renderHitPoints(),
       renderDying(),
       renderExhaustion(),
+      renderDefenses(),
       renderRests(),
       renderResources(),
       renderSlots(),

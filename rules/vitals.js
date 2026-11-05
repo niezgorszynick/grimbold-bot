@@ -19,6 +19,7 @@ const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
 const { classResources, featResources, recoverResources } = require('./classResources');
+const { characterDefenses } = require('./defenses');
 const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS, titanFormRules, TITAN_FORMS } = require('./wildShape');
 
 const MAX_EXHAUSTION = 6;
@@ -361,7 +362,9 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
       return status ? { ...status, known: knownForms(sheetData), titan: titanFormRules(classRows) } : null;
     })(),
     // Circle of the Stars: Starry Form and Cosmic Omen.
-    starry: starryFormRules(classRows)
+    starry: starryFormRules(classRows),
+    // Resistances, senses, creature type (rules/defenses.js).
+    defenses: characterDefenses({ classes: classRows, species, sheetData, feats })
   };
 }
 
@@ -429,6 +432,8 @@ function applyVitalsAction(vitals, action, params, context) {
 // Read-only view for the sheet.
 function buildVitalsView(vitals, context, hpMax = context.hpMax) {
   return {
+    // A conditional defense is on when its state is (Full of Stars: in Starry Form).
+    defenses: (context.defenses || []).map(({ activeWhen, ...item }) => ({ ...item, active: activeWhen ? Boolean(vitals[activeWhen]) : !item.when })),
     hpCurrent: vitals.hpCurrent,
     hpMax,
     hpTemp: vitals.hpTemp,

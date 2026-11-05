@@ -1025,3 +1025,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .subclass-feature-text p { margin: 4px 0; }
 .subclass-table { border-collapse: collapse; margin: 6px 0; }
 .subclass-table th, .subclass-table td { border: 1px solid #3f4147; padding: 3px 6px; text-align: left; vertical-align: top; }
+.vitals-defenses { margin-top: 10px; }
+.vitals-defenses h5 { margin: 0 0 4px; }
+.vitals-defense-row { margin: 2px 0; }
+.party-defenses { margin: 4px 0; }

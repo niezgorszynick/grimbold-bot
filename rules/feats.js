@@ -137,14 +137,21 @@ const GENERAL_FEATS = {
 // cost — cast without a slot by spending that resource (Death Points);
 // freeEach: 'abilityMod' — free casts equal to the ability modifier.
 function PATH_FEATS() {
-  const deathPoint = { key: 'deathPoints', amount: 1, label: '1 Death Point' };
-  const knight = (spell, extra = {}) => ({ path: 'Death Knight', ...extra, grants: { spells: { fixed: [spell], ability: 'cha', cost: deathPoint } } });
+  const deathPoint = note => ({ key: 'deathPoints', amount: 1, label: '1 Death Point', note });
+  const RIDERS = {
+    'Wrathful Smite': 'Dread Strike: the target has Disadvantage on Wisdom saves to avoid or end the spell.',
+    Command: 'Dread Command: Undead targets have Disadvantage on the save.',
+    Bane: 'Ill Omen: targets subtract 1d6 instead of 1d4.',
+    Fear: 'Awful Presence: each creature that fails its save also takes 2d6 Psychic damage (roll it from Death Points).',
+    'Find Steed': 'Spectral Steed: the steed is a Fiend, and targets you choose have Disadvantage on the save against its Fell Glare.'
+  };
+  const knight = (spell, extra = {}) => ({ path: 'Death Knight', ...extra, grants: { spells: { fixed: [spell], ability: 'cha', cost: deathPoint(RIDERS[spell]) } } });
   const afterKnight = { feats: ['Death Knight Initiate'] };
   const afterLich = { feats: ['Lich Initiate'] };
   return {
     'Death Knight Initiate': {
       ...knight('Wrathful Smite'), prerequisite: { weaponMastery: true }, abilityIncrease: ['str', 'cha'],
-      grants: { deathPoints: true, spells: { fixed: ['Wrathful Smite'], ability: 'cha', cost: deathPoint } }
+      grants: { deathPoints: true, spells: { fixed: ['Wrathful Smite'], ability: 'cha', cost: deathPoint(RIDERS['Wrathful Smite']) } }
     },
     'Dread Authority': { ...knight('Command'), prerequisite: afterKnight, abilityIncrease: ['con', 'cha'] },
     'Harbinger of Doom': { ...knight('Bane'), prerequisite: afterKnight, abilityIncrease: ['str', 'con', 'cha'] },

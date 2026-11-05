@@ -170,7 +170,8 @@ function getSpellSources(character) {
       list: 'any',
       filter: choose ? { schools: choose.schools || null, ritual: Boolean(choose.ritual) } : null,
       ...numbers,
-      alwaysPrepared: [...(spells.cantrips || []), ...(spells.fixed || [])],
+      // Undead Grasp: another cantrip when Chill Touch was already known.
+      alwaysPrepared: [...(feat.cantrip ? [feat.cantrip] : (spells.cantrips || [])), ...(spells.fixed || [])],
       cantripLimit: 0,
       preparedLimit: choose ? (choose.count === 'proficiency' ? pb : choose.count) : 0,
       maxSpellLevel: choose ? choose.level : 0,

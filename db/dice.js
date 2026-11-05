@@ -135,6 +135,15 @@ function rollOptions(character) {
     if (starry.active === 'Chalice') add('starry:chalice:heal', 'Starry Form: Chalice healing', chalice.healing, 'damage');
     if (starry.cosmicOmen) add('omen:d6', `Cosmic Omen (${starry.cosmicOmen === 'weal' ? 'Weal: add' : 'Woe: subtract'})`, '1d6', 'damage');
   }
+  // Dice of limited-use features (Infernal Wound, Hellfire Orb, Soul Siphon, ...).
+  try {
+    const context = rules.deriveVitalsContext({ species: character.race, sheetData, classRows: classes });
+    for (const resource of context.resources || []) {
+      for (const roll of resource.rolls || []) add(`resource:${resource.key}:${roll.key}`, roll.label, roll.formula, 'damage');
+    }
+  } catch {
+    // Characters without valid class levels have no feature dice.
+  }
   const sources = rules.getSpellSources({ classes, species: character.race, sheetData });
   for (const source of sources) {
     if (!options.has(`spell:${source.key}`)) add(`spell:${source.key}`, `${source.label} spell attack`, d20(source.attackBonus), 'attack');

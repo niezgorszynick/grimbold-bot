@@ -103,6 +103,8 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     // Channel Divinity, Rage, ...: uses left.
     resources: vitals ? vitals.view.resources.map(({ key, name, max, used }) => ({ key, name, max, left: max - used })) : [],
     hitDice: vitals ? vitals.view.hitDice : [],
+    // Resistances, senses, creature type: what a DM needs mid-fight.
+    defenses: vitals ? vitals.view.defenses : [],
     exhaustion: vitals ? vitals.view.exhaustion : 0,
     heroicInspiration: vitals ? vitals.view.heroicInspiration : false,
     concentration: concentration ? concentration.spell : null,
