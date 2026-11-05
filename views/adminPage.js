@@ -109,6 +109,8 @@ module.exports = function renderAdminPage(req) {
     statusBanner = '<div class="alert green">⚔️ Adventure recorded! XP awarded to the participants and a DM point to the host.</div>';
   } else if (status === 'adventure_updated') {
     statusBanner = '<div class="alert green">⚔️ Adventure updated and rewards adjusted successfully.</div>';
+  } else if (status === 'adventure_deleted') {
+    statusBanner = '<div class="alert red">🗑️ Adventure deleted. Any XP and DM reward it gave were taken back.</div>';
   }
   
   

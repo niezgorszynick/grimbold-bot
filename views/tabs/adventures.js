@@ -16,6 +16,42 @@ function renderAdventureTable(adventureId, isAdmin) {
     </div>`;
 }
 
+// Deleting a test or mistaken adventure (DMs): asks first, saying what is taken back.
+function deleteButton(adventure, party = []) {
+  const members = (party || []).filter(member => !member.dmReward);
+  const question = adventure.status === 'completed'
+    ? `Delete "${adventure.title}" for good? ${members.length ? `${members.length} character(s) lose its ${adventure.xp_awarded} XP and the DM reward is taken back.` : 'Its DM reward is taken back.'} This can't be undone.`
+    : `Delete the cancelled adventure "${adventure.title}" for good? This can't be undone.`;
+  return `<form method="POST" action="/admin/adventures/delete" style="display: inline;" onsubmit="return confirm(this.dataset.question)" data-question="${escapeHtml(question)}">
+    <input type="hidden" name="adventure_id" value="${Number(adventure.id)}">
+    <button type="submit" class="btn btn-small btn-red">Delete</button>
+  </form>`;
+}
+
+// Cancelled adventures (they never happened): listed so test ones can be deleted.
+function cancelledCard() {
+  const cancelled = db.getCancelledAdventures();
+  if (!cancelled.length) return '';
+  return `
+    <div class="card">
+      <details>
+        <summary><h3 style="display: inline;">Cancelled Adventures (${cancelled.length})</h3></summary>
+        <p class="muted small">Adventures that never happened; nothing was awarded. Delete test ones here.</p>
+        <table>
+          <tbody>
+            ${cancelled.map(adventure => `
+              <tr>
+                <td>${escapeHtml(adventure.created_at || '')}</td>
+                <td><strong>${escapeHtml(adventure.title)}</strong></td>
+                <td>${adventure.dm_name ? escapeHtml(adventure.dm_name) : '<em>None</em>'}</td>
+                <td style="text-align: right;">${deleteButton(adventure)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </details>
+    </div>`;
+}
+
 // The characters taking part, under the adventure's title: "Kael (Ola) · Brin (Tom)".
 function partyLine(party) {
   const members = (party || []).filter(member => !member.dmReward);
@@ -167,7 +203,7 @@ module.exports = function renderAdventuresTab(ctx) {
                 </div>
                 <div>
                   <label>Adventure XP Points:</label><br>
-                  <input type="number" name="xp_awarded" min="1" value="${editingAdventure ? editingAdventure.xp_awarded : 1}" required style="width: 100%; margin-top: 4px;">
+                  <input type="number" name="xp_awarded" min="0" value="${editingAdventure ? editingAdventure.xp_awarded : 1}" required style="width: 100%; margin-top: 4px;" data-zero-xp-check>
                 </div>
               </div>
 
@@ -202,6 +238,14 @@ module.exports = function renderAdventuresTab(ctx) {
               <button type="submit" class="btn btn-green" style="padding: 10px 16px;">${editingAdventure ? 'Save Adventure Changes' : '⚔️ Finalize Adventure & Award Rewards'}</button>
               ${editingAdventure ? '<a href="/admin?tab=adventures" class="btn" style="display: inline-block; margin-top: 8px;">Cancel Edit</a>' : ''}
             </form>
+            <script>
+              // Zero XP is allowed. Grimbrandt just wants it on record that he asked.
+              document.querySelectorAll('[data-zero-xp-check]').forEach(input => input.form.addEventListener('submit', event => {
+                if (Number(input.value) !== 0) return;
+                const sure = window.confirm('Grimbrandt lowers his quill. Zero XP? Nothing at all? The whole party walks out with bruises, stories and not one single point to show for it.\\n\\nAre you SURE? He will write it in ink. And he will remember.');
+                if (!sure) event.preventDefault();
+              }));
+            </script>
       </div>
       ` : ''}
 
@@ -244,12 +288,13 @@ module.exports = function renderAdventuresTab(ctx) {
               <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>None</em>'}</td>
               <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
               <td>${escapeHtml(adv.description || '—')}</td>
-              ${isAdmin ? `<td style="text-align: right;"><a class="btn btn-small btn-gold" href="/admin?tab=adventures&edit_adv=${adv.id}">Edit</a></td>` : ''}
+              ${isAdmin ? `<td style="text-align: right; white-space: nowrap;"><a class="btn btn-small btn-gold" href="/admin?tab=adventures&edit_adv=${adv.id}">Edit</a> ${deleteButton(adv, finishedParties[adv.id])}</td>` : ''}
             </tr>
           `).join('')}
         </tbody>
       </table>
     </div>
+    ${isAdmin ? cancelledCard() : ''}
   `;
   return contentHtml;
 };

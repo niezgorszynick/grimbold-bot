@@ -102,7 +102,8 @@ test('finishing awards XP to the party and the DM reward; nothing before that', 
   assert.equal(xpOf(a), 2, 'no XP while the adventure runs');
   assert.throws(() => db.updateAdventure({ adventure_id: adventure.id, title: 'x', xp_awarded: 1, character_ids: [a] }), /still running/);
   assert.throws(() => db.finishAdventure({ ...asDm, xp: 1, dmCharacterId: a }), /DM's own characters/);
-  assert.throws(() => db.finishAdventure({ ...asDm, xp: 0 }), /from 1 to 20/);
+  assert.throws(() => db.finishAdventure({ ...asDm, xp: -1 }), /from 0 to 20/);
+  assert.throws(() => db.finishAdventure({ ...asDm, xp: 21 }), /from 0 to 20/);
 
   const result = db.finishAdventure({ ...asDm, xp: 1, dmCharacterId: dmHero, notes: 'The wolves fled.', title: 'Wilki' });
   assert.deepEqual(result, { adventureId: adventure.id, party: 2, xp: 1, dmReward: 'character' });

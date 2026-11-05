@@ -315,7 +315,7 @@ function finishAdventure({ adventureId, user, xp, dmCharacterId, notes, title })
     const adventure = loadAdventure(adventureId);
     requireManage(adventure, user);
     const award = Number(xp);
-    if (!Number.isInteger(award) || award < 1 || award > 20) throw new Error('XP must be a whole number from 1 to 20.');
+    if (!Number.isInteger(award) || award < 0 || award > 20) throw new Error('XP must be a whole number from 0 to 20.');
     const party = partyIds(adventure.id);
     if (!party.length) throw new Error('Add the characters who took part before finishing the adventure.');
 

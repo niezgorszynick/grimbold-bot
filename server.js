@@ -513,6 +513,16 @@ router.post(['/adventures/update', '/adventures/edit'], (req, res) => {
   }
 });
 
+// A test or mistaken adventure (finished or cancelled), deleted; its rewards are taken back.
+router.post('/adventures/delete', (req, res) => {
+  try {
+    db.deleteAdventure({ adventureId: req.body.adventure_id, user: req.session.user });
+    res.redirect('/admin?tab=adventures&status=adventure_deleted');
+  } catch (err) {
+    res.redirect(`/admin?tab=adventures&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 // A monster's statblock for the Monsters tab (DMs only).
 router.get('/monsters/statblock', requireAdmin, (req, res) => {
   const monster = require('./rules').getMonster(req.query.name);

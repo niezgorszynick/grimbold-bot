@@ -58,6 +58,13 @@ function openingMessage(adventure, thread) {
 function finishedMessage(adventure, party) {
   const names = party.map(member => member.name);
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || 'nobody';
+  if (Number(adventure.xp_awarded) === 0) {
+    return pick([
+      `*Grimbrandt writes a very small, very round zero.* **${adventure.title}** is done. ${list}: 0 XP each. The DM was quite sure. I asked. Twice.`,
+      `*Grimbrandt stares at the page for a long moment.* **${adventure.title}**, closed. ${list} — nothing. Not a single point. Well, the stories are free, at least. Tell me them anyway.`,
+      `*Grimbrandt dips his quill, then thinks better of it.* **${adventure.title}**: 0 XP for ${list}. I've seen goblins tip better. Sit down, have an ale — that one's on me.`
+    ]);
+  }
   return pick([
     `*Grimbrandt licks his quill and turns a fresh page.* So **${adventure.title}** is done! ${list} — ${adventure.xp_awarded} XP each, written in ink, can't be undone. Now: which of you will tell me what *really* happened in there? I've heard things.`,
     `*Grimbrandt blows on the wet ink.* **${adventure.title}**, closed. Into the chronicle go ${list}, ${adventure.xp_awarded} XP apiece. Don't think you're leaving before I hear about the scars.`,

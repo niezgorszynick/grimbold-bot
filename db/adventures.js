@@ -5,6 +5,12 @@
 const { db } = require('./connection');
 const { updateCharacterProgression } = require('./characters');
 
+// XP for an adventure: 0 to 20 as given (0 is allowed, if stingy); else 1.
+function xpOrOne(value) {
+  const xp = parseInt(value, 10);
+  return Number.isInteger(xp) && xp >= 0 ? xp : 1;
+}
+
 module.exports = {
   getAdventureById: (id) => {
     return db.prepare('SELECT * FROM adventures WHERE id = ?').get(Number(id));
@@ -16,7 +22,7 @@ module.exports = {
   updateAdventure: ({ adventure_id, title, description, xp_awarded, dm_player_id, dm_character_id, character_ids }) => {
     const run = db.transaction(() => {
       const advId = Number(adventure_id);
-      const newXp = Math.max(1, parseInt(xp_awarded, 10) || 1);
+      const newXp = xpOrOne(xp_awarded);
       const newDmPlayerId = dm_player_id ? Number(dm_player_id) : null;
       const newDmCharId = dm_character_id ? Number(dm_character_id) : null;
       const targetCharIds = Array.from(new Set((character_ids || []).map(Number)));
@@ -162,6 +168,41 @@ module.exports = {
     Object.values(parties).forEach(list => list.sort((a, b) => Number(a.dmReward) - Number(b.dmReward) || a.name.localeCompare(b.name)));
     return parties;
   },
+  // Adventures that never happened (cancelled), newest first.
+  getCancelledAdventures: () => db.prepare(`
+    SELECT a.*, p.discord_tag AS dm_name FROM adventures a LEFT JOIN players p ON a.dm_player_id = p.id
+    WHERE a.status = 'cancelled' ORDER BY a.id DESC
+  `).all(),
+  // A test or mistaken adventure, gone for good (DMs). A finished one's XP and
+  // DM reward are taken back first. A running one must be cancelled before
+  // (that tags its Discord thread, so the bot doesn't open it again). Its
+  // party, sessions, encounters and map routes go with it.
+  deleteAdventure: ({ adventureId, user }) => {
+    if (!user || user.role !== 'admin') throw new Error('Only a DM can delete an adventure.');
+    return db.transaction(() => {
+      const adventure = db.prepare('SELECT * FROM adventures WHERE id = ?').get(Number(adventureId));
+      if (!adventure) throw new Error('Adventure not found.');
+      if (adventure.status === 'active') throw new Error(`${adventure.title} is still running: cancel it from its adventure table first, then delete it.`);
+      const rewards = adventure.status === 'completed'
+        ? db.prepare('SELECT character_id, xp FROM adventure_rewards WHERE adventure_id = ?').all(adventure.id)
+        : [];
+      const getXp = db.prepare('SELECT xp FROM characters WHERE id = ?');
+      for (const reward of rewards) {
+        const character = getXp.get(reward.character_id);
+        if (character) updateCharacterProgression(reward.character_id, Math.max(0, character.xp - reward.xp));
+      }
+      if (adventure.status === 'completed') {
+        if (adventure.dm_character_id) {
+          const dmCharacter = getXp.get(adventure.dm_character_id);
+          if (dmCharacter) updateCharacterProgression(adventure.dm_character_id, Math.max(0, dmCharacter.xp - 1));
+        } else if (adventure.dm_player_id) {
+          db.prepare('UPDATE players SET dm_points = MAX(0, dm_points - 1) WHERE id = ?').run(adventure.dm_player_id);
+        }
+      }
+      db.prepare('DELETE FROM adventures WHERE id = ?').run(adventure.id);
+      return { title: adventure.title, xpTakenBack: rewards.length };
+    })();
+  },
   getAllAdventures: () => db.prepare(`
     SELECT a.*, p.discord_tag AS dm_name 
     FROM adventures a
@@ -171,7 +212,7 @@ module.exports = {
   `).all(),
 recordAdventure: ({ title, description, xp_awarded, dm_player_id, dm_character_id, character_ids }) => {
     const run = db.transaction(() => {
-      const xp = Math.max(1, parseInt(xp_awarded, 10) || 1);
+      const xp = xpOrOne(xp_awarded);
       const targetDmCharId = dm_character_id ? Number(dm_character_id) : null;
       const targetDmPlayerId = dm_player_id ? Number(dm_player_id) : null;
 

@@ -974,6 +974,29 @@ const MIGRATIONS = [
           SELECT id, adventure_id FROM map_markers WHERE adventure_id IS NOT NULL;
       `);
     }
+  },
+  {
+    version: 33,
+    name: 'Adventures may award 0 XP',
+    // Rebuilding a table others point to: with foreign keys on, dropping it
+    // would delete their rows, so this one runs with them off.
+    foreignKeysOff: true,
+    up(db) {
+      const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'adventures'").get();
+      if (!table || !table.sql.includes('CHECK (xp_awarded >= 1)')) return;
+      // Indexes and triggers go with the table; made again afterwards.
+      const extras = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = 'adventures' AND type IN ('index', 'trigger') AND sql IS NOT NULL").all().map(row => row.sql);
+      const columns = db.prepare('PRAGMA table_info(adventures)').all().map(column => `"${column.name}"`).join(', ');
+      const sequence = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'adventures'").get();
+      db.exec(table.sql.replace(/^CREATE TABLE "?adventures"?/, 'CREATE TABLE adventures_new').replace('CHECK (xp_awarded >= 1)', 'CHECK (xp_awarded >= 0)'));
+      db.exec(`INSERT INTO adventures_new (${columns}) SELECT ${columns} FROM adventures`);
+      db.exec('DROP TABLE adventures');
+      db.exec('ALTER TABLE adventures_new RENAME TO adventures');
+      extras.forEach(sql => db.exec(sql));
+      if (sequence) db.prepare("UPDATE sqlite_sequence SET seq = ? WHERE name = 'adventures'").run(sequence.seq);
+      const broken = db.pragma('foreign_key_check');
+      if (broken.length) throw new Error(`Rebuilding adventures broke ${broken.length} references.`);
+    }
   }
 ];
 
@@ -981,10 +1004,17 @@ function runMigrations(db) {
   const current = db.pragma('user_version', { simple: true });
   for (const migration of MIGRATIONS) {
     if (migration.version <= current) continue;
-    db.transaction(() => {
-      migration.up(db);
-      db.pragma(`user_version = ${migration.version}`);
-    })();
+    // Foreign keys can only be switched off outside a transaction.
+    const keysWereOn = migration.foreignKeysOff && db.pragma('foreign_keys', { simple: true });
+    if (keysWereOn) db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        migration.up(db);
+        db.pragma(`user_version = ${migration.version}`);
+      })();
+    } finally {
+      if (keysWereOn) db.pragma('foreign_keys = ON');
+    }
   }
 }
 

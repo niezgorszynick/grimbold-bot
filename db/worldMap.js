@@ -262,8 +262,9 @@ function getWorldMap({ user, asPlayerId = null }) {
   `).all();
   const base = { grid, imageUrl: imageUrl(row.image_file), icons: MARKER_ICONS, dm };
 
-  // Adventures whose route this viewer may mark (theirs; every one for a DM).
-  const routable = db.prepare(`SELECT id, title, status FROM adventures WHERE ${isAdmin(user) ? '1' : 'dm_player_id = ?'} ORDER BY status = 'active' DESC, id DESC`)
+  // Adventures whose route this viewer may mark (theirs; every one for a DM),
+  // leaving out cancelled ones: they never happened.
+  const routable = db.prepare(`SELECT id, title, status FROM adventures WHERE status != 'cancelled' AND ${isAdmin(user) ? '1' : 'dm_player_id = ?'} ORDER BY status = 'active' DESC, id DESC`)
     .all(...(isAdmin(user) ? [] : [viewerId]));
   const routes = routable.map(adventure => ({
     id: adventure.id,
