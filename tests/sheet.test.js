@@ -81,3 +81,19 @@ test('older characters keep free editing and can fill in missing data', () => {
   assert.equal(sheet.abilities.str, 16);
   assert.equal(sheet.background, 'Farmer');
 });
+
+test('appearance: height, eyes and hair are saved with the sheet, tidied, and kept by saves that leave them out', () => {
+  const player = createPlayer();
+  const id = createRulesCharacter(player);
+  const sheet = stored(id);
+  save(id, player, { ...sheet, appearance: { height: '  175   cm ', eyes: 'storm grey', hairColor: 'copper red', hairstyle: 'long braid', other: 'x'.repeat(600), hack: 'nope', age: 5 } });
+  const appearance = stored(id).appearance;
+  assert.deepEqual(Object.keys(appearance), ['height', 'eyes', 'hairColor', 'hairstyle', 'other']);
+  assert.equal(appearance.height, '175 cm');
+  assert.equal(appearance.other.length, 500);
+  const { appearance: left, ...withoutIt } = stored(id);
+  save(id, player, withoutIt);
+  assert.equal(stored(id).appearance.eyes, 'storm grey', 'an older editor tab does not wipe it');
+  save(id, player, { ...stored(id), appearance: 'blue' });
+  assert.deepEqual(stored(id).appearance, {});
+});

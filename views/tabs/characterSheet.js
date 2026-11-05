@@ -212,6 +212,17 @@ module.exports = function renderCharacterSheetTab(ctx) {
           </header>
           <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
           ${levelBreakdownHtml(characterToEdit.id)}
+          <details class="sheet-card sheet-appearance">
+            <summary><strong>Appearance</strong> <span id="cs_appearance_summary" class="muted small"></span></summary>
+            <div class="sheet-appearance-fields">
+              <label>Height<input id="cs_height" type="text" maxlength="40" placeholder="e.g. 175 cm, 5′9″"></label>
+              <label>Eye colour<input id="cs_eyes" type="text" maxlength="40" placeholder="e.g. storm grey"></label>
+              <label>Hair colour<input id="cs_hair_color" type="text" maxlength="40" placeholder="e.g. copper red"></label>
+              <label>Hairstyle<input id="cs_hairstyle" type="text" maxlength="80" placeholder="e.g. long braid, shaved sides"></label>
+              <label class="sheet-appearance-other">Other features<textarea id="cs_appearance_other" rows="2" maxlength="500" placeholder="Scars, tattoos, freckles, a missing tooth…"></textarea></label>
+            </div>
+            <p class="muted small">Saved with the sheet.</p>
+          </details>
           <section class="sheet-card point-buy-card" data-collapse="abilities">
             <div class="point-buy-header">
               <div>
@@ -939,6 +950,21 @@ module.exports = function renderCharacterSheetTab(ctx) {
         speciesSelect.addEventListener('change', updateRuleDrivenFields);
         backgroundSelect.addEventListener('change', updateRuleDrivenFields);
 
+        // Appearance: the fields, and a one-line summary on the folded card.
+        const APPEARANCE_INPUTS = { height: 'cs_height', eyes: 'cs_eyes', hairColor: 'cs_hair_color', hairstyle: 'cs_hairstyle', other: 'cs_appearance_other' };
+        function showAppearanceSummary() {
+          const value = id => document.getElementById(id).value.trim();
+          const hair = value('cs_hair_color')
+            ? value('cs_hair_color') + ' hair' + (value('cs_hairstyle') ? ' (' + value('cs_hairstyle') + ')' : '')
+            : value('cs_hairstyle');
+          document.getElementById('cs_appearance_summary').textContent = [
+            value('cs_height'),
+            value('cs_eyes') ? value('cs_eyes') + ' eyes' : '',
+            hair
+          ].filter(Boolean).join(' · ') || '— height, eyes, hair';
+        }
+        Object.values(APPEARANCE_INPUTS).forEach(id => document.getElementById(id).addEventListener('input', showAppearanceSummary));
+
         async function loadSheet() {
           message.textContent = 'Loading character sheet...';
           try {
@@ -1052,6 +1078,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 : data.initiative;
             document.getElementById('cs_speed').value =
               data.speed === undefined ? '30 ft.' : data.speed;
+            const appearance = data.appearance && typeof data.appearance === 'object' ? data.appearance : {};
+            Object.entries(APPEARANCE_INPUTS).forEach(([key, id]) => { document.getElementById(id).value = appearance[key] || ''; });
+            showAppearanceSummary();
             // Skip untouched placeholder rows ("+5", "1d8+3") saved by older versions.
             const attacks = (Array.isArray(data.attacks) ? data.attacks : []).filter(attack => attack &&
               !(!attack.name && !attack.notes && (!attack.bonus || attack.bonus === '+5') && (!attack.damage || attack.damage === '1d8+3')));
@@ -1114,7 +1143,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
               ))
             ).filter(attack => Object.values(attack).some(Boolean)),
             features: document.getElementById('cs_features').value,
-            equipmentText: document.getElementById('cs_equipment').value
+            equipmentText: document.getElementById('cs_equipment').value,
+            appearance: Object.fromEntries(Object.entries(APPEARANCE_INPUTS).map(([key, id]) => [key, document.getElementById(id).value.trim()]))
           };
           try {
             const response = await fetch('/api/characters/' + fullSheetCharacterId + '/sheet', {

@@ -33,6 +33,15 @@ function isRulesManaged(sheetData) {
   return Array.isArray(sheetData.originFeats) || Array.isArray(sheetData.levelHistory);
 }
 
+// How a character looks (free text, just for fun): only these fields, trimmed.
+const APPEARANCE_FIELDS = { height: 40, eyes: 40, hairColor: 40, hairstyle: 80, other: 500 };
+function cleanAppearance(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(Object.entries(APPEARANCE_FIELDS)
+    .map(([key, max]) => [key, typeof source[key] === 'string' ? source[key].replace(/\s+/g, ' ').trim().slice(0, max) : ''])
+    .filter(([, text]) => text));
+}
+
 // Keeps the stored value of each key (or leaves it unset when there is none).
 function keepStored(nextSheetData, storedSheetData, keys) {
   for (const key of keys) {
@@ -570,6 +579,7 @@ updateCharacterSheet: ({ id, player_id, is_admin, name, race, class_name, subcla
       }
       // Expertise comes from feats, class features and the DM, never a player's save.
       if (!is_admin) keepStored(nextSheetData, storedSheetData, ['expertise']);
+      if (Object.hasOwn(nextSheetData, 'appearance')) nextSheetData.appearance = cleanAppearance(nextSheetData.appearance);
       if (
         nextSheetData.abilities &&
         typeof nextSheetData.abilities === 'object' &&
