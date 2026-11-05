@@ -29,6 +29,7 @@ module.exports = {
   ...require('./db/reservations'),
   ...require('./db/monsterImports'),
   ...require('./db/schedule'),
+  ...require('./db/worldMap'),
   ...require('./db/npcFiles'),
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),

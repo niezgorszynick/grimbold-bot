@@ -896,6 +896,55 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
       `);
     }
+  },
+  {
+    version: 30,
+    name: 'World map: the image and its hex grid, markers, adventure routes, hexes revealed by hand',
+    up(db) {
+      db.exec(`
+        -- One map; the grid is lined up with the image by a DM (hex centres in image pixels).
+        CREATE TABLE IF NOT EXISTS world_map (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          image_file TEXT NOT NULL DEFAULT '',
+          cols INTEGER NOT NULL DEFAULT 21,
+          rows INTEGER NOT NULL DEFAULT 16,
+          origin_x REAL NOT NULL DEFAULT 92,
+          origin_y REAL NOT NULL DEFAULT 56,
+          hex_size REAL NOT NULL DEFAULT 62.3,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO world_map (id) VALUES (1);
+        -- hex: "column.row" as on the map ("9.6"). secret: DMs only; shown ones
+        -- appear to players in hexes they have revealed.
+        CREATE TABLE IF NOT EXISTS map_markers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          hex TEXT NOT NULL,
+          name TEXT NOT NULL,
+          icon TEXT NOT NULL DEFAULT 'site',
+          note TEXT NOT NULL DEFAULT '',
+          adventure_id INTEGER REFERENCES adventures(id) ON DELETE SET NULL,
+          secret INTEGER NOT NULL DEFAULT 1,
+          created_by INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        -- The hexes an adventure went through: revealed to everyone in its party.
+        CREATE TABLE IF NOT EXISTS adventure_hexes (
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          hex TEXT NOT NULL,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (adventure_id, hex)
+        );
+        -- Hexes a DM revealed to one character by hand.
+        CREATE TABLE IF NOT EXISTS character_hexes (
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          hex TEXT NOT NULL,
+          revealed_by INTEGER,
+          added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (character_id, hex)
+        );
+      `);
+    }
   }
 ];
 

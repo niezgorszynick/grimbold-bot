@@ -969,6 +969,42 @@ router.post('/campaigns/:id/sessions', (req, res) => campaignRoute(req, res, 'bo
 router.post('/campaigns/:id/sessions/:sessionId', (req, res) => campaignRoute(req, res, 'move'));
 router.post('/campaigns/:id/sessions/:sessionId/cancel', (req, res) => campaignRoute(req, res, 'cancel'));
 
+// ─── The world map ───────────────────────────────────────────────────────
+// Everyone logged in sees it through their fog; DMs edit it (markers, the
+// grid, the image), and an adventure's DM marks its route.
+function mapRoute(handler) {
+  return (req, res) => {
+    const user = getSessionApiUser(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const result = handler({ user, body: req.body || {}, params: req.params });
+      // After a change: the map as the changer sees it (or through the player they were looking as).
+      return res.json(result || db.getWorldMap({ user, asPlayerId: Number(req.query.asPlayer) || null }));
+    } catch (error) {
+      if (error instanceof TypeError) {
+        console.error('Map change failed:', error);
+        return res.status(500).json({ error: 'Could not change the map.' });
+      }
+      return res.status(/^Only /.test(error.message) ? 403 : /not found/.test(error.message) ? 404 : 400).json({ error: error.message });
+    }
+  };
+}
+router.get('/map', mapRoute(() => null));
+router.get('/map/image', (req, res) => {
+  if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const found = db.getMapImageFile();
+  if (!found) return res.status(404).json({ error: 'No map yet.' });
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(found.file);
+});
+router.post('/map/image', express.raw({ type: () => true, limit: db.MAP_MAX_BYTES }), mapRoute(({ user, body }) => { db.saveMapImage({ user, buffer: body }); }));
+router.post('/map/grid', mapRoute(({ user, body }) => { db.saveMapGrid({ user, ...body }); }));
+router.post('/map/markers', mapRoute(({ user, body }) => { db.saveMapMarker({ user, ...body, id: null }); }));
+router.post('/map/markers/:id', mapRoute(({ user, body, params }) => { db.saveMapMarker({ user, ...body, id: params.id }); }));
+router.post('/map/markers/:id/delete', mapRoute(({ user, params }) => { db.deleteMapMarker({ user, id: params.id }); }));
+router.post('/map/adventures/:id/hexes', mapRoute(({ user, body, params }) => { db.setAdventureHex({ user, adventureId: params.id, hex: body.hex, on: body.on !== false }); }));
+router.post('/map/characters/:id/hexes', mapRoute(({ user, body, params }) => { db.setCharacterHex({ user, characterId: params.id, hex: body.hex, on: body.on !== false }); }));
+
 // Your personal calendar link (needs a Discord account on your player).
 router.get('/calendar-link', (req, res) => {
   const user = getSessionApiUser(req);

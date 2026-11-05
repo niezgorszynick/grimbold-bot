@@ -954,3 +954,31 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .campaign-block { border-top: 1px solid var(--border, #333); padding-top: 10px; margin-top: 10px; }
 .campaign-block input[type=date], .campaign-block input[type=time] { color-scheme: dark; }
 .campaign-members { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+
+/* The world map (Map tab). */
+.wm-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .wm-layout { grid-template-columns: minmax(0, 1fr); } }
+.wm-map { display: grid; gap: 8px; min-width: 0; }
+.wm-viewport { height: min(75vh, 820px); background: #15171a; border: 1px solid #3f4147; border-radius: 8px; overflow: hidden; touch-action: none; cursor: grab; }
+.wm-viewport:active { cursor: grabbing; }
+.world-map-svg { width: 100%; height: 100%; display: block; user-select: none; }
+.wm-zoom { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wm-grid polygon { fill: none; stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.2; }
+.wm-grid.is-draft polygon { stroke: #f1c40f; stroke-width: 2; }
+.wm-labels text { fill: #f1c40f; font-family: system-ui, sans-serif; font-weight: 700; paint-order: stroke; stroke: #1e1f22; stroke-width: 3px; pointer-events: none; }
+.wm-route polygon { fill: rgba(212, 175, 55, 0.32); stroke: #d4af37; stroke-width: 3; }
+.wm-reveal polygon { fill: rgba(88, 101, 242, 0.32); stroke: #8b95ff; stroke-width: 3; }
+.wm-selected { fill: rgba(255, 255, 255, 0.08); stroke: #ffffff; stroke-width: 4; pointer-events: none; }
+.wm-marker.is-secret { opacity: 0.55; }
+.wm-marker.is-secret circle, .wm-marker.is-secret polygon { stroke-dasharray: 4 3; }
+.wm-side { display: grid; gap: 12px; min-width: 0; }
+.wm-side > div, .wm-side > p { background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 10px; }
+.wm-hex h4 { margin: 0 0 6px; color: #f1c40f; }
+.wm-marker-list, .wm-visits { margin: 6px 0; padding-left: 18px; display: grid; gap: 8px; }
+.wm-marker-list p { margin: 4px 0 0; white-space: pre-wrap; }
+.wm-form, .wm-tools, .wm-dm { display: grid; gap: 8px; }
+.wm-form input[type=text], .wm-form select, .wm-form textarea, .wm-tools select, .wm-dm select { width: 100%; min-width: 0; padding: 6px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.wm-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+.wm-grid-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.wm-settings summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 900px) { .wm-viewport { height: auto; aspect-ratio: 6 / 5; max-height: 75vh; } }

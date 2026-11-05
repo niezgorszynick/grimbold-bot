@@ -21,6 +21,7 @@ const TAB_RENDERERS = {
   'npcs': require('./tabs/npcs'),
   'monsters': require('./tabs/monsters'),
   'sessions': require('./tabs/sessions'),
+  'map': require('./tabs/map'),
   'changelog': require('./tabs/changelog')
 };
 
@@ -28,7 +29,7 @@ module.exports = function renderAdminPage(req) {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
-  const playerAllowedTabs = ['items', 'players', 'adventures', 'sessions', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet', 'changelog'];
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'sessions', 'map', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet', 'changelog'];
   const tabLabels = {
     items: 'Shop Items',
     catalog: 'Master Catalog',
@@ -38,6 +39,7 @@ module.exports = function renderAdminPage(req) {
     players: 'Players',
     adventures: 'Adventures',
     sessions: 'Sessions',
+    map: 'Map',
     npcs: 'Notable NPCs',
     monsters: 'Monsters',
     analytics: 'Analytics',
