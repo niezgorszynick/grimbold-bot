@@ -1049,7 +1049,7 @@
   // Zero XP is allowed. Grimbrandt just wants it on record that he asked.
   const ZERO_XP_QUESTION = count => 'Grimbrandt lowers his quill. Zero XP? Nothing at all? ' +
     (count === 1 ? 'That poor soul' : 'These ' + count + ' souls') + ' walked out with bruises, stories and not one single point to show for it.\n\n' +
-    'Are you SURE? He will write it in ink. And he will remember.';
+    'Are you SURE? It is not his place to judge, only to remember.';
 
   function finishForm() {
     const xp = el('input', { type: 'number', min: '0', max: '20', value: String(data.adventure.xp ?? 1), className: 'inventory-qty', 'aria-label': 'XP for each party member' });

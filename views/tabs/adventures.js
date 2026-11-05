@@ -242,7 +242,7 @@ module.exports = function renderAdventuresTab(ctx) {
               // Zero XP is allowed. Grimbrandt just wants it on record that he asked.
               document.querySelectorAll('[data-zero-xp-check]').forEach(input => input.form.addEventListener('submit', event => {
                 if (Number(input.value) !== 0) return;
-                const sure = window.confirm('Grimbrandt lowers his quill. Zero XP? Nothing at all? The whole party walks out with bruises, stories and not one single point to show for it.\\n\\nAre you SURE? He will write it in ink. And he will remember.');
+                const sure = window.confirm('Grimbrandt lowers his quill. Zero XP? Nothing at all? The whole party walks out with bruises, stories and not one single point to show for it.\\n\\nAre you SURE? It is not his place to judge, only to remember.');
                 if (!sure) event.preventDefault();
               }));
             </script>
