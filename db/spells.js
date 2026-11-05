@@ -178,7 +178,47 @@ function spellEffectsOfVitals(character, sheetData, action, params, outcome) {
   return { spellcasting: state, concentration };
 }
 
+// A DM moves a Magic Initiate feat to another spell list (and/or ability), as
+// the table allows. Its spells from the old list go, to be chosen again from
+// the new one; its free cast, change allowance and concentration go with them.
+function changeMagicInitiateList({ id, is_admin, from, spellList, spellAbility }) {
+  if (!is_admin) throw new Error("Only a DM can change a feat's spell list.");
+  return db.transaction(() => {
+    const character = loadCharacter(id, null, true);
+    const sheetData = readSheet(character.sheet_data);
+    const lists = rules.ORIGIN_FEATS['Magic Initiate'].spellLists;
+    if (!lists.includes(spellList)) throw new Error(`Choose one of the Magic Initiate lists: ${lists.join(', ')}.`);
+    const feats = Array.isArray(sheetData.originFeats) ? sheetData.originFeats : [];
+    const isInitiate = (feat, list) => feat && feat.name === 'Magic Initiate' && feat.spellList === list;
+    const index = feats.findIndex(feat => isInitiate(feat, from));
+    if (index < 0) throw new Error(`${character.name} has no Magic Initiate (${from}).`);
+    if (spellList !== from && feats.some(feat => isInitiate(feat, spellList))) {
+      throw new Error(`${character.name} already has Magic Initiate (${spellList}); each copy needs a different list.`);
+    }
+    const ability = spellAbility || feats[index].spellAbility;
+    if (!['int', 'wis', 'cha'].includes(ability)) throw new Error('Choose Intelligence, Wisdom or Charisma as its spellcasting ability.');
+    const nextFeats = feats.map((feat, i) => (i === index ? { ...feat, spellList, spellAbility: ability } : feat));
+    const state = rules.readSpellcasting(sheetData);
+    if (spellList !== from) {
+      const oldKey = `Magic Initiate (${from})`;
+      const { [oldKey]: dropped, ...featsState } = state.feats;
+      const { [oldKey]: droppedChanges, ...changes } = state.changes;
+      const { [oldKey]: droppedUses, ...freeCastsUsed } = state.freeCastsUsed;
+      Object.assign(state, {
+        feats: featsState,
+        changes,
+        freeCastsUsed,
+        concentration: state.concentration && state.concentration.source === oldKey ? null : state.concentration
+      });
+    }
+    const nextSheet = { ...sheetData, originFeats: nextFeats, spellcasting: state };
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
+    return { spells: buildView(character, nextSheet) };
+  })();
+}
+
 module.exports = {
+  changeMagicInitiateList,
   getCharacterSpells,
   chooseCharacterSpells,
   castCharacterSpell,

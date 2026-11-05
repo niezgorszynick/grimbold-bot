@@ -7,6 +7,7 @@
   const root = document.getElementById('cs_spells');
   if (!root) return;
   const characterId = Number(root.dataset.characterId);
+  const viewerIsDm = root.dataset.isAdmin === 'true';
   const ABILITY = { int: 'INT', wis: 'WIS', cha: 'CHA' };
   const EVENT_TEXT = {
     concentrationReplaced: 'Your previous concentration ended.',
@@ -274,8 +275,36 @@
       source.changeRuleText ? el('p', { className: 'muted small', text: source.changeRuleText }) : null,
       badges.length ? el('div', { className: 'spell-badges' }, badges.map(text => el('span', { className: 'tag gold', text }))) : null,
       source.land ? landPicker(source) : null,
+      featListChanger(source),
       editing === source.key ? renderPicker(source) : null,
       ...body
+    ]);
+  }
+
+  // DMs: move Magic Initiate to another spell list (its spells are chosen again).
+  function featListChanger(source) {
+    const match = /^Magic Initiate \((\w+)\)$/.exec(source.key);
+    if (!viewerIsDm || source.kind !== 'feat' || !match) return null;
+    const from = match[1];
+    const list = el('select', { 'aria-label': 'Spell list' }, ['Cleric', 'Druid', 'Wizard'].map(name => {
+      const option = el('option', { value: name, text: name });
+      option.selected = name === from;
+      return option;
+    }));
+    const ability = el('select', { 'aria-label': 'Spellcasting ability' }, Object.entries({ int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' }).map(([key, name]) => {
+      const option = el('option', { value: key, text: name });
+      option.selected = key === source.ability;
+      return option;
+    }));
+    const save = button('Change', async () => {
+      if (list.value !== from && !window.confirm('Move Magic Initiate from ' + from + ' to ' + list.value + '? Its ' + from + ' spells are removed; choose ' + list.value + ' spells afterwards.')) return;
+      await act({ action: 'featList', from, spellList: list.value, spellAbility: ability.value },
+        () => 'Magic Initiate now uses the ' + list.value + ' list' + (list.value !== from ? ': choose its spells again.' : '.'));
+    });
+    return el('details', { className: 'spell-dm-feat' }, [
+      el('summary', { className: 'muted small', text: 'DM: change spell list' }),
+      el('div', { className: 'spell-dm-feat-row' }, [list, ability, save]),
+      el('p', { className: 'muted small', text: 'For a table ruling (e.g. Sage with Cleric spells). The spells chosen from the old list are removed.' })
     ]);
   }
 

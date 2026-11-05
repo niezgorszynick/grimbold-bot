@@ -295,7 +295,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
           <!-- Magic Items right after Equipment & Items, before the (often long) spell list. -->
           <section id="cs_magic_items" data-collapse="magicItems" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
           <script src="/admin/assets/character-magic-items.js" defer></script>
-          <section id="cs_spells" data-collapse="spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+          <section id="cs_spells" data-collapse="spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" data-is-admin="${isAdmin ? 'true' : 'false'}" hidden></section>
           <script src="/admin/assets/character-spells.js" defer></script>
           <script src="/admin/assets/dice.js" defer></script>
         </section>

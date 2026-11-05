@@ -337,7 +337,7 @@ router.get('/rules/invocations', (req, res) => {
 });
 
 function spellErrorStatus(message) {
-  if (message === 'Forbidden.') return 403;
+  if (message === 'Forbidden.' || /^Only a DM/.test(message)) return 403;
   if (message === 'Character not found.') return 404;
   return 400;
 }
@@ -357,6 +357,7 @@ router.get('/characters/:id/spells', (req, res) => {
 // { action: 'endConcentration' }
 // { action: 'land', land } (Circle of the Land, after a Long Rest)
 // { action: 'invocations', invocations: [{ name, cantrip, feat }] }
+// { action: 'featList', from, spellList, spellAbility } (DMs: Magic Initiate's list)
 router.post('/characters/:id/spells', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -368,6 +369,7 @@ router.post('/characters/:id/spells', (req, res) => {
     if (body.action === 'endConcentration') return res.json(db.endCharacterConcentration(who));
     if (body.action === 'land') return res.json(db.setCharacterLand({ ...who, land: body.land }));
     if (body.action === 'invocations') return res.json(db.chooseCharacterInvocations({ ...who, choices: body.invocations }));
+    if (body.action === 'featList') return res.json(db.changeMagicInitiateList({ ...who, from: body.from, spellList: body.spellList, spellAbility: body.spellAbility }));
     return res.status(400).json({ error: 'Unknown spell action.' });
   } catch (error) {
     if (error instanceof TypeError) {

@@ -1010,3 +1010,5 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .wm-paint.is-off polygon { fill: rgba(242, 63, 67, 0.3); stroke: #f23f43; }
 .wm-fill { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .wm-card > .btn { justify-self: start; }
+.spell-dm-feat summary { cursor: pointer; }
+.spell-dm-feat-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
