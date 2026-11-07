@@ -107,6 +107,12 @@ This repository is public, and text from the D&D books (and "personal use" playt
 scp rules/content/subclasses.md rules/content/feats.md vps:/var/www/grimbold-bot/rules/content/
 ```
 
+The **📄 Export PDF** button on a character sheet fills in the official fillable 2024 character sheet. That PDF belongs to Wizards of the Coast, so it is kept off Git too. Put it at `rules/content/character-sheet.pdf` (or point `CHARACTER_SHEET_PDF` at it); without it the export answers that the template is missing.
+
+```bash
+scp rules/content/character-sheet.pdf vps:/var/www/grimbold-bot/rules/content/
+```
+
 Short summaries in our own words (`*.fallback.md`) are committed and fill gaps. Monsters can also be imported from 5etools files in the panel's Monsters tab; those stay in the database.
 
 ---

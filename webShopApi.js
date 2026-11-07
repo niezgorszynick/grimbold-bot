@@ -170,6 +170,29 @@ router.get('/characters/:id', (req, res) => {
   });
 });
 
+// The character on the official 2024 sheet, as a fillable PDF (db/characterPdf.js).
+router.get('/characters/:id/sheet.pdf', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { name, pdf } = await db.characterSheetPdf({ characterId: req.params.id, user, isAdmin: isAdmin(user) });
+    const file = (name.normalize('NFD').replace(/[^\w -]/g, '').trim().replace(/\s+/g, '-') || 'character') + '.pdf';
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${file}"; filename*=UTF-8''${encodeURIComponent(name + '.pdf')}`,
+      'Cache-Control': 'no-store'
+    });
+    return res.send(pdf);
+  } catch (error) {
+    const status = error.message === 'Forbidden.' ? 403 : error.message === 'Character not found.' ? 404 : /template is missing/.test(error.message) ? 503 : 400;
+    if (status === 400 && !/Invalid character/.test(error.message)) {
+      console.error('Character PDF failed:', error);
+      return res.status(500).json({ error: 'Could not make the PDF.' });
+    }
+    return res.status(status).json({ error: error.message });
+  }
+});
+
 // The subclass features a character has, with their text (rules/content/subclasses.md).
 router.get('/characters/:id/subclass-features', (req, res) => {
   const user = getSessionApiUser(req);

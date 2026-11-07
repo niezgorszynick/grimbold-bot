@@ -207,6 +207,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
             <div class="sheet-header-actions">
               <a href="/admin?tab=character-sheet" class="btn btn-secondary">Back / Cancel</a>
+              ${unbuiltCharacter ? '' : `<a href="/api/characters/${Number(characterToEdit.id)}/sheet.pdf" class="btn btn-secondary" download title="The official 2024 character sheet, filled in from this character (fields stay editable). Save the sheet first to include unsaved changes.">📄 Export PDF</a>`}
               <button id="cs_save" class="btn btn-success" type="button" disabled>Save Sheet</button>
             </div>
           </header>

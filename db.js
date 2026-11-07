@@ -35,6 +35,7 @@ module.exports = {
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),
   ...require('./db/wildShape'),
+  ...require('./db/characterPdf'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),
