@@ -105,11 +105,11 @@ test('weapon attacks use the right ability, proficiency and properties', () => {
   assert.equal(attack(result, 'Unarmed Strike').attackBonus, '+5');
 });
 
-test('fighting styles: Archery adds to hit; Dueling and Great Weapon Fighting are noted', () => {
+test('fighting styles: Archery adds to hit, Dueling to one-handed damage; Great Weapon Fighting is noted', () => {
   const sheet = {
     abilities: abilities({ str: 16, dex: 14 }),
     weaponProficiencies: ['Simple weapons', 'Martial weapons'],
-    inventory: [row('Longbow'), row('Greatsword'), row('Longsword')],
+    inventory: [row('Longbow'), row('Greatsword'), row('Longsword'), row('Rapier'), row('Dagger'), row('Handaxe')],
     fightingStyles: [{ name: 'Archery', source: 'Fighter' }],
     levelHistory: [{ level: 4, fightingStyle: { name: 'Dueling' } }, { level: 5, feat: { name: 'Great Weapon Fighting' } }]
   };
@@ -119,6 +119,14 @@ test('fighting styles: Archery adds to hit; Dueling and Great Weapon Fighting ar
   assert.ok(attack(result, 'Greatsword').notes.some(note => /Great Weapon Fighting/.test(note)));
   assert.ok(attack(result, 'Longsword').notes.some(note => /Dueling/.test(note)));
   assert.ok(!attack(result, 'Greatsword').notes.some(note => /Dueling/.test(note)));
+  // Dueling: +2 one-handed; not two-handed (Versatile), not Two-Handed weapons, not ranged.
+  assert.equal(attack(result, 'Longsword').damage, '1d8+5 Slashing (1d10+3 two-handed)');
+  assert.equal(attack(result, 'Rapier').damage, '1d8+5 Piercing');
+  assert.deepEqual(attack(result, 'Rapier').damageParts.map(part => part.label), ['STR', 'Dueling']);
+  assert.equal(attack(result, 'Greatsword').damage, '2d6+3 Slashing');
+  assert.equal(attack(result, 'Longbow').damage, '1d8+2 Piercing');
+  // Two Light weapons: the off-hand attack has no Dueling (and no modifier).
+  assert.equal(attack(result, 'Dagger').offHand.damage, '1d4 Piercing');
 });
 
 test('Monks use Martial Arts for monk weapons and unarmed strikes', () => {

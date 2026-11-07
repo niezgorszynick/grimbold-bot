@@ -324,7 +324,7 @@ function sheetValues(character, user) {
       const twoHanded = String(attack.damage || '').match(/^(.*?)\s*\((\S+) two-handed\)$/);
       return {
         name: attack.name,
-        bonus: attack.attackBonus,
+        bonus: attack.attackBonus + (attack.hitDice ? ' ' + attack.hitDice : ''),
         damage: twoHanded ? twoHanded[1] : attack.damage,
         notes: (() => {
           const parts = [twoHanded ? 'Two-handed ' + twoHanded[2] : '', ...(attack.notes || [])].filter(Boolean);

@@ -589,11 +589,23 @@ function castSpell(state, sources, { source: sourceKey, spell: spellName, slotLe
 }
 
 // Concentration after taking damage: DC max(10, half the damage) up to 30;
-// dropping to 0 Hit Points ends it.
+// dropping to 0 Hit Points ends it. Each hit is a save of its own: the DCs wait
+// in concentration.checks until rolled (resolveConcentrationCheck).
 function concentrationAfterDamage(state, damage, { droppedToZero }) {
   if (!state.concentration || damage <= 0) return { state, check: null };
   if (droppedToZero) return { state: { ...state, concentration: null }, check: { ended: true, spell: state.concentration.spell } };
-  return { state, check: { dc: Math.min(30, Math.max(10, Math.floor(damage / 2))), spell: state.concentration.spell } };
+  const dc = Math.min(30, Math.max(10, Math.floor(damage / 2)));
+  const checks = [...(state.concentration.checks || []), dc];
+  return { state: { ...state, concentration: { ...state.concentration, checks } }, check: { dc, spell: state.concentration.spell } };
+}
+
+// The oldest waiting Concentration save: passed keeps it, failed ends it.
+function resolveConcentrationCheck(state, passed) {
+  const concentration = state.concentration;
+  if (!concentration || !(concentration.checks || []).length) throw new Error('No Concentration save is waiting.');
+  const [dc, ...rest] = concentration.checks;
+  if (!passed) return { state: { ...state, concentration: null }, dc, spell: concentration.spell, kept: false };
+  return { state: { ...state, concentration: { ...concentration, checks: rest } }, dc, spell: concentration.spell, kept: true };
 }
 
 const CHANGE_RULE_TEXT = {
@@ -712,5 +724,6 @@ module.exports = {
   onLevelUp,
   fitToLimits,
   castSpell,
-  concentrationAfterDamage
+  concentrationAfterDamage,
+  resolveConcentrationCheck
 };

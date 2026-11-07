@@ -275,9 +275,15 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .spell-name:hover, .spell-name:focus-visible { color: #f1c40f; text-decoration: underline; }
 .spell-cast { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
 .spell-cast select { max-width: 230px; padding: 4px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.spell-targets { margin: 6px 0 4px; padding: 8px 10px; border-radius: 6px; background: rgba(88, 101, 242, .12); }
+.spell-target-list { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 4px 0 6px; }
+.spell-target { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.vitals-spell-effects { margin: 8px 0; }
+.vitals-spell-effect { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; padding: 4px 8px; border-radius: 6px; background: rgba(212, 175, 55, .12); }
 .spell-details { margin: 6px 0 4px; padding: 8px 10px; background: #232428; border-radius: 4px; font-size: 13px; }
 .spell-details p { margin: 0 0 6px; }
 .spell-concentration { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #5865f2; border-radius: 6px; background: rgba(88, 101, 242, 0.12); }
+.spell-concentration-save { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(242, 63, 67, .15); }
 .spell-picker { display: grid; gap: 10px; padding: 10px; border: 1px dashed #4e5058; border-radius: 6px; }
 .spell-picker input[type=search] { width: 100%; padding: 6px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
 .spell-pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px 12px; }
@@ -555,6 +561,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 /* Class features with limited uses (Channel Divinity, ...). */
 .vitals-resource { padding: 2px 0 4px; }
 .vitals-resource-text { margin: 0 0 0 4px; }
+.vitals-effect { margin: 4px 0 0 4px; }
+.vitals-effect.is-active { padding: 4px 8px; border-radius: 6px; background: rgba(212, 175, 55, .15); }
 .vitals-resources input[type=number] { width: 70px; }
 /* DM: extra skill proficiencies and Expertise. */
 .sheet-dm-skills { margin-top: 8px; font-size: 12px; }

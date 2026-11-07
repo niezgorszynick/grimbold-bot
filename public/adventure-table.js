@@ -160,7 +160,7 @@
       if (result.concentration) {
         parts.push(result.concentration.ended
           ? 'Concentration on ' + result.concentration.spell + ' ended.'
-          : 'Concentration check for ' + result.concentration.spell + ': Constitution save DC ' + result.concentration.dc + '.');
+          : 'Concentration save for ' + result.concentration.spell + ': DC ' + result.concentration.dc + (' (waiting on the character sheet).'));
       }
       message = parts.join(' ');
       isError = false;
@@ -225,6 +225,13 @@
     const flags = [];
     if (member.status !== 'alive') flags.push(el('span', { className: 'tag red', text: 'Dead' }));
     if (member.concentration) flags.push(el('span', { className: 'tag gold', text: 'Concentrating: ' + member.concentration }));
+    // A Concentration save waiting after damage: rollable here (the card carries data-roll-character).
+    if (member.concentrationSave) {
+      flags.push(el('span', { className: 'tag red' }, [
+        '⚠ Concentration save DC ' + member.concentrationSave + ' ',
+        canRollFor() ? el('button', { type: 'button', className: 'roll-link', 'data-roll': 'concentration', title: 'Roll the Constitution save', text: '🎲 Roll' }) : null
+      ]));
+    }
     if (member.exhaustion) flags.push(el('span', { className: 'tag red', text: 'Exhaustion ' + member.exhaustion }));
     if (member.heroicInspiration) flags.push(el('span', { className: 'tag gold', text: '★ Heroic Inspiration' }));
     if (member.starryForm) {

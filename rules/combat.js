@@ -5,11 +5,13 @@
 const { ARMOR, SHIELD_BONUS } = require('./armor');
 const { WEAPONS } = require('./weapons');
 const { customWeaponGear } = require('./customWeapons');
-const { abilityModifier, proficiencyBonus } = require('./util');
+const { abilityModifier, proficiencyBonus, atLevel } = require('./util');
 const { getClass } = require('./classes');
 const { collectCharacterFeats, featName } = require('./feats');
 const { readMagicItems, magicItemEntryInfo, effectiveAbilityScore, magicItemEffects } = require('./magicItems');
 const { itemBonusTotals, itemBonusFor } = require('./itemBonuses');
+const { EFFECTS, activeEffectsOf } = require('./effects');
+const { buffTotals, buffDiceText } = require('./buffs');
 
 const ABILITY_LABELS = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
 const MAX_AC_ADJUSTMENT = 10;
@@ -274,7 +276,11 @@ function context(character) {
     pb: proficiencyBonus(totalLevel),
     features: classFeatureNames(classes),
     training: trainingLists(classes, sheetData),
-    worn: wornGear(sheetData)
+    worn: wornGear(sheetData),
+    // Rage, Sacred Weapon while they are on (rules/effects.js).
+    active: new Set(activeEffectsOf(sheetData, classes)),
+    // Spells on the character (Bless, Shield of Faith, ...): rules/buffs.js.
+    buffs: buffTotals(sheetData)
   };
 }
 
@@ -333,6 +339,7 @@ function calculateArmor(ctx) {
     const robe = readMagicItems(sheetData).map(entry => magicItemEntryInfo(entry))
       .find(info => info.active && info.item && info.item.name === 'Robe of the Archmagi');
     if (robe) options.push({ label: 'Robe of the Archmagi', value: 15, extra: [['DEX', mods.dex]] });
+    if (ctx.buffs.acBase) options.push({ label: ctx.buffs.acBase.label, value: ctx.buffs.acBase.value, extra: [['DEX', mods.dex]] });
     const best = options.reduce((top, option) => {
       const sum = option.value + option.extra.reduce((acc, [, value]) => acc + value, 0);
       return sum > top.sum ? { option, sum } : top;
@@ -370,10 +377,20 @@ function calculateArmor(ctx) {
     total += info.effects.ac;
   }
 
+  // Shield of Faith, Haste, Warding Bond.
+  for (const part of ctx.buffs.ac) {
+    parts.push(part);
+    total += part.value;
+  }
   const adjustment = Number.isInteger(sheetData.acAdjustment) ? sheetData.acAdjustment : 0;
   if (adjustment) {
     parts.push({ label: 'Other', value: adjustment });
     total += adjustment;
+  }
+  // Barkskin: AC 17 if it is lower.
+  if (ctx.buffs.acFloor && total < ctx.buffs.acFloor.value) {
+    parts.push({ label: `${ctx.buffs.acFloor.label} (AC ${ctx.buffs.acFloor.value})`, value: ctx.buffs.acFloor.value - total });
+    total = ctx.buffs.acFloor.value;
   }
   return { value: total, parts, notes, armor: armor ? armor.name : null, shield: shield ? shield.name : null, adjustment };
 }
@@ -411,29 +428,56 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
     else notes.push(`${piece.name}: see the item for its magic.`);
   }
   const archery = feats.has('Archery') && weapon.kind === 'Ranged' ? 2 : 0;
-  const attackBonus = mod + (proficient ? pb : 0) + magicBonus + archery + (custom ? custom.attackBonus : 0);
+  // Sacred Weapon: CHA modifier (min. +1) to hit with a melee weapon.
+  const sacred = ctx.active.has('sacredWeapon') && weapon.kind === 'Melee' ? EFFECTS.sacredWeapon.attackBonus(scores) : 0;
+  // Magic Weapon, Elemental Weapon.
+  const spellHit = ctx.buffs.weaponAttack.reduce((sum, part) => sum + part.value, 0);
+  const attackBonus = mod + (proficient ? pb : 0) + magicBonus + archery + sacred + spellHit + (custom ? custom.attackBonus : 0);
 
   let die = weapon.damage;
   if (martialArts && averageOf(martialArtsDie(monkLevel)) > averageOf(die)) die = martialArtsDie(monkLevel);
   const offHand = Boolean(options.offHand);
   const abilityDamage = offHand && mod > 0 && !feats.has('Two-Weapon Fighting') ? 0 : mod;
-  const damageMod = abilityDamage + magicBonus + (custom ? custom.damageBonus : 0);
+  // Rage: a bonus on Strength attacks.
+  const rage = ctx.active.has('rage') && ability === 'str' ? EFFECTS.rage.damageBonus(ctx.classes) : 0;
+  // Dueling: +2 with a one-handed melee weapon and no other weapon (so not the
+  // off-hand attack, nor a Versatile weapon held in two hands).
+  const dueling = feats.has('Dueling') && weapon.kind === 'Melee' && !weapon.properties.includes('Two-Handed') && !offHand ? 2 : 0;
+  const spellDamage = ctx.buffs.weaponDamage.reduce((sum, part) => sum + part.value, 0);
+  const twoHandedMod = abilityDamage + magicBonus + rage + spellDamage + (custom ? custom.damageBonus : 0);
+  // Divine Favor, Enlarge, Elemental Weapon: extra dice on every weapon hit.
+  const extraDice = buffDiceText(ctx.buffs.weaponDice.map(part => part.dice));
+  const damageMod = twoHandedMod + dueling;
   // What adds up to the to-hit and damage bonuses, for the sheet to explain.
   const hitParts = [
     { label: ABILITY_LABELS[ability], value: mod },
     proficient ? { label: 'Proficiency', value: pb } : null,
     magicBonus ? { label: 'Magic', value: magicBonus } : null,
     archery ? { label: 'Archery', value: archery } : null,
+    sacred ? { label: 'Sacred Weapon', value: sacred } : null,
+    ...ctx.buffs.weaponAttack,
     custom && custom.attackBonus ? { label: 'Weapon', value: custom.attackBonus } : null
   ].filter(Boolean);
   const damageParts = [
     abilityDamage || !offHand ? { label: ABILITY_LABELS[ability], value: abilityDamage } : null,
     magicBonus ? { label: 'Magic', value: magicBonus } : null,
+    rage ? { label: 'Rage', value: rage } : null,
+    ...ctx.buffs.weaponDamage,
+    dueling ? { label: 'Dueling', value: dueling } : null,
     custom && custom.damageBonus ? { label: 'Weapon', value: custom.damageBonus } : null
   ].filter(Boolean);
-  let damage = damageText(die, damageMod, (pact && pact.damageType) || weapon.damageType);
+  let damage = damageText(die + '', damageMod, '').trim() + extraDice + ' ' + ((pact && pact.damageType) || weapon.damageType);
   // The off-hand attack is made one-handed.
-  if (weapon.versatile && !offHand) damage += ` (${damageText(weapon.versatile, damageMod, '').trim()} two-handed)`;
+  if (weapon.versatile && !offHand) damage += ` (${damageText(weapon.versatile, twoHandedMod, '').trim()}${extraDice} two-handed)`;
+  // Sneak Attack: once per turn with a Finesse or ranged weapon, with Advantage
+  // or an ally next to the target. A roll of its own: the weapon plus the dice.
+  const rogueLevel = levelOf('Rogue');
+  const sneakAttack = rogueLevel >= 1 && !offHand && (weapon.properties.includes('Finesse') || weapon.kind === 'Ranged')
+    ? (() => {
+      const dice = `${atLevel(getClass('Rogue').resources.sneakAttackDice, rogueLevel)}d6`;
+      return { dice, damage: `${damageText(die, damageMod, '').trim()}${extraDice}+${dice} ${(pact && pact.damageType) || weapon.damageType}` };
+    })()
+    : null;
 
   const props = weapon.properties.map(property => {
     if (property === 'Thrown') return `Thrown ${weapon.range}`;
@@ -458,9 +502,12 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
   }
   if (archery) notes.push('Archery +2');
   if (martialArts) notes.push('Martial Arts');
-  if (feats.has('Dueling') && weapon.kind === 'Melee' && !weapon.properties.includes('Two-Handed')) {
-    notes.push('Dueling: +2 damage when it is your only weapon in hand');
-  }
+  if (dueling) notes.push('Dueling +2 (one-handed, no other weapon)');
+  if (sneakAttack) notes.push(`Sneak Attack +${sneakAttack.dice} (once per turn)`);
+  ctx.buffs.weaponAttack.forEach(part => notes.push(`${part.label} +${part.value}${ctx.buffs.weaponDamage.some(d => d.label === part.label) ? ' to hit and damage' : ' to hit'} (one weapon)`));
+  ctx.buffs.weaponDice.forEach(part => notes.push(`${part.label} +${part.dice}`));
+  if (rage) notes.push(`Rage +${rage}`);
+  if (sacred) notes.push(`Sacred Weapon +${sacred} to hit; Radiant if you like`);
   if (feats.has('Great Weapon Fighting') && weapon.kind === 'Melee' && (weapon.properties.includes('Two-Handed') || weapon.versatile)) {
     notes.push('Great Weapon Fighting: 1s and 2s on damage dice count as 3 (two-handed)');
   }
@@ -485,6 +532,7 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
     damageParts,
     damageDie: die,
     damage,
+    sneakAttack,
     notes
   };
 }
@@ -502,8 +550,10 @@ function unarmedStrike(ctx, armorState, holdsWeapon) {
     options.push({ die: holdsWeapon || armorState.shield ? '1d6' : '1d8', label: 'Unarmed Fighting' });
   }
   const best = options.reduce((top, option) => (averageOf(option.die) > averageOf(top.die) ? option : top));
-  const damage = best.die === '1' ? `${Math.max(0, 1 + mod)} Bludgeoning` : damageText(best.die, mod, 'Bludgeoning');
+  const rage = ctx.active.has('rage') && ability === 'str' ? EFFECTS.rage.damageBonus(ctx.classes) : 0;
+  const damage = best.die === '1' ? `${Math.max(0, 1 + mod) + rage} Bludgeoning` : damageText(best.die, mod + rage, 'Bludgeoning');
   const notes = [ABILITY_LABELS[ability]];
+  if (rage) notes.push(`Rage +${rage}`);
   if (best.label) notes.push(best.label);
   if (feats.has('Unarmed Fighting') && (holdsWeapon || armorState.shield)) notes.push('1d8 with no weapon or Shield in hand');
   notes.push('Or Grapple / Shove (DC ' + (8 + mods.str + pb) + ')');
@@ -566,6 +616,9 @@ function calculateCombat(character) {
   if (pact) attacks.unshift(weaponAttack(pact.piece, ctx, armorClass, { pact: { damageType: pact.damageType } }));
   const blast = eldritchBlast(ctx);
   if (blast) attacks.splice(attacks.length - 1, 0, blast);
+  // Bless: dice on every attack roll.
+  const hitDice = buffDiceText(ctx.buffs.attackDice);
+  if (hitDice) attacks.forEach(entry => { if (!entry.needsType) entry.hitDice = hitDice; });
   return { armorClass, attacks };
 }
 

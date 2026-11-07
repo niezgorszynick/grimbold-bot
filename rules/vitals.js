@@ -8,7 +8,8 @@
 //   pactSlotsSpent, resourcesUsed { channelDivinityCleric: 1 } (class features),
 //   wildShapeForm (the beast a druid is in now, or null), starryForm (the
 //   constellation of a Circle of the Stars druid's Starry Form, or null),
-//   cosmicOmen ('weal' | 'woe' | null, rolled after a Long Rest).
+//   cosmicOmen ('weal' | 'woe' | null, rolled after a Long Rest),
+//   activeEffects (['rage', 'sacredWeapon']: switched-on features, rules/effects.js).
 // Derived values (hpMax, hit dice pool, slot totals) are passed in by the
 // caller from the character's classes so they always follow the rules.
 
@@ -21,6 +22,7 @@ const { effectiveAbilityScore } = require('./magicItems');
 const { classResources, featResources, recoverResources } = require('./classResources');
 const { characterDefenses } = require('./defenses');
 const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS, titanFormRules, TITAN_FORMS } = require('./wildShape');
+const { EFFECTS, EFFECT_KEYS, availableEffects } = require('./effects');
 
 const MAX_EXHAUSTION = 6;
 
@@ -64,7 +66,8 @@ function normalizeVitals(sheetData, hpMax) {
     ),
     wildShapeForm: typeof data.wildShapeForm === 'string' && data.wildShapeForm ? data.wildShapeForm : null,
     starryForm: CONSTELLATIONS.includes(data.starryForm) ? data.starryForm : null,
-    cosmicOmen: ['weal', 'woe'].includes(data.cosmicOmen) ? data.cosmicOmen : null
+    cosmicOmen: ['weal', 'woe'].includes(data.cosmicOmen) ? data.cosmicOmen : null,
+    activeEffects: Array.isArray(data.activeEffects) ? [...new Set(data.activeEffects.filter(key => EFFECT_KEYS.includes(key)))] : []
   };
 }
 
@@ -281,6 +284,31 @@ function takeStarryForm(vitals, constellation, switching, context) {
   return { vitals: { ...spent, starryForm: constellation, wildShapeForm: null }, events: ['starryForm'] };
 }
 
+// Rage, Sacred Weapon: a use of the feature, then on until ended.
+function startEffect(vitals, key, context) {
+  const effect = EFFECTS[key];
+  if (!effect || !(context.effects || []).includes(key)) throw new Error('This character has no such feature to start.');
+  if ((vitals.activeEffects || []).includes(key)) throw new Error(`${effect.name} is already on.`);
+  if (vitals.hpCurrent === 0) throw new Error(`You can't start ${effect.name} at 0 Hit Points.`);
+  const spent = changeResource(vitals, effect.resource, 1, context).vitals;
+  return { vitals: { ...spent, activeEffects: [...(vitals.activeEffects || []), key] }, events: ['effectStarted:' + key] };
+}
+
+function endEffect(vitals, key) {
+  if (!(vitals.activeEffects || []).includes(key)) throw new Error('That is not on.');
+  return { vitals: { ...vitals, activeEffects: vitals.activeEffects.filter(entry => entry !== key) }, events: ['effectEnded:' + key] };
+}
+
+// Rests take longer than these last; 0 Hit Points ends them too.
+function endAllEffects(result) {
+  if (!(result.vitals.activeEffects || []).length) return result;
+  return {
+    ...result,
+    vitals: { ...result.vitals, activeEffects: [] },
+    events: [...(result.events || []), ...result.vitals.activeEffects.map(key => 'effectEnded:' + key)]
+  };
+}
+
 function dismissStarryForm(vitals) {
   if (!vitals.starryForm) throw new Error('You are not in your Starry Form.');
   return { vitals: { ...vitals, starryForm: null }, events: ['starryFormEnded'] };
@@ -363,6 +391,8 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     })(),
     // Circle of the Stars: Starry Form and Cosmic Omen.
     starry: starryFormRules(classRows),
+    // Rage, Sacred Weapon (rules/effects.js).
+    effects: availableEffects(classRows),
     // Resistances, senses, creature type (rules/defenses.js).
     defenses: characterDefenses({ classes: classRows, species, sheetData, feats })
   };
@@ -375,10 +405,10 @@ const ACTIONS = {
   clearTempHp: vitals => clearTempHp(vitals),
   deathSave: (vitals, params, context) => deathSave(vitals, { roll: params.roll, rng: context.rng }),
   stabilize: vitals => stabilize(vitals),
-  shortRest: (vitals, params, context) => withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short'),
+  shortRest: (vitals, params, context) => endAllEffects(withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short')),
   longRest: (vitals, params, context) => {
     // A Long Rest outlasts any Wild Shape.
-    let rested = withRecovery(longRest({ ...vitals, wildShapeForm: null, starryForm: null }, context), vitals, context, 'long');
+    let rested = endAllEffects(withRecovery(longRest({ ...vitals, wildShapeForm: null, starryForm: null }, context), vitals, context, 'long'));
     // Cosmic Omen: a die after every Long Rest; even is Weal, odd is Woe.
     if (context.starry && context.starry.cosmicOmen) {
       const omen = rollDie(6, context.rng) % 2 === 0 ? 'weal' : 'woe';
@@ -399,7 +429,9 @@ const ACTIONS = {
   wildShape: (vitals, params, context) => takeWildShape(vitals, String(params.form || ''), context),
   revertWildShape: vitals => revertWildShape(vitals),
   starryForm: (vitals, params, context) => takeStarryForm(vitals, String(params.constellation || ''), Boolean(params.switch), context),
-  dismissStarryForm: vitals => dismissStarryForm(vitals)
+  dismissStarryForm: vitals => dismissStarryForm(vitals),
+  startEffect: (vitals, params, context) => startEffect(vitals, String(params.effect || ''), context),
+  endEffect: (vitals, params) => endEffect(vitals, String(params.effect || ''))
 };
 const VITALS_ACTIONS = Object.keys(ACTIONS);
 
@@ -421,6 +453,7 @@ function applyVitalsAction(vitals, action, params, context) {
   if (result.vitals.starryForm && result.vitals.hpCurrent === 0) {
     result = { ...result, vitals: { ...result.vitals, starryForm: null }, events: [...(result.events || []), 'starryFormEnded'] };
   }
+  if (result.vitals.hpCurrent === 0) result = endAllEffects(result);
   const hpMax = Math.max(1, context.baseHpMax + result.vitals.hpMaxBonus);
   return {
     ...result,
@@ -457,7 +490,12 @@ function buildVitalsView(vitals, context, hpMax = context.hpMax) {
     resources: (context.resources || []).map(resource => ({ ...resource, used: Math.min(resource.max, vitals.resourcesUsed[resource.key] || 0) })),
     wildShapeForm: vitals.wildShapeForm,
     starryForm: vitals.starryForm,
-    cosmicOmen: vitals.cosmicOmen
+    cosmicOmen: vitals.cosmicOmen,
+    // Rage, Sacred Weapon: which can be started, and which are on.
+    effects: (context.effects || []).map(key => ({
+      key, name: EFFECTS[key].name, resource: EFFECTS[key].resource, text: EFFECTS[key].text,
+      active: (vitals.activeEffects || []).includes(key)
+    }))
   };
 }
 

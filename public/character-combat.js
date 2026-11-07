@@ -100,6 +100,11 @@
       const cell = match
         ? [rollButton('attack:' + index + ':damage', match[1], 'Roll damage'), ' ', rollButton('attack:' + index + ':damage2', '(' + match[2] + ' two-handed)', 'Roll two-handed damage')]
         : [rollButton('attack:' + index + ':damage', attack.damage, 'Roll damage')];
+      // Sneak Attack: weapon damage plus the dice, when the conditions are met.
+      if (attack.sneakAttack) {
+        cell.push(' ', rollButton('attack:' + index + ':sneak', '+ Sneak Attack ' + attack.sneakAttack.dice,
+          'Roll damage with Sneak Attack: once per turn, with Advantage or an ally within 5 ft of the target (and no Disadvantage)'));
+      }
       // The extra Light attack: its own damage link in the same row.
       if (attack.offHand) {
         cell.push(' ', rollButton('attack:' + index + ':offhand', 'off-hand ' + String(attack.offHand.damage).split(' ')[0], attack.offHand.rule));
@@ -108,7 +113,8 @@
     };
     const rows = view.attacks.map((attack, index) => el('tr', { className: attack.needsType ? 'needs-type' : null }, [
       el('td', { 'data-label': 'Name' }, [el('strong', { text: attack.name }), attack.weapon && attack.weapon !== attack.name ? el('span', { className: 'muted small', text: ' ' + attack.weapon }) : null]),
-      el('td', { 'data-label': 'Attack' }, attack.needsType ? attack.attackBonus : rollButton('attack:' + index + ':hit', attack.attackBonus, 'Roll to hit')),
+      // Bless: "+5 +1d4".
+      el('td', { 'data-label': 'Attack' }, attack.needsType ? attack.attackBonus : rollButton('attack:' + index + ':hit', attack.attackBonus + (attack.hitDice ? ' ' + attack.hitDice : ''), 'Roll to hit')),
       el('td', { 'data-label': 'Damage' }, attack.needsType ? attack.damage : damageCell(attack, index)),
       el('td', { 'data-label': 'Notes', className: 'muted small', text: attack.notes.join(' · ') })
     ]));

@@ -170,6 +170,19 @@ router.get('/characters/:id', (req, res) => {
   });
 });
 
+// Ends a buff spell on a character: { effectId }. Its owner, an admin or the caster.
+router.post('/characters/:id/spell-effects/end', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.endSpellEffect({ characterId: req.params.id, effectId: String(body.effectId || ''), user, isAdmin: isAdmin(user) }));
+  } catch (error) {
+    const status = error.message === 'Forbidden.' ? 403 : error.message === 'Character not found.' ? 404 : 400;
+    return res.status(status).json({ error: error.message });
+  }
+});
+
 // The character on the official 2024 sheet, as a fillable PDF (db/characterPdf.js).
 router.get('/characters/:id/sheet.pdf', async (req, res) => {
   const user = getSessionApiUser(req);
@@ -224,7 +237,8 @@ function vitalsContextFor(character, sheetData) {
 function vitalsViewFor(character, sheetData) {
   const context = vitalsContextFor(character, sheetData);
   if (!context) return null;
-  return rules.buildVitalsView(rules.normalizeVitals(sheetData, context.hpMax), context);
+  // Plus buff spells on the character (Bless from a party member, ...).
+  return { ...rules.buildVitalsView(rules.normalizeVitals(sheetData, context.hpMax), context), spellEffects: db.spellEffectsView(sheetData) };
 }
 
 function levelUpErrorStatus(message) {
@@ -402,8 +416,23 @@ router.post('/characters/:id/spells', (req, res) => {
   const who = { id: req.params.id, player_id: user.id, is_admin: isAdmin(user) };
   try {
     if (body.action === 'choose') return res.json(db.chooseCharacterSpells({ ...who, source: body.source, request: body }));
-    if (body.action === 'cast') return res.json(db.castCharacterSpell({ ...who, request: body }));
-    if (body.action === 'endConcentration') return res.json(db.endCharacterConcentration(who));
+    // A new Concentration spell or ending it: buffs it held on others end (db/spellEffects.js).
+    if (body.action === 'cast') {
+      const result = db.castCharacterSpell({ ...who, request: body });
+      db.pruneSpellEffects();
+      return res.json(result);
+    }
+    // { action: 'concentrationSave', passed }: a save rolled with real dice.
+    if (body.action === 'concentrationSave') {
+      const result = db.resolveCharacterConcentration({ ...who, passed: body.passed });
+      db.pruneSpellEffects();
+      return res.json(result);
+    }
+    if (body.action === 'endConcentration') {
+      const result = db.endCharacterConcentration(who);
+      db.pruneSpellEffects();
+      return res.json(result);
+    }
     if (body.action === 'land') return res.json(db.setCharacterLand({ ...who, land: body.land }));
     if (body.action === 'invocations') return res.json(db.chooseCharacterInvocations({ ...who, choices: body.invocations }));
     if (body.action === 'featList') return res.json(db.changeMagicInitiateList({ ...who, from: body.from, spellList: body.spellList, spellAbility: body.spellAbility }));
@@ -1220,7 +1249,7 @@ router.get('/characters/:id/live', (req, res) => {
 });
 
 // What an adventure's DM may do to a party member's Hit Points.
-const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize', 'inspiration', 'revertWildShape', 'dismissStarryForm'];
+const DM_VITALS_ACTIONS = ['damage', 'heal', 'tempHp', 'clearTempHp', 'setHp', 'resetHp', 'deathSave', 'stabilize', 'inspiration', 'revertWildShape', 'dismissStarryForm', 'endEffect'];
 
 // HP, rests, death saves, exhaustion and spell slot usage.
 router.post('/characters/:id/vitals', (req, res) => {
@@ -1263,12 +1292,15 @@ router.post('/characters/:id/vitals', (req, res) => {
       );
       const spellEffects = db.spellEffectsOfVitals(character, sheetData, body.action, body, outcome);
       const itemEffects = db.magicItemEffectsOfVitals(sheetData, body.action);
-      const nextSheet = {
+      // Rests end the buff spells on the character (Bless, Mage Armor after a Long Rest).
+      const nextSheet = db.spellEffectsAfterRest({
         ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax, spellcasting: spellEffects.spellcasting, magicItems: itemEffects.magicItems
-      };
+      }, body.action);
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), characterId);
+      // Concentration lost (0 HP): the spells it held on others end too.
+      db.pruneSpellEffects();
       return {
-        vitals: rules.buildVitalsView(outcome.vitals, context, outcome.hpMax),
+        vitals: { ...rules.buildVitalsView(outcome.vitals, context, outcome.hpMax), spellEffects: db.spellEffectsView(nextSheet) },
         events: outcome.events,
         rolls: outcome.rolls || (outcome.roll ? [{ die: 'd20', roll: outcome.roll }] : []),
         healed: outcome.healed,

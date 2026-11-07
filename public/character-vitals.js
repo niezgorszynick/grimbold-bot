@@ -66,11 +66,11 @@
         parts.push('Rolled ' + result.rolls.map(r => r.die + ': ' + r.roll).join(', ') +
           (result.healed !== undefined ? ' → healed ' + result.healed + ' HP.' : '.'));
       }
-      (result.events || []).forEach(event => parts.push(EVENT_MESSAGES[event] || ''));
+      (result.events || []).forEach(event => parts.push(EVENT_MESSAGES[event] || effectMessage(event)));
       if (result.concentration) {
         parts.push(result.concentration.ended
           ? 'Concentration on ' + result.concentration.spell + ' ended.'
-          : 'Concentration check for ' + result.concentration.spell + ': Constitution save DC ' + result.concentration.dc + '.');
+          : 'Concentration save for ' + result.concentration.spell + ': DC ' + result.concentration.dc + (' (roll it under Spellcasting).'));
       }
       (result.magicItemsRegained || []).forEach(item => {
         parts.push(item.name + ' regained ' + item.restored + ' charge' + (item.restored === 1 ? '' : 's') + ' (' + item.roll + ').');
@@ -80,6 +80,8 @@
       if (window.refreshCharacterSpells) window.refreshCharacterSpells();
       // A Long Rest is the dawn when magic items regain charges.
       if (window.refreshCharacterMagicItems) window.refreshCharacterMagicItems();
+      // Rage and Sacred Weapon change the attacks.
+      if (window.refreshCharacterCombat && (result.events || []).some(event => /^effect/.test(event))) window.refreshCharacterCombat();
       lastIsError = false;
     } catch (error) {
       lastMessage = error.message;
@@ -89,6 +91,15 @@
       root.classList.remove('is-busy');
       render();
     }
+  }
+
+  // "effectStarted:rage" → "Rage is on: the attacks include it."
+  function effectMessage(event) {
+    const match = /^effect(Started|Ended):(\w+)$/.exec(event);
+    if (!match) return '';
+    const effect = (vitals.effects || []).find(entry => entry.key === match[2]);
+    const name = effect ? effect.name : match[2];
+    return match[1] === 'Started' ? name + ' is on: the attacks include it.' : name + ' ended.';
   }
 
   function amountInput() {
@@ -345,6 +356,14 @@
           return box;
         }));
       }
+      // Rage, Sacred Weapon: Start spends a use and turns the bonus on.
+      const effects = (vitals.effects || []).filter(effect => effect.resource === resource.key).map(effect => el('p', {
+        className: 'small vitals-effect' + (effect.active ? ' is-active' : '')
+      }, effect.active
+        ? [el('strong', { text: '✨ ' + effect.name + ' is on. ' }), button('End', () => send('endEffect', { effect: effect.key }), 'btn btn-small btn-secondary')]
+        : [button('Start ' + effect.name, () => send('startEffect', { effect: effect.key }), 'btn btn-small', {
+          disabled: left === 0 ? true : null, title: effect.text + ' Spends one use; ends with End, a rest or 0 HP.'
+        })]));
       return el('div', { className: 'vitals-resource' }, [
         el('div', { className: 'vitals-slot-row' }, [
           el('span', { className: 'vitals-slot-label' }, [el('strong', { text: resource.name })]),
@@ -352,6 +371,7 @@
           el('span', { className: 'muted small', text: left + ' / ' + resource.max + ' left' })
         ]),
         el('p', { className: 'muted small vitals-resource-text', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' }),
+        ...effects,
         rolls
       ]);
     });
@@ -395,6 +415,38 @@
     return el('div', { className: 'vitals-defenses' }, [el('h5', { text: 'Defenses' }), ...rows]);
   }
 
+  // Buff spells on this character, from themselves or a party member.
+  function renderSpellEffects() {
+    const list = vitals.spellEffects || [];
+    if (!list.length) return null;
+    return el('div', { className: 'vitals-spell-effects' }, [
+      el('h5', { text: 'Spells on you' }),
+      ...list.map(effect => el('div', { className: 'vitals-spell-effect' }, [
+        el('strong', { text: '✨ ' + effect.spell }),
+        el('span', { className: 'muted small', text: 'from ' + effect.casterName + (effect.concentration ? ' (Concentration)' : '') + '. ' + effect.text }),
+        button('End', () => endSpellEffect(effect), 'btn btn-small btn-secondary')
+      ]))
+    ]);
+  }
+
+  async function endSpellEffect(effect) {
+    try {
+      const response = await fetch('/api/characters/' + characterId + '/spell-effects/end', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effectId: effect.id })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not end the spell.');
+      vitals = Object.assign({}, vitals, { spellEffects: result.spellEffects });
+      lastMessage = effect.spell + ' ended.';
+      lastIsError = false;
+      if (window.refreshCharacterCombat) window.refreshCharacterCombat();
+    } catch (error) {
+      lastMessage = error.message;
+      lastIsError = true;
+    }
+    render();
+  }
+
   function render() {
     if (!vitals) return;
     syncInspiration();
@@ -404,6 +456,7 @@
       renderDying(),
       renderExhaustion(),
       renderDefenses(),
+      renderSpellEffects(),
       renderRests(),
       renderResources(),
       renderSlots(),

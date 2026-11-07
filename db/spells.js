@@ -7,6 +7,8 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { formatCp } = require('../currency');
 const { getCharacterClasses } = require('./characters');
+const { applyBuff, buffTargets } = require('./spellEffects');
+const crypto = require('crypto');
 
 function readSheet(raw) {
   try {
@@ -55,7 +57,16 @@ function buildView(character, sheetData) {
   } catch {
     // Characters without valid class levels have no slots to show.
   }
-  return { ...view, slots, pact, goldCp: character.gold_cp };
+  // Buff spells this character can cast, and on whom (rules/buffs.js).
+  const names = new Set(view.sources.flatMap(source => [...(source.cantrips || []), ...(source.prepared || []), ...(source.alwaysPrepared || [])]));
+  const buffs = Object.fromEntries([...names].filter(name => rules.isBuff(name)).map(name => {
+    const spell = rules.findSpell(name);
+    const targeting = rules.buffTargeting(name, spell ? spell.level : 1);
+    return [name, { selfOnly: targeting.selfOnly, text: rules.BUFFS[name].text, maxBySlot: Object.fromEntries(
+      Array.from({ length: 10 }, (_, slot) => [slot, rules.buffTargeting(name, slot).max]).map(([slot, max]) => [slot, Number.isFinite(max) ? max : 99])
+    ) }];
+  }));
+  return { ...view, slots, pact, goldCp: character.gold_cp, buffs, buffTargets: Object.keys(buffs).length ? buffTargets(character.id) : [] };
 }
 
 function getCharacterSpells({ id, player_id, is_admin }) {
@@ -87,7 +98,8 @@ function chooseCharacterSpells({ id, player_id, is_admin, source: sourceKey, req
   })();
 }
 
-// request: { source, spell, slotLevel | pact | free | ritual }
+// request: { source, spell, slotLevel | pact | free | ritual, targets: [characterIds] }
+// A buff spell (Bless, Haste, ...) goes on the targets: yourself and/or party members.
 function castCharacterSpell({ id, player_id, is_admin, request }) {
   return db.transaction(() => {
     const character = loadCharacter(id, player_id, is_admin);
@@ -95,7 +107,11 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
     const sheetData = readSheet(character.sheet_data);
     const spellChar = spellCharacter(character, sheetData);
     const result = rules.castSpell(rules.readSpellcasting(sheetData), rules.getSpellSources(spellChar), request || {});
-    let nextSheet = { ...sheetData, spellcasting: result.state };
+    // Each Concentration casting gets an id, so spells it put on others end with it.
+    const state = result.events.includes('concentrating')
+      ? { ...result.state, concentration: { ...result.state.concentration, castId: crypto.randomUUID() } }
+      : result.state;
+    let nextSheet = { ...sheetData, spellcasting: state };
     if (result.slotChange) {
       const { context, vitals } = vitalsFor(spellChar);
       const outcome = rules.applyVitalsAction(vitals, 'spendSlot', { level: result.slotChange.level }, context);
@@ -107,9 +123,18 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
       const outcome = rules.applyVitalsAction(rules.normalizeVitals(nextSheet, context.hpMax), 'useResource', result.resourceCost, context);
       nextSheet = { ...nextSheet, ...outcome.vitals };
     }
+    let buffedTargets = [];
+    if (rules.isBuff(result.spell.name)) {
+      const slotLevel = result.slotChange && result.slotChange.level === 'pact'
+        ? (rules.getSpellSlots(spellChar.classes).pact || {}).slotLevel || result.spell.level
+        : result.slotChange ? result.slotChange.level : result.spell.level;
+      const applied = applyBuff({ caster: character, casterSheet: nextSheet, spell: result.spell, slotLevel, targetIds: (request || {}).targets });
+      nextSheet = applied.casterSheet;
+      buffedTargets = applied.targets;
+    }
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return {
-      spell: result.spell.name, events: result.events, slotChange: result.slotChange,
+      spell: result.spell.name, events: result.events, slotChange: result.slotChange, targets: buffedTargets,
       // E.g. a Death Point's extra effect, to show with the cast.
       note: (result.resourceCost && result.resourceCost.note) || null,
       spells: buildView(character, nextSheet)
@@ -143,6 +168,18 @@ function endCharacterConcentration({ id, player_id, is_admin }) {
     const nextSheet = { ...sheetData, spellcasting: { ...rules.readSpellcasting(sheetData), concentration: null } };
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return { spells: buildView(character, nextSheet) };
+  })();
+}
+
+// A Concentration save rolled at the table: passed keeps it, failed ends it.
+function resolveCharacterConcentration({ id, player_id, is_admin, passed }) {
+  return db.transaction(() => {
+    const character = loadCharacter(id, player_id, is_admin);
+    const sheetData = readSheet(character.sheet_data);
+    const resolved = rules.resolveConcentrationCheck(rules.readSpellcasting(sheetData), Boolean(passed));
+    const nextSheet = { ...sheetData, spellcasting: resolved.state };
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
+    return { kept: resolved.kept, spell: resolved.spell, dc: resolved.dc, spells: buildView(character, nextSheet) };
   })();
 }
 
@@ -225,6 +262,7 @@ function changeMagicInitiateList({ id, is_admin, from, spellList, spellAbility }
 module.exports = {
   changeMagicInitiateList,
   getCharacterSpells,
+  resolveCharacterConcentration,
   chooseCharacterSpells,
   castCharacterSpell,
   endCharacterConcentration,

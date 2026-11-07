@@ -11,6 +11,7 @@ const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
 const { buildCharacterCombat } = require('./combat');
 const { activeWildShape, starryFormState } = require('./wildShape');
+const { withActiveSpellEffects } = require('./spellEffects');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const MODES = ['normal', 'advantage', 'disadvantage'];
@@ -55,7 +56,11 @@ function parseDamage(text) {
 // Circle of the Stars: "starry:archer:hit", "starry:archer:damage",
 // "starry:chalice:heal" in Starry Form, and "omen:d6" (Cosmic Omen).
 function rollOptions(character) {
-  const sheetData = readSheet(character.sheet_data);
+  const sheetData = withActiveSpellEffects(readSheet(character.sheet_data));
+  // Bless, Warding Bond: on attack rolls and saving throws.
+  const buffs = rules.buffTotals(sheetData);
+  const attackDice = rules.buffDiceText(buffs.attackDice);
+  const saveExtra = rules.buffDiceText(buffs.saveDice);
   const classes = classesOf(character);
   const level = classes.reduce((sum, row) => sum + row.level, 0) || character.level || 1;
   const pb = rules.proficiencyBonus(Math.max(1, level));
@@ -80,7 +85,7 @@ function rollOptions(character) {
     const check = fromItems({ type: 'check', ability });
     const save = fromItems({ type: 'save', ability });
     add(`check:${ability}`, `${name} check`, d20(mod(ability) + items.checks + (featureBonus.checks[ability] || 0) + check.value), 'check', check);
-    add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves + save.value), 'save', save);
+    add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves + save.value + buffs.saves) + saveExtra, 'save', save);
   }
   for (const [skill, ability] of Object.entries(rules.SKILLS)) {
     const proficient = skills.includes(skill);
@@ -90,16 +95,33 @@ function rollOptions(character) {
     add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus + item.value), 'check', item);
   }
   add('initiative', 'Initiative', d20(rules.initiativeOf({ classes, sheetData }).total), 'initiative', fromItems({ type: 'initiative' }));
+  // Concentration save: the Constitution save, against the oldest waiting DC.
+  // War Caster and Eldritch Mind give Advantage.
+  const concentrating = rules.readSpellcasting(sheetData).concentration;
+  if (concentrating) {
+    const waiting = concentrating.checks || [];
+    const con = options.get('save:con');
+    const advantage = [
+      ...(con.advantage || []),
+      rules.collectCharacterFeats(sheetData).some(feat => rules.featName(feat) === 'War Caster') ? 'War Caster' : null,
+      Array.isArray(sheetData.invocations) && sheetData.invocations.some(entry => entry && entry.name === 'Eldritch Mind') ? 'Eldritch Mind' : null
+    ].filter(Boolean);
+    add('concentration', `Concentration save (${concentrating.spell}${waiting.length ? `, DC ${waiting[0]}` : ''})`, con.formula, 'save',
+      { ...(advantage.length ? { advantage } : {}), ...(con.disadvantage ? { disadvantage: con.disadvantage } : {}) });
+  }
 
   const combat = buildCharacterCombat(character, sheetData);
   combat.attacks.forEach((attack, index) => {
     if (attack.needsType) return;
-    add(`attack:${index}:hit`, `${attack.name} attack`, d20(Number(attack.attackBonus)), 'attack');
+    add(`attack:${index}:hit`, `${attack.name} attack`, d20(Number(attack.attackBonus)) + (attack.hitDice || ''), 'attack');
     const damage = parseDamage(attack.damage);
     if (damage) {
       add(`attack:${index}:damage`, `${attack.name} damage (${damage.type})`, damage.formula, 'damage');
       if (damage.twoHanded) add(`attack:${index}:damage2`, `${attack.name} damage, two-handed (${damage.type})`, damage.twoHanded, 'damage');
       // The extra Light attack (no ability modifier unless negative / Two-Weapon Fighting).
+      // Sneak Attack: the weapon's damage plus the Sneak Attack dice, one roll.
+      const sneak = attack.sneakAttack && parseDamage(attack.sneakAttack.damage);
+      if (sneak) add(`attack:${index}:sneak`, `${attack.name} damage + Sneak Attack (${sneak.type})`, sneak.formula, 'damage');
       const offHand = attack.offHand && parseDamage(attack.offHand.damage);
       if (offHand) add(`attack:${index}:offhand`, `${attack.name} damage, off-hand (${offHand.type})`, offHand.formula, 'damage');
     }
@@ -109,7 +131,7 @@ function rollOptions(character) {
   if (form && !form.missing) {
     for (const ability of ['str', 'dex', 'con']) {
       add(`check:${ability}`, `${ABILITY_NAMES[ability]} check (${form.name})`, d20(form.mods[ability]), 'check');
-      add(`save:${ability}`, `${ABILITY_NAMES[ability]} save (${form.name})`, d20(form.saves[ability]), 'save');
+      add(`save:${ability}`, `${ABILITY_NAMES[ability]} save (${form.name})`, d20(form.saves[ability] + buffs.saves) + saveExtra, 'save');
     }
     for (const [skill, ability] of Object.entries(rules.SKILLS)) {
       const current = Number(options.get(`skill:${skill}`).formula.replace('1d20', '')) || 0;
@@ -118,7 +140,7 @@ function rollOptions(character) {
     }
     add('initiative', `Initiative (${form.name})`, d20(form.initiative), 'initiative');
     form.attacks.forEach((attack, index) => {
-      add(`beast:${index}:hit`, `${form.name}: ${attack.name} attack`, d20(attack.attackBonus), 'attack');
+      add(`beast:${index}:hit`, `${form.name}: ${attack.name} attack`, d20(attack.attackBonus) + attackDice, 'attack');
       add(`beast:${index}:damage`, `${form.name}: ${attack.name} damage (${attack.damage.type})`, attack.damage.formula, 'damage');
       attack.damage.others.forEach((other, otherIndex) => {
         add(`beast:${index}:other:${otherIndex}`, `${form.name}: ${attack.name} ${other.kind === 'or' ? 'other' : 'extra'} damage (${other.type})`, other.formula, 'damage');
@@ -146,7 +168,7 @@ function rollOptions(character) {
   }
   const sources = rules.getSpellSources({ classes, species: character.race, sheetData });
   for (const source of sources) {
-    if (!options.has(`spell:${source.key}`)) add(`spell:${source.key}`, `${source.label} spell attack`, d20(source.attackBonus), 'attack');
+    if (!options.has(`spell:${source.key}`)) add(`spell:${source.key}`, `${source.label} spell attack`, d20(source.attackBonus) + attackDice, 'attack');
   }
   return options;
 }
@@ -233,13 +255,27 @@ function rollForCharacter({ characterId, user, request = {} }) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(character.id, Number(user.id) > 0 ? Number(user.id) : null, label, result.formula,
     option.kind === 'damage' ? 'normal' : mode, result.total, JSON.stringify(detail), request.private ? 1 : 0).lastInsertRowid);
+  // A Concentration save settles the oldest waiting check: below the DC ends it.
+  let concentration = null;
+  if (option.id === 'concentration') {
+    const sheetData = readSheet(loadCharacter(character.id).sheet_data);
+    const state = rules.readSpellcasting(sheetData);
+    if (state.concentration && (state.concentration.checks || []).length) {
+      const resolved = rules.resolveConcentrationCheck(state, result.total >= state.concentration.checks[0]);
+      db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify({ ...sheetData, spellcasting: resolved.state }), character.id);
+      // Spells it held on others end with it.
+      if (!resolved.kept) require('./spellEffects').pruneSpellEffects();
+      concentration = { spell: resolved.spell, dc: resolved.dc, kept: resolved.kept };
+    }
+  }
   // Initiative during a running encounter: the fight's turn order gets it.
   if (option.kind === 'initiative') {
     require('./encounters').recordInitiativeRoll(character.id, result.total);
     // A running skill challenge's turn order too.
     require('./skillChallenges').recordChallengeInitiative(character.id, result.total);
   }
-  return rollView(db.prepare(`${ROLL_QUERY} WHERE r.id = ?`).get(id));
+  const view = rollView(db.prepare(`${ROLL_QUERY} WHERE r.id = ?`).get(id));
+  return concentration ? { ...view, concentration } : view;
 }
 
 // The latest rolls of these characters. Private rolls only for those who may

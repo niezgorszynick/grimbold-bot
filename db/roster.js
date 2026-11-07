@@ -108,6 +108,8 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     exhaustion: vitals ? vitals.view.exhaustion : 0,
     heroicInspiration: vitals ? vitals.view.heroicInspiration : false,
     concentration: concentration ? concentration.spell : null,
+    // The DC of the oldest Concentration save waiting after damage.
+    concentrationSave: concentration && Array.isArray(concentration.checks) && concentration.checks.length ? concentration.checks[0] : null,
     // index: the attack's place in the character's roll list (db/dice.js).
     attacks: combat ? combat.attacks.map((attack, index) => ({ index, name: attack.name, attackBonus: attack.attackBonus, damage: attack.damage, needsType: attack.needsType }))
       .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => ({ ...attack, roll: `attack:${attack.index}` })) : [],

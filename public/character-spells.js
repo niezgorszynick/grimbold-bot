@@ -55,6 +55,8 @@
   let message = '';
   let isError = false;
   let editing = null; // source key being edited
+  // A buff spell waiting for its targets: { key, source, spell, how, chosen: Set }.
+  let picking = null;
   // Unsaved ability changes on the sheet, as modifier changes: { wis: 1 }.
   let abilityDeltas = {};
   const shift = source => abilityDeltas[source.ability] || 0;
@@ -146,10 +148,58 @@
     return options;
   }
 
+  // Bless, Haste, ...: choose who gets it first (yourself and/or party members).
+  function startCast(source, spell, how) {
+    const buff = view.buffs && view.buffs[spell.name];
+    if (!buff || buff.selfOnly) return cast(source, spell, how);
+    const self = (view.buffTargets || []).find(target => target.self);
+    picking = { key: source.key + '|' + spell.name, source, spell, how, chosen: new Set(self ? [self.id] : []) };
+    render();
+  }
+
+  function slotLevelOf(spell, how) {
+    if (how.slotLevel) return how.slotLevel;
+    if (how.pact && view.pact) return view.pact.slotLevel;
+    return spell.level;
+  }
+
+  function targetPicker() {
+    const { source, spell, how, chosen } = picking;
+    const buff = view.buffs[spell.name];
+    const max = buff.maxBySlot[slotLevelOf(spell, how)] || 1;
+    const boxes = (view.buffTargets || []).map(target => {
+      const box = el('input', { type: 'checkbox' });
+      box.checked = chosen.has(target.id);
+      box.disabled = !box.checked && chosen.size >= max;
+      box.addEventListener('change', () => {
+        if (box.checked) chosen.add(target.id); else chosen.delete(target.id);
+        render();
+      });
+      return el('label', { className: 'spell-target' }, [box, ' ' + target.name + (target.self ? ' (you)' : '')]);
+    });
+    return el('div', { className: 'spell-targets' }, [
+      el('p', { className: 'small' }, [
+        el('strong', { text: 'Who gets ' + spell.name + '? ' }),
+        el('span', { className: 'muted', text: (max >= 99 ? 'Any number' : 'Up to ' + max) + '. ' + buff.text })
+      ]),
+      (view.buffTargets || []).length > 1 ? null : el('p', { className: 'muted small', text: 'Party members appear here while you are in a running adventure together.' }),
+      el('div', { className: 'spell-target-list' }, boxes),
+      el('p', {}, [
+        button('Cast on ' + chosen.size, () => {
+          const targets = [...chosen];
+          picking = null;
+          cast(source, spell, Object.assign({}, how, { targets }));
+        }),
+        ' ',
+        button('Cancel', () => { picking = null; render(); }, 'btn btn-small btn-secondary')
+      ])
+    ]);
+  }
+
   function cast(source, spell, how) {
     act(Object.assign({ action: 'cast', source: source.key, spell: spell.name }, how), result => {
       const via = how.pact ? ' with a Pact slot' : how.slotLevel ? ' with a level ' + how.slotLevel + ' slot' : '';
-      const parts = ['Cast ' + spell.name + via + '.'];
+      const parts = ['Cast ' + spell.name + via + (result.targets && result.targets.length ? ' on ' + result.targets.join(', ') : '') + '.'];
       result.events.forEach(event => { if (EVENT_TEXT[event]) parts.push(EVENT_TEXT[event]); });
       if (result.events.includes('concentrating')) parts.push('Concentrating on ' + spell.name + '.');
       // E.g. a Death Point's extra effect.
@@ -172,13 +222,13 @@
     const controls = el('span', { className: 'spell-cast' });
     if (canCast) {
       if (spell.level === 0) {
-        controls.append(button('Cast', () => cast(source, spell, {})));
+        controls.append(button('Cast', () => startCast(source, spell, {})));
       } else {
         const options = castOptions(source, spell);
         if (options.length) {
           const select = el('select', { 'aria-label': 'How to cast ' + spell.name });
           options.forEach((option, index) => select.add(new Option(option.label, String(index))));
-          controls.append(select, button('Cast', () => cast(source, spell, options[Number(select.value)].value)));
+          controls.append(select, button('Cast', () => startCast(source, spell, options[Number(select.value)].value)));
         } else {
           controls.append(el('span', { className: 'muted small', text: source.slotless ? 'Used — returns after a Long Rest' : 'No slots left' }));
         }
@@ -201,6 +251,7 @@
         el('span', { className: 'muted small', text: tags.join(' · ') }),
         controls
       ]),
+      picking && picking.key === key ? targetPicker() : null,
       details
     ]);
   }
@@ -618,6 +669,25 @@
     ]);
   }
 
+  // Damage taken while concentrating: a Constitution save per hit, oldest first.
+  // Roll it here (public/dice.js), or record a roll made with real dice.
+  function concentrationSaves(concentration) {
+    const checks = concentration.checks || [];
+    if (!checks.length) return null;
+    const record = passed => act({ action: 'concentrationSave', passed }, result =>
+      result.kept ? 'Concentration on ' + result.spell + ' kept (DC ' + result.dc + ').' : 'Concentration on ' + result.spell + ' lost (DC ' + result.dc + ').');
+    return el('div', { className: 'spell-concentration-save' }, [
+      el('strong', { text: '⚠ Concentration save: DC ' + checks[0] }),
+      checks.length > 1 ? el('span', { className: 'muted small', text: ' (then ' + checks.slice(1).map(dc => 'DC ' + dc).join(', ') + ')' }) : null,
+      ' ',
+      el('button', { type: 'button', className: 'btn btn-small', 'data-roll': 'concentration', title: 'Constitution saving throw (Shift: Advantage)', text: '🎲 Roll' }),
+      ' ',
+      button('Passed', () => record(true), 'btn btn-small btn-secondary'),
+      ' ',
+      button('Failed', () => record(false), 'btn btn-small btn-secondary')
+    ]);
+  }
+
   function render() {
     if (!view) return;
     root.hidden = view.sources.length === 0 && !view.invocations;
@@ -629,7 +699,8 @@
       view.concentration
         ? el('div', { className: 'spell-concentration' }, [
           el('span', {}, ['Concentrating on ', el('strong', { text: view.concentration.spell })]),
-          button('End concentration', () => act({ action: 'endConcentration' }, () => 'Concentration ended.'))
+          button('End concentration', () => act({ action: 'endConcentration' }, () => 'Concentration ended.')),
+          concentrationSaves(view.concentration)
         ])
         : null,
       ...classSources.map(renderSource),

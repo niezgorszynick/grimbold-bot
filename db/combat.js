@@ -6,6 +6,7 @@
 const { db } = require('./connection');
 const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
+const { withActiveSpellEffects } = require('./spellEffects');
 
 function readSheet(raw) {
   try {
@@ -53,7 +54,8 @@ function previewCustomWeapon({ id, player_id, is_admin, name, weapon }) {
 }
 
 function buildCombat(character, sheetData) {
-  const combat = rules.calculateCombat(combatCharacter(character, sheetData));
+  // Buff spells count only while they are on (db/spellEffects.js).
+  const combat = rules.calculateCombat(combatCharacter(character, withActiveSpellEffects(sheetData)));
   const wearsArmor = Boolean(combat.armorClass.armor || combat.armorClass.shield);
   const manual = !isRulesManaged(sheetData) && !wearsArmor;
   const blade = Array.isArray(sheetData.invocations) && sheetData.invocations.some(entry => entry && entry.name === 'Pact of the Blade');

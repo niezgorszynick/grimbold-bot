@@ -145,6 +145,11 @@
       if (data.challenge) {
         result.append(el('div', { className: 'small', text: '🎯 ' + data.challenge.name + (data.challenge.success === true ? ': a success.' : data.challenge.success === false ? ': a failure.' : ': counted.') }));
       }
+      if (data.concentration) {
+        result.append(el('div', { className: 'small', text: '🧠 Concentration on ' + data.concentration.spell +
+          (data.concentration.kept ? ' kept' : ' lost') + ' (DC ' + data.concentration.dc + ').' }));
+        if (window.reloadCharacterSpells) window.reloadCharacterSpells();
+      }
       if (critical && /damage/i.test(data.label)) { critical = false; sync(); }
       document.dispatchEvent(new CustomEvent('grimbold-roll', { detail: data }));
     } catch (error) {
