@@ -3,6 +3,8 @@
 // this site inside Owlbear), and a BroadcastChannel to tell the popover.
 
 export const CHANNEL = 'grimbold.dice/roll';
+// The separate skill challenge window (an Owlbear popover).
+export const CHALLENGE_POPOVER = 'grimbold.dice/challenge';
 const PREFIX = 'grimbold-dice.';
 const LOG_SIZE = 60;
 const bus = typeof BroadcastChannel === 'function' ? new BroadcastChannel('grimbold-dice') : null;
@@ -35,6 +37,7 @@ export const store = {
     write('after', null); // learn the latest roll again, don't replay old ones
     write('afterReveal', null);
     write('status', null);
+    write('challenges', null); // the new key's player sees their own
   },
   after: () => read('after', null),
   setAfter: id => write('after', id),
@@ -51,8 +54,34 @@ export const store = {
     const log = [roll, ...store.log().filter(entry => entry.id !== roll.id)].slice(0, LOG_SIZE);
     write('log', log);
   },
-  clearLog: () => write('log', [])
+  clearLog: () => write('log', []),
+  // The running skill challenges this key's player is in or DMs (the background page keeps it fresh).
+  challenges: () => read('challenges', []),
+  setChallenges(list) {
+    const next = Array.isArray(list) ? list : [];
+    if (JSON.stringify(next) !== JSON.stringify(store.challenges())) write('challenges', next);
+  },
+  // Challenge ids whose window already opened by itself (closing it keeps it closed).
+  challengesShown: () => read('challengesShown', []),
+  setChallengesShown: ids => write('challengesShown', ids.slice(-50))
 };
+
+// Opens the skill challenge window near the top right of the room.
+export async function openChallengeWindow(OBR) {
+  const base = { id: CHALLENGE_POPOVER, url: '/vtt/challenge.html', width: 380, height: 560, disableClickAway: true };
+  try {
+    const width = await OBR.viewport.getWidth();
+    await OBR.popover.open({
+      ...base,
+      anchorReference: 'POSITION',
+      anchorPosition: { left: Math.max(400, width - 70), top: 70 },
+      anchorOrigin: { horizontal: 'RIGHT', vertical: 'TOP' },
+      transformOrigin: { horizontal: 'RIGHT', vertical: 'TOP' }
+    });
+  } catch {
+    await OBR.popover.open(base);
+  }
+}
 
 export function onStoreChange(callback) {
   if (bus) bus.addEventListener('message', event => callback(event.data && event.data.changed));

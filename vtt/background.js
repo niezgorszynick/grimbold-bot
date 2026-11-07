@@ -3,11 +3,14 @@
 // in the room, and shows the rolls others send (private ones to the GM only).
 // The GM's copy also puts initiative rolls into Owlbear's Initiative Tracker,
 // on the token named like the character ("Thorin Ironfist" or "Thorin").
+// It also watches for skill challenges in this player's adventures: a new
+// one opens the challenge window, and it closes when none is running.
 
 import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
-import { CHANNEL, store, describe, matchTokens, putInTracker } from './shared.js';
+import { CHANNEL, CHALLENGE_POPOVER, store, describe, matchTokens, putInTracker, openChallengeWindow } from './shared.js';
 
 const POLL_MS = 2000;
+const CHALLENGE_POLL_MS = 4000;
 
 OBR.onReady(async () => {
   const myConnection = await OBR.player.getConnectionId();
@@ -87,4 +90,31 @@ OBR.onReady(async () => {
   }
   setInterval(poll, POLL_MS);
   poll();
+
+  let wasRunning = false;
+  async function watchChallenges() {
+    const key = store.key();
+    if (!key) return;
+    try {
+      const url = new URL('/vtt/challenges', window.location.origin);
+      url.searchParams.set('key', key);
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return;
+      const challenges = (await response.json()).challenges || [];
+      store.setChallenges(challenges);
+      const shown = store.challengesShown();
+      const fresh = challenges.filter(challenge => !shown.includes(challenge.id));
+      if (fresh.length) {
+        store.setChallengesShown([...shown, ...fresh.map(challenge => challenge.id)]);
+        await openChallengeWindow(OBR);
+      } else if (!challenges.length && wasRunning) {
+        await OBR.popover.close(CHALLENGE_POPOVER);
+      }
+      wasRunning = challenges.length > 0;
+    } catch (error) {
+      console.warn("Grimbold's Dice: could not check skill challenges", error);
+    }
+  }
+  setInterval(watchChallenges, CHALLENGE_POLL_MS);
+  watchChallenges();
 });
