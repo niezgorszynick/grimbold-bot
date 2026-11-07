@@ -1,12 +1,12 @@
 // vtt/rolls.js — The popped-out rolls window of Grimbold's Dice: the same
 // roll log as the Dice window, in a window you can move, resize and shrink.
 
-import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
+import OBR, { buildShape } from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
 import { store, onStoreChange } from './shared.js';
 import { el, rollList } from './ui.js';
 import { createFrame } from './frame.js';
 
-const frame = createFrame({ OBR, name: 'rolls', title: '🎲 Rolls', onClose: () => store.setRollsOut(false) });
+const frame = createFrame({ OBR, buildShape, name: 'rolls', title: '🎲 Rolls', onClose: () => store.setRollsOut(false) });
 
 function render() {
   const log = store.log();

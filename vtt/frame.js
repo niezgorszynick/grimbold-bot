@@ -24,7 +24,47 @@ async function openGhost(OBR) {
 }
 const closeGhost = OBR => OBR.popover.close(GHOST_POPOVER).catch(() => {});
 
-export function createFrame({ OBR, name, title, onClose }) {
+// With a scene open, the outline is drawn on the map itself (a local shape
+// only this player sees): no window to load, no open animation. The overlay
+// above is the fallback when no scene is open.
+const OUTLINE_ID = 'grimbold.dice/window-outline';
+async function sceneOutliner(OBR, buildShape) {
+  try {
+    if (!(await OBR.scene.isReady())) return null;
+    const [scale, origin] = await Promise.all([OBR.viewport.getScale(), OBR.viewport.inverseTransformPoint({ x: 0, y: 0 })]);
+    const toScene = point => ({ x: origin.x + point.x / scale, y: origin.y + point.y / scale });
+    let added = null;
+    let pending = null;
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const rect = pending;
+      if (!rect || !added) return;
+      OBR.scene.local.updateItems([OUTLINE_ID], drafts => { drafts.forEach(draft => { draft.position = toScene(rect); }); }, true).catch(() => {});
+    };
+    return {
+      async show(rect) {
+        pending = rect;
+        if (!added) {
+          added = OBR.scene.local.addItems([buildShape()
+            .id(OUTLINE_ID).shapeType('RECTANGLE').width(rect.width / scale).height(rect.height / scale)
+            .position(toScene(rect)).strokeColor('#8ea1ff').strokeWidth(2 / scale).strokeDash([8 / scale, 6 / scale])
+            .fillColor('#5865f2').fillOpacity(0.18).layer('POPOVER').locked(true).disableHit(true).build()]).catch(() => {});
+          return;
+        }
+        if (!frame) frame = requestAnimationFrame(flush);
+      },
+      remove() {
+        pending = null;
+        if (added) added.then(() => OBR.scene.local.deleteItems([OUTLINE_ID])).catch(() => {});
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function createFrame({ OBR, buildShape, name, title, onClose }) {
   const spec = WINDOWS[name];
   const place = () => windowPlace(name) || {};
   const make = (tag, className, text) => {
@@ -88,6 +128,9 @@ export function createFrame({ OBR, name, title, onClose }) {
     const grab = { x: Math.round(event.clientX), y: Math.round(event.clientY) };
     let ghostOpen = false;
     let landing = null;
+    // Ready by the time the mouse has moved a little.
+    const outliner = buildShape ? sceneOutliner(OBR, buildShape) : Promise.resolve(null);
+    let outline = null;
     bar.setPointerCapture(event.pointerId);
     document.body.classList.add('is-moving');
     const finish = rect => {
@@ -100,6 +143,7 @@ export function createFrame({ OBR, name, title, onClose }) {
       hint.textContent = '';
       ghostRect = null;
       if (ghostOpen) closeGhost(OBR);
+      outliner.then(drawn => drawn && drawn.remove());
       if (!rect) return;
       setWindowPlace(name, { left: Math.max(0, Math.round(rect.left)), top: Math.max(0, Math.round(rect.top)) });
       requestReopen(name);
@@ -112,8 +156,21 @@ export function createFrame({ OBR, name, title, onClose }) {
       hint.textContent = 'Let go to move it ' + arrows(dx, dy);
       landing = { left: Math.max(0, (from.left || 0) + dx), top: Math.max(0, (from.top || 0) + dy) };
       ghostRect = { ...landing, ...size, grab, title: heading.textContent };
-      if (ghostChannel) ghostChannel.postMessage(ghostRect);
-      if (!ghostOpen) { ghostOpen = true; openGhost(OBR); }
+      if (outline) { outline.show(ghostRect); return; }
+      if (outline === false || ghostOpen) {
+        if (ghostChannel) ghostChannel.postMessage(ghostRect);
+        return;
+      }
+      if (outline === undefined) return; // still finding out
+      outline = undefined;
+      outliner.then(drawn => {
+        if (!finishMove) return;
+        if (drawn) { outline = drawn; drawn.show(ghostRect || { ...landing, ...size }); return; }
+        // No scene open: the overlay window instead.
+        outline = false;
+        ghostOpen = true;
+        openGhost(OBR);
+      });
     };
     const onUp = () => finish(landing);
     // Lost the mouse: if the overlay is up it carries on and reports the release.

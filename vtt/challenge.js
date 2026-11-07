@@ -4,12 +4,12 @@
 // sees the tally (if the DM shows it), the order and the turns; players roll
 // or help on their character's turn; the DM acts for anyone and rules on turns.
 
-import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
+import OBR, { buildShape } from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
 import { store, onStoreChange } from './shared.js';
 import { createFrame } from './frame.js';
 
 // Moved, resized or shrunk to its title bar by the player (vtt/frame.js).
-const frame = createFrame({ OBR, name: 'challenge', title: '🎯 Skill challenge' });
+const frame = createFrame({ OBR, buildShape, name: 'challenge', title: '🎯 Skill challenge' });
 const CHALLENGE_SKILLS = ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation',
   'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'];
 let note = '';

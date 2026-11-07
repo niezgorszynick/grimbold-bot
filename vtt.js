@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.5.1';
+const VERSION = '1.5.2';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
