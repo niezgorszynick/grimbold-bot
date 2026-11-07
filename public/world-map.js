@@ -694,6 +694,7 @@
       button('+', () => zoom(1 / 1.4), 'btn btn-small btn-secondary', { 'aria-label': 'Zoom in' }),
       button('−', () => zoom(1.4), 'btn btn-small btn-secondary', { 'aria-label': 'Zoom out' }),
       button('Fit', () => { fit(); applyView(); }, 'btn btn-small btn-secondary'),
+      button(fullScreen ? '✕ Exit full screen' : '⛶ Full screen', toggleFullScreen, 'btn btn-small btn-secondary', { title: fullScreen ? 'Back to the page (Esc)' : 'The map and its panel fill the screen' }),
       el('label', { className: 'small' }, [el('input', { type: 'checkbox', checked: showGrid, onchange: event => { showGrid = event.target.checked; remember('grimbold-map-grid', showGrid ? 'on' : 'off'); redrawMap(); } }), ' Grid'])
     ]);
     root.replaceChildren(...[
@@ -712,6 +713,30 @@
       ])
     ].filter(Boolean));
   }
+
+  // Full screen: the map card (map and side panel) fills the screen. The
+  // browser's own full screen where it has one (Esc leaves it); otherwise the
+  // card covers the page.
+  let fullScreen = false;
+  const card = root.closest('.world-map-card') || root;
+  function setFullScreen(on) {
+    fullScreen = on;
+    card.classList.toggle('wm-fullscreen', on);
+    document.body.classList.toggle('wm-no-scroll', on);
+    render();
+  }
+  function toggleFullScreen() {
+    if (!fullScreen) {
+      if (card.requestFullscreen) card.requestFullscreen().catch(() => setFullScreen(true));
+      else setFullScreen(true);
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      setFullScreen(false);
+    }
+  }
+  document.addEventListener('fullscreenchange', () => setFullScreen(document.fullscreenElement === card));
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && fullScreen && !document.fullscreenElement) setFullScreen(false); });
 
   load();
 })();
