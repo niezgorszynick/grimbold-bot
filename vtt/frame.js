@@ -31,8 +31,20 @@ const OUTLINE_ID = 'grimbold.dice/window-outline';
 async function sceneOutliner(OBR, buildShape) {
   try {
     if (!(await OBR.scene.isReady())) return null;
-    const [scale, origin] = await Promise.all([OBR.viewport.getScale(), OBR.viewport.inverseTransformPoint({ x: 0, y: 0 })]);
-    const toScene = point => ({ x: origin.x + point.x / scale, y: origin.y + point.y / scale });
+    // Screen → map: (screen - viewport position) / zoom. Checked against
+    // Owlbear's own conversion at two points; if they disagree, no map outline
+    // (the overlay is used instead) rather than one in the wrong place.
+    const [scale, position, a, b] = await Promise.all([
+      OBR.viewport.getScale(), OBR.viewport.getPosition(),
+      OBR.viewport.inverseTransformPoint({ x: 0, y: 0 }), OBR.viewport.inverseTransformPoint({ x: 800, y: 600 })
+    ]);
+    if (!(scale > 0)) return null;
+    const toScene = point => ({ x: (point.x - position.x) / scale, y: (point.y - position.y) / scale });
+    const close = (p, q) => Math.abs(p.x - q.x) * scale < 3 && Math.abs(p.y - q.y) * scale < 3;
+    if (!close(toScene({ x: 0, y: 0 }), a) || !close(toScene({ x: 800, y: 600 }), b)) {
+      console.warn("Grimbold's Dice: map coordinates don't line up; using the overlay for the outline", { scale, position, a, b });
+      return null;
+    }
     let added = null;
     let pending = null;
     let frame = 0;
@@ -49,7 +61,7 @@ async function sceneOutliner(OBR, buildShape) {
           added = OBR.scene.local.addItems([buildShape()
             .id(OUTLINE_ID).shapeType('RECTANGLE').width(rect.width / scale).height(rect.height / scale)
             .position(toScene(rect)).strokeColor('#8ea1ff').strokeWidth(2 / scale).strokeDash([8 / scale, 6 / scale])
-            .fillColor('#5865f2').fillOpacity(0.18).layer('POPOVER').locked(true).disableHit(true).build()]).catch(() => {});
+            .fillColor('#5865f2').fillOpacity(0.18).layer('POINTER').locked(true).disableHit(true).build()]).catch(() => {});
           return;
         }
         if (!frame) frame = requestAnimationFrame(flush);
