@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-07">
+<title>The Map, Villains &amp; a Sharper Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 7 November 2026</span>
+    <h1>The Map, Villains &amp; a Sharper Sheet</h1>
+    <p class="lede">The world has a map now, and it only shows you where your characters have been. Four darker subclasses and two Paths of Villainy are open for playtesting. Your sheet rolls more for you, lists your defenses, and has room for what your character looks like.</p>
+  </header>
+
+  <section>
+    <h2>For everyone</h2>
+
+    <h3>🗺 The Map</h3>
+    <p>A new <strong>Map</strong> tab shows the world on a hex grid.</p>
+    <ul>
+      <li>Hexes your characters have visited are clear; the rest stays in fog. You learn a hex by going there on an adventure (its route counts for everyone in the party), or when a DM reveals it to you.</li>
+      <li>Some places everyone knows, such as the sea and the main hub, are clear for all.</li>
+      <li>Markers the DMs have shown appear in hexes you know. Click a hex to see its markers and which of your characters went there.</li>
+      <li>Drag to move, scroll or pinch to zoom. <strong>⛶ Full screen</strong> fills the screen with the map; Esc brings you back.</li>
+    </ul>
+
+    <h3>📜 Your character sheet</h3>
+    <ul>
+      <li><strong>Appearance:</strong> height, eye colour, hair colour, hairstyle and other features, under your level line.</li>
+      <li><strong>Defenses:</strong> resistances, immunities, senses and creature type in one place, under your hit points. Conditional ones say when they apply.</li>
+      <li><strong>Feature dice:</strong> features that roll damage have their dice right on them in Class Features, e.g. the Infernal Wound die, Virulent Burst, or Soul Siphon.</li>
+      <li><strong>Lucky</strong> now tracks its Luck Points.</li>
+      <li><strong>Subclass features</strong> come with their full text under Class Features, starting with the new playtest subclasses.</li>
+    </ul>
+
+    <h3>🗡 Warlocks</h3>
+    <ul>
+      <li><strong>Eldritch Blast</strong> is in your attacks, with Agonizing Blast's Charisma on the damage and the beam count for your level.</li>
+      <li><strong>Pact of the Blade:</strong> pick your pact weapon in Weapons &amp; Attacks (any Simple or Martial melee weapon, its name, and Necrotic, Psychic or Radiant damage if you like). It attacks with Charisma and you're always proficient.</li>
+    </ul>
+
+    <h3>🧪 Playtest: Villainous Options</h3>
+    <p>From the Unearthed Arcana 2026 playtest. Expect changes before they're official.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Option</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td>Pestilence Domain</td><td>Cleric. Plague and rot: Exhaustion-spreading Plague Blessing, Virulent Burst when enemies fall, and later a Vermin Form.</td></tr>
+          <tr><td>Circle of the Titan</td><td>Druid. Wild Shape into a Behemoth, Leviathan or Insectoid built from your own Wisdom, growing to Gargantuan.</td></tr>
+          <tr><td>Hell Knight</td><td>Fighter. A Hellfire Weapon, Infernal Wounds that keep burning, Devil's Sight and Infernal.</td></tr>
+          <tr><td>Demonic Sorcery</td><td>Sorcerer. Abyssal Rupture when you spend Sorcery Points, and a chaotic Abyssal Aura.</td></tr>
+          <tr><td>Path of the Death Knight</td><td>Feats from level 4 for characters with Weapon Mastery: Death Points that power Wrathful Smite, Command, Bane, Fear and Find Steed; at 12, Hellfire Orb and undeath.</td></tr>
+          <tr><td>Path of the Lich</td><td>Feats from level 4 for spellcasters: a spirit jar, Soul Siphon, Chill Touch that paralyzes; at 12, Frightening Gaze and rejuvenation.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The Path feats appear at your Ability Score Improvement levels, marked "playtest". Take the path's Initiate feat first; Ascension needs level 12 and two feats of the path.</p>
+
+    <h3>Adventures</h3>
+    <ul>
+      <li>An adventure can end with 0 XP, if the DM decides so. The stories still go in the book.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>Running the world</h2>
+
+      <h3>The Map</h3>
+      <ul>
+        <li><strong>Markers:</strong> click a hex, then <strong>+ Marker</strong>. Each has an icon, a note, any number of linked adventures, and a switch for whether players who've been there see it.</li>
+        <li><strong>Tools</strong> (the switch at the top of the side panel): <strong>🧭 Route</strong> marks an adventure's route (its party sees it, including anyone added later), <strong>👁 Character</strong> reveals hexes to one character, and <strong>🌍 Everyone</strong> reveals hexes to all.</li>
+        <li><strong>Click or drag</strong> across hexes to mark many; a drag starting on a marked hex takes them off. <strong>🌊 Fill</strong> marks every connected hex that looks like the one you click (a whole sea), then <strong>Apply</strong>.</li>
+        <li><strong>View as</strong> a player to check what they see. The map image and its grid are set under <strong>⚙ Map image and grid</strong>.</li>
+      </ul>
+
+      <h3>Adventures</h3>
+      <ul>
+        <li>A finished adventure is edited by the DM who ran it, or the Root DM.</li>
+        <li><strong>Deleting:</strong> finished adventures by the Root DM only (their XP and DM reward are taken back); cancelled ones by their DM too, from the new <strong>Cancelled Adventures</strong> list. Cancelled adventures no longer show on the map.</li>
+        <li>Finishing with <strong>0 XP</strong> asks you to confirm first.</li>
+        <li>The adventure table shows each character's <strong>defenses</strong> on their card.</li>
+      </ul>
+
+      <h3>Characters</h3>
+      <ul>
+        <li><strong>Magic Initiate:</strong> a DM can move the feat to another spell list (and ability) from the spells card, e.g. for a Sage who'd rather have Cleric spells. The old list's spells go; the player picks new ones.</li>
+        <li>The playtest subclasses and feats track their own uses (Virulent Burst, Infernal Wound, Abyssal Aura, Death Points, Essence Rejuvenation) and show a reminder after a Death Point cast.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>
