@@ -202,6 +202,13 @@
       const parts = ['Cast ' + spell.name + via + (result.targets && result.targets.length ? ' on ' + result.targets.join(', ') : '') + '.'];
       result.events.forEach(event => { if (EVENT_TEXT[event]) parts.push(EVENT_TEXT[event]); });
       if (result.events.includes('concentrating')) parts.push('Concentrating on ' + spell.name + '.');
+      // False Life, Armor of Agathys.
+      if (result.tempHp) {
+        parts.push(result.tempHp.hadMore
+          ? 'Rolled ' + result.tempHp.rolled + ' Temporary HP (' + result.tempHp.text + '), but you already have ' + result.tempHp.kept + ' (they do not stack).'
+          : 'You have ' + result.tempHp.kept + ' Temporary HP (' + result.tempHp.text + (result.tempHp.maximized ? ', the highest roll: Fiendish Vigor' : '') + ').');
+        if (window.refreshCharacterVitals) window.refreshCharacterVitals();
+      }
       // E.g. a Death Point's extra effect.
       if (result.note) parts.push(result.note);
       return parts.join(' ');

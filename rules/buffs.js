@@ -57,6 +57,18 @@ const BUFFS = {
 
 const isBuff = name => Object.hasOwn(BUFFS, name);
 
+// Spells that give the caster Temporary Hit Points when cast, by slot level.
+// (They don't stack: the higher number stays, rules/vitals.js setTempHp.)
+const TEMP_HP_SPELLS = {
+  'False Life': slot => `2d4+${4 + 5 * (Math.max(1, slot) - 1)}`,
+  'Armor of Agathys': slot => String(5 * Math.max(1, slot))
+};
+
+// { formula } for a spell that gives Temporary Hit Points, else null.
+function spellTempHp(name, slotLevel) {
+  return Object.hasOwn(TEMP_HP_SPELLS, name) ? { formula: TEMP_HP_SPELLS[name](Number(slotLevel) || 1) } : null;
+}
+
 // How many it can target with this slot, and whether only the caster.
 function buffTargeting(name, slotLevel) {
   const buff = BUFFS[name];
@@ -98,4 +110,4 @@ function buffTotals(sheetData) {
 // "+1d4+1d4" from a list of dice.
 const diceText = list => list.map(dice => '+' + dice).join('');
 
-module.exports = { BUFFS, isBuff, buffTargeting, readSpellEffects, buffTotals, buffDiceText: diceText };
+module.exports = { BUFFS, TEMP_HP_SPELLS, spellTempHp, isBuff, buffTargeting, readSpellEffects, buffTotals, buffDiceText: diceText };

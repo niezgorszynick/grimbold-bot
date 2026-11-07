@@ -62,3 +62,25 @@ test('Pact of the Blade: the conjured weapon attacks with Charisma, proficient, 
   assert.equal(db.getCharacterCombat(who).pactWeapon, null);
   assert.throws(() => db.setCharacterPactWeapon({ ...who, pactWeapon: { weapon: 'Rapier' } }), /Pact of the Blade/);
 });
+
+test('Temporary Hit Points from spells: Armor of Agathys, and False Life maximized by Fiendish Vigor', () => {
+  const player = createPlayer();
+  const id = db.insertStartingCharacter(player, buildEv());
+  const who = { id, player_id: player, is_admin: false };
+  const temp = () => JSON.parse(db.getCharacterById(id).sheet_data).hpTemp;
+
+  // A level 2 Pact slot at Warlock 3: 10 Temporary HP.
+  let cast = db.castCharacterSpell({ ...who, request: { source: 'Warlock', spell: 'Armor of Agathys', pact: true } });
+  assert.equal(cast.tempHp.rolled, 10);
+  assert.equal(temp(), 10);
+
+  // Fiendish Vigor: no slot, and the dice roll their highest (2d4+4 = 12).
+  cast = db.castCharacterSpell({ ...who, request: { source: 'Invocation Spells', spell: 'False Life', free: true } });
+  assert.deepEqual([cast.tempHp.rolled, cast.tempHp.maximized, cast.tempHp.kept], [12, true, 12]);
+  assert.equal(temp(), 12);
+
+  // They don't stack: a smaller amount leaves the higher one.
+  cast = db.castCharacterSpell({ ...who, request: { source: 'Warlock', spell: 'Armor of Agathys', pact: true } });
+  assert.deepEqual([cast.tempHp.rolled, cast.tempHp.hadMore, temp()], [10, true, 12]);
+  assert.equal(rules.spellTempHp('False Life', 3).formula, '2d4+14', '+5 per slot level above 1');
+});

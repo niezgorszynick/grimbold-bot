@@ -124,17 +124,31 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
       nextSheet = { ...nextSheet, ...outcome.vitals };
     }
     let buffedTargets = [];
+    const slotLevel = result.slotChange && result.slotChange.level === 'pact'
+      ? (rules.getSpellSlots(spellChar.classes).pact || {}).slotLevel || result.spell.level
+      : result.slotChange ? result.slotChange.level : result.spell.level;
+    // False Life, Armor of Agathys: Temporary Hit Points on casting. Cast with
+    // Fiendish Vigor (an invocation, no slot), False Life's dice roll their highest.
+    let tempHp = null;
+    const gives = rules.spellTempHp(result.spell.name, slotLevel);
+    if (gives) {
+      const source = rules.getSpellSources(spellChar).find(entry => entry.key === (request || {}).source);
+      const maximized = result.spell.name === 'False Life' && source && source.kind === 'invocation';
+      const roll = rules.rollFormula(gives.formula, maximized ? { rng: sides => sides } : {});
+      const { context } = vitalsFor(spellChar);
+      const before = rules.normalizeVitals(nextSheet, context.hpMax);
+      const outcome = rules.applyVitalsAction(before, 'tempHp', { amount: roll.total }, context);
+      nextSheet = { ...nextSheet, ...outcome.vitals };
+      tempHp = { rolled: roll.total, text: rules.describeRoll(roll), maximized, kept: outcome.vitals.hpTemp, hadMore: before.hpTemp > roll.total };
+    }
     if (rules.isBuff(result.spell.name)) {
-      const slotLevel = result.slotChange && result.slotChange.level === 'pact'
-        ? (rules.getSpellSlots(spellChar.classes).pact || {}).slotLevel || result.spell.level
-        : result.slotChange ? result.slotChange.level : result.spell.level;
       const applied = applyBuff({ caster: character, casterSheet: nextSheet, spell: result.spell, slotLevel, targetIds: (request || {}).targets });
       nextSheet = applied.casterSheet;
       buffedTargets = applied.targets;
     }
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return {
-      spell: result.spell.name, events: result.events, slotChange: result.slotChange, targets: buffedTargets,
+      spell: result.spell.name, events: result.events, slotChange: result.slotChange, targets: buffedTargets, tempHp,
       // E.g. a Death Point's extra effect, to show with the cast.
       note: (result.resourceCost && result.resourceCost.note) || null,
       spells: buildView(character, nextSheet)
