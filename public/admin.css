@@ -1061,4 +1061,12 @@ body.wm-no-scroll { overflow: hidden; }
 .challenge-form { margin-top: 8px; }
 .challenge-skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; padding: 6px 0; }
 .challenge-log .link-button { margin-left: 8px; }
-.challenge-form .link-button { margin-right: 8px; }
+.challenge-form *, .challenge-end * { box-sizing: border-box; }
+.challenge-form { max-width: 760px; }
+.challenge-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; align-items: start; }
+.challenge-settings label { display: grid; gap: 4px; font-size: 12px; color: #949ba4; }
+.challenge-settings select, .challenge-settings input[type=number] { width: 100%; padding: 6px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; font-size: 14px; }
+.challenge-dc { display: grid; gap: 6px; }
+.challenge-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.challenge-chip { padding: 2px 8px; border: 1px solid #3f4147; border-radius: 999px; background: #2b2d31; color: #dbdee1; font-size: 12px; cursor: pointer; }
+.challenge-chip:hover { border-color: #d4af37; }

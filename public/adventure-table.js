@@ -1182,15 +1182,15 @@
     if (![6, 9, 12].includes(current.successesNeededSet)) successes.append(Object.assign(el('option', { value: String(current.successesNeededSet), text: String(current.successesNeededSet) }), { selected: true }));
     const failures = el('input', { type: 'number', min: '1', max: '10', value: String(current.failuresAllowedSet), className: 'inventory-qty', 'aria-label': 'Failures allowed' });
     const dc = el('input', { type: 'number', min: '1', max: '40', value: String(current.dc), className: 'inventory-qty', 'aria-label': 'DC (hidden)' });
-    const presets = el('span', {}, DC_PRESETS.map(([label, value]) => button(label + ' ' + value, () => { dc.value = String(value); }, 'link-button small')));
+    const presets = el('span', { className: 'challenge-presets' }, DC_PRESETS.map(([label, value]) => button(label + ' ' + value, () => { dc.value = String(value); }, 'challenge-chip', { title: 'Set the DC to ' + value })));
     const skillBoxes = CHALLENGE_SKILLS.map(skill => ({ skill, input: el('input', { type: 'checkbox', checked: current.skills.includes(skill) || null }) }));
     const tally = el('input', { type: 'checkbox', checked: current.showTally || null });
     return el('div', { className: 'wm-form challenge-form' }, [
       name, situation,
-      el('div', { className: 'table-filter' }, [
-        el('label', { className: 'small' }, ['Successes ', successes]),
-        el('label', { className: 'small' }, ['Failures allowed ', failures]),
-        el('label', { className: 'small' }, ['DC (hidden) ', dc]), presets
+      el('div', { className: 'challenge-settings' }, [
+        el('label', {}, [el('span', { text: 'Successes needed' }), successes]),
+        el('label', {}, [el('span', { text: 'Failures allowed' }), failures]),
+        el('div', { className: 'challenge-dc' }, [el('label', {}, [el('span', { text: 'DC (hidden from players)' }), dc]), presets])
       ]),
       el('details', {}, [el('summary', { className: 'small', text: 'Fitting skills (for your reference)' }),
         el('div', { className: 'challenge-skill-grid' }, skillBoxes.map(box => el('label', { className: 'small' }, [box.input, ' ' + box.skill])))]),

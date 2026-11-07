@@ -163,7 +163,8 @@ function requireManage(adventure, user) {
 
 // Everything the adventure table shows. `candidates` (alive characters not in
 // the party, with their player) only for those who can manage it.
-function getAdventureTable({ adventureId, user }) {
+// now: the clock for "the next session" (tests pin it).
+function getAdventureTable({ adventureId, user, now = new Date() }) {
   const adventure = loadAdventure(adventureId);
   const access = accessTo(adventure, user);
   if (!access.view) throw new Error('Forbidden.');
@@ -200,7 +201,7 @@ function getAdventureTable({ adventureId, user }) {
     canManage: access.manage,
     // Scheduling (set in the Discord thread with /schedule): the next session and an open poll.
     schedule: (() => {
-      const next = adventure.status === 'active' ? nextSessionForAdventure(adventure.id) : null;
+      const next = adventure.status === 'active' ? nextSessionForAdventure(adventure.id, now) : null;
       const poll = adventure.status === 'active' ? openPollForAdventure(adventure.id) : null;
       return {
         nextSession: next ? { startsAt: next.startsAt, text: formatSessionTime(next.startsAt) } : null,

@@ -89,7 +89,7 @@ test('a poll: answers, the DM locks a time in, clashes are warned about, reminde
   assert.deepEqual(db.takeDueReminders(dayBefore), [], 'only once');
 
   // The panel's adventure table shows it.
-  const table = db.getAdventureTable({ adventureId: first.id, user: { id: 0, role: 'admin' } });
+  const table = db.getAdventureTable({ adventureId: first.id, user: { id: 0, role: 'admin' }, now: NOW });
   assert.equal(table.schedule.nextSession.text, 'Fri 6 Nov, 20:00');
 
   // Cancelling the next session.
@@ -164,22 +164,25 @@ test('in Discord: /schedule posts the poll, buttons answer it, the DM locks it i
   assert.equal(poll.messageId, 'message-1');
   assert.equal(poll.minutes, 180);
 
+  // /schedule reads times against the real clock: "pt 20:00" is the coming Friday
+  // (the poll lists times in order, so on a Saturday it isn't the first one).
+  const friday = rules.parseSessionTime('pt 20:00');
+  const fridayOption = poll.options.find(option => option.startsAt === friday.toISOString());
+
   // A button press answers and redraws the message.
-  fake = fakeInteraction({ userId: olaId, customId: `sched:v:${poll.options[0].id}:yes` });
+  fake = fakeInteraction({ userId: olaId, customId: `sched:v:${fridayOption.id}:yes` });
   await scheduleDiscord.handleScheduleInteraction(fake.interaction);
   const embed = fake.calls.updates[0].embeds[0].toJSON();
-  assert.match(embed.fields[0].value, new RegExp(`✅ Name-${olaId}`));
+  assert.match(embed.fields[fridayOption.letter.charCodeAt(0) - 65].value, new RegExp(`✅ Name-${olaId}`));
 
-  // Only the DM locks in; then the announcement and the server event.
-  fake = fakeInteraction({ userId: olaId, customId: `sched:lock:${poll.id}`, values: [String(poll.options[0].id)] });
+  // Only the DM locks in Friday; then the announcement and the server event.
+  fake = fakeInteraction({ userId: olaId, customId: `sched:lock:${poll.id}`, values: [String(fridayOption.id)] });
   await scheduleDiscord.handleScheduleInteraction(fake.interaction);
   assert.match(fake.calls.replies[0].content, /Only this adventure's DM/);
-  fake = fakeInteraction({ userId: dmId, customId: `sched:lock:${poll.id}`, values: [String(poll.options[0].id)] });
+  fake = fakeInteraction({ userId: dmId, customId: `sched:lock:${poll.id}`, values: [String(fridayOption.id)] });
   fake.interaction.channel = { send: async message => fake.calls.sent.push(message) };
   await scheduleDiscord.handleScheduleInteraction(fake.interaction);
   assert.deepEqual(fake.calls.updates[0].components, [], 'the buttons go once a time is set');
-  // /schedule reads times against the real clock: "pt 20:00" is the coming Friday.
-  const friday = rules.parseSessionTime('pt 20:00');
   assert.ok(fake.calls.sent[0].content.includes(`Wilki z Doliny**: <t:${friday.getTime() / 1000}:F>`));
   assert.deepEqual(fake.calls.sent[0].allowedMentions, { users: [olaId] });
   assert.equal(fake.calls.events[0].name, 'Wilki z Doliny');
