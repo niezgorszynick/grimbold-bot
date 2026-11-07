@@ -226,6 +226,10 @@ function getAdventureTable({ adventureId, user }) {
     encounters: encountersForTable({
       adventureId: adventure.id, secret: access.secret, manage: access.manage, partyLevels: party.map(member => member.level)
     }),
+    // Skill challenges: the running one for everyone (the DC only for the DM), all for the DM.
+    challenges: require('./skillChallenges').challengesForTable({
+      adventureId: adventure.id, secret: access.secret, manage: access.manage, viewerId: Number(user && user.id) || 0
+    }),
     // The party's latest rolls; private ones only for the DM (and the roller).
     rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.secret, viewerId: Number(user && user.id) || null }),
     // Monster rolls: all for the DM (hidden ones to reveal), the revealed ones for the party.

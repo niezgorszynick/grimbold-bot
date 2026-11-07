@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -26,7 +26,7 @@ router.get('/manifest.json', (req, res) => {
     manifest_version: 1,
     author: "Grimbold's Emporium",
     // Owlbear refuses descriptions over 128 characters (tests/dice.test.js checks it).
-    description: 'Rolls from the Grimbold panel for the whole table, and initiative into the Owlbear tracker.',
+    description: 'Rolls from the Grimbold panel for the whole table, initiative into the tracker, and skill challenges.',
     icon: '/vtt/icon.svg',
     action: {
       title: "Grimbold's Dice",
@@ -55,6 +55,43 @@ router.get('/encounter', (req, res) => {
     return res.json(db.getVttEncounters({ key: req.query.key }));
   } catch (error) {
     return res.status(401).json({ error: error.message });
+  }
+});
+
+// Skill challenges: the running ones this key's player is in (or DMs), and
+// turns or the DM's rulings made from Owlbear with the key.
+router.get('/challenges', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(db.getVttChallenges({ key: req.query.key }));
+  } catch (error) {
+    return res.status(401).json({ error: error.message });
+  }
+});
+router.post('/challenges/:adventureId/:challengeId', express.json(), (req, res) => {
+  const body = req.body || {};
+  let user;
+  try {
+    user = db.vttUser(body.key);
+  } catch (error) {
+    return res.status(401).json({ error: error.message });
+  }
+  const args = { adventureId: Number(req.params.adventureId), user, challengeId: req.params.challengeId };
+  try {
+    if (body.action === 'help') db.helpInChallenge({ ...args, characterId: body.characterId, skill: body.skill, override: Boolean(body.override) });
+    else if (body.action === 'feature') db.featureSuccess({ ...args, characterId: body.characterId, what: body.what });
+    else if (body.action === 'skip') db.skipChallengeTurn(args);
+    else if (body.action === 'void') db.voidChallengeAttempt({ ...args, attemptId: body.attemptId });
+    else if (body.action === 'raise') db.raiseChallengeAttemptDc({ ...args, attemptId: body.attemptId });
+    else if (body.action === 'check') db.rollChallengeCheck({ ...args, characterId: body.characterId, skill: body.skill, mode: body.mode, override: Boolean(body.override) });
+    else return res.status(400).json({ error: 'Unknown action.' });
+    return res.json(db.getVttChallenges({ key: body.key }));
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Owlbear skill challenge action failed:', error);
+      return res.status(500).json({ error: 'Something went wrong.' });
+    }
+    return res.status(error.message === 'Forbidden.' ? 403 : 400).json({ error: error.message });
   }
 });
 

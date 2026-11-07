@@ -591,7 +591,7 @@ router.post('/vtt/key', (req, res) => {
 
 function adventureErrorStatus(message) {
   if (message === 'Forbidden.') return 403;
-  if (message === 'Adventure not found.' || message === 'Character not found.' || message === 'NPC not found.' || message === 'Encounter not found.') return 404;
+  if (message === 'Adventure not found.' || message === 'Character not found.' || message === 'NPC not found.' || message === 'Encounter not found.' || message === 'Skill challenge not found.') return 404;
   return 400;
 }
 
@@ -852,6 +852,55 @@ router.get('/adventures/:id/monsters', adventureRoute(({ adventureId, user }) =>
   if (!db.canSeeAdventureSecrets(adventure, user)) throw new Error('Forbidden.');
   return { monsters: require('./rules').listMonsters().filter(monster => !monster.summon) };
 }));
+// ─── Skill challenges ────────────────────────────────────────────────────
+// Settings: { name, situation, successesNeeded, failuresAllowed, dc, skills, showTally }.
+const challengeRoute = handler => (req, res) => adventureRoute(args => handler({ ...args, challengeId: req.params.challengeId }))(req, res);
+router.post('/adventures/:id/challenges', adventureRoute(({ adventureId, user, body }) => db.createSkillChallenge({ adventureId, user, settings: body })));
+router.post('/adventures/:id/challenges/:challengeId', challengeRoute(({ adventureId, user, body, challengeId }) => db.updateSkillChallenge({ adventureId, user, challengeId, settings: body })));
+router.post('/adventures/:id/challenges/:challengeId/delete', challengeRoute(({ adventureId, user, challengeId }) => db.deleteSkillChallenge({ adventureId, user, challengeId })));
+router.post('/adventures/:id/challenges/:challengeId/run', challengeRoute(({ adventureId, user, challengeId }) => db.runSkillChallenge({ adventureId, user, challengeId })));
+router.post('/adventures/:id/challenges/:challengeId/pause', challengeRoute(({ adventureId, user, challengeId }) => db.pauseSkillChallenge({ adventureId, user, challengeId })));
+router.post('/adventures/:id/challenges/:challengeId/resume', challengeRoute(({ adventureId, user, challengeId }) => db.resumeSkillChallenge({ adventureId, user, challengeId })));
+router.post('/adventures/:id/challenges/:challengeId/skip', challengeRoute(({ adventureId, user, challengeId }) => db.skipChallengeTurn({ adventureId, user, challengeId })));
+// { characterId, join }
+router.post('/adventures/:id/challenges/:challengeId/participants', challengeRoute(({ adventureId, user, body, challengeId }) =>
+  db.setChallengeParticipant({ adventureId, user, challengeId, characterId: body.characterId, join: body.join !== false })));
+router.post('/adventures/:id/challenges/:challengeId/initiative', challengeRoute(({ adventureId, user, body, challengeId }) =>
+  db.setChallengeInitiative({ adventureId, user, challengeId, characterId: body.characterId, initiative: body.initiative })));
+// A turn: { characterId, action: 'check' | 'help' | 'feature', skill, mode, override, what }.
+router.post('/adventures/:id/challenges/:challengeId/turn', challengeRoute(({ adventureId, user, body, challengeId }) => challengeTurn({ adventureId, user, challengeId, body })));
+// The DM's ruling on a turn: { ruling: 'raise' | 'void' }.
+router.post('/adventures/:id/challenges/:challengeId/attempts/:attemptId', (req, res) => adventureRoute(({ adventureId, user, body }) =>
+  (body.ruling === 'void' ? db.voidChallengeAttempt : db.raiseChallengeAttemptDc)({ adventureId, user, challengeId: req.params.challengeId, attemptId: req.params.attemptId }))(req, res));
+// { outcome, note, post }: post — Grimbrandt writes it up in the adventure's thread.
+router.post('/adventures/:id/challenges/:challengeId/end', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  try {
+    const ended = db.endSkillChallenge({ adventureId: Number(req.params.id), user, challengeId: req.params.challengeId, outcome: body.outcome, note: body.note });
+    const posted = body.post
+      ? await require('./adventureThreads').announceSkillChallenge(Number(req.params.id), ended.challenge.id).catch(() => false)
+      : null;
+    return res.json({ ...ended.table, posted });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Ending a skill challenge failed:', error);
+      return res.status(500).json({ error: 'Could not update the adventure.' });
+    }
+    return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// The three kinds of turn; a check's result comes back with the table.
+function challengeTurn({ adventureId, user, challengeId, body }) {
+  const args = { adventureId, user, challengeId, characterId: body.characterId };
+  if (body.action === 'help') return db.helpInChallenge({ ...args, skill: body.skill, override: Boolean(body.override) });
+  if (body.action === 'feature') return db.featureSuccess({ ...args, what: body.what });
+  const result = db.rollChallengeCheck({ ...args, skill: body.skill, mode: body.mode, override: Boolean(body.override) });
+  return { ...result.table, lastRoll: { ...result.roll, success: result.success } };
+}
+
 router.post('/adventures/:id/encounters', adventureRoute(({ adventureId, user, body }) => db.createEncounter({ adventureId, user, name: body.name })));
 const encounterRoute = handler => (req, res) => adventureRoute(args => handler({ ...args, encounterId: req.params.encounterId, combatantId: req.params.combatantId }))(req, res);
 router.post('/adventures/:id/encounters/:encounterId', encounterRoute(({ adventureId, user, body, encounterId }) =>

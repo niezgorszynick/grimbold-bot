@@ -258,6 +258,35 @@ async function renameAdventureThread(oldThread, newThread) {
   return renamed;
 }
 
+// A finished skill challenge, in Grimbrandt's words. challenge: the row.
+function skillChallengeMessage(challenge, attempts) {
+  const outcome = {
+    clean: 'Not a scratch on them.',
+    minor: 'It cost them a little.',
+    serious: 'It cost them dearly.',
+    grave: 'They got there. The price was grave.',
+    failed: 'It did not go their way.',
+    stopped: 'They left it unfinished.'
+  }[challenge.outcome] || '';
+  const live = attempts.filter(attempt => !attempt.voided);
+  const who = [...new Set(live.map(attempt => attempt.character_name).filter(Boolean))];
+  const list = who.length > 1 ? `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]}` : who[0] || 'The party';
+  const note = challenge.outcome_note ? `\n> ${challenge.outcome_note.replace(/\n+/g, '\n> ')}` : '';
+  return `*Grimbrandt notes it down.* **${challenge.name}**: ${list}. ${outcome}${note}`.slice(0, MESSAGE_LIMIT);
+}
+
+// Posts a finished skill challenge in the adventure's thread. Returns whether it went out.
+async function announceSkillChallenge(adventureId, challengeId) {
+  const adventure = db.getAdventureById(Number(adventureId));
+  if (!client || !adventure || !adventure.discord_thread_id) return false;
+  const challenge = db.prepare('SELECT * FROM skill_challenges WHERE id = ? AND adventure_id = ?').get(Number(challengeId), adventure.id);
+  if (!challenge || challenge.status !== 'done') return false;
+  const thread = await client.channels.fetch(adventure.discord_thread_id).catch(() => null);
+  if (!thread) return false;
+  const attempts = db.prepare('SELECT * FROM skill_challenge_attempts WHERE challenge_id = ? ORDER BY id').all(challenge.id);
+  return postAsGrimbrandt(thread, skillChallengeMessage(challenge, attempts));
+}
+
 // Called by the panel when an adventure is finished or cancelled: tags the
 // thread and lets Grimbrandt have his say. Errors only get logged.
 async function announceAdventureEnd(adventureId) {
@@ -328,6 +357,8 @@ function setClientForTests(fake) {
 }
 
 module.exports = {
+  announceSkillChallenge,
+  skillChallengeMessage,
   registerAdventureThreads,
   logAdventureThread,
   renameAdventureThread,

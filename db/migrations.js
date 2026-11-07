@@ -997,6 +997,83 @@ const MIGRATIONS = [
       const broken = db.pragma('foreign_key_check');
       if (broken.length) throw new Error(`Rebuilding adventures broke ${broken.length} references.`);
     }
+  },
+  {
+    version: 34,
+    name: 'Skill challenges: the challenge, who takes part, and each attempt',
+    up(db) {
+      db.exec(`
+        -- A skill challenge of an adventure (rules/skillChallenges.js). dc: hidden
+        -- from players. turn_character_id: whose turn it is; help_by: a Help
+        -- waiting to give the next roller Advantage. outcome: set when it ends.
+        CREATE TABLE IF NOT EXISTS skill_challenges (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          situation TEXT NOT NULL DEFAULT '',
+          successes_needed INTEGER NOT NULL DEFAULT 6,
+          failures_allowed INTEGER NOT NULL DEFAULT 3,
+          dc INTEGER NOT NULL DEFAULT 15,
+          skills TEXT NOT NULL DEFAULT '[]',
+          show_tally INTEGER NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'planned',
+          round INTEGER NOT NULL DEFAULT 1,
+          turn_character_id INTEGER,
+          help_by INTEGER,
+          outcome TEXT,
+          outcome_note TEXT NOT NULL DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          started_at DATETIME,
+          ended_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS skill_challenges_adventure ON skill_challenges (adventure_id);
+        CREATE TABLE IF NOT EXISTS skill_challenge_participants (
+          challenge_id INTEGER NOT NULL REFERENCES skill_challenges(id) ON DELETE CASCADE,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          initiative INTEGER,
+          PRIMARY KEY (challenge_id, character_id)
+        );
+        -- kind: check (a skill roll), help (Advantage for the next roller),
+        -- feature (a spell, feature or item the DM counts as a success).
+        -- success: 1 / 0 for checks and features, NULL for help. voided: the DM
+        -- took it back (it no longer counts, the skill is free again).
+        CREATE TABLE IF NOT EXISTS skill_challenge_attempts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          challenge_id INTEGER NOT NULL REFERENCES skill_challenges(id) ON DELETE CASCADE,
+          character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL,
+          character_name TEXT NOT NULL DEFAULT '',
+          round INTEGER NOT NULL,
+          kind TEXT NOT NULL,
+          skill TEXT,
+          detail TEXT NOT NULL DEFAULT '',
+          roll_id INTEGER,
+          total INTEGER,
+          natural INTEGER,
+          mode TEXT,
+          dc INTEGER,
+          success INTEGER,
+          voided INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS skill_challenge_attempts_challenge ON skill_challenge_attempts (challenge_id);
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_insert AFTER INSERT ON skill_challenges
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_update AFTER UPDATE ON skill_challenges
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_delete AFTER DELETE ON skill_challenges
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', OLD.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_participant AFTER INSERT ON skill_challenge_participants
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM skill_challenges WHERE id = NEW.challenge_id; END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_participant_update AFTER UPDATE ON skill_challenge_participants
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM skill_challenges WHERE id = NEW.challenge_id; END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_participant_delete AFTER DELETE ON skill_challenge_participants
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM skill_challenges WHERE id = OLD.challenge_id; END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_attempt AFTER INSERT ON skill_challenge_attempts
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM skill_challenges WHERE id = NEW.challenge_id; END;
+        CREATE TRIGGER IF NOT EXISTS change_log_challenge_attempt_update AFTER UPDATE ON skill_challenge_attempts
+          BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM skill_challenges WHERE id = NEW.challenge_id; END;
+      `);
+    }
   }
 ];
 

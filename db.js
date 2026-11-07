@@ -30,6 +30,7 @@ module.exports = {
   ...require('./db/monsterImports'),
   ...require('./db/schedule'),
   ...require('./db/worldMap'),
+  ...require('./db/skillChallenges'),
   ...require('./db/npcFiles'),
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),

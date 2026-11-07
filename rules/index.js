@@ -29,6 +29,7 @@ module.exports = {
   ...require('./classResources'),
   ...require('./wildShape'),
   ...require('./defenses'),
+  ...require('./skillChallenges'),
   ...require('./monsters'),
   ...require('./fiveTools'),
   ...require('./customMonsters'),

@@ -1024,6 +1024,219 @@
     return section;
   }
 
+  // ─── Skill challenges (rules/skillChallenges.js) ───────────────────────────
+  const CHALLENGE_SKILLS = ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation',
+    'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'];
+  const CHALLENGE_OUTCOMES = {
+    clean: 'Complete success, no cost', minor: 'Success with a minor cost', serious: 'Success with a serious cost',
+    grave: 'The goal reached at a grave cost', failed: 'Failed', stopped: 'Stopped before the end'
+  };
+  const DC_PRESETS = [['Easy', 10], ['Moderate', 15], ['Hard', 20], ['Very Hard', 25]];
+
+  // ●●○○○○ successes, ✕✕○ failures.
+  function challengeTally(view) {
+    if (view.successes === null) return el('p', { className: 'muted small', text: 'The DM keeps the tally to themselves.' });
+    const pips = (filled, total, on, off, className) => el('span', { className: 'challenge-pips ' + className, 'aria-label': filled + ' of ' + total },
+      Array.from({ length: total }, (_, i) => el('span', { text: i < filled ? on : off })));
+    return el('div', { className: 'challenge-tally' }, [
+      el('span', { className: 'small' }, ['Successes ', pips(view.successes, view.successesNeeded, '●', '○', 'is-success'), ' ' + view.successes + ' / ' + view.successesNeeded]),
+      el('span', { className: 'small' }, ['Failures ', pips(view.failures, view.failuresAllowed, '✕', '○', 'is-failure'), ' ' + view.failures + ' / ' + view.failuresAllowed])
+    ]);
+  }
+
+  function challengeLog(view, dm) {
+    if (!view.attempts.length) return el('p', { className: 'muted small', text: 'No turns yet.' });
+    return el('ol', { className: 'challenge-log' }, view.attempts.map(attempt => {
+      const result = attempt.success === 1 ? el('span', { className: 'tag green', text: '✓' }) : attempt.success === 0 ? el('span', { className: 'tag red', text: '✗' }) : null;
+      const what = attempt.kind === 'help' ? 'helps with ' + attempt.skill + ' (Advantage for the next roll)'
+        : attempt.kind === 'feature' ? '✨ ' + attempt.detail
+          : attempt.skill + ': ' + attempt.total + (attempt.mode && attempt.mode !== 'normal' ? ' (' + attempt.mode + ')' : '') + (dm ? ' vs DC ' + attempt.dc : '');
+      return el('li', { className: attempt.voided ? 'is-voided' : null }, [
+        el('span', { className: 'muted small', text: 'R' + attempt.round + ' ' }),
+        el('strong', { text: attempt.character + ' ' }), what, ' ', result,
+        dm && !attempt.voided && attempt.kind === 'check'
+          ? button('+5 DC', () => act('/challenges/' + view.id + '/attempts/' + attempt.id, { ruling: 'raise' }, 'DC raised to ' + (attempt.dc + 5) + ' for that roll.'), 'link-button small', { title: 'A stretch of the skill: this roll needed 5 more' })
+          : null,
+        dm && !attempt.voided
+          ? button('Void', () => act('/challenges/' + view.id + '/attempts/' + attempt.id, { ruling: 'void' }, 'That turn no longer counts.'), 'link-button small', { title: "Doesn't count; the skill is free again" })
+          : null
+      ]);
+    }));
+  }
+
+  // A turn for one character: a skill, Normal / Advantage / Disadvantage, Roll or Help.
+  function challengeTurnControls(view, participant, dm) {
+    const skills = participant.allowedSkills.length ? participant.allowedSkills : [];
+    if (!skills.length && !dm) return el('p', { className: 'muted small', text: 'No skill left this round.' });
+    const skill = el('select', { 'aria-label': 'Skill for ' + participant.name }, [el('option', { value: '', text: '-- Skill --' }),
+      ...(dm ? CHALLENGE_SKILLS : skills).map(name => el('option', { value: name, text: name + (dm && !skills.includes(name) ? ' (used)' : '') }))]);
+    const mode = el('select', { 'aria-label': 'Roll mode' }, [['normal', 'Normal'], ['advantage', 'Advantage'], ['disadvantage', 'Disadvantage']].map(([value, label]) => el('option', { value, text: label })));
+    const send = action => {
+      if (!skill.value) { message = 'Choose a skill first.'; isError = true; render(); return; }
+      const override = dm && !skills.includes(skill.value);
+      if (override && !window.confirm(participant.name + ' already used ' + skill.value + ' (or it was used this round). Allow it anyway?')) return;
+      act('/challenges/' + view.id + '/turn', { characterId: participant.characterId, action, skill: skill.value, mode: mode.value, override },
+        result => (result && result.lastRoll
+          ? participant.name + ' — ' + skill.value + ' ' + result.lastRoll.total + (result.challenges.running && result.challenges.running.successes === null ? '.' : result.lastRoll.success ? ': success.' : ': failure.')
+          : participant.name + ' helps: the next roll has Advantage.'));
+    };
+    const feature = dm && !participant.usedFeature
+      ? (() => {
+        const what = el('input', { type: 'text', maxlength: '200', placeholder: 'Spell, feature or item (e.g. Fly)', 'aria-label': 'Spell, feature or item' });
+        return el('span', { className: 'challenge-feature' }, [what, button('✨ Counts as a success', () => {
+          if (!what.value.trim()) { message = 'Say which spell, feature or item it was.'; isError = true; render(); return; }
+          act('/challenges/' + view.id + '/turn', { characterId: participant.characterId, action: 'feature', what: what.value }, participant.name + "'s " + what.value.trim() + ' counts as a success.');
+        }, 'btn btn-small btn-secondary', { title: 'Once per character per challenge: one success, no roll' })]);
+      })()
+      : null;
+    return el('div', { className: 'challenge-turn' }, [
+      skill, mode,
+      button('🎲 Roll', () => send('check'), 'btn btn-small btn-green'),
+      button('🤝 Help', () => send('help'), 'btn btn-small btn-secondary', { title: 'Instead of rolling: the next roller gets Advantage (this skill counts as used)' }),
+      feature
+    ]);
+  }
+
+  function challengeEndForm(view) {
+    const ending = view.ending || { suggested: 'stopped', choices: Object.keys(CHALLENGE_OUTCOMES) };
+    const outcome = el('select', { 'aria-label': 'How it ended' }, ending.choices.map(key => {
+      const option = el('option', { value: key, text: CHALLENGE_OUTCOMES[key] });
+      option.selected = key === ending.suggested;
+      return option;
+    }));
+    const note = el('textarea', { rows: '2', maxlength: '2000', placeholder: 'What happened (the party sees it)', 'aria-label': 'What happened' });
+    const post = el('input', { type: 'checkbox', checked: Boolean(data.adventure.threadUrl) || null });
+    return el('details', { className: 'challenge-end', open: view.finishedBy ? true : null }, [
+      el('summary', { className: 'small', text: view.finishedBy === 'failures'
+        ? '⚠ The failures are used up: decide how it ends'
+        : view.finishedBy === 'successes' ? '✓ The successes are in: end it' : 'End the skill challenge…' }),
+      el('div', { className: 'wm-form' }, [
+        outcome, note,
+        el('label', { className: 'small' }, [post, " Post it in the adventure's Discord thread (Grimbrandt)"]),
+        button('End it', () => act('/challenges/' + view.id + '/end', { outcome: outcome.value, note: note.value, post: post.checked },
+          result => view.name + ' is over: ' + CHALLENGE_OUTCOMES[outcome.value] + '.' + (result && result.posted ? ' Posted in the thread.' : result && result.posted === false ? ' (Discord not reached.)' : '')), 'btn btn-small btn-gold')
+      ])
+    ]);
+  }
+
+  function challengeRunningSection() {
+    const challenges = data.challenges || {};
+    const view = challenges.running;
+    if (!view) return null;
+    const dm = secretsOpen();
+    const mine = view.participants.filter(participant => participant.mine);
+    const current = view.participants.find(participant => participant.turn);
+    const notIn = dm ? data.party.filter(member => !view.participants.some(participant => participant.characterId === member.id)) : [];
+    return el('section', { className: 'challenge-running' }, [
+      el('div', { className: 'sheet-section-heading' }, [
+        el('h3', { text: '🎯 ' + view.name }),
+        dm ? el('span', { className: 'vitals-actions' }, [
+          el('span', { className: 'tag gold', text: 'DC ' + view.dc }),
+          button('⏭ Skip turn', () => act('/challenges/' + view.id + '/skip', {}, 'Turn skipped.'), 'btn btn-small btn-secondary'),
+          button('⏸ Pause', () => act('/challenges/' + view.id + '/pause', {}, view.name + ' is paused. Resume it from Skill challenges below.'), 'btn btn-small btn-secondary')
+        ]) : null
+      ]),
+      view.situation ? el('p', { className: 'small', text: view.situation }) : null,
+      challengeTally(view),
+      el('p', { className: 'small' }, [el('strong', { text: 'Round ' + view.round + '. ' }),
+        ...(current ? ["It's ", el('strong', { text: current.name }), "'s turn."] : ['No one is taking part.']),
+        view.helpBy ? ' 🤝 ' + view.helpBy + ' helped: the next roll has Advantage.' : '']),
+      el('ol', { className: 'challenge-order' }, view.participants.map(participant => el('li', { className: participant.turn ? 'is-turn' : null }, [
+        el('div', { className: 'challenge-row' }, [
+          el('strong', { text: participant.name }),
+          dm ? (() => {
+            const input = el('input', { type: 'number', min: '-10', max: '50', value: participant.initiative ?? '', className: 'inventory-qty', placeholder: 'Init', 'aria-label': 'Initiative of ' + participant.name });
+            input.addEventListener('change', () => act('/challenges/' + view.id + '/initiative', { characterId: participant.characterId, initiative: input.value }, 'Initiative set.'));
+            return input;
+          })() : el('span', { className: 'muted small', text: participant.initiative === null ? ' (no initiative yet)' : ' · ' + participant.initiative }),
+          participant.usedSkills.length ? el('span', { className: 'muted small', text: ' used: ' + participant.usedSkills.join(', ') }) : null,
+          participant.usedFeature ? el('span', { className: 'muted small', text: ' · ✨ used' }) : null,
+          dm ? button('×', () => { if (window.confirm('Take ' + participant.name + ' out of the challenge?')) act('/challenges/' + view.id + '/participants', { characterId: participant.characterId, join: false }, participant.name + ' left the challenge.'); }, 'link-button small', { title: 'Take out of the challenge' }) : null
+        ]),
+        // On a character's turn: their player, or the DM for them.
+        !view.finishedBy && participant.turn && (dm || participant.mine) ? challengeTurnControls(view, participant, dm) : null
+      ]))),
+      !dm && mine.length && !mine.some(participant => participant.turn) && !view.finishedBy
+        ? el('p', { className: 'muted small', text: 'Roll initiative on your card to set your place in the order. On your turn, pick a skill and say how it helps.' })
+        : null,
+      dm && notIn.length ? (() => {
+        const pick = el('select', { 'aria-label': 'Add to the challenge' }, [el('option', { value: '', text: '+ Add a party member…' }), ...notIn.map(member => el('option', { value: String(member.id), text: member.name }))]);
+        pick.addEventListener('change', () => { if (pick.value) act('/challenges/' + view.id + '/participants', { characterId: Number(pick.value), join: true }, 'Added to the challenge.'); });
+        return el('div', { className: 'table-filter' }, [pick]);
+      })() : null,
+      el('h5', { text: 'Turns' }),
+      challengeLog(view, dm),
+      dm ? challengeEndForm(view) : null
+    ]);
+  }
+
+  // The DM's settings form (new, or a planned / paused challenge).
+  function challengeSettingsForm(view, onSave) {
+    const current = view || { name: '', situation: '', successesNeededSet: 6, failuresAllowedSet: 3, dc: 15, skills: [], showTally: true };
+    const name = el('input', { type: 'text', maxlength: '100', value: current.name, placeholder: 'e.g. Escape the gnolls by river', 'aria-label': 'Name' });
+    const situation = el('textarea', { rows: '2', maxlength: '2000', placeholder: 'The situation (the party sees it)', 'aria-label': 'Situation' });
+    situation.value = current.situation || '';
+    const successes = el('select', { 'aria-label': 'Successes needed' }, [[6, '6 — standard'], [9, '9 — hard'], [12, '12 — very hard']].map(([value, label]) => {
+      const option = el('option', { value: String(value), text: label }); option.selected = value === current.successesNeededSet; return option;
+    }));
+    if (![6, 9, 12].includes(current.successesNeededSet)) successes.append(Object.assign(el('option', { value: String(current.successesNeededSet), text: String(current.successesNeededSet) }), { selected: true }));
+    const failures = el('input', { type: 'number', min: '1', max: '10', value: String(current.failuresAllowedSet), className: 'inventory-qty', 'aria-label': 'Failures allowed' });
+    const dc = el('input', { type: 'number', min: '1', max: '40', value: String(current.dc), className: 'inventory-qty', 'aria-label': 'DC (hidden)' });
+    const presets = el('span', {}, DC_PRESETS.map(([label, value]) => button(label + ' ' + value, () => { dc.value = String(value); }, 'link-button small')));
+    const skillBoxes = CHALLENGE_SKILLS.map(skill => ({ skill, input: el('input', { type: 'checkbox', checked: current.skills.includes(skill) || null }) }));
+    const tally = el('input', { type: 'checkbox', checked: current.showTally || null });
+    return el('div', { className: 'wm-form challenge-form' }, [
+      name, situation,
+      el('div', { className: 'table-filter' }, [
+        el('label', { className: 'small' }, ['Successes ', successes]),
+        el('label', { className: 'small' }, ['Failures allowed ', failures]),
+        el('label', { className: 'small' }, ['DC (hidden) ', dc]), presets
+      ]),
+      el('details', {}, [el('summary', { className: 'small', text: 'Fitting skills (for your reference)' }),
+        el('div', { className: 'challenge-skill-grid' }, skillBoxes.map(box => el('label', { className: 'small' }, [box.input, ' ' + box.skill])))]),
+      el('label', { className: 'small' }, [tally, ' Players see the tally (successes and failures)']),
+      button(view ? 'Save' : 'Create skill challenge', () => onSave({
+        name: name.value, situation: situation.value, successesNeeded: Number(successes.value), failuresAllowed: Number(failures.value),
+        dc: Number(dc.value), skills: skillBoxes.filter(box => box.input.checked).map(box => box.skill), showTally: tally.checked
+      }), 'btn btn-small btn-green')
+    ]);
+  }
+
+  function challengePlanner() {
+    const challenges = data.challenges || {};
+    const finished = challenges.finished || [];
+    if (!secretsOpen()) {
+      const prepared = challenges.prepared || 0;
+      return finished.length || prepared ? el('section', { className: 'adventure-challenges' }, [
+        prepared ? el('p', { className: 'muted small', text: prepared + ' skill challenge' + (prepared === 1 ? ' is' : 's are') + " prepared by this adventure's DM." }) : null,
+        finished.length ? el('details', {}, [el('summary', { className: 'small', text: '🎯 ' + finished.length + ' skill challenge' + (finished.length === 1 ? '' : 's') + ' so far' }),
+          el('ul', {}, finished.map(item => el('li', { className: 'small' }, [el('strong', { text: item.name }), ' — ' + (item.outcomeText || ''), item.note ? el('p', { className: 'muted small', text: item.note }) : null])))]) : null
+      ]) : null;
+    }
+    if (data.adventure.status !== 'active' && !finished.length) return null;
+    const waiting = (challenges.list || []).filter(item => item.status === 'planned' || item.status === 'paused');
+    return el('section', { className: 'adventure-challenges' }, [
+      el('div', { className: 'sheet-section-heading' }, [el('h3', { text: '🎯 Skill challenges' }), el('span', { className: 'muted small', text: 'Only you (and the Root DM) see these until you run one.' })]),
+      el('p', { className: 'muted small', text: 'Successes before failures: characters take turns in initiative order, each skill once per character and once per round. You judge each turn: a roll counts at once, "+5 DC" makes it a stretch, "Void" takes it back.' }),
+      data.adventure.status === 'active' ? el('details', { className: 'challenge-new' }, [el('summary', { className: 'small', text: '+ New skill challenge' }),
+        challengeSettingsForm(null, settings => act('/challenges', settings, 'Skill challenge "' + settings.name.trim() + '" created.'))]) : null,
+      ...waiting.map(item => el('details', { className: 'challenge-card' }, [
+        el('summary', {}, [el('strong', { text: item.name }), el('span', { className: 'muted small', text: ' · ' + item.successesNeededSet + ' successes · ' + item.failuresAllowedSet + ' failures · DC ' + item.dc + (item.status === 'paused' ? ' · paused (' + item.successes + ' / ' + item.failures + ')' : '') })]),
+        el('div', { className: 'vitals-actions' }, [
+          item.status === 'paused'
+            ? button('▶ Resume', () => act('/challenges/' + item.id + '/resume', {}, item.name + ' resumes.'), 'btn btn-small btn-green')
+            : button('▶ Run', () => act('/challenges/' + item.id + '/run', {}, item.name + ' begins: the party sees it now.'), 'btn btn-small btn-green', { title: 'The party joins; they roll initiative for the turn order' }),
+          item.status === 'paused' ? challengeEndForm(item) : null,
+          item.status === 'planned' ? button('Delete', () => { if (window.confirm('Delete "' + item.name + '"?')) act('/challenges/' + item.id + '/delete', {}, item.name + ' deleted.'); }, 'btn btn-small btn-red') : null
+        ]),
+        challengeSettingsForm(item, settings => act('/challenges/' + item.id, settings, item.name + ' saved.'))
+      ])),
+      finished.length ? el('details', {}, [el('summary', { className: 'small', text: finished.length + ' finished' }),
+        el('ul', {}, finished.map(item => el('li', { className: 'small' }, [el('strong', { text: item.name }), ' — ' + (item.outcomeText || ''),
+          button('Delete', () => act('/challenges/' + item.id + '/delete', {}, item.name + ' deleted.'), 'link-button small')])))]) : null
+    ]);
+  }
+
   // ─── Sessions (also /schedule in the Discord thread; each side shows the other's) ───
   let scheduleOpen = false;
   function sessionInputs(values) {
@@ -1260,11 +1473,13 @@
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null,
       (() => { const section = scheduleSection(); if (section) section.addEventListener('toggle', () => { scheduleOpen = section.open; }); return section; })(),
       runningSection(),
+      challengeRunningSection(),
       data.party.length
         ? el('div', { className: 'party-grid' }, data.party.map(memberCard))
         : el('p', { className: 'muted', text: data.canManage && active ? 'No one in the party yet: add the characters taking part above.' : 'No characters in this adventure.' }),
       npcSection(),
       encounterPlanner(),
+      challengePlanner(),
       !active && adventure.notes ? el('div', { className: 'card' }, [el('h4', { text: 'Notes' }), el('p', { text: adventure.notes })]) : null,
       rollLog()
     ].filter(Boolean));

@@ -225,14 +225,20 @@ function rollForCharacter({ characterId, user, request = {} }) {
   const critical = Boolean(request.critical) && (option.kind === 'damage' || option.kind === 'custom');
   const result = rules.rollFormula(option.formula, { mode: option.kind === 'damage' ? 'normal' : mode, critical });
   const detail = { text: rules.describeRoll(result), natural: result.natural, critical, parts: result.parts, kind: option.kind };
-  const label = critical ? `${option.label} — critical` : option.label;
+  // context: what the roll is for, e.g. "Skill challenge: Escape the gnolls".
+  const context = typeof request.context === 'string' && request.context.trim() ? `${request.context.trim()}: ` : '';
+  const label = `${context}${critical ? `${option.label} — critical` : option.label}`.slice(0, MAX_LABEL);
   const id = Number(db.prepare(`
     INSERT INTO dice_rolls (character_id, player_id, label, formula, mode, total, detail, private)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(character.id, Number(user.id) > 0 ? Number(user.id) : null, label, result.formula,
     option.kind === 'damage' ? 'normal' : mode, result.total, JSON.stringify(detail), request.private ? 1 : 0).lastInsertRowid);
   // Initiative during a running encounter: the fight's turn order gets it.
-  if (option.kind === 'initiative') require('./encounters').recordInitiativeRoll(character.id, result.total);
+  if (option.kind === 'initiative') {
+    require('./encounters').recordInitiativeRoll(character.id, result.total);
+    // A running skill challenge's turn order too.
+    require('./skillChallenges').recordChallengeInitiative(character.id, result.total);
+  }
   return rollView(db.prepare(`${ROLL_QUERY} WHERE r.id = ?`).get(id));
 }
 

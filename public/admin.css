@@ -1041,3 +1041,24 @@ body.wm-no-scroll { overflow: hidden; }
   .world-map-card.wm-fullscreen .wm-viewport { height: 70vh; }
   .world-map-card.wm-fullscreen .wm-side { max-height: none; }
 }
+/* Skill challenges (adventure table). */
+.challenge-running { border: 1px solid #3f4147; border-left: 3px solid #d4af37; border-radius: 8px; padding: 12px; margin: 12px 0; background: #1e1f22; display: grid; gap: 8px; }
+.challenge-running h3, .challenge-running h5 { margin: 0; }
+.challenge-tally { display: flex; flex-wrap: wrap; gap: 16px; }
+.challenge-pips { letter-spacing: 2px; font-size: 15px; }
+.challenge-pips.is-success { color: #23a55a; }
+.challenge-pips.is-failure { color: #f23f43; }
+.challenge-order { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.challenge-order li.is-turn { background: rgba(212, 175, 55, 0.12); border-radius: 6px; padding: 4px 6px; }
+.challenge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.challenge-turn { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.challenge-turn select, .challenge-feature input { padding: 5px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
+.challenge-feature { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.challenge-log { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.challenge-log li.is-voided { text-decoration: line-through; opacity: 0.55; }
+.challenge-end summary, .challenge-card summary, .challenge-new summary { cursor: pointer; }
+.challenge-card { border: 1px solid #3f4147; border-radius: 6px; padding: 8px; margin: 6px 0; }
+.challenge-form { margin-top: 8px; }
+.challenge-skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; padding: 6px 0; }
+.challenge-log .link-button { margin-left: 8px; }
+.challenge-form .link-button { margin-right: 8px; }
