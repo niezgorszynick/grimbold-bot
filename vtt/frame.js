@@ -52,7 +52,7 @@ async function sceneOutliner(OBR, buildShape) {
       frame = 0;
       const rect = pending;
       if (!rect || !added) return;
-      OBR.scene.local.updateItems([OUTLINE_ID], drafts => { drafts.forEach(draft => { draft.position = toScene(rect); }); }, true).catch(() => {});
+      OBR.scene.local.updateItems([OUTLINE_ID], drafts => { drafts.forEach(draft => { draft.position = toScene({ x: rect.left, y: rect.top }); }); }, true).catch(() => {});
     };
     return {
       async show(rect) {
@@ -60,7 +60,7 @@ async function sceneOutliner(OBR, buildShape) {
         if (!added) {
           added = OBR.scene.local.addItems([buildShape()
             .id(OUTLINE_ID).shapeType('RECTANGLE').width(rect.width / scale).height(rect.height / scale)
-            .position(toScene(rect)).strokeColor('#8ea1ff').strokeWidth(2 / scale).strokeDash([8 / scale, 6 / scale])
+            .position(toScene({ x: rect.left, y: rect.top })).strokeColor('#8ea1ff').strokeWidth(2 / scale).strokeDash([8 / scale, 6 / scale])
             .fillColor('#5865f2').fillOpacity(0.18).layer('POINTER').locked(true).disableHit(true).build()]).catch(() => {});
           return;
         }
