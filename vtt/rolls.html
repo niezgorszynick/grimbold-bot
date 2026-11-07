@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rolls</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 13px/1.4 system-ui, sans-serif; color: #e6e6e6; background: transparent; }
+    p { margin: 6px 0; }
+    .muted { color: #a3a3a3; font-size: 12px; }
+    button { padding: 5px 9px; border: 0; border-radius: 4px; background: #5865f2; color: #fff; cursor: pointer; font: inherit; }
+    button.secondary { background: #4e5058; }
+  </style>
+  <script type="module">
+    import { FRAME_CSS } from '/vtt/frame.js';
+    import { ROLLS_CSS } from '/vtt/ui.js';
+    document.head.append(Object.assign(document.createElement('style'), { textContent: FRAME_CSS + ROLLS_CSS }));
+  </script>
+</head>
+<body>
+  <script type="module" src="/vtt/rolls.js"></script>
+</body>
+</html>

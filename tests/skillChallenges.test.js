@@ -207,3 +207,52 @@ test('skill challenges over HTTP (the panel) and from Owlbear with a key', async
     server.close();
   }
 });
+
+test('a skill roll from the character sheet counts as the challenge turn when the player says so', async () => {
+  const express = require('express');
+  const { dm, ola, tom, kael, brin, asDm, adventureId, asOla, asTom } = setUp();
+  db.prepare("UPDATE players SET password_hash = 'x' WHERE id IN (?, ?, ?)").run(dm, ola, tom);
+  let table = db.createSkillChallenge({ adventureId, user: asDm, settings: { name: 'Cross the bog', successesNeeded: 3, failuresAllowed: 3, dc: 1 } });
+  const id = table.challenges.list[0].id;
+  db.runSkillChallenge({ adventureId, user: asDm, challengeId: id });
+  db.setChallengeInitiative({ adventureId, user: asDm, challengeId: id, characterId: kael, initiative: 15 });
+  db.setChallengeInitiative({ adventureId, user: asDm, challengeId: id, characterId: brin, initiative: 3 });
+
+  assert.equal(db.challengeTurnForCharacter({ characterId: brin, user: asTom }), null, 'not Brin\'s turn');
+  assert.equal(db.challengeTurnForCharacter({ characterId: kael, user: asTom }), null, 'not Tom\'s character');
+  const turn = db.challengeTurnForCharacter({ characterId: kael, user: asOla });
+  assert.equal(turn.name, 'Cross the bog');
+  assert.ok(turn.allowedSkills.includes('Survival'));
+
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')) } }; next(); });
+  app.use('/api', require('../webShopApi'));
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}/api/characters`;
+  const post = (userId, characterId, body) => fetch(`${base}/${characterId}/roll`, {
+    method: 'POST', headers: { 'x-user': String(userId), 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  try {
+    assert.equal((await (await fetch(`${base}/${kael}/challenge-turn`, { headers: { 'x-user': String(ola) } })).json()).turn.challengeId, id);
+    // "Cancel" on the sheet: a normal roll, the challenge untouched.
+    let response = await post(ola, kael, { roll: 'skill:Survival' });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).challenge, undefined);
+    assert.equal(db.getAdventureTable({ adventureId, user: asDm }).challenges.running.attempts.length, 0);
+    // "OK": the challenge turn.
+    response = await post(ola, kael, { roll: 'skill:Survival', challenge: true });
+    const roll = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(roll.challenge, { name: 'Cross the bog', success: true });
+    assert.match(roll.label, /Skill challenge: Cross the bog/);
+    const running = db.getAdventureTable({ adventureId, user: asDm }).challenges.running;
+    assert.equal(running.attempts.length, 1);
+    assert.equal(running.participants.find(p => p.turn).characterId, brin, 'the turn moved on');
+    // Too late now: it's Brin's turn.
+    response = await post(ola, kael, { roll: 'skill:Nature', challenge: true });
+    assert.equal(response.status, 400);
+  } finally {
+    server.close();
+  }
+});

@@ -5,9 +5,11 @@
 // on the token named like the character ("Thorin Ironfist" or "Thorin").
 // It also watches for skill challenges in this player's adventures: a new
 // one opens the challenge window, and it closes when none is running.
+// A window moved by the player is reopened here at its new place, and a
+// popped-out rolls window comes back with the room.
 
 import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
-import { CHANNEL, CHALLENGE_POPOVER, store, describe, matchTokens, putInTracker, openChallengeWindow } from './shared.js';
+import { CHANNEL, CHALLENGE_POPOVER, WINDOWS, store, describe, matchTokens, putInTracker, openChallengeWindow, openWindow, onStoreChange, reopenRequest } from './shared.js';
 
 const POLL_MS = 2000;
 const CHALLENGE_POLL_MS = 4000;
@@ -117,4 +119,19 @@ OBR.onReady(async () => {
   }
   setInterval(watchChallenges, CHALLENGE_POLL_MS);
   watchChallenges();
+
+  let lastReopen = 0;
+  onStoreChange(async name => {
+    if (name !== 'reopen') return;
+    const request = reopenRequest();
+    if (!request || !WINDOWS[request.name] || request.at <= lastReopen) return;
+    lastReopen = request.at;
+    try {
+      await OBR.popover.close(WINDOWS[request.name].id);
+      await openWindow(OBR, request.name);
+    } catch (error) {
+      console.warn("Grimbold's Dice: could not move the window", error);
+    }
+  });
+  if (store.rollsOut()) openWindow(OBR, 'rolls').catch(() => {});
 });

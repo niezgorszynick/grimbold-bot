@@ -543,7 +543,11 @@ router.post('/characters/:id/roll', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
-    const roll = db.rollForCharacter({ characterId: req.params.id, user, request: body });
+    // challenge: true — the sheet asked, and the player said this skill roll is their skill challenge turn.
+    const skill = typeof body.roll === 'string' && body.roll.startsWith('skill:') ? body.roll.slice(6) : null;
+    const roll = body.challenge === true && skill
+      ? db.sheetChallengeRoll({ characterId: req.params.id, user, skill, mode: body.mode })
+      : db.rollForCharacter({ characterId: req.params.id, user, request: body });
     // Natural 1s and 20s also go to the nat-rolls channel, in the background.
     require('./naturalRolls').announcePanelRoll(roll);
     return res.json(roll);
@@ -554,6 +558,14 @@ router.post('/characters/:id/roll', (req, res) => {
     }
     return res.status(diceErrorStatus(error.message)).json({ error: error.message });
   }
+});
+
+// Whether it's this character's turn in a running skill challenge (the sheet asks before a skill roll).
+router.get('/characters/:id/challenge-turn', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  res.set('Cache-Control', 'no-store');
+  return res.json({ turn: db.challengeTurnForCharacter({ characterId: req.params.id, user }) });
 });
 
 router.get('/characters/:id/rolls', (req, res) => {

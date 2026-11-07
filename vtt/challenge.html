@@ -6,13 +6,11 @@
   <title>Skill challenge</title>
   <style>
     :root { color-scheme: dark; }
-    body { margin: 0; padding: 12px; font: 13px/1.4 system-ui, sans-serif; color: #e6e6e6; background: transparent; }
-    h1 { font-size: 15px; margin: 0; }
+    body { font: 13px/1.4 system-ui, sans-serif; color: #e6e6e6; background: transparent; }
     h2 { font-size: 15px; margin: 0; color: #f0d77a; }
     h3 { font-size: 12px; margin: 10px 0 4px; color: #a3a3a3; text-transform: uppercase; letter-spacing: .5px; }
     p { margin: 4px 0; }
     .muted { color: #a3a3a3; font-size: 12px; }
-    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .card { padding: 10px; border-radius: 8px; background: rgba(212, 175, 55, .08); border-left: 3px solid #d4af37; margin-bottom: 10px; }
     .situation { font-style: italic; }
     .tally { display: grid; gap: 2px; margin: 6px 0; }
@@ -34,9 +32,12 @@
     button.tiny { padding: 1px 5px; font-size: 11px; margin-left: 4px; }
     .note { color: #f0d77a; font-size: 12px; }
   </style>
+  <script type="module">
+    import { FRAME_CSS } from '/vtt/frame.js';
+    document.head.append(Object.assign(document.createElement('style'), { textContent: FRAME_CSS }));
+  </script>
 </head>
 <body>
-  <div id="app"></div>
   <script type="module" src="/vtt/challenge.js"></script>
 </body>
 </html>

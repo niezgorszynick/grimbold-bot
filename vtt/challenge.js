@@ -5,9 +5,11 @@
 // or help on their character's turn; the DM acts for anyone and rules on turns.
 
 import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
-import { store, onStoreChange, CHALLENGE_POPOVER } from './shared.js';
+import { store, onStoreChange } from './shared.js';
+import { createFrame } from './frame.js';
 
-const app = document.getElementById('app');
+// Moved, resized or shrunk to its title bar by the player (vtt/frame.js).
+const frame = createFrame({ OBR, name: 'challenge', title: '🎯 Skill challenge' });
 const CHALLENGE_SKILLS = ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation',
   'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'];
 let note = '';
@@ -144,20 +146,25 @@ function challengeCard(challenge) {
   ]);
 }
 
+// One line for the title bar: whose turn, and the tally if it's shown.
+function summary(challenges) {
+  const challenge = challenges[0];
+  if (!challenge) return '';
+  const current = challenge.participants.find(participant => participant.turn);
+  const tallyText = challenge.successes === null ? '' : ' · ✓ ' + challenge.successes + '/' + challenge.successesNeeded + ' ✗ ' + challenge.failures + '/' + challenge.failuresAllowed;
+  return (challenge.finishedBy ? 'Decided' : current ? current.name + "'s turn" : challenge.name) + tallyText;
+}
+
 function render() {
   const challenges = store.challenges();
-  const parts = [el('div', { className: 'top' }, [
-    el('h1', { text: '🎯 Skill challenge' }),
-    el('span', {}, [
-      el('button', { type: 'button', className: 'secondary', text: '↻', title: 'Refresh', onclick: refresh }), ' ',
-      el('button', { type: 'button', className: 'secondary', text: '✕', title: 'Close (it opens again for the next challenge, or from the Dice window)', onclick: () => OBR.popover.close(CHALLENGE_POPOVER) })
-    ])
-  ])];
+  frame.setSummary(summary(challenges));
+  const parts = [];
   if (!store.key()) parts.push(el('p', { className: 'muted', text: 'Connect your key in the Dice window first.' }));
   else if (!challenges.length) parts.push(el('p', { className: 'muted', text: 'No skill challenge is running in your adventures.' }));
   else parts.push(...challenges.map(challengeCard));
   if (note) parts.push(el('p', { className: 'note', text: note }));
-  app.replaceChildren(...parts);
+  parts.push(el('p', {}, [el('button', { type: 'button', className: 'secondary', text: '↻ Refresh', onclick: refresh })]));
+  frame.body.replaceChildren(...parts);
 }
 
 onStoreChange(name => { if (name === 'challenges' || name === 'key') render(); });

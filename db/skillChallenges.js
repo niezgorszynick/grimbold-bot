@@ -361,6 +361,49 @@ function rollChallengeCheck({ adventureId, user, challengeId, characterId, skill
   return { table: table(adventure, user), roll, success: Boolean(success) };
 }
 
+// The character sheet asks this before a skill roll: is it this character's
+// turn in a running skill challenge (one this user may roll for)? Returns
+// { adventureId, challengeId, name, allowedSkills, helped } or null.
+function challengeTurnForCharacter({ characterId, user }) {
+  const id = Number(characterId);
+  const rows = db.prepare(`
+    SELECT s.* FROM skill_challenges s JOIN adventures a ON a.id = s.adventure_id
+    WHERE s.status = 'running' AND a.status = 'active' AND s.turn_character_id = ?
+    ORDER BY s.started_at
+  `).all(id);
+  for (const challenge of rows) {
+    try {
+      turnFor({ adventureId: challenge.adventure_id, user, challengeId: challenge.id, characterId: id });
+    } catch {
+      continue;
+    }
+    const attempts = attemptsOf(challenge.id);
+    if (rules.challengeFinishedBy(challenge, attempts)) continue;
+    return {
+      adventureId: challenge.adventure_id,
+      challengeId: challenge.id,
+      name: challenge.name,
+      allowedSkills: rules.challengeAllowedSkills({ characterId: id, round: challenge.round, attempts }),
+      helped: Boolean(challenge.help_by)
+    };
+  }
+  return null;
+}
+
+// A skill roll from the character sheet, counted as the challenge turn (the
+// player said yes on the sheet). Returns the roll, with how it went when the
+// tally is shown to this user.
+function sheetChallengeRoll({ characterId, user, skill, mode }) {
+  const turn = challengeTurnForCharacter({ characterId, user });
+  if (!turn) throw new Error("It is no longer this character's turn in a skill challenge.");
+  const result = rollChallengeCheck({ adventureId: turn.adventureId, user, challengeId: turn.challengeId, characterId, skill, mode });
+  const running = result.table.challenges.running;
+  return {
+    ...result.roll,
+    challenge: { name: turn.name, success: running && running.successes !== null ? result.success : null }
+  };
+}
+
 // Help: the next roller gets Advantage; the helper's skill counts as used.
 function helpInChallenge({ adventureId, user, challengeId, characterId, skill, override = false }) {
   const { adventure, challenge, participant, dm } = turnFor({ adventureId, user, challengeId, characterId });
@@ -452,6 +495,8 @@ function vttUser(key) {
 }
 
 module.exports = {
+  challengeTurnForCharacter,
+  sheetChallengeRoll,
   challengesForTable,
   createSkillChallenge,
   updateSkillChallenge,

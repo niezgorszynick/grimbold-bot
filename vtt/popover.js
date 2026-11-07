@@ -6,35 +6,10 @@
 // line that opens it.
 
 import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
-import { store, onStoreChange, matchTokens, putInTracker, tokenName, openChallengeWindow } from './shared.js';
+import { store, onStoreChange, matchTokens, putInTracker, tokenName, openChallengeWindow, openWindow } from './shared.js';
+import { el, rollList } from './ui.js';
 
 const app = document.getElementById('app');
-
-function el(tag, attrs, children) {
-  const node = document.createElement(tag);
-  Object.entries(attrs || {}).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === false) return;
-    if (key === 'text') node.textContent = value;
-    else if (key === 'className') node.className = value;
-    else if (key === 'onclick') node.addEventListener('click', value);
-    else if (key === 'onsubmit') node.addEventListener('submit', value);
-    else node.setAttribute(key, value === true ? '' : value);
-  });
-  [].concat(children || []).forEach(child => {
-    if (child === null || child === undefined || child === false) return;
-    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
-  });
-  return node;
-}
-
-// "2d20 [13, ~~7~~] + 5" with dropped dice struck through.
-function detail(text) {
-  const span = el('span', { className: 'detail' });
-  String(text || '').split(/(~~\d+~~)/).forEach(part => {
-    span.append(/^~~\d+~~$/.test(part) ? el('s', { text: part.slice(2, -2) }) : document.createTextNode(part));
-  });
-  return span;
-}
 
 function keyForm() {
   const input = el('input', { type: 'password', placeholder: 'Paste your key from the panel', autocomplete: 'off', 'aria-label': 'Key' });
@@ -156,19 +131,16 @@ function render() {
   }
   parts.push(challengeLine());
   parts.push(encounterSection());
-  const log = store.log();
-  parts.push(log.length
-    ? el('ol', {}, log.map(roll => el('li', {
-      className: [roll.private ? 'private' : '', roll.natural === 20 ? 'nat20' : roll.natural === 1 ? 'nat1' : ''].join(' ').trim()
-    }, [
-      el('span', { className: 'total', text: String(roll.total) }),
-      el('strong', { text: roll.character }), ' — ', roll.label,
-      roll.mode && roll.mode !== 'normal' ? el('span', { className: 'muted', text: ` (${roll.mode})` }) : null,
-      roll.private ? el('span', { className: 'muted', text: ' 🔒 GM only' }) : null,
-      el('br'), detail(roll.text),
-      el('span', { className: 'detail', text: roll.player ? ` · ${roll.player}` : '' })
-    ])))
-    : el('p', { className: 'muted', text: 'No rolls yet.' }));
+  if (key) {
+    parts.push(el('div', { className: 'row' }, [
+      el('strong', { text: 'Rolls' }),
+      el('button', {
+        type: 'button', className: 'secondary', text: '⧉ Pop out', title: 'The rolls in a window of their own: move it, resize it, shrink it',
+        onclick: async () => { store.setRollsOut(true); await openWindow(OBR, 'rolls'); }
+      })
+    ]));
+  }
+  parts.push(rollList(store.log()));
   app.replaceChildren(...parts);
 }
 

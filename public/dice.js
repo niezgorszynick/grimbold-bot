@@ -112,11 +112,28 @@
     collapse.textContent = '–';
   }
 
+  // A skill roll on this character's turn in a running skill challenge: ask
+  // whether it's their challenge turn. Returns the request to send, or null (cancelled).
+  async function challengeQuestion(characterId, request) {
+    const skill = typeof request.roll === 'string' && request.roll.startsWith('skill:') ? request.roll.slice(6) : null;
+    if (!skill) return request;
+    let turn = null;
+    try {
+      const response = await fetch('/api/characters/' + characterId + '/challenge-turn', { cache: 'no-store' });
+      if (response.ok) turn = (await response.json()).turn;
+    } catch { /* roll as usual */ }
+    if (!turn || !turn.allowedSkills.includes(skill)) return request;
+    const yes = window.confirm('Count this ' + skill + ' roll for the skill challenge "' + turn.name + '"?' +
+      (turn.helped ? '\n(Someone helped: it gets Advantage.)' : '') + '\n\nOK: it is your challenge turn. Cancel: a normal roll.');
+    return yes ? Object.assign({}, request, { challenge: true }) : request;
+  }
+
   async function roll(characterId, request) {
     if (busy) return;
     busy = true;
     bar.classList.add('is-rolling');
     try {
+      request = await challengeQuestion(characterId, request);
       const response = await fetch('/api/characters/' + characterId + '/roll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,6 +142,9 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not roll.');
       showResult(data);
+      if (data.challenge) {
+        result.append(el('div', { className: 'small', text: '🎯 ' + data.challenge.name + (data.challenge.success === true ? ': a success.' : data.challenge.success === false ? ': a failure.' : ': counted.') }));
+      }
       if (critical && /damage/i.test(data.label)) { critical = false; sync(); }
       document.dispatchEvent(new CustomEvent('grimbold-roll', { detail: data }));
     } catch (error) {

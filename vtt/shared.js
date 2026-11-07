@@ -5,6 +5,7 @@
 export const CHANNEL = 'grimbold.dice/roll';
 // The separate skill challenge window (an Owlbear popover).
 export const CHALLENGE_POPOVER = 'grimbold.dice/challenge';
+export const ROLLS_POPOVER = 'grimbold.dice/rolls';
 const PREFIX = 'grimbold-dice.';
 const LOG_SIZE = 60;
 const bus = typeof BroadcastChannel === 'function' ? new BroadcastChannel('grimbold-dice') : null;
@@ -55,6 +56,9 @@ export const store = {
     write('log', log);
   },
   clearLog: () => write('log', []),
+  // The rolls window was popped out (it opens again with the room).
+  rollsOut: () => read('rollsOut', false),
+  setRollsOut: out => write('rollsOut', Boolean(out)),
   // The running skill challenges this key's player is in or DMs (the background page keeps it fresh).
   challenges: () => read('challenges', []),
   setChallenges(list) {
@@ -66,22 +70,59 @@ export const store = {
   setChallengesShown: ids => write('challengesShown', ids.slice(-50))
 };
 
-// Opens the skill challenge window near the top right of the room.
-export async function openChallengeWindow(OBR) {
-  const base = { id: CHALLENGE_POPOVER, url: '/vtt/challenge.html', width: 380, height: 560, disableClickAway: true };
-  try {
-    const width = await OBR.viewport.getWidth();
-    await OBR.popover.open({
-      ...base,
-      anchorReference: 'POSITION',
-      anchorPosition: { left: Math.max(400, width - 70), top: 70 },
-      anchorOrigin: { horizontal: 'RIGHT', vertical: 'TOP' },
-      transformOrigin: { horizontal: 'RIGHT', vertical: 'TOP' }
-    });
-  } catch {
-    await OBR.popover.open(base);
-  }
+// ─── Windows of their own (Owlbear popovers): skill challenge and rolls ────
+// Each player's browser remembers where each one sits and how big it is.
+export const WINDOWS = {
+  challenge: { id: CHALLENGE_POPOVER, url: '/vtt/challenge.html', width: 380, height: 560 },
+  rolls: { id: ROLLS_POPOVER, url: '/vtt/rolls.html', width: 340, height: 420 }
+};
+export const COLLAPSED_HEIGHT = 46;
+export const MIN_SIZE = { width: 260, height: 140 };
+
+export function windowPlace(name) {
+  const saved = read('window.' + name, null);
+  return saved && typeof saved === 'object' ? saved : null;
 }
+export function setWindowPlace(name, place) {
+  write('window.' + name, { ...(windowPlace(name) || {}), ...place });
+}
+
+// Opens a window where the player left it (or near the top right).
+export async function openWindow(OBR, name) {
+  const spec = WINDOWS[name];
+  const saved = windowPlace(name) || {};
+  let viewportWidth = 1200;
+  let viewportHeight = 800;
+  try {
+    [viewportWidth, viewportHeight] = await Promise.all([OBR.viewport.getWidth(), OBR.viewport.getHeight()]);
+  } catch { /* defaults */ }
+  const width = Math.max(MIN_SIZE.width, Math.min(saved.width || spec.width, viewportWidth - 20));
+  const height = Math.max(MIN_SIZE.height, Math.min(saved.height || spec.height, viewportHeight - 20));
+  const fallbackLeft = viewportWidth - width - 70 - (name === 'rolls' ? WINDOWS.challenge.width + 12 : 0);
+  const left = Math.max(0, Math.min(Number.isFinite(saved.left) ? saved.left : fallbackLeft, viewportWidth - 120));
+  const top = Math.max(0, Math.min(Number.isFinite(saved.top) ? saved.top : 70, viewportHeight - COLLAPSED_HEIGHT));
+  if (!Number.isFinite(saved.left)) setWindowPlace(name, { left, top });
+  await OBR.popover.open({
+    id: spec.id,
+    url: spec.url,
+    width,
+    height: saved.collapsed ? COLLAPSED_HEIGHT : height,
+    anchorReference: 'POSITION',
+    anchorPosition: { left, top },
+    anchorOrigin: { horizontal: 'LEFT', vertical: 'TOP' },
+    transformOrigin: { horizontal: 'LEFT', vertical: 'TOP' },
+    disableClickAway: true,
+    marginThreshold: 0
+  });
+}
+export const openChallengeWindow = OBR => openWindow(OBR, 'challenge');
+
+// A window can't move itself (closing it ends its own page), so it asks the
+// background page to close and reopen it at the new place.
+export function requestReopen(name) {
+  write('reopen', { name, at: Date.now() });
+}
+export const reopenRequest = () => read('reopen', null);
 
 export function onStoreChange(callback) {
   if (bus) bus.addEventListener('message', event => callback(event.data && event.data.changed));
