@@ -34,7 +34,7 @@ function speciesDefenses(species, sheetData) {
       break;
     case 'Elf':
       darkvision(option === 'Drow' ? 120 : 60);
-      list.push(entry('advantage', 'Saves against Charmed', 'Fey Ancestry'));
+      list.push(entry('advantage', 'Saves against Charmed', 'Fey Ancestry'), entry('immunity', 'Magical sleep', 'Trance'));
       break;
     case 'Gnome':
       darkvision(60);

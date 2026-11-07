@@ -145,6 +145,12 @@ function featResources(feats, classRows, scoreOf) {
   const pb = proficiencyBonus(Math.max(1, totalLevel));
   const cha = abilityModifier(scoreOf('cha'));
   const result = [];
+  if (names.has('Lucky')) {
+    result.push({
+      key: 'luckPoints', name: 'Luck Points', source: 'Lucky', max: pb, recovery: 'long', pool: false, rolls: [],
+      text: 'Spend 1: Advantage on your own D20 Test, or Disadvantage on an attack roll against you.'
+    });
+  }
   if (names.has('Death Knight Initiate')) {
     result.push({
       key: 'deathPoints', name: 'Death Points', source: 'Path of the Death Knight', max: pb, recovery: 'long', pool: true,

@@ -56,8 +56,11 @@ function buildCombat(character, sheetData) {
   const combat = rules.calculateCombat(combatCharacter(character, sheetData));
   const wearsArmor = Boolean(combat.armorClass.armor || combat.armorClass.shield);
   const manual = !isRulesManaged(sheetData) && !wearsArmor;
+  const blade = Array.isArray(sheetData.invocations) && sheetData.invocations.some(entry => entry && entry.name === 'Pact of the Blade');
   return {
     ...combat,
+    // Pact of the Blade: the conjured weapon's settings, and what can be picked.
+    pactWeapon: blade ? { current: sheetData.pactWeapon || null, weapons: rules.PACT_WEAPONS, damageTypes: rules.PACT_DAMAGE_TYPES } : null,
     armorClass: {
       ...combat.armorClass,
       manual,
@@ -88,4 +91,18 @@ function setCharacterAcAdjustment({ id, player_id, is_admin, value }) {
   })();
 }
 
-module.exports = { previewCustomWeapon, getCharacterCombat, setCharacterAcAdjustment, combatWithArmorClass: withArmorClass, buildCharacterCombat: buildCombat };
+// Pact of the Blade: the weapon the warlock conjures (null clears it).
+function setCharacterPactWeapon({ id, player_id, is_admin, pactWeapon }) {
+  return db.transaction(() => {
+    const character = loadCharacter(id, player_id, is_admin);
+    const sheetData = readSheet(character.sheet_data);
+    if (!(Array.isArray(sheetData.invocations) && sheetData.invocations.some(entry => entry && entry.name === 'Pact of the Blade'))) {
+      throw new Error('Only a Warlock with Pact of the Blade has a pact weapon.');
+    }
+    const nextSheet = { ...sheetData, pactWeapon: pactWeapon ? rules.validatePactWeapon(pactWeapon) : null };
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
+    return buildCombat(character, nextSheet);
+  })();
+}
+
+module.exports = { setCharacterPactWeapon, previewCustomWeapon, getCharacterCombat, setCharacterAcAdjustment, combatWithArmorClass: withArmorClass, buildCharacterCombat: buildCombat };

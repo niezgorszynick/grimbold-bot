@@ -515,13 +515,14 @@ router.get('/characters/:id/combat', (req, res) => {
   }
 });
 
-// { action: 'adjustAc', value }
+// { action: 'adjustAc', value } | { action: 'pactWeapon', pactWeapon: { weapon, name, damageType } | null }
 router.post('/characters/:id/combat', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
-  if (body.action !== 'adjustAc') return res.status(400).json({ error: 'Unknown combat action.' });
+  if (!['adjustAc', 'pactWeapon'].includes(body.action)) return res.status(400).json({ error: 'Unknown combat action.' });
   try {
+    if (body.action === 'pactWeapon') return res.json(db.setCharacterPactWeapon({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), pactWeapon: body.pactWeapon }));
     return res.json(db.setCharacterAcAdjustment({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user), value: body.value }));
   } catch (error) {
     return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });

@@ -393,13 +393,16 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
 
   // A custom weapon's extras; a homebrew one also sets its ability and proficiency.
   const custom = weapon.custom || null;
+  const pact = options.pact || null;
   let abilities = weapon.kind === 'Ranged' ? ['dex'] : ['str'];
   if (weapon.properties.includes('Finesse') || martialArts) abilities.push(weapon.kind === 'Ranged' ? 'str' : 'dex');
   if (custom && (custom.ability === 'str' || custom.ability === 'dex')) abilities = martialArts ? [custom.ability, 'dex'] : [custom.ability];
+  // Pact of the Blade: Charisma instead of Strength or Dexterity.
+  if (pact) abilities.push('cha');
   const ability = abilities.reduce((best, key) => (mods[key] > mods[best] ? key : best), abilities[0]);
   const mod = mods[ability];
 
-  const proficient = custom && custom.proficient !== undefined ? custom.proficient : isProficient(weapon, training.weapons);
+  const proficient = pact ? true : (custom && custom.proficient !== undefined ? custom.proficient : isProficient(weapon, training.weapons));
   let magicBonus = 0;
   if (piece.magic) {
     const bonus = magicWeaponBonus(piece.magic);
@@ -428,7 +431,7 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
     magicBonus ? { label: 'Magic', value: magicBonus } : null,
     custom && custom.damageBonus ? { label: 'Weapon', value: custom.damageBonus } : null
   ].filter(Boolean);
-  let damage = damageText(die, damageMod, weapon.damageType);
+  let damage = damageText(die, damageMod, (pact && pact.damageType) || weapon.damageType);
   // The off-hand attack is made one-handed.
   if (weapon.versatile && !offHand) damage += ` (${damageText(weapon.versatile, damageMod, '').trim()} two-handed)`;
 
@@ -442,6 +445,7 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
   // "Dawnbringer": say what it really is, when that's more than the base weapon
   // the attack list already shows ("+1 Longsword", not just "Longsword").
   if (piece.nickname && piece.realName !== weapon.name) notes.unshift(piece.realName);
+  if (pact) notes.push(`Pact weapon${pact.damageType ? ` (${weapon.damageType} or ${pact.damageType})` : ': Necrotic, Psychic or Radiant if you like'}`);
   if (features.has('Weapon Mastery') && weapon.mastery) notes.push(`Mastery: ${weapon.mastery}`);
   if (custom) {
     if (custom.action !== 'Action') notes.unshift(custom.action);
@@ -557,7 +561,71 @@ function calculateCombat(character) {
     });
   });
   attacks.push(unarmedStrike(ctx, armorClass, weapons.length > 0));
+  // Warlocks: the conjured pact weapon first, Eldritch Blast after the weapons.
+  const pact = pactWeaponPiece(ctx.sheetData);
+  if (pact) attacks.unshift(weaponAttack(pact.piece, ctx, armorClass, { pact: { damageType: pact.damageType } }));
+  const blast = eldritchBlast(ctx);
+  if (blast) attacks.splice(attacks.length - 1, 0, blast);
   return { armorClass, attacks };
+}
+
+// ─── Warlock ──────────────────────────────────────────────────────────────
+
+const hasInvocation = (sheetData, name) => Array.isArray(sheetData.invocations) && sheetData.invocations.some(entry => entry && entry.name === name);
+const PACT_DAMAGE_TYPES = ['Necrotic', 'Psychic', 'Radiant'];
+const PACT_WEAPONS = Object.values(WEAPONS).filter(weapon => weapon.kind === 'Melee' && ['Simple', 'Martial'].includes(weapon.category)).map(weapon => weapon.name).sort();
+
+// sheetData.pactWeapon = { weapon: 'Rapier', name: 'Fog blade', damageType: 'Radiant' | null }.
+function validatePactWeapon(value) {
+  const input = value && typeof value === 'object' ? value : {};
+  if (!PACT_WEAPONS.includes(input.weapon)) throw new Error('Choose a Simple or Martial melee weapon for your pact weapon.');
+  const damageType = input.damageType || null;
+  if (damageType && !PACT_DAMAGE_TYPES.includes(damageType)) throw new Error('A pact weapon deals its own damage type, or Necrotic, Psychic or Radiant.');
+  const name = String(input.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return { weapon: input.weapon, name: name || input.weapon, damageType };
+}
+
+// The conjured pact weapon as a worn piece, with Pact of the Blade and one set.
+function pactWeaponPiece(sheetData) {
+  if (!hasInvocation(sheetData, 'Pact of the Blade') || !sheetData.pactWeapon) return null;
+  let pact;
+  try {
+    pact = validatePactWeapon(sheetData.pactWeapon);
+  } catch {
+    return null;
+  }
+  return { piece: { gear: { type: 'weapon', ...WEAPONS[pact.weapon] }, name: pact.name, from: 'pact' }, damageType: pact.damageType };
+}
+
+// Eldritch Blast, for a character who knows it: one attack roll per beam,
+// with Agonizing Blast's Charisma on the damage.
+function eldritchBlast(ctx) {
+  const lists = (((ctx.sheetData || {}).spellcasting || {}).classes) || {};
+  const known = Object.values(lists).some(list => Array.isArray(list && list.cantrips) && list.cantrips.includes('Eldritch Blast'));
+  if (!known) return null;
+  const invocations = Array.isArray(ctx.sheetData.invocations) ? ctx.sheetData.invocations : [];
+  const on = name => invocations.some(entry => entry && entry.name === name && (!entry.cantrip || entry.cantrip === 'Eldritch Blast'));
+  const cha = ctx.mods.cha;
+  const level = ctx.classes.reduce((sum, row) => sum + row.level, 0) || 1;
+  const beams = level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1;
+  const agonizing = on('Agonizing Blast');
+  const warlockLevel = ctx.levelOf('Warlock');
+  return {
+    name: 'Eldritch Blast',
+    from: 'cantrip',
+    weapon: 'Cantrip',
+    attackBonus: signed(cha + ctx.pb),
+    hitParts: [{ label: 'CHA', value: cha }, { label: 'Proficiency', value: ctx.pb }],
+    damageParts: agonizing ? [{ label: 'Agonizing Blast (CHA)', value: cha }] : [],
+    damageDie: '1d10',
+    damage: damageText('1d10', agonizing ? cha : 0, 'Force'),
+    notes: [
+      `${beams} beam${beams > 1 ? 's' : ''}, an attack roll each`,
+      on('Eldritch Spear') && warlockLevel ? `range ${30 * warlockLevel} ft. (Eldritch Spear)` : 'range 120 ft.',
+      agonizing ? 'Agonizing Blast' : null,
+      on('Repelling Blast') ? 'Repelling Blast: push 10 ft. (Large or smaller)' : null
+    ].filter(Boolean)
+  };
 }
 
 // One line of rules text for an armor, shield or weapon.
@@ -595,6 +663,9 @@ function validateAcAdjustment(value) {
 }
 
 module.exports = {
+  PACT_WEAPONS,
+  PACT_DAMAGE_TYPES,
+  validatePactWeapon,
   identifyGear,
   gearOfMagicItem,
   magicItemBaseOptions,

@@ -118,8 +118,41 @@
         el('tbody', {}, rows)
       ]),
       el('p', { className: 'muted small', text: 'Weapons at hand in Equipment & Items (and magic weapons worn or held) appear here.' }),
+      pactWeaponEditor(),
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), text: message }) : null
     ].filter(Boolean));
+  }
+
+  // Pact of the Blade: the weapon you conjure (any Simple or Martial melee
+  // weapon), its name, and the damage type it deals.
+  function pactWeaponEditor() {
+    const pact = view.pactWeapon;
+    if (!pact) return null;
+    const current = pact.current || {};
+    const weapon = el('select', { 'aria-label': 'Pact weapon' }, [el('option', { value: '', text: '-- Weapon --' }),
+      ...pact.weapons.map(name => { const option = el('option', { value: name, text: name }); option.selected = name === current.weapon; return option; })]);
+    const name = el('input', { type: 'text', maxlength: '40', value: current.name || '', placeholder: 'Its name (e.g. Fog blade)', 'aria-label': 'Pact weapon name' });
+    const damage = el('select', { 'aria-label': 'Damage type' }, [el('option', { value: '', text: "The weapon's own damage" }),
+      ...pact.damageTypes.map(type => { const option = el('option', { value: type, text: type }); option.selected = type === current.damageType; return option; })]);
+    const save = async pactWeapon => {
+      try {
+        view = await request('POST', { action: 'pactWeapon', pactWeapon });
+        message = pactWeapon ? 'Pact weapon saved.' : 'Pact weapon cleared.';
+        isError = false;
+      } catch (error) {
+        message = error.message;
+        isError = true;
+      }
+      render();
+      if (window.refreshCharacterVitals) window.refreshCharacterVitals();
+    };
+    return el('details', { className: 'pact-weapon', open: pact.current ? null : true }, [
+      el('summary', { className: 'small', text: 'Pact of the Blade: ' + (pact.current ? pact.current.name + ' (' + pact.current.weapon + ')' : 'choose your pact weapon') }),
+      el('p', { className: 'muted small', text: 'Bonus Action to conjure it. You are proficient with it and can attack with Charisma; it can deal Necrotic, Psychic or Radiant damage instead of its own.' }),
+      el('div', { className: 'vitals-actions' }, [weapon, name, damage,
+        el('button', { type: 'button', className: 'btn btn-small btn-green', text: 'Save', onclick: () => save({ weapon: weapon.value, name: name.value, damageType: damage.value || null }) }),
+        pact.current ? el('button', { type: 'button', className: 'btn btn-small btn-secondary', text: 'Clear', onclick: () => save(null) }) : null])
+    ]);
   }
 
   function render() {
