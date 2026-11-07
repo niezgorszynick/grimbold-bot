@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Moving</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; cursor: grabbing; user-select: none; }
+    .ghost { pointer-events: none; }
+    .ghost { position: absolute; box-sizing: border-box; border: 2px dashed #8ea1ff; border-radius: 8px; background: rgba(88, 101, 242, .18);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .35); font: bold 13px system-ui, sans-serif; color: #fff; padding: 8px 10px; }
+    .ghost[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="ghost" hidden></div>
+  <script type="module">
+    // vtt/ghost.html — Only open while a Grimbold window is dragged: the
+    // outline of where it will land (vtt/frame.js sends the place). If this
+    // overlay gets the mouse instead, it follows it and reports the release.
+    import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
+    import { GHOST_CHANNEL, GHOST_POPOVER } from '/vtt/shared.js';
+    const box = document.querySelector('.ghost');
+    const channel = new BroadcastChannel(GHOST_CHANNEL);
+    let rect = null;
+    let done = false;
+    function draw() {
+      if (!rect) return;
+      Object.assign(box.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+      box.textContent = rect.title || '';
+      box.hidden = false;
+    }
+    channel.addEventListener('message', event => {
+      if (!event.data || typeof event.data !== 'object' || event.data.done) return;
+      rect = event.data;
+      draw();
+    });
+    document.addEventListener('pointermove', event => {
+      if (!rect || done) return;
+      const grab = rect.grab || { x: 20, y: 15 };
+      rect = { ...rect, left: Math.max(0, Math.round(event.clientX - grab.x)), top: Math.max(0, Math.round(event.clientY - grab.y)) };
+      draw();
+    });
+    const release = () => {
+      if (done) return;
+      done = true;
+      if (rect) channel.postMessage({ done: { left: rect.left, top: rect.top } });
+      OBR.onReady(() => OBR.popover.close(GHOST_POPOVER));
+    };
+    document.addEventListener('pointerup', release);
+    // Never left over the room: gone after half a minute whatever happens.
+    setTimeout(() => { done = true; OBR.onReady(() => OBR.popover.close(GHOST_POPOVER)); }, 30000);
+    channel.postMessage('ready');
+  </script>
+</body>
+</html>

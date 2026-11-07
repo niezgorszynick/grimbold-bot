@@ -4,7 +4,25 @@
 // for a new size. Owlbear can resize a window live but not move it, so a move
 // lands when the mouse is let go (the background page reopens it there).
 
-import { WINDOWS, COLLAPSED_HEIGHT, MIN_SIZE, windowPlace, setWindowPlace, requestReopen } from './shared.js';
+import { WINDOWS, COLLAPSED_HEIGHT, MIN_SIZE, GHOST_POPOVER, GHOST_CHANNEL, windowPlace, setWindowPlace, requestReopen } from './shared.js';
+
+// The outline shown while dragging lives in its own overlay window (vtt/ghost.html).
+const ghostChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(GHOST_CHANNEL) : null;
+let ghostRect = null;
+if (ghostChannel) ghostChannel.addEventListener('message', event => { if (event.data === 'ready' && ghostRect) ghostChannel.postMessage(ghostRect); });
+
+async function openGhost(OBR) {
+  try {
+    const [width, height] = await Promise.all([OBR.viewport.getWidth(), OBR.viewport.getHeight()]);
+    await OBR.popover.open({
+      id: GHOST_POPOVER, url: '/vtt/ghost.html', width, height,
+      anchorReference: 'POSITION', anchorPosition: { left: 0, top: 0 },
+      anchorOrigin: { horizontal: 'LEFT', vertical: 'TOP' }, transformOrigin: { horizontal: 'LEFT', vertical: 'TOP' },
+      hidePaper: true, disableClickAway: true, marginThreshold: 0
+    });
+  } catch { /* no outline: the move still lands on release */ }
+}
+const closeGhost = OBR => OBR.popover.close(GHOST_POPOVER).catch(() => {});
 
 export function createFrame({ OBR, name, title, onClose }) {
   const spec = WINDOWS[name];
@@ -53,33 +71,56 @@ export function createFrame({ OBR, name, title, onClose }) {
     await OBR.popover.close(spec.id);
   });
 
-  // Moving: drag the title bar; the window jumps there on release.
+  // Moving: drag the title bar. An overlay shows the outline of where it
+  // will land; on release the window jumps there. If the overlay takes the
+  // mouse over, it follows the mouse itself and reports the release.
+  let finishMove = null;
+  if (ghostChannel) ghostChannel.addEventListener('message', event => {
+    const data = event.data;
+    if (data && data.done && finishMove) finishMove(data.done);
+  });
   bar.addEventListener('pointerdown', event => {
     if (event.button !== 0 || event.target.closest('button')) return;
     const start = { x: event.screenX, y: event.screenY };
+    const from = place();
+    const size = { width: window.innerWidth, height: window.innerHeight };
+    // Where in the window it was grabbed (the overlay needs it if it takes over).
+    const grab = { x: Math.round(event.clientX), y: Math.round(event.clientY) };
+    let ghostOpen = false;
+    let landing = null;
     bar.setPointerCapture(event.pointerId);
     document.body.classList.add('is-moving');
+    const finish = rect => {
+      if (!finishMove) return;
+      finishMove = null;
+      bar.removeEventListener('pointermove', onMove);
+      bar.removeEventListener('pointerup', onUp);
+      bar.removeEventListener('pointercancel', onCancel);
+      document.body.classList.remove('is-moving');
+      hint.textContent = '';
+      ghostRect = null;
+      if (ghostOpen) closeGhost(OBR);
+      if (!rect) return;
+      setWindowPlace(name, { left: Math.max(0, Math.round(rect.left)), top: Math.max(0, Math.round(rect.top)) });
+      requestReopen(name);
+    };
+    finishMove = finish;
     const onMove = moveEvent => {
       const dx = Math.round(moveEvent.screenX - start.x);
       const dy = Math.round(moveEvent.screenY - start.y);
-      hint.textContent = Math.abs(dx) + Math.abs(dy) > 4 ? 'Let go to move it ' + arrows(dx, dy) : '';
+      if (Math.abs(dx) + Math.abs(dy) <= 4) return;
+      hint.textContent = 'Let go to move it ' + arrows(dx, dy);
+      landing = { left: Math.max(0, (from.left || 0) + dx), top: Math.max(0, (from.top || 0) + dy) };
+      ghostRect = { ...landing, ...size, grab, title: heading.textContent };
+      if (ghostChannel) ghostChannel.postMessage(ghostRect);
+      if (!ghostOpen) { ghostOpen = true; openGhost(OBR); }
     };
-    const onUp = upEvent => {
-      bar.removeEventListener('pointermove', onMove);
-      bar.removeEventListener('pointerup', onUp);
-      bar.removeEventListener('pointercancel', onUp);
-      document.body.classList.remove('is-moving');
-      hint.textContent = '';
-      const dx = Math.round(upEvent.screenX - start.x);
-      const dy = Math.round(upEvent.screenY - start.y);
-      if (upEvent.type === 'pointercancel' || Math.abs(dx) + Math.abs(dy) <= 4) return;
-      const current = place();
-      setWindowPlace(name, { left: Math.max(0, (current.left || 0) + dx), top: Math.max(0, (current.top || 0) + dy) });
-      requestReopen(name);
-    };
+    const onUp = () => finish(landing);
+    // Lost the mouse: if the overlay is up it carries on and reports the release.
+    const onCancel = () => { if (!ghostOpen) finish(null); };
     bar.addEventListener('pointermove', onMove);
     bar.addEventListener('pointerup', onUp);
-    bar.addEventListener('pointercancel', onUp);
+    bar.addEventListener('pointercancel', onCancel);
   });
 
   // Resizing: drag the corner; Owlbear resizes the window as you go.

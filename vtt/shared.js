@@ -6,6 +6,9 @@ export const CHANNEL = 'grimbold.dice/roll';
 // The separate skill challenge window (an Owlbear popover).
 export const CHALLENGE_POPOVER = 'grimbold.dice/challenge';
 export const ROLLS_POPOVER = 'grimbold.dice/rolls';
+// A see-through overlay over the room while a window is dragged: its outline follows the mouse.
+export const GHOST_POPOVER = 'grimbold.dice/ghost';
+export const GHOST_CHANNEL = 'grimbold-dice-ghost';
 const PREFIX = 'grimbold-dice.';
 const LOG_SIZE = 60;
 const bus = typeof BroadcastChannel === 'function' ? new BroadcastChannel('grimbold-dice') : null;
