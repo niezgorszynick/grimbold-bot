@@ -210,6 +210,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <div class="sheet-header-actions">
               <a href="/admin?tab=character-sheet" class="btn btn-secondary">Back / Cancel</a>
               ${unbuiltCharacter ? '' : `<a href="/api/characters/${Number(characterToEdit.id)}/sheet.pdf" class="btn btn-secondary" download title="The official 2024 character sheet, filled in from this character (fields stay editable). Save the sheet first to include unsaved changes.">📄 Export PDF</a>`}
+              <button id="cs_layout" class="btn btn-secondary" type="button" title="Wide: three columns across the screen. Slim: two narrower columns, like on a smaller window.">▥ Slim</button>
               <button id="cs_mode" class="btn btn-secondary" type="button" title="View: play the character (roll, track HP, cast). Edit: change the build (identity, abilities, skills, appearance, notes).">✏️ Edit</button>
               <button id="cs_save" class="btn btn-success" type="button" disabled>Save Sheet</button>
             </div>
@@ -313,6 +314,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <script src="/admin/assets/character-purse.js" defer></script>
               <script src="/admin/assets/gift-form.js" defer></script>
               <div id="cs_inventory" class="inventory" data-character-id="${Number(characterToEdit.id)}">Loading items...</div>
+              <script src="/admin/assets/rules-text.js" defer></script>
               <script src="/admin/assets/character-inventory.js" defer></script>
               <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>
               </section>
@@ -727,19 +729,41 @@ module.exports = function renderCharacterSheetTab(ctx) {
           // Grouped as short names: the class's features (not the level-up
           // steps), the subclass, and species traits (click one for its text).
           // Background skills are in the skill list already.
-          const featureNames = classFeatures.filter(name => !/Subclass$|^Ability Score Improvement$|^Epic Boon$/.test(name));
-          const chip = (name, text) => {
+          const featureNames = classFeatures.filter(name => !/Subclass$|^Subclass Feature$|^Ability Score Improvement$|^Epic Boon$/.test(name));
+          lastFeatureChips = { classFeatures: featureNames, classLevel, speciesData };
+          renderFeatureChips();
+          updateDerivedStats(sheetCharacterLevel);
+          updateAbilityValidation();
+          renderDmSkills();
+        }
+
+        // Class, subclass and species features as chips; one with text (from
+        // rules/content, fetched by subclass-features.js) opens on click.
+        var lastFeatureChips; // var: set by updateRuleDrivenFields, which may run before this line
+        var openFeatureChips;
+        function renderFeatureChips() {
+          if (!lastFeatureChips) return;
+          openFeatureChips = openFeatureChips || new Set();
+          const { classFeatures: featureNames, classLevel, speciesData } = lastFeatureChips;
+          const texts = window.sheetFeatureTexts || { classes: [], subclasses: [] };
+          const classTexts = (texts.classes.find(entry => entry.className === classSelect.value) || {}).features || [];
+          const subclassEntry = texts.subclasses.find(entry => entry.subclass === subclassSelect.value) || null;
+          const chip = (name, text, key, note) => {
             if (!text) return Object.assign(document.createElement('span'), { className: 'feature-chip', textContent: name });
             const details = document.createElement('details');
             details.className = 'feature-chip has-text';
+            details.open = openFeatureChips.has(key);
+            details.addEventListener('toggle', () => { if (details.open) openFeatureChips.add(key); else openFeatureChips.delete(key); });
             const summary = document.createElement('summary');
             summary.textContent = name;
-            const body = document.createElement('p');
-            body.className = 'small feature-chip-text';
-            body.textContent = text;
+            const body = window.renderRulesText
+              ? window.renderRulesText(text, 'small feature-chip-text')
+              : Object.assign(document.createElement('p'), { className: 'small feature-chip-text', textContent: text });
+            if (note) body.prepend(Object.assign(document.createElement('p'), { className: 'muted', textContent: note }));
             details.append(summary, body);
             return details;
           };
+          const textOf = name => (classTexts.find(feature => feature.name === name) || {}).text;
           const group = (label, chips) => {
             if (!chips.length) return null;
             const row = document.createElement('div');
@@ -753,19 +777,24 @@ module.exports = function renderCharacterSheetTab(ctx) {
             row.append(title, list);
             return row;
           };
+          // Features in classes.md that the rules don't list by name come after.
+          const extraClassFeatures = classTexts.filter(feature => !featureNames.includes(feature.name)).map(feature => feature.name);
+          const subclassChips = subclassSelect.value && classLevel >= 3 ? [
+            chip(subclassSelect.value, subclassEntry && subclassEntry.intro, 'subclass:' + subclassSelect.value,
+              subclassEntry && subclassEntry.source ? '🧪 Playtest material (' + subclassEntry.source + '): may change before it is official.' : ''),
+            ...(subclassEntry ? subclassEntry.features.map(feature => chip(feature.name, feature.text, 'subclass:' + feature.name)) : [])
+          ] : [];
           const groups = [
-            group(classSelect.value || 'Class', featureNames.map(name => chip(name))),
-            subclassSelect.value && classLevel >= 3 ? group('Subclass', [chip(subclassSelect.value)]) : null,
-            group(speciesSelect.value || 'Species', (speciesData.traits || []).map(trait => chip(trait.name, trait.description)))
+            group(classSelect.value || 'Class', [...featureNames, ...extraClassFeatures].map(name => chip(name, textOf(name), 'class:' + name))),
+            group('Subclass', subclassChips),
+            group(speciesSelect.value || 'Species', (speciesData.traits || []).map(trait => chip(trait.name, trait.description, 'species:' + trait.name)))
           ].filter(Boolean);
           autoFeatures.replaceChildren(...groups);
           if (!groups.length) {
             autoFeatures.textContent = 'Choose a class, species, and background to see features and proficiencies.';
           }
-          updateDerivedStats(sheetCharacterLevel);
-          updateAbilityValidation();
-          renderDmSkills();
         }
+        document.addEventListener('sheet-feature-texts', renderFeatureChips);
 
         function updateSubclasses(selected = subclassSelect.value) {
           subclassSelect.replaceChildren(new Option('-- None / Base --', ''));

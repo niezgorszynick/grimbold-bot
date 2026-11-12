@@ -236,7 +236,8 @@ function sensesOf(character, sheetData) {
   }
 }
 
-// The subclass features a character has, with their text (rules/content/subclasses.md).
+// The class and subclass features a character has, with their text
+// (rules/content/classes.md and subclasses.md; empty lists without the files).
 router.get('/characters/:id/subclass-features', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -247,7 +248,7 @@ router.get('/characters/:id/subclass-features', (req, res) => {
   const classes = rows.length
     ? rows.map(row => ({ className: row.class_name, subclassName: row.subclass_name, level: row.class_level }))
     : [{ className: character.class, subclassName: character.subclass || null, level: character.level }];
-  return res.json({ subclasses: rules.subclassFeatureTexts(classes) });
+  return res.json({ subclasses: rules.subclassFeatureTexts(classes), classes: rules.classFeatureTexts(classes) });
 });
 
 // Rule-derived values (max HP, hit dice, slots) for a stored character.

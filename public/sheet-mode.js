@@ -42,4 +42,24 @@
   document.addEventListener('input', event => { if (event.target.closest && event.target.closest('.sheet-notes-label')) markEmptyNotes(); });
   window.refreshSheetMode = apply;
   apply();
+
+  // Wide screens: three columns (Wide) or the two-column layout (Slim), remembered here too.
+  const layoutToggle = document.getElementById('cs_layout');
+  if (layoutToggle) {
+    const LAYOUT_KEY = 'grimbold.sheetLayout';
+    let slim = false;
+    try { slim = localStorage.getItem(LAYOUT_KEY) === 'slim'; } catch { /* private window */ }
+    const applyLayout = () => {
+      document.body.classList.toggle('sheet-slim', slim);
+      layoutToggle.textContent = slim ? '▦ Wide' : '▥ Slim';
+      layoutToggle.setAttribute('aria-pressed', String(slim));
+      if (window.autosizeSheetNotes) window.autosizeSheetNotes();
+    };
+    layoutToggle.addEventListener('click', () => {
+      slim = !slim;
+      try { localStorage.setItem(LAYOUT_KEY, slim ? 'slim' : 'wide'); } catch { /* private window */ }
+      applyLayout();
+    });
+    applyLayout();
+  }
 })();

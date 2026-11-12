@@ -33,17 +33,11 @@
   }
 
   // Minimal Markdown for item text: paragraphs, **bold**, *italic*.
+  // Paragraphs, **bold**, *italic*, bullets and tables (public/rules-text.js).
   function renderText(text) {
+    if (window.renderRulesText) return window.renderRulesText(text);
     const wrap = el('div', { className: 'spell-text' });
-    String(text || '').split(/\n{2,}/).forEach(block => {
-      const p = el('p');
-      block.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).forEach(part => {
-        if (/^\*\*[^*]+\*\*$/.test(part)) p.append(el('strong', { text: part.slice(2, -2) }));
-        else if (/^\*[^*]+\*$/.test(part)) p.append(el('em', { text: part.slice(1, -1) }));
-        else if (part) p.append(document.createTextNode(part));
-      });
-      wrap.append(p);
-    });
+    wrap.append(el('p', { text: String(text || '') }));
     return wrap;
   }
 

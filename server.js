@@ -67,6 +67,7 @@ const ADMIN_ASSETS = {
   'feature-choices.js': path.join(__dirname, 'public', 'feature-choices.js'),
   'character-features.js': path.join(__dirname, 'public', 'character-features.js'),
   'subclass-features.js': path.join(__dirname, 'public', 'subclass-features.js'),
+  'rules-text.js': path.join(__dirname, 'public', 'rules-text.js'),
   'character-live.js': path.join(__dirname, 'public', 'character-live.js'),
   'sheet-sections.js': path.join(__dirname, 'public', 'sheet-sections.js'),
   'sheet-mode.js': path.join(__dirname, 'public', 'sheet-mode.js'),

@@ -108,7 +108,7 @@ function subclassFeatureTexts(classRows) {
     const features = Object.entries(entry.sections).map(([heading, text]) => {
       const match = heading.match(/^Level\s+(\d+)\s*:\s*(.+)$/i);
       return match ? { level: Number(match[1]), name: match[2].trim(), text } : null;
-    }).filter(feature => feature && feature.level <= row.level);
+    }).filter(feature => feature && feature.text && feature.level <= row.level);
     return {
       subclass: row.subclassName,
       className: row.className,
@@ -123,4 +123,20 @@ function subclassFeatureTexts(classRows) {
   });
 }
 
-module.exports = { DND_CLASSES_AND_SUBCLASSES, PLAYTEST_SUBCLASSES, subclassFeatureTexts };
+// The class features a character has, with their text from rules/content/classes.md
+// (kept off Git like subclasses.md): "## Cleric", its features "### Level 1: Divine Order".
+// A feature with no text yet is left out. classRows: [{ className, level }]. [] without the file.
+function classFeatureTexts(classRows) {
+  const { loadContent } = require('./content');
+  const entries = loadContent('classes');
+  return (classRows || []).filter(row => row.className && entries[row.className]).map(row => ({
+    className: row.className,
+    level: row.level,
+    features: Object.entries(entries[row.className].sections).map(([heading, text]) => {
+      const match = heading.match(/^Level\s+(\d+)\s*:\s*(.+)$/i);
+      return match && text ? { level: Number(match[1]), name: match[2].trim(), text } : null;
+    }).filter(feature => feature && feature.level <= row.level)
+  }));
+}
+
+module.exports = { DND_CLASSES_AND_SUBCLASSES, PLAYTEST_SUBCLASSES, subclassFeatureTexts, classFeatureTexts };

@@ -10,7 +10,7 @@ simply treated as empty.
 ## Book text stays out of Git
 
 Text copied from the D&D books can't be published, and this repository is public.
-`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md`, `monsters.md` and `subclasses.md` are listed in
+`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md`, `monsters.md`, `classes.md` and `subclasses.md` are listed in
 `.gitignore`: keep them locally and copy them to the server yourself (for example
 `scp rules/content/magic_items.md vps:/var/www/grimbold-bot/rules/content/`).
 Add other book-text files to `.gitignore` the same way.
@@ -21,6 +21,13 @@ or says "No description available."
 
 `subclasses.md` holds subclass feature text: `## Subclass` entries whose features are
 `### Level 3: Feature Name` sections, shown on the character sheet up to the class level.
+`classes.md` does the same for class features: `## Cleric` with `### Level 1: Divine Order`
+sections. On the sheet, a feature chip with text opens on click; headings without text are
+ignored. `node scripts/content-template.js` writes `classes.template.md` and
+`subclasses.template.md` (also off Git) with every heading to fill in.
+
+Tables in any of these files are Markdown tables (`| Potion | HP Regained |` lines with a
+`|---|---|` row under the header); text pasted from a PDF often loses the cell breaks.
 
 ## Format
 

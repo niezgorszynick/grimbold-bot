@@ -204,14 +204,18 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-topband .sheet-passive { flex: 1 1 190px; }
 .sheet-topband .sheet-senses-list { margin: 0; flex: 0 1 auto; }
 .container.is-wide { max-width: 1800px; }
+/* Wide (three columns) from 1400px, unless the player picked Slim (sheet-mode.js). */
+#cs_layout { display: none; }
 @media (min-width: 1400px) {
-  .container.is-wide .character-sheet-full { max-width: none; }
-  .sheet-topband { grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr); }
-  .sheet-topband > .point-buy-card { padding: 12px 14px; }
-  .sheet-topband .point-buy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .sheet-topband .point-buy-header span, .sheet-topband .point-buy-actions { display: none; }
-  .sheet-layout { grid-template-columns: 290px minmax(0, 1fr) minmax(0, 1fr); }
-  .sheet-col-side { grid-column: auto; }
+  #cs_layout { display: inline-block; }
+  body:not(.sheet-slim) .container.is-wide .character-sheet-full { max-width: none; }
+  body:not(.sheet-slim) .sheet-topband { grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr); }
+  body:not(.sheet-slim) .sheet-topband > .point-buy-card { padding: 12px 14px; }
+  body:not(.sheet-slim) .sheet-topband .point-buy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body:not(.sheet-slim) .sheet-topband .point-buy-header span, body:not(.sheet-slim) .sheet-topband .point-buy-actions { display: none; }
+  body:not(.sheet-slim) .sheet-layout { grid-template-columns: 290px minmax(0, 1fr) minmax(0, 1fr); }
+  body:not(.sheet-slim) .sheet-col-side { grid-column: auto; }
+  body.sheet-slim .container.is-wide { max-width: 1240px; }
 }
 .sheet-card { min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 12px; }
 .sheet-card h4 { margin: 0 0 10px; color: #f1c40f; text-transform: uppercase; font-size: 12px; }
@@ -865,12 +869,11 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .roster-character { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .roster-character-name { color: #f2f3f5; font-weight: 700; text-decoration: none; }
 .roster-character-name:hover { color: #fff; text-decoration: underline; }
-.roster-player-edit { display: inline-block; margin-left: 4px; }
-.roster-player-edit > summary { cursor: pointer; list-style: none; display: inline; opacity: .6; font-size: 12px; }
-.roster-player-edit > summary::-webkit-details-marker { display: none; }
-.roster-player-edit[open] > summary, .roster-player-edit > summary:hover { opacity: 1; }
-.roster-player-form { display: grid; gap: 6px; margin-top: 6px; padding: 8px; min-width: 220px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 6px; }
-.roster-player-form label { display: grid; gap: 3px; font-size: 12px; color: #949ba4; }
+.roster-player-edit { margin-left: 4px; padding: 0 2px; border: 0; background: none; cursor: pointer; opacity: .6; font-size: 12px; vertical-align: baseline; }
+.roster-player-edit:hover, .roster-player-edit:focus-visible { opacity: 1; }
+.roster-player-form { display: grid; gap: 10px; }
+.roster-player-form label { display: grid; gap: 4px; font-size: 13px; color: #b5bac1; }
+.roster-player-form input[type=text] { width: 100%; box-sizing: border-box; }
 @media (max-width: 600px) { .sheet-portrait-image { width: 64px; height: 64px; font-size: 22px; } }
 .sheet-portrait-remove { color: #949ba4; text-decoration: none; }
 .sheet-portrait-remove:hover { color: #f23f43; }
@@ -1267,3 +1270,13 @@ body.sheet-view .roll-link, body.sheet-view .sheet-check-modifier[data-roll], bo
 .sheet-resources-body > .sheet-message { grid-column: 1 / -1; }
 .sheet-resources-body .vitals-slot-label { min-width: 7em; white-space: nowrap; }
 .sheet-resources-body .vitals-actions { margin-top: 4px; }
+
+/* Rules text (public/rules-text.js): tables and bullets in spells, items and features. */
+.rules-table-wrap { overflow-x: auto; margin: 6px 0; }
+.rules-table { width: auto; max-width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rules-table th, .rules-table td { border: 1px solid #3f4147; padding: 3px 8px; text-align: left; vertical-align: top; }
+.rules-table th { background: #2b2d31; color: #dbdee1; }
+.rules-list { margin: 4px 0; padding-left: 18px; }
+.feature-chip-text p { margin: 4px 0; }
+/* Saving throws and skills: a little air between the dot and the name. */
+.sheet-check-list .sheet-check-row { column-gap: 11px; }

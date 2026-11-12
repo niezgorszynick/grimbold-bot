@@ -153,15 +153,7 @@ module.exports = function renderPlayersTab(ctx) {
             <tr class="${row.player_id === currentUser.id ? 'player-self' : ''}">
               <td data-sort="${escapeHtml(row.discord_tag)}">
                 <strong>${escapeHtml(row.discord_tag)}</strong>
-                ${isAdmin ? `<details class="roster-player-edit">
-                  <summary title="Edit the player's Discord name and ID">✏️</summary>
-                  <form method="POST" action="/admin/players/update" class="roster-player-form">
-                    <input type="hidden" name="id" value="${Number(row.player_id)}">
-                    <label>Discord name<input type="text" name="discord_tag" value="${escapeHtml(row.discord_tag)}" required></label>
-                    <label>Discord ID<input type="text" name="discord_id" value="${escapeHtml(row.discord_id)}" required inputmode="numeric" pattern="[0-9]{5,25}" title="The numeric Discord user ID"></label>
-                    <button type="submit" class="btn btn-small btn-green">Save player</button>
-                  </form>
-                </details>` : ''}
+                ${isAdmin ? `<button type="button" class="roster-player-edit edit-player" title="Edit the player's Discord name and ID" aria-label="Edit player ${escapeHtml(row.discord_tag)}" data-player-id="${Number(row.player_id)}" data-player-tag="${escapeHtml(row.discord_tag)}" data-player-discord-id="${escapeHtml(row.discord_id)}">✏️</button>` : ''}
               </td>
               <td data-sort="${escapeHtml(row.character_name || '')}">
                 <span class="roster-character">
@@ -206,6 +198,19 @@ module.exports = function renderPlayersTab(ctx) {
     </div>
 
     ${isAdmin ? `
+      <div id="playerEditModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="playerEditTitle" hidden>
+        <form method="POST" action="/admin/players/update" class="card shop-modal-card roster-player-form">
+          <h3 id="playerEditTitle">✏️ Edit Player</h3>
+          <input type="hidden" name="id" id="playerModalId">
+          <label>Discord name<input type="text" name="discord_tag" id="playerModalTag" required></label>
+          <label>Discord ID<input type="text" name="discord_id" id="playerModalDiscordId" required inputmode="numeric" pattern="[0-9]{5,25}" title="The numeric Discord user ID"></label>
+          <p class="muted small">The ID is the long number from Discord (right-click the user → Copy User ID). Grimbold uses it to recognise the player.</p>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" id="playerModalCancel" class="btn">Cancel</button>
+            <button type="submit" class="btn btn-green">Save player</button>
+          </div>
+        </form>
+      </div>
       <div id="goldEditModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="goldEditTitle" hidden>
         <div class="card shop-modal-card">
           <h3 id="goldEditTitle">🪙 Edit Purse</h3>
@@ -230,6 +235,23 @@ module.exports = function renderPlayersTab(ctx) {
     <script>
       const classTree = ${dndClassesJson};
       const speciesData = ${dndSpeciesJson};
+
+      const playerEditModal = document.getElementById('playerEditModal');
+      if (playerEditModal) {
+        const closePlayerEdit = () => { playerEditModal.hidden = true; };
+        document.querySelectorAll('.edit-player').forEach(button => {
+          button.addEventListener('click', () => {
+            document.getElementById('playerModalId').value = button.dataset.playerId;
+            document.getElementById('playerModalTag').value = button.dataset.playerTag;
+            document.getElementById('playerModalDiscordId').value = button.dataset.playerDiscordId;
+            playerEditModal.hidden = false;
+            document.getElementById('playerModalTag').focus();
+          });
+        });
+        document.getElementById('playerModalCancel').addEventListener('click', closePlayerEdit);
+        playerEditModal.addEventListener('click', event => { if (event.target === playerEditModal) closePlayerEdit(); });
+        document.addEventListener('keydown', event => { if (event.key === 'Escape' && !playerEditModal.hidden) closePlayerEdit(); });
+      }
 
       const goldEditModal = document.getElementById('goldEditModal');
       if (goldEditModal) {
