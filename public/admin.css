@@ -1280,3 +1280,6 @@ body.sheet-view .roll-link, body.sheet-view .sheet-check-modifier[data-roll], bo
 .feature-chip-text p { margin: 4px 0; }
 /* Saving throws and skills: a little air between the dot and the name. */
 .sheet-check-list .sheet-check-row { column-gap: 11px; }
+
+/* Room for the scrollbar on every page, so short pages (Lineup) line up with long ones. */
+html { scrollbar-gutter: stable; }
