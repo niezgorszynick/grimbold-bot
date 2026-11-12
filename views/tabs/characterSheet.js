@@ -253,11 +253,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
               </div>
               <p id="cs_inspiration_text" class="muted small sheet-inspiration-text" hidden>Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.</p>
               <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
-            </div>
               <section id="cs_senses" class="sheet-card sheet-senses-card" data-collapse="senses" hidden>
                 <h4>Senses</h4>
                 <div id="cs_senses_body"></div>
               </section>
+            </div>
           </div>
           <div class="sheet-layout">
             <div class="sheet-col">

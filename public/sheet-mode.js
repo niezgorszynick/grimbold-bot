@@ -30,7 +30,8 @@
     const appearance = document.querySelector('.sheet-appearance');
     if (view && appearance) appearance.open = false;
     markEmptyNotes();
-    if (!view && window.autosizeSheetNotes) window.autosizeSheetNotes();
+    // A notes box hidden while empty measured nothing: size it now it shows.
+    if (window.autosizeSheetNotes) window.autosizeSheetNotes();
   }
 
   toggle.addEventListener('click', () => {
