@@ -94,6 +94,11 @@ test('appearance: height, eyes and hair are saved with the sheet, tidied, and ke
   const { appearance: left, ...withoutIt } = stored(id);
   save(id, player, withoutIt);
   assert.equal(stored(id).appearance.eyes, 'storm grey', 'an older editor tab does not wipe it');
+  // Build (the Lineup tab's outline): one of three, or nothing.
+  save(id, player, { ...stored(id), appearance: { ...stored(id).appearance, build: 'feminine' } });
+  assert.equal(stored(id).appearance.build, 'feminine');
+  save(id, player, { ...stored(id), appearance: { ...stored(id).appearance, build: 'giant' } });
+  assert.equal(stored(id).appearance.build, undefined);
   save(id, player, { ...stored(id), appearance: 'blue' });
   assert.deepEqual(stored(id).appearance, {});
 });

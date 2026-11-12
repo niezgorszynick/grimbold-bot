@@ -216,7 +216,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
           <details class="sheet-card sheet-appearance">
             <summary><strong>Appearance</strong> <span id="cs_appearance_summary" class="muted small"></span></summary>
             <div class="sheet-appearance-fields">
-              <label>Height<input id="cs_height" type="text" maxlength="40" placeholder="e.g. 175 cm, 5′9″"></label>
+              <label>Height<input id="cs_height" type="text" maxlength="40" placeholder="e.g. 175 cm, 5′9″" title="Shown in the Lineup tab (cm, m or feet and inches)"></label>
+              <label>Build<select id="cs_build" title="The outline in the Lineup tab"><option value="">—</option><option value="masculine">Masculine</option><option value="feminine">Feminine</option><option value="neutral">Neutral</option></select></label>
               <label>Eye colour<input id="cs_eyes" type="text" maxlength="40" placeholder="e.g. storm grey"></label>
               <label>Hair colour<input id="cs_hair_color" type="text" maxlength="40" placeholder="e.g. copper red"></label>
               <label>Hairstyle<input id="cs_hairstyle" type="text" maxlength="80" placeholder="e.g. long braid, shaved sides"></label>
@@ -954,7 +955,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
         backgroundSelect.addEventListener('change', updateRuleDrivenFields);
 
         // Appearance: the fields, and a one-line summary on the folded card.
-        const APPEARANCE_INPUTS = { height: 'cs_height', eyes: 'cs_eyes', hairColor: 'cs_hair_color', hairstyle: 'cs_hairstyle', other: 'cs_appearance_other' };
+        const APPEARANCE_INPUTS = { height: 'cs_height', build: 'cs_build', eyes: 'cs_eyes', hairColor: 'cs_hair_color', hairstyle: 'cs_hairstyle', other: 'cs_appearance_other' };
         function showAppearanceSummary() {
           const value = id => document.getElementById(id).value.trim();
           const hair = value('cs_hair_color')

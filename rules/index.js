@@ -32,6 +32,7 @@ module.exports = {
   ...require('./buffs'),
   ...require('./defenses'),
   ...require('./skillChallenges'),
+  ...require('./height'),
   ...require('./monsters'),
   ...require('./fiveTools'),
   ...require('./customMonsters'),

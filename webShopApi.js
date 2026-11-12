@@ -183,6 +183,14 @@ router.post('/characters/:id/spell-effects/end', (req, res) => {
   }
 });
 
+// The Lineup tab: every living character's height, build, species and class,
+// and the running parties (db/lineup.js).
+router.get('/lineup', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  return res.json(db.getLineup(user));
+});
+
 // The character on the official 2024 sheet, as a fillable PDF (db/characterPdf.js).
 router.get('/characters/:id/sheet.pdf', async (req, res) => {
   const user = getSessionApiUser(req);
