@@ -64,6 +64,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #2b2d31; padding-bottom: 10px; }
 .tab-btn { padding: 8px 16px; background: #2b2d31; color: #dbdee1; text-decoration: none; border-radius: 4px; font-weight: bold; }
 .tab-btn.active { background: #5865f2; color: #fff; }
+/* The sections' groups above, the current group's tabs in a lighter row below. */
+.tabs.tab-groups { margin-bottom: 0; border-bottom: 0; padding-bottom: 8px; }
+.tab-subrow { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 20px; padding: 6px 4px 10px; border-bottom: 2px solid #2b2d31; }
+.tab-subrow a { color: #b5bac1; text-decoration: none; font-weight: 600; padding: 4px 2px; border-bottom: 2px solid transparent; }
+.tab-subrow a:hover { color: #fff; }
+.tab-subrow a.active { color: #fff; border-bottom-color: #5865f2; }
+.tabs.tab-groups.alone { border-bottom: 2px solid #2b2d31; margin-bottom: 20px; }
+.header-link { color: #b5bac1; text-decoration: none; font-size: 13px; font-weight: 600; }
+.header-link:hover, .header-link.active { color: #fff; text-decoration: underline; }
 .card { background: #2b2d31; padding: 18px; border-radius: 8px; margin-bottom: 20px; }
 .shop-modal:not([hidden]) { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, 0.72); }
 .shop-modal[hidden] { display: none; }
@@ -623,6 +632,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .header { flex-wrap: wrap; gap: 8px; }
   .header h2 { font-size: 18px; margin: 0; }
   .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+  /* The five groups fit when they wrap: all in view, the current one included. */
+  .tabs.tab-groups { flex-wrap: wrap; overflow-x: visible; gap: 6px; }
+  .tabs.tab-groups .tab-btn { padding: 8px 12px; }
+  .tab-subrow { gap: 4px 14px; }
   .tab-btn { flex: 0 0 auto; white-space: nowrap; }
   .dice-bar { padding: 6px 8px; }
   .dice-toggle { padding: 6px 9px !important; font-size: 13px !important; }

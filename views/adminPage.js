@@ -50,6 +50,15 @@ module.exports = function renderAdminPage(req) {
     changelog: 'Changelog'
   };
   const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
+  // The tabs in groups: a row of groups, and the current group's tabs under it.
+  // Changelog is the "What's new" link by Logout.
+  const TAB_GROUPS = [
+    { label: 'Shop', tabs: ['items', 'auctions', 'catalog', 'restock', 'sales'] },
+    { label: 'Characters', tabs: ['character-sheet', 'lineup', 'players'] },
+    { label: 'Adventures', tabs: ['adventures', 'sessions', 'map'] },
+    { label: 'DM Tools', tabs: ['npcs', 'monsters'] },
+    { label: 'Records', tabs: ['rolls', 'analytics'] }
+  ];
   let currentTab = req.query.tab || 'items';
   if (!isAdmin && !playerAllowedTabs.includes(currentTab)) {
     currentTab = 'items';
@@ -142,14 +151,25 @@ module.exports = function renderAdminPage(req) {
         <div class="header">
           <h2>Grimbold's Emporium — Dungeon Master Hub</h2>
           <div style="display: flex; align-items: center; gap: 10px;">
+            <a href="/admin?tab=changelog" class="header-link${currentTab === 'changelog' ? ' active' : ''}">What's new</a>
             <span class="small">${escapeHtml(currentUser.discord_tag)} (${escapeHtml(currentUser.role)})</span>
             <a href="/logout" class="btn btn-small">Logout</a>
           </div>
         </div>
         ${statusBanner}
-        <div class="tabs">
-          ${visibleTabs.map(tab => `<a href="/admin?tab=${tab}" class="tab-btn ${currentTab === tab ? 'active' : ''}">${tabLabels[tab]}</a>`).join('')}
-        </div>
+        ${(() => {
+          const groups = TAB_GROUPS.map(group => ({ ...group, tabs: group.tabs.filter(tab => visibleTabs.includes(tab)) })).filter(group => group.tabs.length);
+          const current = groups.find(group => group.tabs.includes(currentTab));
+          const subrow = Boolean(current && current.tabs.length > 1);
+          return `
+        <nav class="tabs tab-groups${subrow ? '' : ' alone'}" aria-label="Sections">
+          ${groups.map(group => `<a href="/admin?tab=${group.tabs[0]}" class="tab-btn ${group === current ? 'active' : ''}"${group === current ? ' aria-current="true"' : ''}>${group.label}</a>`).join('')}
+        </nav>
+        ${subrow ? `
+        <nav class="tab-subrow" aria-label="${current.label}">
+          ${current.tabs.map(tab => `<a href="/admin?tab=${tab}" class="${currentTab === tab ? 'active' : ''}"${currentTab === tab ? ' aria-current="page"' : ''}>${tabLabels[tab]}</a>`).join('')}
+        </nav>` : ''}`;
+        })()}
         ${contentHtml}
       </div>
 
