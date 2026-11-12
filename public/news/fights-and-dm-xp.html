@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-12">
+<title>Fights That Stay Out of Your Way</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 12 November 2026</span>
+    <h1>Fights That Stay Out of Your Way</h1>
+    <p class="lede">Big fights fit on one screen, Owlbear tokens stay matched to their creatures whatever they are called, cards go where you drag them, and DMs earn the same XP as their players.</p>
+  </header>
+
+  <section>
+    <h2>For everyone</h2>
+
+    <h3>🎲 Initiative</h3>
+    <ul>
+      <li>On your character sheet, click <strong>anywhere on the Initiative box</strong> to roll it, not just the small die.</li>
+    </ul>
+
+    <h3>🗂 Cards you can move</h3>
+    <ul>
+      <li>On the adventure table, drag a card by its <strong>⠿</strong> handle to put it where you want: party members, NPCs and creatures. It works on touch screens too.</li>
+      <li>The order is kept for that adventure in your browser. <strong>↺ Original order</strong> puts it back.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>Running fights</h2>
+
+      <h3>Many creatures</h3>
+      <ul>
+        <li>From five creatures, a fight shows <strong>one line each</strong>: initiative, name, HP, AC, damage and healing. Click a name for its full card (statblock and dice); ▴ folds it back.</li>
+        <li><strong>Auto / ☰ Lines / ▦ Cards</strong> chooses for yourself.</li>
+        <li><strong>+ Add to the fight</strong> sits at the top of the fight now, for reinforcements.</li>
+      </ul>
+
+      <h3>🦉 Owlbear tokens</h3>
+      <ul>
+        <li>In the Dice window's encounter list, <strong>pick each creature's token</strong> from the tokens on the map. Each token goes to one creature. Linked tokens (🔗) keep working whatever they are called: no more matching names letter by letter.</li>
+        <li><strong>+ Add selected tokens:</strong> select tokens on the map and add them to the fight in one go. Party members, NPCs and monsters are recognised by their names ("Goblin Warrior 3" is a Goblin Warrior) and linked at once.</li>
+        <li>A party member's token stays linked to their character, so their initiative rolls find it in later fights too.</li>
+        <li>Reload the Owlbear room once to get the new version.</li>
+      </ul>
+
+      <h3>⭐ DM rewards</h3>
+      <ul>
+        <li>The DM now earns <strong>the adventure's XP</strong>, like the players, and at least 1 even when the party gets 0. It goes to one of the DM's characters or is banked as DM points (one per XP).</li>
+        <li>Adventures finished before today got only 1: their DMs received the rest automatically.</li>
+        <li>Editing or deleting an adventure moves or takes back exactly what its DM got.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>

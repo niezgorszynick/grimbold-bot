@@ -25,7 +25,8 @@ OBR.onReady(async () => {
     try {
       if (!(await OBR.scene.isReady())) return;
       const firstName = String(roll.character || '').split(' ')[0];
-      const [match] = matchTokens(await OBR.scene.items.getItems(), [{ label: roll.character, baseName: firstName }]);
+      // The character's linked token first, then one named after them.
+      const [match] = matchTokens(await OBR.scene.items.getItems(), [{ characterId: roll.characterId, label: roll.character, baseName: firstName }]);
       if (!match.token) return;
       await putInTracker(OBR, [{ itemId: match.token.id, initiative: roll.total }]);
     } catch (error) {

@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.5.4';
+const VERSION = '1.6.0';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -55,6 +55,18 @@ router.get('/encounter', (req, res) => {
     return res.json(db.getVttEncounters({ key: req.query.key }));
   } catch (error) {
     return res.status(401).json({ error: error.message });
+  }
+});
+
+// The GM adds the tokens selected on the map to a running encounter:
+// { key, tokens: [{ id, name }] } → { added, skipped } (db/encounters.js).
+router.post('/encounter/:encounterId/tokens', express.json(), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  try {
+    return res.json(db.addTokensToEncounter({ key: body.key, encounterId: req.params.encounterId, tokens: body.tokens }));
+  } catch (error) {
+    return res.status(/key/i.test(error.message) ? 401 : 400).json({ error: error.message });
   }
 });
 

@@ -229,6 +229,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-stat span { color: #949ba4; text-transform: uppercase; font-size: 10px; }
 .sheet-stat input { width: 100%; min-width: 0; padding: 3px; border: 0; background: transparent; color: #fff; text-align: center; font-size: 18px; font-weight: bold; }
 .sheet-stat strong { color: #f1c40f; font-size: 18px; }
+/* A stat box that rolls when clicked anywhere (Initiative). */
+.sheet-stat.is-rollable { cursor: pointer; transition: border-color .15s, background .15s; }
+.sheet-stat.is-rollable:hover { border-color: #f1c40f; background: #232428; }
+.sheet-stat.is-rollable input { cursor: pointer; pointer-events: none; }
 .character-sheet-full input:disabled, .character-sheet-full select:disabled { opacity: 0.6; cursor: not-allowed; }
 .sheet-card textarea { width: 100%; min-width: 0; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
 .vitals { display: grid; gap: 12px; }
@@ -871,6 +875,34 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .encounter-add { margin: 8px 0; }
 .encounter-monster-input { flex: 1 1 220px; min-width: 0; }
 .encounter-initiative { width: 56px; text-align: center; font-weight: bold; }
+/* Many creatures: one line each; a click on the name opens the full card. */
+/* Cards you can move (adventure table): a handle in the top corner. */
+.is-arrangeable { position: relative; }
+.party-card.is-arrangeable { padding-left: 22px; }
+.drag-handle { cursor: grab; touch-action: none; user-select: none; color: #6d6f78; font-size: 16px; line-height: 1; padding: 4px 3px; border-radius: 4px; }
+.party-card > .drag-handle { position: absolute; left: 3px; top: 8px; }
+.drag-handle:hover { color: #f1c40f; background: rgba(255, 255, 255, .06); }
+.is-dragging { opacity: .6; outline: 2px dashed #f1c40f; outline-offset: 2px; }
+.is-dragging .drag-handle { cursor: grabbing; }
+.arrange-reset { margin: 4px 0 0; text-align: right; }
+.encounter-view-toggle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0; }
+.encounter-fight-tools { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.encounter-fight-tools .encounter-reinforcements { flex: 0 1 auto; }
+.encounter-fight-tools .encounter-reinforcements[open] { flex: 1 1 100%; }
+.encounter-fight-tools .encounter-reinforcements > summary { list-style: none; display: inline-block; cursor: pointer; color: #fff; margin: 0 0 6px; }
+.encounter-fight-tools .encounter-reinforcements > summary::-webkit-details-marker { display: none; }
+.encounter-rows { display: grid; gap: 4px; }
+.encounter-rows > .party-card { margin: 4px 0; }
+.encounter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 8px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 6px; }
+.encounter-row.is-down { opacity: .55; }
+.encounter-row-name { flex: 1 1 150px; min-width: 0; text-align: left; background: none; border: 0; color: inherit; cursor: pointer; padding: 2px 0; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.encounter-row-name:hover strong { text-decoration: underline; }
+.encounter-row-hp { display: inline-grid; grid-template-columns: auto auto; justify-content: start; align-items: baseline; column-gap: 2px; min-width: 84px; }
+.encounter-row-hp .vitals-bar { grid-column: 1 / -1; margin: 2px 0 0; height: 4px; }
+.encounter-row-ac { color: #949ba4; font-size: 12px; min-width: 40px; }
+.encounter-row .party-hp-actions { margin: 0; flex-wrap: nowrap; }
+.encounter-row .party-hp-actions input { width: 56px; }
+@media (max-width: 640px) { .encounter-row .party-hp-actions { flex-wrap: wrap; } }
 .encounter-combatant .party-card-header { align-items: center; }
 .encounter-statblock-toggle summary { cursor: pointer; color: #8ea1ff; font-size: 13px; }
 .encounter-statblock { margin-top: 8px; font-size: 13px; gap: 6px; }
@@ -879,7 +911,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .encounter-roll { margin: 2px 2px 0 0; padding: 2px 6px; font-size: 11px; }
 .encounter-order { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 4px; }
 .encounter-order li.is-down { opacity: 0.6; text-decoration: line-through; }
-.encounter-reinforcements summary, .encounter-done summary { cursor: pointer; color: #949ba4; margin-top: 8px; }
+.encounter-done summary, .encounter-reinforcements:not(.encounter-fight-tools *) summary { cursor: pointer; color: #949ba4; margin-top: 8px; }
 .encounter-running { margin-bottom: 18px; }
 .combatant-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; padding: 8px; border-radius: 6px; background: #1e1f22; font-size: 13px; }
 .combatant-editor input[type=text] { width: 180px; max-width: 100%; }

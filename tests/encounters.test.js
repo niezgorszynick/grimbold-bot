@@ -160,6 +160,48 @@ test('Owlbear: the DM key reads the running encounter; tokens are matched by nam
   assert.equal(matchTokens(items, [{ label: 'Nobody', baseName: 'Nobody' }])[0].token, null);
 });
 
+test('Owlbear: tokens linked to combatants (names no longer matter) and tokens added from the map', async () => {
+  const dm = createPlayer();
+  const ola = createPlayer();
+  db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('link-dm', dm);
+  const { adventure } = db.createAdventureFromThread({ threadId: 'link-thread', title: 'Linked', ownerDiscordId: 'link-dm' });
+  const asDm = { adventureId: adventure.id, user: { id: dm, role: 'player' } };
+  const thorin = Number(db.prepare(`INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+    VALUES (?, 'Thorin Ironfist', 'Dwarf', 'Fighter', '', 3, 0, 'alive', 0, '{}')`).run(ola).lastInsertRowid);
+  db.setPartyMember({ ...asDm, characterId: thorin, inParty: true });
+  const key = db.getVttKey({ playerId: dm });
+  const encounterId = db.createEncounter({ ...asDm, name: 'Ford' }).encounters.list[0].id;
+  db.addEncounterMonster({ ...asDm, encounterId, monster: 'Practice Footpad' });
+  db.runEncounter({ ...asDm, encounterId });
+
+  // Selected on the map: Thorin by first name, a numbered monster, and two it can't place.
+  const result = db.addTokensToEncounter({ key, encounterId, tokens: [
+    { id: 't1', name: 'thorin' }, { id: 't2', name: 'Practice Footpad 3' }, { id: 't3', name: 'Grik the Unknown' }, { id: 't4', name: '' }
+  ] });
+  assert.deepEqual(result.added.map(entry => [entry.tokenId, entry.label, entry.characterId]), [['t1', 'Thorin Ironfist', thorin], ['t2', 'Practice Footpad 3', null]]);
+  assert.deepEqual(result.skipped.map(entry => entry.tokenId), ['t3', 't4']);
+  // Thorin again: already in the fight, so the same combatant (no duplicate).
+  const again = db.addTokensToEncounter({ key, encounterId, tokens: [{ id: 't9', name: 'Thorin Ironfist' }] });
+  assert.equal(again.added[0].combatantId, result.added[0].combatantId);
+  assert.throws(() => db.addTokensToEncounter({ key: db.getVttKey({ playerId: ola }), encounterId, tokens: [{ id: 'x', name: 'Practice Footpad' }] }), /Forbidden/, "a player's key can't");
+
+  const { matchTokens, LINK_KEY } = await import('../vtt/shared.js');
+  const feed = db.getVttEncounters({ key }).encounters[0].combatants;
+  const footpad = feed.find(c => c.label === 'Practice Footpad 3');
+  const items = [
+    // Renamed on the map, but linked: still found.
+    { id: 'fp', type: 'IMAGE', layer: 'CHARACTER', name: 'Bandit with a typo ', metadata: { [LINK_KEY]: { combatantId: footpad.id } } },
+    // Named like the monster but linked to someone else: not taken by name.
+    { id: 'other', type: 'IMAGE', layer: 'CHARACTER', name: 'Practice Footpad 3', metadata: { [LINK_KEY]: { combatantId: 999 } } },
+    // A party member's token from an earlier fight: linked to the character.
+    { id: 'th', type: 'IMAGE', layer: 'CHARACTER', name: 'T.', metadata: { [LINK_KEY]: { combatantId: 1, characterId: thorin } } }
+  ];
+  const matches = Object.fromEntries(matchTokens(items, feed).map(m => [m.label, [m.token && m.token.id, m.linked]]));
+  assert.deepEqual(matches, { 'Practice Footpad 1': [null, false], 'Thorin Ironfist': ['th', true], 'Practice Footpad 3': ['fp', true] });
+  // A player's initiative roll finds their linked token by character.
+  assert.equal(matchTokens(items, [{ characterId: thorin, label: 'Thorin Ironfist', baseName: 'Thorin' }])[0].token.id, 'th');
+});
+
 test('the DM renames creatures (to match tokens) and changes their AC and HP', () => {
   const dm = createPlayer();
   db.prepare('UPDATE players SET discord_id = ? WHERE id = ?').run('edit-dm', dm);

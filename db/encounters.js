@@ -721,6 +721,8 @@ function getVttEncounters({ key }) {
         name: encounter.name,
         combatants: view.combatants.map(combatant => ({
           id: combatant.id,
+          // A party member's token stays linked to the character across fights.
+          characterId: combatant.characterId || null,
           label: combatant.label,
           // "Goblin Warrior" for "Goblin Warrior 2": tokens are often named after the monster.
           // A character's token may carry only their first name.
@@ -733,6 +735,69 @@ function getVttEncounters({ key }) {
       };
     })
   };
+}
+
+// Tokens the DM selected in Owlbear, added to a running encounter by their
+// names: a party member (full or first name), an NPC, one of the adventure's
+// own statblocks, or a monster from the list ("Goblin Warrior 3" is a Goblin
+// Warrior). The extension then links each token to its combatant, so names
+// stop mattering. tokens: [{ id, name }].
+// Returns { added: [{ tokenId, combatantId, characterId, label }], skipped: [{ tokenId, name, reason }] }.
+function addTokensToEncounter({ key, encounterId, tokens }) {
+  const player = require('./dice').vttPlayerForKey(key);
+  const encounter = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(encounterId));
+  if (!encounter) throw new Error('Encounter not found.');
+  const user = { id: player.player_id, role: 'player' };
+  const adventure = secretAdventure(encounter.adventure_id, user);
+  openEncounter(adventure, encounter.id);
+  const list = (Array.isArray(tokens) ? tokens : []).slice(0, MAX_COMBATANTS)
+    .map(token => ({ id: String((token && token.id) || '').slice(0, 100), name: String((token && token.name) || '').trim().slice(0, 100) }))
+    .filter(token => token.id);
+  if (!list.length) throw new Error('Select tokens on the map first.');
+
+  const plain = text => String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const base = text => plain(text).replace(/\s*#?\d+$/, '');
+  const party = db.prepare(`
+    SELECT c.id, c.name FROM adventure_party ap JOIN characters c ON c.id = ap.character_id WHERE ap.adventure_id = ?
+  `).all(adventure.id);
+  const statblocks = listAdventureStatblocks(adventure.id);
+  const monsters = rules.listMonsters();
+  const newest = () => db.prepare('SELECT MAX(id) AS id FROM encounter_combatants WHERE encounter_id = ?').get(encounter.id).id;
+  const existing = column => id => db.prepare(`SELECT id FROM encounter_combatants WHERE encounter_id = ? AND ${column} = ?`).get(encounter.id, id);
+  const added = [];
+  const skipped = [];
+  for (const token of list) {
+    const name = plain(token.name);
+    try {
+      const character = party.find(entry => plain(entry.name) === name) || party.find(entry => plain(entry.name).split(' ')[0] === name);
+      if (character) {
+        const row = existing('character_id')(character.id) || (addEncounterCharacters({ adventureId: adventure.id, user, encounterId: encounter.id, characterId: character.id }), { id: newest() });
+        added.push({ tokenId: token.id, combatantId: row.id, characterId: character.id, label: character.name });
+        continue;
+      }
+      const npc = db.prepare('SELECT id, name FROM npcs WHERE lower(trim(name)) = ?').get(name);
+      if (npc) {
+        const row = existing('npc_id')(npc.id) || (addEncounterNpc({ adventureId: adventure.id, user, encounterId: encounter.id, npcId: npc.id }), { id: newest() });
+        added.push({ tokenId: token.id, combatantId: row.id, characterId: null, label: npc.name });
+        continue;
+      }
+      const statblock = statblocks.find(entry => plain(entry.name) === name) || statblocks.find(entry => plain(entry.name) === base(token.name));
+      const monster = statblock ? null : monsters.find(entry => plain(entry.name) === name) || monsters.find(entry => plain(entry.name) === base(token.name));
+      if (!statblock && !monster) {
+        skipped.push({ tokenId: token.id, name: token.name, reason: 'not a party member, NPC or monster on this server' });
+        continue;
+      }
+      addEncounterMonster({ adventureId: adventure.id, user, encounterId: encounter.id, monster: monster ? monster.name : undefined, statblockId: statblock ? statblock.id : null, count: 1 });
+      const combatantId = newest();
+      // Named after the token when it says more than the monster ("Goblin Boss Grik").
+      const kindName = statblock ? statblock.name : monster.name;
+      if (plain(kindName) !== name) db.prepare('UPDATE encounter_combatants SET name = ? WHERE id = ?').run(token.name, combatantId);
+      added.push({ tokenId: token.id, combatantId, characterId: null, label: plain(kindName) !== name ? token.name : kindName });
+    } catch (error) {
+      skipped.push({ tokenId: token.id, name: token.name, reason: error.message });
+    }
+  }
+  return { added, skipped };
 }
 
 // Where a DM can add a monster from the Monsters tab: the running adventures
@@ -756,6 +821,7 @@ function listEncounterTargets(user) {
 module.exports = {
   listEncounterTargets,
   getVttEncounters,
+  addTokensToEncounter,
   encountersForTable,
   createEncounter,
   updateEncounter,

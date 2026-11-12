@@ -443,7 +443,7 @@
     return el('section', { className: 'adventure-npcs' }, [
       el('div', { className: 'sheet-section-heading' }, [el('h3', { text: 'Notable NPCs' }), manage && data.npcCandidates.length ? el('span', { className: 'npc-add' }, [npcPicker(), el('label', { className: 'muted small', title: 'Prepare the NPC without the party seeing it; reveal it later.' }, [hiddenBox, ' add hidden'])]) : null]),
       hiddenNote,
-      data.npcs.length ? el('div', { className: 'party-grid' }, data.npcs.map(npcCard)) : el('p', { className: 'muted small', text: 'No NPCs at the table.' })
+      data.npcs.length ? arrangeable('npcs', data.npcs, npc => npc.id, npcCard, 'party-grid') : el('p', { className: 'muted small', text: 'No NPCs at the table.' })
     ]);
   }
 
@@ -454,6 +454,19 @@
   // running fight's creatures in turn order with a word for their state.
   const thousands = n => Number(n || 0).toLocaleString('en-US');
   const openStatblocks = new Set();
+  // Many creatures: one line each (compact), a click opens the full card.
+  // 'auto' (more than COMPACT_FROM creatures) | 'on' | 'off', remembered per browser.
+  const COMPACT_FROM = 5;
+  let compactChoice = (() => { try { return localStorage.getItem('grimbold.encounterCompact') || 'auto'; } catch { return 'auto'; } })();
+  const expandedCards = new Set();
+  // The "+ Add to the fight" form stays open while the table reloads.
+  let reinforcementsOpen = false;
+  const compactView = count => compactChoice === 'on' || (compactChoice === 'auto' && count >= COMPACT_FROM);
+  function setCompact(choice) {
+    compactChoice = choice;
+    try { localStorage.setItem('grimbold.encounterCompact', choice); } catch { /* private window */ }
+    render();
+  }
   let monsterList = null;
   let monsterListLoading = false;
   const DIFFICULTY_TAGS = { None: 'tag', Low: 'tag green', Moderate: 'tag gold', High: 'tag red', 'Beyond High': 'tag red' };
@@ -890,7 +903,9 @@
     }, [el('span', { className: 'turn-order-init', text: combatant.initiative ?? '—' }), combatant.label])));
   }
 
-  function combatantCard(combatant) {
+  // compact: the fight shows one line per creature (compactView); this one is
+  // a full card only if opened.
+  function combatantCard(combatant, compact = false) {
     const statblock = combatant.monster ? (data.encounters.statblocks || {})[combatant.monster] : null;
     const hp = Number.isInteger(combatant.hpMax) ? { current: combatant.hpCurrent, max: combatant.hpMax, temp: combatant.hpTemp } : null;
     const initiative = el('input', {
@@ -918,6 +933,26 @@
         button('Temp HP', () => change('tempHp'))
       ]);
     }
+    if (compact && !expandedCards.has(combatant.id)) {
+      const ratio = hp && hp.max ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
+      const state = !hp ? 'ok' : hp.current === 0 ? 'down' : ratio <= 0.5 ? 'hurt' : 'ok';
+      return el('article', { className: 'encounter-row' + (hp && hp.current === 0 ? ' is-down' : ''), 'data-roll-combatant': String(combatant.id) }, [
+        initiative,
+        el('button', {
+          type: 'button', className: 'encounter-row-name', title: 'Open the full card (statblock, dice, edit)',
+          onclick: () => { expandedCards.add(combatant.id); render(); }
+        }, ['▸ ', el('strong', { text: combatant.label })]),
+        hp ? el('span', { className: 'encounter-row-hp', title: hp.current + ' / ' + hp.max + ' HP' + (hp.temp ? ' (+' + hp.temp + ' temp)' : '') }, [
+          el('span', { className: 'roster-hp roster-hp-' + state, text: String(hp.current) }),
+          el('span', { className: 'muted small', text: '/' + hp.max + (hp.temp ? ' +' + hp.temp : '') }),
+          el('span', { className: 'vitals-bar' }, el('span', { style: 'width:' + Math.round(ratio * 100) + '%; background:' + (state === 'ok' ? '#23a55a' : state === 'hurt' ? '#f0b232' : '#f23f43') }))
+        ]) : el('span', { className: 'muted small', text: 'HP ?' }),
+        el('span', { className: 'encounter-row-ac', title: 'Armor Class', text: 'AC ' + (combatant.armorClass ?? '—') }),
+        actions,
+        button('✕', () => { if (window.confirm('Take ' + combatant.label + ' out of the fight?')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'); },
+          'btn btn-small btn-secondary', { title: 'Remove from the encounter', 'aria-label': 'Remove ' + combatant.label })
+      ]);
+    }
     let statblockPart;
     if (statblock) {
       statblockPart = el('details', { className: 'encounter-statblock-toggle', open: openStatblocks.has(combatant.id) ? true : null }, [el('summary', { text: 'Statblock & dice' }), statblockNode(statblock)]);
@@ -938,6 +973,7 @@
           el('strong', { text: combatant.label }), ' ', editButton(combatant), ' ', statblockButton(combatant, runningEncounter()),
           sub || combatant.customName ? el('div', { className: 'muted small', text: [combatant.customName ? combatant.defaultLabel : null, sub].filter(Boolean).join(' · ') }) : null
         ]),
+        compact ? button('▴', () => { expandedCards.delete(combatant.id); render(); }, 'btn btn-small btn-secondary', { title: 'Back to one line', 'aria-label': 'Fold ' + combatant.label }) : null,
         button('✕', () => { if (window.confirm('Take ' + combatant.label + ' out of the fight?')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'); },
           'btn btn-small btn-secondary party-remove', { title: 'Remove from the encounter', 'aria-label': 'Remove ' + combatant.label })
       ]),
@@ -972,11 +1008,28 @@
         encounter.notes ? el('p', { className: 'muted small', text: encounter.notes }) : null,
         el('p', { className: 'muted small', text: 'In initiative order. Players\' initiative rolls land here (and in Owlbear) on their own; "Roll initiative" rolls for the monsters and NPCs. Monster rolls show in the dice bar for you only (Shift-click: advantage, Ctrl-click: disadvantage). The party sees the names and how hurt they look.' }),
         turnOrder(encounter),
-        el('div', { className: 'party-grid' }, encounter.combatants.filter(combatant => combatant.kind !== 'pc').map(combatantCard)),
+        (() => {
+          const creatures = encounter.combatants.filter(combatant => combatant.kind !== 'pc');
+          const compact = compactView(creatures.length);
+          const toggle = el('div', { className: 'encounter-view-toggle small' }, [
+            el('span', { className: 'muted', text: 'View: ' }),
+            ...[['auto', 'Auto'], ['on', '☰ Lines'], ['off', '▦ Cards']].map(([value, text]) => button(text, () => setCompact(value),
+              'btn btn-small ' + (compactChoice === value ? '' : 'btn-secondary'),
+              { title: value === 'auto' ? 'Lines from ' + COMPACT_FROM + ' creatures, cards below that' : value === 'on' ? 'One line per creature; click a name for its card' : 'A full card for every creature' }))
+          ]);
+          // Adding mid-fight: right here, not at the bottom (also: "+ Add selected tokens" in Owlbear).
+          const add = el('details', { className: 'encounter-reinforcements', open: reinforcementsOpen ? true : null }, [
+            el('summary', { className: 'btn btn-small btn-green', text: '+ Add to the fight' }), addControls(encounter)
+          ]);
+          add.addEventListener('toggle', () => { reinforcementsOpen = add.open; });
+          return el('div', {}, [
+            el('div', { className: 'encounter-fight-tools' }, [toggle, add]),
+            arrangeable('creatures', creatures, combatant => combatant.id, combatant => combatantCard(combatant, compact), compact ? 'encounter-rows' : 'party-grid')
+          ]);
+        })(),
         encounter.combatants.some(combatant => combatant.kind === 'pc')
           ? el('p', { className: 'muted small', text: 'Party members in the fight are outlined in red below, with their initiative on their card.' })
           : null,
-        el('details', { className: 'encounter-reinforcements' }, [el('summary', { className: 'small', text: '+ Reinforcements' }), addControls(encounter)])
       ]);
     }
     const running = encounters.running;
@@ -1288,9 +1341,21 @@
 
   function finishForm() {
     const xp = el('input', { type: 'number', min: '0', max: '20', value: String(data.adventure.xp ?? 1), className: 'inventory-qty', 'aria-label': 'XP for each party member' });
+    // The DM gets the same XP as the party: to a character, or banked as DM points.
     const reward = el('select', { 'aria-label': 'DM reward' });
-    reward.add(new Option(data.adventure.dm ? 'Bank +1 DM point with ' + data.adventure.dm : 'No DM reward (DM not linked to a player)', ''));
-    data.dmCharacters.forEach(character => reward.add(new Option('+1 XP to ' + character.name + ' (Lvl ' + character.level + ', ' + character.xp + ' XP)', String(character.id))));
+    const rewardLabels = () => {
+      // The adventure's XP, at least 1 (db/adventures.js dmRewardFor).
+      const amount = Math.max(1, Number(xp.value) || 0);
+      const options = [...reward.options];
+      options[0].text = data.adventure.dm ? 'Bank ' + amount + ' DM point' + (amount === 1 ? '' : 's') + ' with ' + data.adventure.dm : 'No DM reward (DM not linked to a player)';
+      data.dmCharacters.forEach((character, index) => {
+        options[index + 1].text = '+' + amount + ' XP to ' + character.name + ' (Lvl ' + character.level + ', ' + character.xp + ' XP)';
+      });
+    };
+    reward.add(new Option('', ''));
+    data.dmCharacters.forEach(character => reward.add(new Option('', String(character.id))));
+    rewardLabels();
+    xp.addEventListener('input', rewardLabels);
     const title = el('input', { type: 'text', maxlength: '200', value: data.adventure.title, 'aria-label': 'Adventure title' });
     const notes = el('textarea', { rows: '3', maxlength: '4000', placeholder: 'What happened? (shown in the adventure history)', 'aria-label': 'Session notes' });
     notes.value = data.adventure.notes || '';
@@ -1426,8 +1491,83 @@
     ]);
   }
 
+  // ─── Cards you can move ───────────────────────────────────────────────────
+  // Party, NPC and creature cards keep the order you drag them into (by their
+  // ⠿ handle), per adventure and per browser. Pointer events, so it works with
+  // a mouse and on a touch screen. While a card is being dragged the table
+  // doesn't redraw (a live update waits until it's dropped).
+  const orderKey = list => 'grimbold.order.' + adventureId + '.' + list;
+  function savedOrder(list) {
+    try { return JSON.parse(localStorage.getItem(orderKey(list)) || '[]'); } catch { return []; }
+  }
+  function saveOrder(list, keys) {
+    try {
+      if (keys) localStorage.setItem(orderKey(list), JSON.stringify(keys));
+      else localStorage.removeItem(orderKey(list));
+    } catch { /* private window: the order is just not kept */ }
+  }
+  let dragging = null;
+  let renderWaiting = false;
+
+  // items: the list; keyOf(item): its id; build(item): its card element.
+  // Returns the container (className) with the cards in the saved order.
+  function arrangeable(list, items, keyOf, build, className) {
+    const saved = savedOrder(list).map(String);
+    const position = item => { const index = saved.indexOf(String(keyOf(item))); return index < 0 ? Infinity : index; };
+    const ordered = items.map((item, index) => ({ item, index }))
+      .sort((a, b) => position(a.item) - position(b.item) || a.index - b.index).map(entry => entry.item);
+    const container = el('div', { className: className + ' arrangeable' });
+    ordered.forEach(item => {
+      const card = build(item);
+      card.dataset.orderKey = String(keyOf(item));
+      card.classList.add('is-arrangeable');
+      const handle = el('span', { className: 'drag-handle', title: 'Drag to move this card', 'aria-hidden': 'true', text: '⠿' });
+      handle.addEventListener('pointerdown', event => startDrag(event, list, container, card));
+      card.prepend(handle);
+      container.append(card);
+    });
+    const wrap = el('div', { className: 'arrangeable-wrap' }, [container]);
+    if (saved.length && items.length > 1) {
+      wrap.append(el('p', { className: 'arrange-reset' }, [button('↺ Original order', () => { saveOrder(list, null); render(); }, 'link-button small', { title: 'Forget the order you dragged the cards into' })]));
+    }
+    return wrap;
+  }
+
+  function startDrag(event, list, container, card) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    try { handle.setPointerCapture(event.pointerId); } catch { /* a synthetic event: no capture */ }
+    dragging = { list, container, card };
+    card.classList.add('is-dragging');
+    const move = moveEvent => {
+      const under = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+      const target = under && under.closest('[data-order-key]');
+      if (!target || target === card || target.parentElement !== container) return;
+      const box = target.getBoundingClientRect();
+      // Rows (lines) go by height; a grid by the side of the card you're over.
+      const wide = box.width > container.getBoundingClientRect().width * 0.8;
+      const after = wide ? moveEvent.clientY > box.top + box.height / 2 : moveEvent.clientX > box.left + box.width / 2;
+      container.insertBefore(card, after ? target.nextSibling : target);
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      card.classList.remove('is-dragging');
+      saveOrder(list, [...container.children].map(child => child.dataset.orderKey).filter(Boolean));
+      dragging = null;
+      render();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
   function render() {
     if (!data) return;
+    if (dragging) { renderWaiting = true; return; }
+    renderWaiting = false;
     // The dice bar's "Monsters: hidden / shown": for the DM while a fight is on.
     if (window.grimboldDiceMonsterToggle) window.grimboldDiceMonsterToggle(secretsOpen() && Boolean(runningEncounter()));
     const adventure = data.adventure;
@@ -1482,7 +1622,7 @@
       runningSection(),
       challengeRunningSection(),
       data.party.length
-        ? el('div', { className: 'party-grid' }, data.party.map(memberCard))
+        ? arrangeable('party', data.party, member => member.id, memberCard, 'party-grid')
         : el('p', { className: 'muted', text: data.canManage && active ? 'No one in the party yet: add the characters taking part above.' : 'No characters in this adventure.' }),
       npcSection(),
       encounterPlanner(),

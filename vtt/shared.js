@@ -148,22 +148,56 @@ export function describe(roll) {
 export const TRACKER_KEY = 'rodeo.owlbear.initiative-tracker/metadata';
 const normal = text => String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
 export const tokenName = item => (item.text && item.text.plainText) || item.name || '';
-const isToken = item => item.type === 'IMAGE' && (item.layer === 'CHARACTER' || item.layer === 'MOUNT');
+export const isToken = item => item.type === 'IMAGE' && (item.layer === 'CHARACTER' || item.layer === 'MOUNT');
 
-// wanted: [{ label, baseName }] → the same list with .token (or null). Exact
-// names first ("Goblin Warrior 2"), then the base name ("Goblin Warrior"),
+// A token linked to a combatant (or a party member's character) carries
+// { combatantId, characterId } here, in the scene, so its name no longer matters.
+export const LINK_KEY = 'grimbold.dice/link';
+const linkOf = item => (item.metadata && item.metadata[LINK_KEY]) || {};
+
+// wanted: [{ id (combatant), characterId, label, baseName }] → the same list
+// with .token (or null) and .linked (true: by link, false: by name).
+// Linked tokens first (the combatant, then a party member's character), then
+// exact names ("Goblin Warrior 2"), then the base name ("Goblin Warrior");
 // each token used once.
 export function matchTokens(items, wanted) {
   const tokens = items.filter(isToken);
   const used = new Set();
-  const take = name => {
-    const token = tokens.find(item => !used.has(item.id) && normal(tokenName(item)) === normal(name));
+  const takeWhere = test => {
+    const token = tokens.find(item => !used.has(item.id) && test(item));
     if (token) used.add(token.id);
     return token || null;
   };
-  const result = wanted.map(entry => ({ ...entry, token: take(entry.label) }));
-  result.forEach(entry => { if (!entry.token && entry.baseName && entry.baseName !== entry.label) entry.token = take(entry.baseName); });
+  const result = wanted.map(entry => ({ ...entry, token: null, linked: false }));
+  result.forEach(entry => {
+    if (entry.id) entry.token = takeWhere(item => linkOf(item).combatantId === entry.id);
+    if (!entry.token && entry.characterId) entry.token = takeWhere(item => linkOf(item).characterId === entry.characterId);
+    entry.linked = Boolean(entry.token);
+  });
+  // Tokens linked to something else are not matched by name.
+  const linkedElsewhere = item => Boolean(linkOf(item).combatantId || linkOf(item).characterId);
+  result.forEach(entry => { if (!entry.token) entry.token = takeWhere(item => !linkedElsewhere(item) && normal(tokenName(item)) === normal(entry.label)); });
+  result.forEach(entry => {
+    if (!entry.token && entry.baseName && entry.baseName !== entry.label) entry.token = takeWhere(item => !linkedElsewhere(item) && normal(tokenName(item)) === normal(entry.baseName));
+  });
   return result;
+}
+
+// Links a token to a combatant (and a party member's character), or unlinks
+// one: tokenId null. A token links to one combatant, a combatant to one token.
+export async function linkToken(OBR, { tokenId, combatantId, characterId = null }) {
+  const items = (await OBR.scene.items.getItems()).filter(isToken);
+  const ids = items.filter(item => {
+    const link = linkOf(item);
+    return item.id === tokenId || link.combatantId === combatantId || (characterId && link.characterId === characterId);
+  }).map(item => item.id);
+  if (!ids.length) return;
+  await OBR.scene.items.updateItems(ids, drafts => {
+    drafts.forEach(item => {
+      if (item.id === tokenId) item.metadata[LINK_KEY] = { combatantId, characterId: characterId || null };
+      else delete item.metadata[LINK_KEY];
+    });
+  });
 }
 
 // pairs: [{ itemId, initiative }]
