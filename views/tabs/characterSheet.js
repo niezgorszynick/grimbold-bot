@@ -285,7 +285,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               </section>
               <section class="sheet-card sheet-resources-card" data-collapse="resources">
                 <h4>Resources</h4>
-                <div id="cs_resources_body" aria-live="polite"></div>
+                <div id="cs_resources_body" class="vitals sheet-resources-body" aria-live="polite"></div>
               </section>
               <section id="cs_wild_shape" class="sheet-card sheet-wild-shape-card" data-collapse="wildShape" data-character-id="${Number(characterToEdit.id)}" hidden>
                 <h4>Wild Shape</h4>

@@ -1262,3 +1262,8 @@ body.sheet-view .sheet-notes-label textarea { resize: none; border-color: transp
 body.sheet-view .sheet-check-list input[type=checkbox] { appearance: none; -webkit-appearance: none; width: 9px; height: 9px; margin: 0 4px; border: 1.5px solid #6d6f78; border-radius: 50%; background: transparent; opacity: 1; }
 body.sheet-view .sheet-check-list input[type=checkbox]:checked { background: #f1c40f; border-color: #f1c40f; }
 body.sheet-view .roll-link, body.sheet-view .sheet-check-modifier[data-roll], body.sheet-view .sheet-ability-modifier[data-roll] { border-bottom-color: transparent; }
+/* Resources: rests, feature uses and slots side by side when the card is wide enough. */
+.sheet-resources-body { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 22px; align-items: start; }
+.sheet-resources-body > .sheet-message { grid-column: 1 / -1; }
+.sheet-resources-body .vitals-slot-label { min-width: 7em; white-space: nowrap; }
+.sheet-resources-body .vitals-actions { margin-top: 4px; }

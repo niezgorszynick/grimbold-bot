@@ -99,7 +99,7 @@
   const RESOURCE_ACTIONS = ['shortRest', 'longRest', 'useResource', 'restoreResource', 'spendSlot', 'restoreSlot', 'startEffect', 'endEffect'];
   let lastArea = 'hp';
   // Damage / heal / temp HP behind "± HP"; remembered in this browser.
-  let hpActionsOpen = (() => { try { return localStorage.getItem('grimbold.hpActions') === 'open'; } catch { return false; } })();
+  let hpActionsOpen = (() => { try { return localStorage.getItem('grimbold.hpActions') !== 'closed'; } catch { return true; } })();
   function rememberHpActions() {
     try { localStorage.setItem('grimbold.hpActions', hpActionsOpen ? 'open' : 'closed'); } catch { /* private window */ }
   }
