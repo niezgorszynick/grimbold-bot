@@ -14,8 +14,8 @@ function facesHtml(faces) {
 function weeklyRollsCard(rolls) {
   return `
     <div class="card">
-      <h3>Player Discount Rolls (Last 100)</h3>
-      <table>
+      <h3>Player Discount Rolls</h3>
+      <table id="discount-rolls" data-filter="player" data-page-size="10" data-item-label="rolls" data-search-placeholder="Search player or week…">
         <thead>
           <tr>
             <th class="sortable">Week Start</th>
@@ -26,7 +26,7 @@ function weeklyRollsCard(rolls) {
         </thead>
         <tbody>
           ${rolls.length === 0 ? '<tr><td colspan="4">No rolls recorded yet.</td></tr>' : rolls.map(r => `
-            <tr>
+            <tr data-search="${escapeHtml(`${r.display_name || r.user_id} ${r.week_start}`.toLowerCase())}" data-player="${escapeHtml(r.display_name || r.user_id)}">
               <td data-sort="${r.week_start}">${r.week_start}</td>
               <td data-sort="${escapeHtml(r.display_name || r.user_id)}">
                 <strong>${escapeHtml(r.display_name || r.user_id)}</strong>${r.display_name && r.display_name !== r.user_id ? `<br><small style="color:#949ba4;">${r.user_id}</small>` : ''}
@@ -47,9 +47,9 @@ function sheetRollsCard(sides, sheetRolls) {
     : `Every panel roll with a d${sides}: damage, custom formulas and critical hits. Each die counts towards the d${sides} chart on the Analytics tab.`;
   return `
     <div class="card">
-      <h3>Character Sheet Rolls with a d${sides} (Last 100)</h3>
+      <h3>Character Sheet Rolls with a d${sides}</h3>
       <p class="muted small">${intro}</p>
-      <table id="sheet-rolls-d${sides}" data-filter="player" data-page-size="50" data-item-label="rolls" data-search-placeholder="Search character, player or roll…">
+      <table id="sheet-rolls-d${sides}" data-filter="player" data-page-size="10" data-item-label="rolls" data-search-placeholder="Search character, player or roll…">
         <thead>
           <tr>
             <th class="sortable">When</th>

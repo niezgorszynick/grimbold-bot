@@ -171,7 +171,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-identity h2 { margin: 0; color: #f2f3f5; }
 .sheet-identity > span { display: block; color: #949ba4; font-size: 13px; margin: 3px 0 12px; }
 .sheet-identity-fields { display: grid; grid-template-columns: 1.4fr repeat(4, minmax(120px, 1fr)); gap: 10px; }
-.sheet-identity-fields label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
+.sheet-identity-fields label { display: grid; gap: 5px; min-width: 0; color: #949ba4; font-size: 12px; }
+.sheet-identity-fields input, .sheet-identity-fields select { width: 100%; min-width: 0; box-sizing: border-box; }
 .sheet-header-actions { display: flex; gap: 10px; align-items: center; }
 .btn-secondary { background: #4e5058; color: #fff; }
 .btn-success { background: #23a55a; color: #fff; font-weight: bold; }
@@ -1062,7 +1063,7 @@ body.is-arranging, body.is-arranging * { user-select: none; cursor: grabbing !im
 .sheet-appearance-fields label { display: grid; gap: 5px; color: #949ba4; font-size: 12px; }
 .sheet-appearance-other { grid-column: 1 / -1; }
 .sheet-appearance-other textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
-.sheet-appearance-fields input { width: 100%; min-width: 0; box-sizing: border-box; }
+.sheet-appearance-fields input, .sheet-appearance-fields select { width: 100%; min-width: 0; box-sizing: border-box; }
 .subclass-features { display: grid; gap: 6px; margin-top: 12px; }
 .subclass-features h5 { margin: 0; color: #f1c40f; }
 .subclass-feature summary { cursor: pointer; }
