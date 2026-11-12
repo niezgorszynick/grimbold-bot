@@ -763,7 +763,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
             details.append(summary, body);
             return details;
           };
-          const textOf = name => (classTexts.find(feature => feature.name === name) || {}).text;
+          // "Mystic Arcanum (level 6 spell)" reads the "Mystic Arcanum" text.
+          const baseName = name => name.replace(/\\s*\\([^)]*\\)$/, '');
+          const textOf = name => (classTexts.find(feature => feature.name === name || feature.name === baseName(name)) || {}).text;
           const group = (label, chips) => {
             if (!chips.length) return null;
             const row = document.createElement('div');
@@ -778,7 +780,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             return row;
           };
           // Features in classes.md that the rules don't list by name come after.
-          const extraClassFeatures = classTexts.filter(feature => !featureNames.includes(feature.name)).map(feature => feature.name);
+          const extraClassFeatures = classTexts.filter(feature => !featureNames.some(name => name === feature.name || baseName(name) === feature.name)).map(feature => feature.name);
           const subclassChips = subclassSelect.value && classLevel >= 3 ? [
             chip(subclassSelect.value, subclassEntry && subclassEntry.intro, 'subclass:' + subclassSelect.value,
               subclassEntry && subclassEntry.source ? '🧪 Playtest material (' + subclassEntry.source + '): may change before it is official.' : ''),
