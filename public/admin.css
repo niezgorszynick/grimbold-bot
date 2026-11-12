@@ -188,7 +188,16 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-message { min-height: 20px; margin: 0 0 10px; color: #23a55a; font-size: 13px; }
 .sheet-message.is-error { color: #f23f43; }
 .sheet-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 14px; }
-.sheet-col { display: grid; gap: 14px; min-width: 0; }
+.sheet-col { display: grid; gap: 14px; min-width: 0; align-content: start; }
+/* The third column (features, magic items, spells): under the other two on
+   medium screens, beside them from 1400px (the sheet page widens for it). */
+.sheet-col-side { grid-column: 1 / -1; }
+.container.is-wide { max-width: 1800px; }
+@media (min-width: 1400px) {
+  .container.is-wide .character-sheet-full { max-width: none; }
+  .sheet-layout { grid-template-columns: 290px minmax(0, 1fr) minmax(0, 1fr); }
+  .sheet-col-side { grid-column: auto; }
+}
 .sheet-card { min-width: 0; background: #1e1f22; border: 1px solid #3f4147; border-radius: 8px; padding: 12px; }
 .sheet-card h4 { margin: 0 0 10px; color: #f1c40f; text-transform: uppercase; font-size: 12px; }
 .point-buy-card { margin: 0 0 16px; padding: 16px 20px; }
@@ -601,14 +610,15 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .character-sheet-full .ac-details { order: 4; }
   .character-sheet-full .sheet-vitals-card { order: 5; }
   .character-sheet-full .sheet-attacks-card { order: 6; }
-  .character-sheet-full > #cs_spells { order: 7; }
+  .character-sheet-full #cs_spells { order: 7; }
   .character-sheet-full .sheet-saves-card { order: 8; }
   .character-sheet-full .sheet-skills-card { order: 9; }
+  .character-sheet-full .sheet-senses-card { order: 9; }
   .character-sheet-full .sheet-proficiencies-card { order: 9; }
   .character-sheet-full > .point-buy-card { order: 10; }
   .character-sheet-full .sheet-features-card { order: 11; }
-  .character-sheet-full > .sheet-equipment { order: 12; }
-  .character-sheet-full > #cs_magic_items { order: 13; }
+  .character-sheet-full .sheet-equipment { order: 12; }
+  .character-sheet-full #cs_magic_items { order: 13; }
 
   .sheet-fold-title { cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; }
   .sheet-fold-title::after { content: '▾'; color: #949ba4; font-size: 14px; }
@@ -747,7 +757,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-inspiration-text { margin: 6px 0 0; }
 .sheet-inspiration-text[data-resourceful="1"]::after { content: ' Resourceful: yours comes back after each Long Rest.'; color: #f1c40f; }
 /* Proficiencies & Languages card. */
-.sheet-proficiencies-card { margin-top: 14px; }
+.sheet-proficiencies-card, .sheet-senses-card { margin-top: 14px; }
 .prof-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 6px 0 0; font-size: 13px; }
 .prof-list dt { color: #949ba4; font-size: 11px; text-transform: uppercase; padding-top: 3px; }
 .prof-list dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
@@ -833,7 +843,17 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-portrait-message { max-width: 120px; text-align: center; }
 .party-portrait { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #3f4147; flex: 0 0 auto; }
 .party-card-title { flex: 1; min-width: 0; }
-.roster-portrait { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }
+.roster-portrait { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none; }
+/* Portrait and name side by side; the name wraps on its own if it must. */
+.roster-character { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.roster-character-name { color: #f2f3f5; font-weight: 700; text-decoration: none; }
+.roster-character-name:hover { color: #fff; text-decoration: underline; }
+.roster-player-edit { display: inline-block; margin-left: 4px; }
+.roster-player-edit > summary { cursor: pointer; list-style: none; display: inline; opacity: .6; font-size: 12px; }
+.roster-player-edit > summary::-webkit-details-marker { display: none; }
+.roster-player-edit[open] > summary, .roster-player-edit > summary:hover { opacity: 1; }
+.roster-player-form { display: grid; gap: 6px; margin-top: 6px; padding: 8px; min-width: 220px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 6px; }
+.roster-player-form label { display: grid; gap: 3px; font-size: 12px; color: #949ba4; }
 @media (max-width: 600px) { .sheet-portrait-image { width: 64px; height: 64px; font-size: 22px; } }
 .sheet-portrait-remove { color: #949ba4; text-decoration: none; }
 .sheet-portrait-remove:hover { color: #f23f43; }
@@ -1146,3 +1166,47 @@ body.wm-no-scroll { overflow: hidden; }
 .lineup-axis { font: 4.4px system-ui, sans-serif; fill: #6b6860; }
 .lineup-name { font: 700 6px system-ui, sans-serif; paint-order: stroke; stroke: #f4f3ef; stroke-width: 1.2px; }
 .lineup-height { font: 600 4.2px system-ui, sans-serif; fill: #3a3833; }
+
+/* Senses card (character sheet): passive scores in rings, senses below. */
+.sheet-senses-card { display: grid; gap: 6px; }
+.sheet-passive { display: flex; align-items: center; gap: 10px; padding: 3px 10px 3px 3px; border: 1px solid #3f4147; border-radius: 22px; background: #1e1f22; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #dbdee1; cursor: help; }
+.sheet-passive-value { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 2px solid #6d6f78; border-radius: 50%; font-size: 16px; color: #fff; flex: none; }
+.sheet-senses-list { margin: 4px 0 0; text-align: center; color: #b5bac1; font-size: 13px; }
+
+/* Character sheet modes (public/sheet-mode.js). View is for play: rolling, HP,
+   rests, slots, casting and items all work; the build is shown, not edited. */
+body.sheet-view .sheet-identity-fields,
+body.sheet-view #cs_save:disabled,
+body.sheet-view .sheet-appearance-fields,
+body.sheet-view .sheet-appearance > p,
+body.sheet-view .point-buy-header span,
+body.sheet-view .point-buy-actions,
+body.sheet-view #cs_point_buy_error,
+body.sheet-view #cs_skill_guidance,
+body.sheet-view #cs_species_skill_choices,
+body.sheet-view #cs_dm_skills,
+body.sheet-view .sheet-other-attacks button,
+body.sheet-view #cs_attacks_table td:last-child,
+body.sheet-view #cs_attacks_table th:last-child,
+body.sheet-view .sheet-portrait-remove,
+body.sheet-view .sheet-notes-label.is-empty,
+body.sheet-view #cs_proficiencies .btn,
+body.sheet-view .sheet-delete,
+body.sheet-view .sheet-dm-settings,
+body.sheet-view .sheet-reset:not(.is-building) { display: none !important; }
+body.sheet-view .sheet-appearance > summary { pointer-events: none; list-style: none; }
+body.sheet-view .sheet-appearance > summary::-webkit-details-marker { display: none; }
+body.sheet-view #cs_ability_container input,
+body.sheet-view .sheet-check-list input[type=checkbox],
+body.sheet-view #cs_ac, body.sheet-view #cs_speed,
+body.sheet-view #cs_attacks_table input,
+body.sheet-view .sheet-notes-label textarea,
+body.sheet-view .sheet-portrait-image { pointer-events: none; }
+body.sheet-view #cs_ability_container input, body.sheet-view #cs_ac, body.sheet-view #cs_speed,
+body.sheet-view #cs_attacks_table input { border-color: transparent; background: transparent; }
+body.sheet-view .sheet-notes-label textarea { resize: none; border-color: transparent; background: transparent; }
+#cs_mode.is-editing { background: #5865f2; color: #fff; }
+
+/* DM settings card on the character sheet (views/characterDmSettings.js). */
+.sheet-dm-settings > summary { cursor: pointer; }
+.sheet-dm-settings input:not([type=checkbox]), .sheet-dm-settings select, .sheet-dm-settings textarea { box-sizing: border-box; max-width: 100%; }

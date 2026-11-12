@@ -166,7 +166,9 @@ router.get('/characters/:id', (req, res) => {
     // Thaumaturge, Magician, Otherworldly Glamour: bonuses the skill list adds.
     checkBonuses: rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability)),
     // Custom item bonuses, added on top (skills, checks, saves) and Advantage marks.
-    itemBonuses: rules.itemBonusTotals(sheetData)
+    itemBonuses: rules.itemBonusTotals(sheetData),
+    // Passive Perception, Investigation and Insight, and senses (Darkvision, ...).
+    senses: sensesOf(character, sheetData)
   });
 });
 
@@ -213,6 +215,26 @@ router.get('/characters/:id/sheet.pdf', async (req, res) => {
     return res.status(status).json({ error: error.message });
   }
 });
+
+// The Senses card: 10 + the skill's bonus (as rolled), +5 with Advantage and
+// -5 with Disadvantage (2024), and the senses from the character's defenses.
+function sensesOf(character, sheetData) {
+  try {
+    const options = db.rollOptions(character);
+    const passives = ['Perception', 'Investigation', 'Insight'].map(skill => {
+      const option = options.get('skill:' + skill);
+      const bonus = option ? Number((String(option.formula).match(/^1d20([+-]\d+)?/) || [])[1] || 0) : 0;
+      const advantage = Boolean(option && (option.advantage || []).length);
+      const disadvantage = Boolean(option && (option.disadvantage || []).length);
+      return { skill, value: 10 + bonus + (advantage && !disadvantage ? 5 : 0) - (disadvantage && !advantage ? 5 : 0), advantage, disadvantage };
+    });
+    const vitals = vitalsViewFor(character, sheetData);
+    const senses = vitals ? vitals.defenses.filter(item => item.kind === 'sense').map(item => item.text) : [];
+    return { passives, senses };
+  } catch {
+    return null;
+  }
+}
 
 // The subclass features a character has, with their text (rules/content/subclasses.md).
 router.get('/characters/:id/subclass-features', (req, res) => {

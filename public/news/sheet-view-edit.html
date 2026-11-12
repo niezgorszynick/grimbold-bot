@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-12">
+<meta name="news-order" content="0">
+<title>A Sheet You Can Play From</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 12 November 2026</span>
+    <h1>A Sheet You Can Play From</h1>
+    <p class="lede">The character sheet now opens ready for play, spreads out over wide screens, and shows your passive senses at a glance. The panel's menu is tidier too.</p>
+  </header>
+
+  <section>
+    <h2>For everyone</h2>
+
+    <h3>👁 View and ✏️ Edit</h3>
+    <ul>
+      <li>The sheet opens in <strong>View</strong>: rolling, hit points, rests, spell slots, casting and items all work, but the build (name, species and class, ability scores, skill choices, appearance, notes) is shown rather than edited, so a stray click changes nothing.</li>
+      <li><strong>✏️ Edit</strong> at the top shows everything as before. Your browser remembers which you used last.</li>
+    </ul>
+
+    <h3>🖥 Wide screens</h3>
+    <ul>
+      <li>On a big screen the sheet has <strong>three columns</strong>: abilities, saves and skills on the left; combat, hit points, attacks and equipment in the middle; features, magic items and spells on the right. Smaller screens and phones keep the layout they had.</li>
+    </ul>
+
+    <h3>👀 Senses</h3>
+    <ul>
+      <li>A new <strong>Senses</strong> card under your skills shows <strong>Passive Perception, Investigation and Insight</strong> (what you notice without rolling) and senses like Darkvision.</li>
+    </ul>
+
+    <h3>Smaller things</h3>
+    <ul>
+      <li><strong>Reset Character</strong> now opens the creator in place of the sheet; Cancel brings the sheet back.</li>
+      <li>The panel's tabs are grouped: <strong>Shop, Characters, Adventures, DM Tools, Records</strong>, with the group's tabs in a row underneath. The changelog is <strong>What's new</strong>, by your name.</li>
+      <li><strong>Rolls History</strong> shows the latest 10 rolls; <strong>Show 10 more</strong> or <strong>Show all</strong> for the rest.</li>
+      <li>In the Players tab, a character's name opens their sheet, and portraits sit beside the names.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>Characters and players</h2>
+      <ul>
+        <li><strong>🛡 DM settings</strong> moved from the Players tab to the foot of each character sheet (in Edit): owner, XP and level override, alive or dead, the Discord thread, multiclass levels and the adventures log. Name, species, class and purse are edited on the sheet itself.</li>
+        <li><strong>✏️ next to a player's name</strong> in the Players tab edits their Discord name and ID, for when an ID was entered wrong. The Discord ID column is gone from the roster.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>

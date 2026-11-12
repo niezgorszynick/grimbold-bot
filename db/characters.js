@@ -718,11 +718,16 @@ updateCharacterWithAdventures: ({
   }) => {
     const run = db.transaction(() => {
       const charId = Number(id);
-      const char = db.prepare('SELECT id, gold_cp FROM characters WHERE id = ?').get(charId);
+      const char = db.prepare('SELECT id, gold_cp, name, race, class, subclass FROM characters WHERE id = ?').get(charId);
       if (!Number.isSafeInteger(charId) || !char) {
         throw new Error(`Character #${id} not found.`);
       }
 
+      // Not sent (the sheet's DM settings): kept as stored.
+      if (name === undefined) name = char.name;
+      if (race === undefined) race = char.race;
+      if (class_name === undefined) class_name = char.class;
+      if (subclass === undefined) subclass = char.subclass;
       const pId = parseInt(player_id, 10);
       const trimmedName = (name || '').trim();
       if (!Number.isInteger(pId)) throw new Error('Valid player must be selected.');

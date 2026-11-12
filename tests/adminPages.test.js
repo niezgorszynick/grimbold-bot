@@ -63,10 +63,11 @@ test('the character sheet editor and creator scripts parse', () => {
   assertScriptsParse(list, 'character list');
 });
 
-test('the level override box shows whether the level was set by hand', () => {
+test('DM settings on the sheet: the level override box shows whether the level was set by hand', () => {
   const overrideBox = () => {
-    const html = renderAdminPage({ session: { user: users.admin }, query: { tab: 'players', edit_char: String(characterId) } });
-    assertScriptsParse(html, 'players editor');
+    // The DM settings card at the foot of the character sheet (admins).
+    const html = renderAdminPage({ session: { user: users.admin }, query: { tab: 'character-sheet', edit_char: String(characterId) } });
+    assertScriptsParse(html, 'character sheet with DM settings');
     return html.match(/<input type="checkbox" id="overrideLvlCheck"[^>]*>/)[0];
   };
   const { xp } = db.getCharacterById(characterId);

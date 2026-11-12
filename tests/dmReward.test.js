@@ -71,3 +71,13 @@ test('adventures finished before the change get the rest of their DM reward, onc
   db.settleDmRewards();
   assert.deepEqual([xpOf(hero), pointsOf(dm)], [2, points + 2], 'running it again changes nothing');
 });
+
+test('DM settings from the sheet keep the name, species and class they do not send', () => {
+  const owner = createPlayer();
+  const id = Number(db.prepare(`INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+    VALUES (?, 'Ilphas', 'Elf', 'Wizard', 'Evoker', 3, 0, 'alive', 500, '{}')`).run(owner).lastInsertRowid);
+  db.prepare('INSERT INTO character_classes (character_id, class_name, subclass_name, class_level, is_primary) VALUES (?, ?, ?, 3, 1)').run(id, 'Wizard', 'Evoker');
+  db.updateCharacterWithAdventures({ id, player_id: owner, xp: 4, status: 'alive', adventure_ids: [] });
+  const after = db.getCharacterById(id);
+  assert.deepEqual([after.name, after.race, after.class, after.subclass, after.xp, after.gold_cp], ['Ilphas', 'Elf', 'Wizard', 'Evoker', 4, 500]);
+});

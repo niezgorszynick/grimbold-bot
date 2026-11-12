@@ -190,6 +190,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
         <script src="/admin/assets/character-features.js" defer></script>
         <script src="/admin/assets/character-live.js" defer></script>
         <script src="/admin/assets/sheet-sections.js" defer></script>
+        <script src="/admin/assets/sheet-mode.js" defer></script>
         <script src="/admin/assets/character-levelup.js" defer></script>
         <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
           <header class="sheet-header" data-collapse="details">
@@ -208,6 +209,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <div class="sheet-header-actions">
               <a href="/admin?tab=character-sheet" class="btn btn-secondary">Back / Cancel</a>
               ${unbuiltCharacter ? '' : `<a href="/api/characters/${Number(characterToEdit.id)}/sheet.pdf" class="btn btn-secondary" download title="The official 2024 character sheet, filled in from this character (fields stay editable). Save the sheet first to include unsaved changes.">📄 Export PDF</a>`}
+              <button id="cs_mode" class="btn btn-secondary" type="button" title="View: play the character (roll, track HP, cast). Edit: change the build (identity, abilities, skills, appearance, notes).">✏️ Edit</button>
               <button id="cs_save" class="btn btn-success" type="button" disabled>Save Sheet</button>
             </div>
           </header>
@@ -252,6 +254,10 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
                 ${isAdmin ? '<details id="cs_dm_skills" class="sheet-dm-skills"><summary>DM: extra skill proficiencies &amp; Expertise</summary><p class="muted small">For feats or features the sheet doesn&#39;t apply by itself. Save the sheet afterwards.</p><div class="sheet-dm-skill-grid"></div></details>' : ''}
               </section>
+              <section id="cs_senses" class="sheet-card sheet-senses-card" data-collapse="senses" hidden>
+                <h4>Senses</h4>
+                <div id="cs_senses_body"></div>
+              </section>
               <section id="cs_proficiencies" class="sheet-card sheet-proficiencies-card" data-collapse="proficiencies" data-character-id="${Number(characterToEdit.id)}"><h4>Proficiencies &amp; Languages</h4><p class="muted small">Loading…</p></section>
               <script src="/admin/assets/character-proficiencies.js" defer></script>
             </div>
@@ -290,31 +296,35 @@ module.exports = function renderCharacterSheetTab(ctx) {
                   </table>
                 </div>
               </section>
-              <section class="sheet-card sheet-features-card" data-collapse="features">
-                <h4>Class Features &amp; Species Traits</h4>
-                <div id="cs_auto_features" class="sheet-auto-features" aria-live="polite"></div>
-                <div id="cs_subclass_features" data-character-id="${Number(characterToEdit.id)}" hidden></div>
-                <script src="/admin/assets/subclass-features.js" defer></script>
-                <label class="sheet-notes-label">Additional notes<textarea id="cs_features" rows="5" maxlength="10000" placeholder="Record additional features, choices, or reminders..."></textarea></label>
+              <section class="sheet-card sheet-equipment" data-collapse="equipment">
+              <h4>Equipment &amp; Items</h4>
+              <div id="cs_purse" class="purse" data-character-id="${Number(characterToEdit.id)}"></div>
+              <script src="/admin/assets/character-purse.js" defer></script>
+              <script src="/admin/assets/gift-form.js" defer></script>
+              <div id="cs_inventory" class="inventory" data-character-id="${Number(characterToEdit.id)}">Loading items...</div>
+              <script src="/admin/assets/character-inventory.js" defer></script>
+              <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>
               </section>
             </div>
+            <!-- Features, magic items and spells: a third column on wide screens, under the other two below that. -->
+            <div class="sheet-col sheet-col-side">
+              <section class="sheet-card sheet-features-card" data-collapse="features">
+              <h4>Class Features &amp; Species Traits</h4>
+              <div id="cs_auto_features" class="sheet-auto-features" aria-live="polite"></div>
+              <div id="cs_subclass_features" data-character-id="${Number(characterToEdit.id)}" hidden></div>
+              <script src="/admin/assets/subclass-features.js" defer></script>
+              <label class="sheet-notes-label">Additional notes<textarea id="cs_features" rows="5" maxlength="10000" placeholder="Record additional features, choices, or reminders..."></textarea></label>
+              </section>
+              <!-- Magic Items right after Equipment & Items, before the (often long) spell list. -->
+              <section id="cs_magic_items" data-collapse="magicItems" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
+              <script src="/admin/assets/character-magic-items.js" defer></script>
+              <section id="cs_spells" data-collapse="spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" data-is-admin="${isAdmin ? 'true' : 'false'}" hidden></section>
+              <script src="/admin/assets/character-spells.js" defer></script>
+            </div>
           </div>
-          <section class="sheet-card sheet-equipment" data-collapse="equipment">
-            <h4>Equipment &amp; Items</h4>
-            <div id="cs_purse" class="purse" data-character-id="${Number(characterToEdit.id)}"></div>
-            <script src="/admin/assets/character-purse.js" defer></script>
-            <script src="/admin/assets/gift-form.js" defer></script>
-            <div id="cs_inventory" class="inventory" data-character-id="${Number(characterToEdit.id)}">Loading items...</div>
-            <script src="/admin/assets/character-inventory.js" defer></script>
-            <label class="sheet-notes-label">Other notes (saved with the sheet)<textarea id="cs_equipment" rows="3" maxlength="10000" placeholder="Coins on the side, borrowed gear, things left at the inn..."></textarea></label>
-          </section>
-          <!-- Magic Items right after Equipment & Items, before the (often long) spell list. -->
-          <section id="cs_magic_items" data-collapse="magicItems" class="sheet-card magic-items" data-character-id="${Number(characterToEdit.id)}" hidden></section>
-          <script src="/admin/assets/character-magic-items.js" defer></script>
-          <section id="cs_spells" data-collapse="spells" class="sheet-card spells" data-character-id="${Number(characterToEdit.id)}" data-is-admin="${isAdmin ? 'true' : 'false'}" hidden></section>
-          <script src="/admin/assets/character-spells.js" defer></script>
           <script src="/admin/assets/dice.js" defer></script>
         </section>
+        ${isAdmin ? require('../characterDmSettings')(characterToEdit) : ''}
         <section class="card sheet-delete">
           <div class="sheet-section-heading">
             <h4>Delete Character</h4>
@@ -362,6 +372,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
               const open = document.getElementById('open-character-reset');
               const view = document.getElementById('character-reset-view');
               const show = () => {
+                // While the creator is open it stays visible in View mode too.
+                open.closest('.sheet-reset').classList.add('is-building');
                 view.hidden = false;
                 open.disabled = true;
                 if (!document.getElementById('character-creator-script')) {
@@ -391,19 +403,28 @@ module.exports = function renderCharacterSheetTab(ctx) {
               open.addEventListener('click', () => {
                 const sure = window.confirm('Are you sure you want to reset ' + open.dataset.name + '?\\n\\nYou will build the character again in the creator. When you finish, species, class, abilities, skills, spells and starting gear are replaced. XP, level, adventures, purse, magic items and bought items are kept.');
                 if (!sure) return;
-                view.hidden = false;
-                open.disabled = true;
-                if (!document.getElementById('character-creator-script')) {
-                  const script = document.createElement('script');
-                  script.id = 'character-creator-script';
-                  script.src = '/admin/assets/character-creator.js';
-                  document.body.append(script);
+                // The creator takes the sheet's place (the sheet comes back on Cancel).
+                const section = open.closest('.sheet-reset');
+                const sheet = document.getElementById('fullCharacterSheetContainer');
+                if (sheet) {
+                  section.dataset.home = 'below';
+                  sheet.parentNode.insertBefore(section, sheet);
+                  sheet.hidden = true;
                 }
-                view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                show();
               });
               document.getElementById('close-character-reset').addEventListener('click', () => {
+                open.closest('.sheet-reset').classList.remove('is-building');
                 view.hidden = true;
                 open.disabled = false;
+                const section = open.closest('.sheet-reset');
+                const sheet = document.getElementById('fullCharacterSheetContainer');
+                if (sheet && section.dataset.home === 'below') {
+                  sheet.hidden = false;
+                  sheet.parentNode.append(section);
+                  delete section.dataset.home;
+                  sheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
               });
             })();
           </script>
@@ -865,6 +886,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
         function autosizeNotes() {
           notesBoxes.forEach(autosize);
         }
+        // Boxes hidden in View mode measure nothing: size them again on showing.
+        window.autosizeSheetNotes = autosizeNotes;
         notesBoxes.forEach(box => {
           box.classList.add('is-autosized');
           box.addEventListener('input', () => autosize(box));
@@ -970,6 +993,30 @@ module.exports = function renderCharacterSheetTab(ctx) {
         }
         Object.values(APPEARANCE_INPUTS).forEach(id => document.getElementById(id).addEventListener('input', showAppearanceSummary));
 
+        // Passive Perception, Investigation, Insight, and senses (Darkvision, ...).
+        function renderSenses(senses) {
+          const card = document.getElementById('cs_senses');
+          const body = document.getElementById('cs_senses_body');
+          if (!senses) { card.hidden = true; return; }
+          body.replaceChildren(...senses.passives.map(passive => {
+            const row = document.createElement('div');
+            row.className = 'sheet-passive';
+            const value = document.createElement('strong');
+            value.className = 'sheet-passive-value';
+            value.textContent = String(passive.value);
+            const label = document.createElement('span');
+            label.textContent = 'Passive ' + passive.skill + (passive.advantage && !passive.disadvantage ? ' (Advantage +5)' : passive.disadvantage && !passive.advantage ? ' (Disadvantage −5)' : '');
+            row.title = 'What you notice without rolling: 10 + your ' + passive.skill + ' bonus. The DM compares it to a hidden DC.';
+            row.append(value, label);
+            return row;
+          }));
+          const list = document.createElement('p');
+          list.className = 'sheet-senses-list';
+          list.textContent = senses.senses.length ? senses.senses.join(' · ') : 'No special senses';
+          body.append(list);
+          card.hidden = false;
+        }
+
         async function loadSheet() {
           message.textContent = 'Loading character sheet...';
           try {
@@ -982,6 +1029,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             sheetCheckBonuses = result.checkBonuses || sheetCheckBonuses;
             sheetItemBonuses = result.itemBonuses || null;
             sheetInitiative = result.initiative || null;
+            renderSenses(result.senses);
             sheetCharacterLevel = character.level || 1;
             const classRows = Array.isArray(result.classes) ? result.classes : [];
             classLevels = Object.fromEntries(classRows.map(classRow => [
@@ -1098,6 +1146,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
             autosizeNotes();
             // Worn armor sets the Armor Class; the combat panel fills it in.
             if (window.refreshCharacterCombat) window.refreshCharacterCombat();
+            // View mode hides empty notes (public/sheet-mode.js).
+            if (window.refreshSheetMode) window.refreshSheetMode();
             message.textContent = '';
           } catch (error) {
             message.textContent = error.message;

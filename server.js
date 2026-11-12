@@ -65,6 +65,7 @@ const ADMIN_ASSETS = {
   'subclass-features.js': path.join(__dirname, 'public', 'subclass-features.js'),
   'character-live.js': path.join(__dirname, 'public', 'character-live.js'),
   'sheet-sections.js': path.join(__dirname, 'public', 'sheet-sections.js'),
+  'sheet-mode.js': path.join(__dirname, 'public', 'sheet-mode.js'),
   'character-proficiencies.js': path.join(__dirname, 'public', 'character-proficiencies.js'),
   'character-wild-shape.js': path.join(__dirname, 'public', 'character-wild-shape.js'),
   'auctions.js': path.join(__dirname, 'public', 'auctions.js')
@@ -439,9 +440,11 @@ router.post('/characters/update', (req, res) => {
       death_notes
     });
     if (updated && updated.goldChange) require('./characterThreads').announceGoldChange(updated.goldChange);
-    res.redirect('/admin?tab=players&status=char_updated');
+    res.redirect(req.body.return_to === 'sheet' ? `/admin?tab=character-sheet&edit_char=${Number(id)}&status=char_updated` : '/admin?tab=players&status=char_updated');
   } catch (err) {
-    res.redirect(`/admin?tab=players&err=${encodeURIComponent(err.message)}`);
+    res.redirect(req.body.return_to === 'sheet'
+      ? `/admin?tab=character-sheet&edit_char=${Number(req.body.id)}&err=${encodeURIComponent(err.message)}`
+      : `/admin?tab=players&err=${encodeURIComponent(err.message)}`);
   }
 });
 

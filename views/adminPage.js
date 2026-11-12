@@ -147,7 +147,7 @@ module.exports = function renderAdminPage(req) {
       <link rel="stylesheet" href="/admin/assets/admin.css">
     </head>
     <body>
-      <div class="container">
+      <div class="container${currentTab === 'character-sheet' && req.query.edit_char ? ' is-wide' : ''}">
         <div class="header">
           <h2>Grimbold's Emporium — Dungeon Master Hub</h2>
           <div style="display: flex; align-items: center; gap: 10px;">
