@@ -228,6 +228,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
             <p class="muted small">Saved with the sheet.</p>
           </details>
+          <!-- Ability scores, combat stats and senses side by side (a band on wide screens). -->
+          <div class="sheet-topband">
           <section class="sheet-card point-buy-card" data-collapse="abilities">
             <div class="point-buy-header">
               <div>
@@ -241,6 +243,22 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <span>Ability modifiers update automatically.</span>
             </div>
           </section>
+            <div class="sheet-topband-stats">
+              <div class="sheet-combat-stats">
+                <label class="sheet-stat"><span>Armor Class</span><input type="number" id="cs_ac" min="0" max="100"></label>
+                <div class="sheet-stat is-rollable" data-roll="initiative" title="Click to roll initiative (Shift: Advantage). DEX modifier, plus Proficiency Bonus with Alert, plus magic items"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative" readonly tabindex="-1"></div>
+                <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
+                <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
+                <label class="sheet-stat sheet-inspiration" for="cs_inspiration" title="Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest."><input type="checkbox" id="cs_inspiration" class="sheet-inspiration-box" aria-label="Heroic Inspiration" disabled><span class="sheet-inspiration-icon"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M8 17a8 8 0 0 1 16 0z" fill="currentColor"/><path d="M16 2v4M5.4 6.4l2.8 2.8M26.6 6.4l-2.8 2.8M1 13h4M27 13h4M2 21h28" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg></span><span class="sheet-inspiration-label">Heroic Inspiration <button type="button" class="vitals-info" id="cs_inspiration_info" aria-label="What is Heroic Inspiration?" aria-expanded="false">ⓘ</button></span></label>
+              </div>
+              <p id="cs_inspiration_text" class="muted small sheet-inspiration-text" hidden>Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.</p>
+              <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
+            </div>
+              <section id="cs_senses" class="sheet-card sheet-senses-card" data-collapse="senses" hidden>
+                <h4>Senses</h4>
+                <div id="cs_senses_body"></div>
+              </section>
+          </div>
           <div class="sheet-layout">
             <div class="sheet-col">
               <section class="sheet-card sheet-saves-card" data-collapse="saves">
@@ -254,23 +272,10 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
                 ${isAdmin ? '<details id="cs_dm_skills" class="sheet-dm-skills"><summary>DM: extra skill proficiencies &amp; Expertise</summary><p class="muted small">For feats or features the sheet doesn&#39;t apply by itself. Save the sheet afterwards.</p><div class="sheet-dm-skill-grid"></div></details>' : ''}
               </section>
-              <section id="cs_senses" class="sheet-card sheet-senses-card" data-collapse="senses" hidden>
-                <h4>Senses</h4>
-                <div id="cs_senses_body"></div>
-              </section>
               <section id="cs_proficiencies" class="sheet-card sheet-proficiencies-card" data-collapse="proficiencies" data-character-id="${Number(characterToEdit.id)}"><h4>Proficiencies &amp; Languages</h4><p class="muted small">Loading…</p></section>
               <script src="/admin/assets/character-proficiencies.js" defer></script>
             </div>
             <div class="sheet-col">
-              <div class="sheet-combat-stats">
-                <label class="sheet-stat"><span>Armor Class</span><input type="number" id="cs_ac" min="0" max="100"></label>
-                <div class="sheet-stat is-rollable" data-roll="initiative" title="Click to roll initiative (Shift: Advantage). DEX modifier, plus Proficiency Bonus with Alert, plus magic items"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative" readonly tabindex="-1"></div>
-                <label class="sheet-stat"><span>Speed</span><input type="text" id="cs_speed" maxlength="40"></label>
-                <div class="sheet-stat"><span>Proficiency Bonus</span><strong id="cs_prof_bonus">+2</strong></div>
-                <label class="sheet-stat sheet-inspiration" for="cs_inspiration" title="Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest."><input type="checkbox" id="cs_inspiration" class="sheet-inspiration-box" aria-label="Heroic Inspiration" disabled><span class="sheet-inspiration-icon"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M8 17a8 8 0 0 1 16 0z" fill="currentColor"/><path d="M16 2v4M5.4 6.4l2.8 2.8M26.6 6.4l-2.8 2.8M1 13h4M27 13h4M2 21h28" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg></span><span class="sheet-inspiration-label">Heroic Inspiration <button type="button" class="vitals-info" id="cs_inspiration_info" aria-label="What is Heroic Inspiration?" aria-expanded="false">ⓘ</button></span></label>
-              </div>
-              <p id="cs_inspiration_text" class="muted small sheet-inspiration-text" hidden>Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.</p>
-              <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
               <section class="sheet-card sheet-vitals-card" data-collapse="vitals">
                 <h4>Hit Points &amp; Vitality</h4>
                 <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>

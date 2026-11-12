@@ -192,9 +192,19 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 /* The third column (features, magic items, spells): under the other two on
    medium screens, beside them from 1400px (the sheet page widens for it). */
 .sheet-col-side { grid-column: 1 / -1; }
+/* The band above the columns: ability scores across the top, then the combat
+   stats and the Senses card side by side; all three in one row from 1400px. */
+.sheet-topband { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 14px 16px; align-items: start; margin-bottom: 14px; }
+.sheet-topband > .point-buy-card { grid-column: 1 / -1; margin: 0; }
+.sheet-topband-stats { display: grid; gap: 8px; min-width: 0; }
+.sheet-topband > .sheet-senses-card { margin-top: 0; }
 .container.is-wide { max-width: 1800px; }
 @media (min-width: 1400px) {
   .container.is-wide .character-sheet-full { max-width: none; }
+  .sheet-topband { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr) 290px; }
+  .sheet-topband > .point-buy-card { grid-column: auto; padding: 12px 14px; }
+  .sheet-topband .point-buy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sheet-topband .point-buy-header span, .sheet-topband .point-buy-actions { display: none; }
   .sheet-layout { grid-template-columns: 290px minmax(0, 1fr) minmax(0, 1fr); }
   .sheet-col-side { grid-column: auto; }
 }
@@ -602,7 +612,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 @media (max-width: 900px) {
   body { padding-bottom: 96px; }
   .character-sheet-full { display: flex; flex-direction: column; gap: 12px; }
-  .character-sheet-full > .sheet-layout, .character-sheet-full .sheet-col { display: contents; }
+  .character-sheet-full > .sheet-layout, .character-sheet-full .sheet-col,
+  .character-sheet-full > .sheet-topband, .character-sheet-full .sheet-topband-stats { display: contents; }
   .character-sheet-full > * { margin: 0; }
   .character-sheet-full > .sheet-header { order: 1; }
   .character-sheet-full > #cs_message { order: 2; }
@@ -612,10 +623,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .character-sheet-full .sheet-attacks-card { order: 6; }
   .character-sheet-full #cs_spells { order: 7; }
   .character-sheet-full .sheet-saves-card { order: 8; }
-  .character-sheet-full .sheet-skills-card { order: 9; }
+  .character-sheet-full .sheet-skills-card { order: 8; }
   .character-sheet-full .sheet-senses-card { order: 9; }
   .character-sheet-full .sheet-proficiencies-card { order: 9; }
-  .character-sheet-full > .point-buy-card { order: 10; }
+  .character-sheet-full .point-buy-card { order: 10; }
   .character-sheet-full .sheet-features-card { order: 11; }
   .character-sheet-full .sheet-equipment { order: 12; }
   .character-sheet-full #cs_magic_items { order: 13; }
