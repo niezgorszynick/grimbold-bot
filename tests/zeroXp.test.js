@@ -33,11 +33,11 @@ test('an adventure can award 0 XP: nobody gains any, it is on record, and Grimbr
     db.setPartyMember({ ...asDm, characterId: hero, inParty: true });
     const points = db.prepare('SELECT dm_points FROM players WHERE id = ?').get(dm).dm_points;
 
-    assert.deepEqual(db.finishAdventure({ ...asDm, xp: 0 }), { adventureId: adventure.id, party: 1, xp: 0, dmReward: 'point' });
+    assert.deepEqual(db.finishAdventure({ ...asDm, xp: 0 }), { adventureId: adventure.id, party: 1, xp: 0, dmRewardXp: 1, dmReward: 'point' });
     assert.equal(db.getCharacterById(hero).xp, 2, 'no XP gained');
     assert.equal(db.getAdventureById(adventure.id).xp_awarded, 0);
     assert.equal(db.prepare('SELECT xp FROM adventure_rewards WHERE adventure_id = ? AND character_id = ?').get(adventure.id, hero).xp, 0, 'still on record as taking part');
-    assert.equal(db.prepare('SELECT dm_points FROM players WHERE id = ?').get(dm).dm_points, points + 1, 'the DM still ran it');
+    assert.equal(db.prepare('SELECT dm_points FROM players WHERE id = ?').get(dm).dm_points, points + 1, 'the DM still gets 1 for running it');
 
     await threads.announceAdventureEnd(adventure.id);
     assert.match(posts[posts.length - 1].content, /Brunhilda/);

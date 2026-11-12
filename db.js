@@ -42,3 +42,7 @@ module.exports = {
   prepare: (sql) => db.prepare(sql),
   transaction: (fn) => db.transaction(fn)
 };
+
+// Finished adventures from before the DM got the adventure's XP: the rest of
+// their DM reward, once (db/adventures.js; a no-op afterwards).
+module.exports.settleDmRewards();

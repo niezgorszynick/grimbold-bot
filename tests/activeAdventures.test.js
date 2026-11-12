@@ -106,7 +106,7 @@ test('finishing awards XP to the party and the DM reward; nothing before that', 
   assert.throws(() => db.finishAdventure({ ...asDm, xp: 21 }), /from 0 to 20/);
 
   const result = db.finishAdventure({ ...asDm, xp: 1, dmCharacterId: dmHero, notes: 'The wolves fled.', title: 'Wilki' });
-  assert.deepEqual(result, { adventureId: adventure.id, party: 2, xp: 1, dmReward: 'character' });
+  assert.deepEqual(result, { adventureId: adventure.id, party: 2, xp: 1, dmRewardXp: 1, dmReward: 'character' });
   assert.equal(xpOf(a), 3);
   assert.equal(db.getCharacterById(a).level, 4, 'reaching 3 XP is level 4');
   assert.equal(xpOf(b), 1);
@@ -119,12 +119,12 @@ test('finishing awards XP to the party and the DM reward; nothing before that', 
   assert.throws(() => db.setPartyMember({ ...asDm, characterId: a, inParty: false }), /no longer running/);
   assert.deepEqual(db.getAdventureTable(asDm).party.map(member => member.id).sort(), [a, b].sort(), 'the finished table shows who took part');
 
-  // Without a DM character the point is banked with the DM.
+  // Without a DM character the reward is banked with the DM: one DM point per XP.
   const next = await threads.logAdventureThread(fakeThread({ ownerId: discordIdOf(dm) }));
   db.setPartyMember({ adventureId: next.id, user: userOf(dm), characterId: b, inParty: true });
   const points = db.prepare('SELECT dm_points FROM players WHERE id = ?').get(dm).dm_points;
   db.finishAdventure({ adventureId: next.id, user: userOf(dm), xp: 2 });
-  assert.equal(db.prepare('SELECT dm_points FROM players WHERE id = ?').get(dm).dm_points, points + 1);
+  assert.equal(db.prepare('SELECT dm_points FROM players WHERE id = ?').get(dm).dm_points, points + 2);
   assert.equal(xpOf(b), 3);
 });
 

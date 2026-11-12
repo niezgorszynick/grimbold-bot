@@ -1074,6 +1074,22 @@ const MIGRATIONS = [
           BEGIN INSERT INTO change_log (kind, ref_id) SELECT 'adventure', adventure_id FROM skill_challenges WHERE id = NEW.challenge_id; END;
       `);
     }
+  },
+  {
+    // The DM's reward is the adventure's XP (it was always 1): what the DM got
+    // is stored, so editing or deleting an adventure takes back the right
+    // amount. Finished adventures gave 1 (to a character or as a DM point);
+    // the difference is topped up once at startup (db/adventures.js settleDmRewards).
+    version: 35,
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(adventures)').all().map(column => column.name));
+      if (columns.has('dm_reward_xp')) return;
+      db.exec(`
+        ALTER TABLE adventures ADD COLUMN dm_reward_xp INTEGER NOT NULL DEFAULT 0;
+        UPDATE adventures SET dm_reward_xp = 1
+        WHERE status = 'completed' AND (dm_character_id IS NOT NULL OR dm_player_id IS NOT NULL);
+      `);
+    }
   }
 ];
 

@@ -11,6 +11,59 @@ function xpOrOne(value) {
   return Number.isInteger(xp) && xp >= 0 ? xp : 1;
 }
 
+// What the DM earns for an adventure: its XP, and at least 1 (a 0 XP adventure
+// still gives the DM 1).
+const dmRewardFor = xp => Math.max(1, Number(xp) || 0);
+
+// The DM's reward (the amount from dmRewardFor), to one of the DM's characters, or
+// banked as that many DM points with the DM. Returns the XP given (stored as
+// adventures.dm_reward_xp, so it can be taken back exactly).
+function giveDmReward({ dmCharacterId, dmPlayerId, xp }) {
+  const amount = Math.max(0, Number(xp) || 0);
+  if (dmCharacterId) {
+    const character = db.prepare('SELECT xp FROM characters WHERE id = ?').get(Number(dmCharacterId));
+    if (!character) return 0;
+    if (amount) updateCharacterProgression(Number(dmCharacterId), character.xp + amount);
+    return amount;
+  }
+  if (dmPlayerId) {
+    if (amount) db.prepare('UPDATE players SET dm_points = dm_points + ? WHERE id = ?').run(amount, Number(dmPlayerId));
+    return amount;
+  }
+  return 0;
+}
+
+// Takes back what an adventure gave its DM.
+function takeDmReward(adventure) {
+  const amount = Number(adventure.dm_reward_xp) || 0;
+  if (!amount) return;
+  if (adventure.dm_character_id) {
+    const character = db.prepare('SELECT xp FROM characters WHERE id = ?').get(adventure.dm_character_id);
+    if (character) updateCharacterProgression(adventure.dm_character_id, Math.max(0, character.xp - amount));
+  } else if (adventure.dm_player_id) {
+    db.prepare('UPDATE players SET dm_points = MAX(0, dm_points - ?) WHERE id = ?').run(amount, adventure.dm_player_id);
+  }
+}
+
+// Once, after migration 35: finished adventures gave their DM 1 XP whatever the
+// adventure was worth; the DM gets the rest now (0 XP adventures keep their 1).
+// Only adventures still short are touched, so running it again changes nothing.
+function settleDmRewards() {
+  const short = db.prepare(`
+    SELECT * FROM adventures
+    WHERE status = 'completed' AND dm_reward_xp > 0 AND dm_reward_xp < xp_awarded
+      AND (dm_character_id IS NOT NULL OR dm_player_id IS NOT NULL)
+  `).all();
+  db.transaction(() => {
+    for (const adventure of short) {
+      const extra = adventure.xp_awarded - adventure.dm_reward_xp;
+      const given = giveDmReward({ dmCharacterId: adventure.dm_character_id, dmPlayerId: adventure.dm_player_id, xp: extra });
+      if (given) db.prepare('UPDATE adventures SET dm_reward_xp = dm_reward_xp + ? WHERE id = ?').run(given, adventure.id);
+    }
+  })();
+  return short.length;
+}
+
 const isRootDm = user => Boolean(user && user.role === 'admin' && Number(user.id) === 0);
 
 // Editing a finished adventure (and deleting a cancelled one): its own DM, or the Root DM.
@@ -20,6 +73,9 @@ function canEditAdventure(adventure, user) {
 }
 
 module.exports = {
+  dmRewardFor,
+  giveDmReward,
+  settleDmRewards,
   canEditAdventure,
   // Deleting a finished adventure (it takes XP back): the Root DM only.
   canDeleteAdventure: (adventure, user) => (adventure && adventure.status === 'completed' ? isRootDm(user) : canEditAdventure(adventure, user)),
@@ -96,37 +152,20 @@ module.exports = {
         }
       }
 
-      // 6. DM bonus (+1 XP to the DM's character, or +1 DM point to the player)
-      if (oldDmCharId !== newDmCharId || oldDmPlayerId !== newDmPlayerId) {
-        // Undo the previous DM reward
-        if (oldDmCharId) {
-          const prevChar = getCharStmt.get(oldDmCharId);
-          if (prevChar) {
-            const revXp = Math.max(0, prevChar.xp - 1);
-            updateCharacterProgression(oldDmCharId, revXp);
-          }
-        } else if (oldDmPlayerId) {
-          db.prepare('UPDATE players SET dm_points = MAX(0, dm_points - 1) WHERE id = ?').run(oldDmPlayerId);
-        }
-
-        // Przyznanie nowej nagrody DM
-        if (newDmCharId) {
-          const nextChar = getCharStmt.get(newDmCharId);
-          if (nextChar) {
-            const elevatedXp = nextChar.xp + 1;
-            updateCharacterProgression(newDmCharId, elevatedXp);
-          }
-        } else if (newDmPlayerId) {
-          db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(newDmPlayerId);
-        }
+      // 6. DM reward: the adventure's XP (at least 1), to the DM's character or as DM points.
+      // A new DM, character or XP: the old reward goes back, the new one is given.
+      let dmRewardXp = Number(oldAdv.dm_reward_xp) || 0;
+      if (oldDmCharId !== newDmCharId || oldDmPlayerId !== newDmPlayerId || dmRewardXp !== dmRewardFor(newXp)) {
+        takeDmReward(oldAdv);
+        dmRewardXp = giveDmReward({ dmCharacterId: newDmCharId, dmPlayerId: newDmPlayerId, xp: dmRewardFor(newXp) });
       }
 
       // 7. Save the adventure details
       db.prepare(`
-        UPDATE adventures 
-        SET title = ?, description = ?, xp_awarded = ?, dm_player_id = ?, dm_character_id = ?
+        UPDATE adventures
+        SET title = ?, description = ?, xp_awarded = ?, dm_player_id = ?, dm_character_id = ?, dm_reward_xp = ?
         WHERE id = ?
-      `).run(title, description || '', newXp, newDmPlayerId, newDmCharId, advId);
+      `).run(title, description || '', newXp, newDmPlayerId, newDmCharId, dmRewardXp, advId);
     });
 
     return run();
@@ -209,14 +248,7 @@ module.exports = {
         const character = getXp.get(reward.character_id);
         if (character) updateCharacterProgression(reward.character_id, Math.max(0, character.xp - reward.xp));
       }
-      if (adventure.status === 'completed') {
-        if (adventure.dm_character_id) {
-          const dmCharacter = getXp.get(adventure.dm_character_id);
-          if (dmCharacter) updateCharacterProgression(adventure.dm_character_id, Math.max(0, dmCharacter.xp - 1));
-        } else if (adventure.dm_player_id) {
-          db.prepare('UPDATE players SET dm_points = MAX(0, dm_points - 1) WHERE id = ?').run(adventure.dm_player_id);
-        }
-      }
+      if (adventure.status === 'completed') takeDmReward(adventure);
       db.prepare('DELETE FROM adventures WHERE id = ?').run(adventure.id);
       return { title: adventure.title, xpTakenBack: rewards.length };
     })();
@@ -257,16 +289,9 @@ recordAdventure: ({ title, description, xp_awarded, dm_player_id, dm_character_i
         }
       }
 
-      // DM bonus: directly to a character, or banked with the player
-      if (targetDmCharId) {
-        const dmChar = db.prepare('SELECT xp FROM characters WHERE id = ?').get(targetDmCharId);
-        if (dmChar) {
-          const nextXp = dmChar.xp + 1;
-          updateCharacterProgression(targetDmCharId, nextXp);
-        }
-      } else if (targetDmPlayerId) {
-        db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(targetDmPlayerId);
-      }
+      // DM reward: the adventure's XP (at least 1), to a character or banked as DM points.
+      const dmRewardXp = giveDmReward({ dmCharacterId: targetDmCharId, dmPlayerId: targetDmPlayerId, xp: dmRewardFor(xp) });
+      db.prepare('UPDATE adventures SET dm_reward_xp = ? WHERE id = ?').run(dmRewardXp, adventureId);
 
       return adventureId;
     });

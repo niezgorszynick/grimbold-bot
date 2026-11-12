@@ -18,13 +18,13 @@ test('deleting test adventures: finished ones give their XP and DM reward back; 
   const asDm = { id: dm, role: 'admin' };
   const open = title => db.startAdventure({ title, dmPlayerId: dm });
 
-  // A finished test adventure: +3 XP to Kael, +1 DM point banked.
+  // A finished test adventure: +3 XP to Kael, and 3 DM points banked (the DM gets the same XP).
   const points = pointsOf(dm);
   const finished = open('Test');
   db.setPartyMember({ adventureId: finished, user: asDm, characterId: kael, inParty: true });
   db.setAdventureHex({ user: root, adventureId: finished, hex: '9.6' });
   db.finishAdventure({ adventureId: finished, user: asDm, xp: 3 });
-  assert.deepEqual([xpOf(kael), pointsOf(dm)], [5, points + 1]);
+  assert.deepEqual([xpOf(kael), pointsOf(dm)], [5, points + 3]);
 
   // Another, with the DM reward on the DM's own character.
   const second = open('teścik');

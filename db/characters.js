@@ -76,8 +76,8 @@ function getCharacterLevelBreakdown(characterId) {
     FROM adventure_rewards r JOIN adventures a ON a.id = r.adventure_id
     WHERE r.character_id = ? AND a.status = 'completed'
     UNION ALL
-    SELECT a.id, a.title, COALESCE(a.completed_at, a.created_at) AS date, 1 AS xp, 'dm' AS kind
-    FROM adventures a WHERE a.dm_character_id = ? AND a.status = 'completed'
+    SELECT a.id, a.title, COALESCE(a.completed_at, a.created_at) AS date, a.dm_reward_xp AS xp, 'dm' AS kind
+    FROM adventures a WHERE a.dm_character_id = ? AND a.status = 'completed' AND a.dm_reward_xp > 0
     ORDER BY date, id
   `).all(character.id, character.id);
   let total = 0;

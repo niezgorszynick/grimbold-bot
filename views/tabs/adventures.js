@@ -218,12 +218,12 @@ module.exports = function renderAdventuresTab(ctx) {
               </div>
 
               <div style="margin-bottom: 10px;">
-                <label>Direct DM Character Reward (+1 XP):</label><br>
+                <label>DM reward (the adventure's XP, at least 1):</label><br>
                 <select name="dm_character_id" style="width: 100%; margin-top: 4px;">
-                  <option value="">-- Bank +1 Point to DM Bank --</option>
+                  <option value="">-- Bank as DM points --</option>
                   ${allCharacters.map(c => `<option value="${c.id}" ${editingAdventure && Number(c.id) === Number(editingAdventure.dm_character_id) ? 'selected' : ''}>${escapeHtml(c.name)} (${escapeHtml(c.discord_tag || 'Unknown')}, Lvl ${c.level}, ${c.xp} XP)</option>`).join('')}
                 </select>
-                <small style="display: block; color: #949ba4; margin-top: 4px;">Choose a DM character to award +1 XP directly, or leave empty to bank +1 DM Point with the selected host.</small>
+                <small style="display: block; color: #949ba4; margin-top: 4px;">The DM gets the same XP as the party, and at least 1 even for a 0 XP adventure. Choose one of the DM's characters to give it to directly, or leave empty to bank it as DM points (1 point = 1 XP) with the selected host.</small>
               </div>
 
               <div style="margin-bottom: 10px;">
@@ -270,7 +270,7 @@ module.exports = function renderAdventuresTab(ctx) {
             <li><strong>Level 4 &rarr; Level 5:</strong> Requires <strong>4 Completed Adventures</strong> (7 total XP).</li>
             <li><strong>Level 5+ Progression:</strong> Requires <strong>4 Completed Adventures</strong> per subsequent level.</li>
           </ul>
-          <p><strong>• Dungeon Master Bonus:</strong> Hosting an adventure automatically awards +1 DM Adventure Point into the DM's bank, assignable to any of their own characters in the <em>Players</em> tab as +1 XP.</p>
+          <p><strong>• Dungeon Master Bonus:</strong> The DM earns the same XP as the party (at least 1): straight to one of their characters, or banked as DM points (one per XP), assignable to any of their own characters in the <em>Players</em> tab as +1 XP each.</p>
         </div>
       </div>
     </div>

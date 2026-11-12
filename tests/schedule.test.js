@@ -329,7 +329,8 @@ test('campaigns: sessions outside adventure threads, in the same calendar (clash
 
   // The one-shot Ola is in, then a campaign session at the same time: a clash.
   db.bookSession({ adventureId: first.id, by: { discordId: dmId }, startsAt: sunday, now: NOW });
-  const date = rules.dateSuggestions('', new Date())[10].value;
+  // About ten days ahead, but never the Sunday booked below (that would be a second clash).
+  const date = rules.dateSuggestions('', new Date()).slice(10).find(suggestion => suggestion.value !== '2026-11-22').value;
   fake = fakeInteraction({ userId: outsider, channelId: 'elsewhere', subcommand: 'set', strings: { campaign: String(campaign.id), date, time: '20:00' }, numbers: { hours: 3 } });
   await campaignCommand.execute(fake.interaction);
   assert.match(fake.calls.replies[0].content, /Booked/);

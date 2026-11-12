@@ -313,7 +313,7 @@ function setPartyMember({ adventureId, user, characterId, inParty }) {
   })();
 }
 
-// Awards the adventure XP to the party and the DM reward: +1 XP to one of the
+// Awards the adventure XP to the party and the same XP to the DM: to one of the
 // DM's own characters, or +1 DM point banked with the DM.
 function finishAdventure({ adventureId, user, xp, dmCharacterId, notes, title }) {
   return db.transaction(() => {
@@ -336,16 +336,19 @@ function finishAdventure({ adventureId, user, xp, dmCharacterId, notes, title })
       db.prepare('INSERT INTO adventure_rewards (adventure_id, character_id, xp) VALUES (?, ?, ?)').run(adventure.id, characterId, award);
       updateCharacterProgression(characterId, getXp.get(characterId).xp + award);
     }
-    if (dmCharacter) updateCharacterProgression(dmCharacter.id, dmCharacter.xp + 1);
-    else if (adventure.dm_player_id) db.prepare('UPDATE players SET dm_points = dm_points + 1 WHERE id = ?').run(adventure.dm_player_id);
+    // The DM gets the same XP as the party (at least 1): to one of their characters, or banked as DM points.
+    const { giveDmReward, dmRewardFor } = require('./adventures');
+    const dmRewardXp = giveDmReward({
+      dmCharacterId: dmCharacter ? dmCharacter.id : null, dmPlayerId: adventure.dm_player_id, xp: dmRewardFor(award)
+    });
 
     db.prepare(`
       UPDATE adventures SET status = 'completed', completed_at = CURRENT_TIMESTAMP, xp_awarded = ?,
-        dm_character_id = ?, description = ?, title = ?
+        dm_character_id = ?, dm_reward_xp = ?, description = ?, title = ?
       WHERE id = ?
-    `).run(award, dmCharacter ? dmCharacter.id : null, String(notes || '').slice(0, MAX_NOTES),
+    `).run(award, dmCharacter ? dmCharacter.id : null, dmRewardXp, String(notes || '').slice(0, MAX_NOTES),
       title === undefined ? adventure.title : cleanTitle(title), adventure.id);
-    return { adventureId: adventure.id, party: party.length, xp: award, dmReward: dmCharacter ? 'character' : (adventure.dm_player_id ? 'point' : 'none') };
+    return { adventureId: adventure.id, party: party.length, xp: award, dmRewardXp, dmReward: dmCharacter ? 'character' : (adventure.dm_player_id ? 'point' : 'none') };
   })();
 }
 
