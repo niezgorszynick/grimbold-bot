@@ -885,6 +885,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .is-dragging { opacity: .6; outline: 2px dashed #f1c40f; outline-offset: 2px; }
 .is-dragging .drag-handle { cursor: grabbing; }
 .arrange-reset { margin: 4px 0 0; text-align: right; }
+body.is-arranging, body.is-arranging * { user-select: none; cursor: grabbing !important; }
 .encounter-view-toggle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0; }
 .encounter-fight-tools { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; margin: 6px 0; }
 .encounter-fight-tools .encounter-reinforcements { flex: 0 1 auto; }
@@ -900,6 +901,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .encounter-row-hp { display: inline-grid; grid-template-columns: auto auto; justify-content: start; align-items: baseline; column-gap: 2px; min-width: 84px; }
 .encounter-row-hp .vitals-bar { grid-column: 1 / -1; margin: 2px 0 0; height: 4px; }
 .encounter-row-ac { color: #949ba4; font-size: 12px; min-width: 40px; }
+.encounter-row-init { min-width: 56px; text-align: center; font-weight: bold; }
+.encounter-row.party-row.in-encounter { border-color: #f23f43; }
+.encounter-row.party-row .party-initiative { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; }
+.encounter-row.party-row .party-initiative .link-button { font-size: 11px; white-space: nowrap; }
 .encounter-row .party-hp-actions { margin: 0; flex-wrap: nowrap; }
 .encounter-row .party-hp-actions input { width: 56px; }
 @media (max-width: 640px) { .encounter-row .party-hp-actions { flex-wrap: wrap; } }

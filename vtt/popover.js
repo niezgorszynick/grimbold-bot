@@ -24,7 +24,8 @@ function keyForm() {
 
 // ─── The GM's running encounter ───────────────────────────────────────────
 let isGm = false;
-let encounterState = { loading: false, error: '', encounters: null, note: '' };
+// encounters: the background page keeps them fresh (store.encounters); Refresh asks at once.
+let encounterState = { loading: false, error: '', encounters: store.encounters(), note: '' };
 let sceneItems = [];
 
 async function loadEncounters() {
@@ -39,6 +40,7 @@ async function loadEncounters() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'The panel did not accept the key.');
     encounterState = { ...encounterState, loading: false, encounters: data.encounters };
+    store.setEncounters(data.encounters);
   } catch (error) {
     encounterState = { ...encounterState, loading: false, error: error.message };
   }
@@ -129,10 +131,10 @@ function encounterSection() {
         el('span', { className: 'who' }, [entry.label, entry.token ? el('span', { className: 'muted', text: entry.linked ? ' 🔗' : ' (by name)' }) : null]),
         tokenPicker(entry, matches)
       ]))),
-      el('p', { className: 'muted', text: '🔗 linked tokens keep working whatever they are called. Pick a token for each, or select tokens on the map and add them:' }),
+      el('p', { className: 'muted', text: (store.settings().tracker ? 'Initiative goes into the tracker by itself. ' : '') + '🔗 linked tokens keep working whatever they are called. Pick a token for each, or select tokens on the map and add them:' }),
       el('div', { className: 'row' }, [
         el('button', { type: 'button', className: 'secondary', text: '+ Add selected tokens', title: 'Party members, NPCs and monsters, recognised by their names; each is linked to its token', onclick: () => addSelected(encounter) }),
-        el('button', { type: 'button', text: 'Put ' + ready.length + ' into the initiative tracker', disabled: ready.length ? null : true, onclick: () => addToTracker(matches) })
+        el('button', { type: 'button', className: store.settings().tracker ? 'secondary' : null, text: (store.settings().tracker ? 'Put all ' + ready.length + ' in again' : 'Put ' + ready.length + ' into the initiative tracker'), title: 'Sends every initiative to the tracker now (e.g. after changing numbers in Owlbear)', disabled: ready.length ? null : true, onclick: () => addToTracker(matches) })
       ]),
       matches.some(entry => entry.initiative === null) ? el('p', { className: 'muted', text: 'Some have no initiative yet: roll it on the adventure table.' }) : null
     ]);
@@ -197,7 +199,12 @@ function render() {
   app.replaceChildren(...parts);
 }
 
-onStoreChange(name => { if (name === 'key') loadEncounters(); render(); });
+onStoreChange(name => {
+  if (name === 'key') loadEncounters();
+  // The background page brought newer encounters.
+  if (name === 'encounters') encounterState = { ...encounterState, encounters: store.encounters() };
+  render();
+});
 render();
 OBR.onReady(async () => {
   isGm = (await OBR.player.getRole()) === 'GM';

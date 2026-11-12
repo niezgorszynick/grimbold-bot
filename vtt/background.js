@@ -9,10 +9,11 @@
 // popped-out rolls window comes back with the room.
 
 import OBR from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
-import { CHANNEL, CHALLENGE_POPOVER, WINDOWS, store, describe, matchTokens, putInTracker, openChallengeWindow, openWindow, onStoreChange, reopenRequest } from './shared.js';
+import { CHANNEL, CHALLENGE_POPOVER, WINDOWS, store, describe, matchTokens, putInTracker, trackerCount, openChallengeWindow, openWindow, onStoreChange, reopenRequest } from './shared.js';
 
 const POLL_MS = 2000;
 const CHALLENGE_POLL_MS = 4000;
+const ENCOUNTER_POLL_MS = 3000;
 
 OBR.onReady(async () => {
   const myConnection = await OBR.player.getConnectionId();
@@ -120,6 +121,46 @@ OBR.onReady(async () => {
   }
   setInterval(watchChallenges, CHALLENGE_POLL_MS);
   watchChallenges();
+
+  // The GM's running encounters: kept fresh for the Dice window, and each
+  // initiative set in Grimbold (players' rolls, the DM's rolls or typed
+  // numbers) goes into Owlbear's tracker on the creature's token by itself.
+  // Only changes are sent, so a number changed by hand in Owlbear's tracker
+  // stays until Grimbold's changes again.
+  const pushed = new Map(); // combatant id → "tokenId:initiative" last sent
+  let encountersBusy = false;
+  async function watchEncounters() {
+    const key = store.key();
+    if (!key || !isGm || encountersBusy) return;
+    encountersBusy = true;
+    try {
+      const url = new URL('/vtt/encounter', window.location.origin);
+      url.searchParams.set('key', key);
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return;
+      const encounters = (await response.json()).encounters || [];
+      store.setEncounters(encounters);
+      if (!store.settings().tracker || !encounters.length || !(await OBR.scene.isReady())) return;
+      const items = await OBR.scene.items.getItems();
+      const pairs = [];
+      for (const encounter of encounters) {
+        for (const entry of matchTokens(items, encounter.combatants)) {
+          if (!entry.token || entry.initiative === null) continue;
+          const mark = entry.token.id + ':' + entry.initiative;
+          if (pushed.get(entry.id) === mark) continue;
+          pushed.set(entry.id, mark);
+          if (trackerCount(entry.token) !== entry.initiative) pairs.push({ itemId: entry.token.id, initiative: entry.initiative });
+        }
+      }
+      if (pairs.length) await putInTracker(OBR, pairs);
+    } catch (error) {
+      console.warn("Grimbold's Dice: could not sync the encounter", error);
+    } finally {
+      encountersBusy = false;
+    }
+  }
+  setInterval(watchEncounters, ENCOUNTER_POLL_MS);
+  watchEncounters();
 
   let lastReopen = 0;
   onStoreChange(async name => {

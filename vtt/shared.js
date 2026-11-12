@@ -42,6 +42,7 @@ export const store = {
     write('afterReveal', null);
     write('status', null);
     write('challenges', null); // the new key's player sees their own
+    write('encounters', null);
   },
   after: () => read('after', null),
   setAfter: id => write('after', id),
@@ -64,6 +65,12 @@ export const store = {
   setRollsOut: out => write('rollsOut', Boolean(out)),
   // The running skill challenges this key's player is in or DMs (the background page keeps it fresh).
   challenges: () => read('challenges', []),
+  // The GM's running encounters (the background page keeps them fresh).
+  encounters: () => read('encounters', null),
+  setEncounters(list) {
+    const next = Array.isArray(list) ? list : [];
+    if (JSON.stringify(next) !== JSON.stringify(store.encounters())) write('encounters', next);
+  },
   setChallenges(list) {
     const next = Array.isArray(list) ? list : [];
     if (JSON.stringify(next) !== JSON.stringify(store.challenges())) write('challenges', next);
@@ -199,6 +206,13 @@ export async function linkToken(OBR, { tokenId, combatantId, characterId = null 
     });
   });
 }
+
+// The initiative a token shows in Owlbear's tracker (null: not in it).
+export const trackerCount = item => {
+  const entry = item.metadata && item.metadata[TRACKER_KEY];
+  const count = entry ? Number(entry.count) : NaN;
+  return Number.isFinite(count) ? count : null;
+};
 
 // pairs: [{ itemId, initiative }]
 export async function putInTracker(OBR, pairs) {
