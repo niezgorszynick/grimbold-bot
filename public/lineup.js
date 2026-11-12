@@ -52,193 +52,312 @@
 
   // ─── The outline ──────────────────────────────────────────────────────────
   // Drawn 100 units tall (crown 0, soles 100), centred on x = 0; the caller
-  // scales it to the character's height. Returns { shapes, left, right } (how
-  // far it reaches, props included) to space the lineup.
-  const ROBES = ['Wizard', 'Sorcerer', 'Warlock', 'Cleric', 'Druid'];
+  // scales it to the character's height. Every part is a list of landmark
+  // points joined by smooth curves (Catmull-Rom); a point with s: 1 stays a
+  // sharp corner (toes, fur, blades). Masculine and feminine are two sets of
+  // the same landmarks; neutral is halfway. Returns { shapes, left, right }
+  // (how far it reaches, props included) to space the lineup.
 
-  function proportions(build, species) {
-    const base = {
-      masculine: { shoulders: 12.5, waist: 8.4, hips: 8.6 },
-      feminine: { shoulders: 10.4, waist: 7, hips: 10.2 },
-      neutral: { shoulders: 11.4, waist: 7.7, hips: 9.3 }
-    }[build] || { shoulders: 11.4, waist: 7.7, hips: 9.3 };
-    let head = 13;
-    let width = 1;
-    let hipY = 53;
-    if (species === 'Dwarf') { head = 15.5; width = 1.28; hipY = 57; }
-    else if (species === 'Halfling' || species === 'Gnome') { head = 17; width = 1.08; hipY = 58; }
-    else if (species === 'Goliath') { head = 12; width = 1.14; }
-    else if (species === 'Orc') { width = 1.1; }
-    return {
-      head, hipY,
-      shoulders: base.shoulders * width, waist: base.waist * width, hips: base.hips * width,
-      shoulderY: head + 4
-    };
+  const P = (x, y, s) => ({ x, y, s: Boolean(s) });
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const mix = (aList, bList, t) => aList.map((a, i) => P(lerp(a.x, bList[i].x, t), lerp(a.y, bList[i].y, t), a.s || bList[i].s));
+  const f2 = n => Math.round(n * 100) / 100;
+
+  // A closed smooth path through the points.
+  function smooth(points) {
+    const n = points.length;
+    const at = i => points[(i + n) % n];
+    let d = `M ${f2(points[0].x)} ${f2(points[0].y)}`;
+    for (let i = 0; i < n; i += 1) {
+      const p0 = at(i - 1); const p1 = at(i); const p2 = at(i + 1); const p3 = at(i + 2);
+      const c1 = p1.s ? p1 : P(p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6);
+      const c2 = p2.s ? p2 : P(p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6);
+      d += ` C ${f2(c1.x)} ${f2(c1.y)} ${f2(c2.x)} ${f2(c2.y)} ${f2(p2.x)} ${f2(p2.y)}`;
+    }
+    return d + ' Z';
   }
+  // The right half (top centre → bottom centre) and its mirror: one outline.
+  const mirrored = right => [...right, ...right.slice(1, -1).reverse().map(p => P(-p.x, p.y, p.s))];
+  const flipX = points => points.map(p => P(-p.x, p.y, p.s));
+
+  // Body, right half, from the neck to the crotch around the right leg.
+  const BODY = {
+    masculine: [P(0, 12.6), P(2.9, 13.2), P(3.2, 15), P(6.8, 16.6), P(10.4, 17.8), P(12.7, 19.6), P(13.1, 23), P(10.7, 25.6), P(10.6, 29.5), P(9.6, 34), P(8.4, 38.5), P(8.7, 43), P(9.6, 47.5), P(9.9, 51.5), P(9.3, 58), P(7.3, 70), P(7.7, 79), P(6, 88), P(4.6, 94.5), P(6.3, 99.6, 1), P(2, 99.6, 1), P(2.1, 94.5), P(2.6, 82), P(2.2, 71), P(1.5, 60), P(0, 53.5, 1)],
+    feminine: [P(0, 12.6), P(2.5, 13.2), P(2.7, 15.2), P(5.8, 16.9), P(8.8, 18.2), P(10.9, 19.9), P(11.2, 23), P(9.6, 25.4), P(9.8, 28.8), P(8, 33.5), P(7, 38), P(8.6, 43.5), P(10.3, 48), P(10.4, 52), P(9.6, 58), P(7.1, 70), P(7, 79), P(5.4, 88), P(4.2, 94.5), P(5.6, 99.6, 1), P(1.9, 99.6, 1), P(1.9, 94.5), P(2.3, 82), P(1.9, 71), P(1.2, 60), P(0, 54, 1)]
+  };
+  // The right arm, all the way round.
+  const ARM = {
+    masculine: [P(11.2, 18.9), P(13.6, 21), P(14.3, 27), P(14.4, 34.5), P(15, 40), P(14.8, 47), P(15.5, 50.5), P(14.7, 54.5), P(12.8, 53.5), P(12.4, 47), P(12, 40.5), P(11.4, 34), P(10.9, 27.5), P(10.3, 24)],
+    feminine: [P(9.8, 19.2), P(11.7, 21.3), P(12.4, 27), P(12.6, 34.5), P(13, 40), P(12.9, 47), P(13.5, 50.5), P(12.9, 54), P(11.3, 53), P(10.9, 47), P(10.6, 40.5), P(10, 34), P(9.6, 27.5), P(9.2, 24)]
+  };
+  const HEAD = [P(0, 0), P(3.4, 0.6), P(4.8, 2.8), P(5.2, 6), P(5, 8.6), P(4.2, 10.6), P(2.6, 12.2), P(0, 12.9)];
+  const HAIR = {
+    feminine: [P(0, -0.7), P(4.2, 0), P(5.9, 3), P(6.3, 8), P(6.9, 15), P(7.3, 21), P(5, 22.5), P(0, 22)],
+    neutral: [P(0, -0.6), P(4, 0), P(5.7, 3), P(6, 8.5), P(5.9, 11.5), P(3, 12.2), P(0, 12)]
+  };
+  // Which outfit each class wears.
+  const OUTFIT = {
+    Wizard: 'robe', Sorcerer: 'robe', Cleric: 'robe', Warlock: 'hoodedRobe', Druid: 'hoodedRobe',
+    Ranger: 'ranger', Rogue: 'rogue', Bard: 'coat', Artificer: 'coat',
+    Fighter: 'armor', Paladin: 'armor', Barbarian: 'fur', Monk: 'monk'
+  };
 
   function figure(character, fill) {
-    const p = proportions(character.build || 'neutral', character.species);
-    const shapes = [];
-    const add = (tag, attrs) => shapes.push(svg(tag, Object.assign({ fill }, attrs)));
-    const line = (x1, y1, x2, y2, width) => shapes.push(svg('line', { x1, y1, x2, y2, stroke: fill, 'stroke-width': width, 'stroke-linecap': 'round' }));
-    const path = (d, extra = {}) => shapes.push(svg('path', Object.assign({ d, fill }, extra)));
-    const strokePath = (d, width) => shapes.push(svg('path', { d, fill: 'none', stroke: fill, 'stroke-width': width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    const headRx = p.head * 0.37;
-    const headCy = p.head / 2;
-    const sh = p.shoulders;
-    const handY = p.hipY + 4;
-    let left = -sh - 3;
-    let right = sh + 3;
-    const robe = ROBES.includes(character.className);
     const build = character.build || 'neutral';
+    const t = build === 'feminine' ? 1 : build === 'masculine' ? 0 : 0.5;
+    const species = character.species;
+    // Proportions: head size (bigger for the small folk) and breadth.
+    const headScale = species === 'Dwarf' ? 1.2 : species === 'Halfling' || species === 'Gnome' ? 1.3 : species === 'Goliath' ? 0.94 : 1;
+    const breadth = species === 'Dwarf' ? 1.3 : species === 'Goliath' ? 1.14 : species === 'Orc' ? 1.1 : species === 'Halfling' || species === 'Gnome' ? 1.08 : 1;
+    const headH = 12.9 * headScale;
+    const mapY = y => (y <= 12.9 ? y * headScale : headH + (y - 12.9) * (100 - headH) / (100 - 12.9));
+    const body = list => list.map(p => P(p.x * breadth, mapY(p.y), p.s));
+    const head = list => list.map(p => P(p.x * headScale, p.y * headScale, p.s));
 
-    // Hair behind the head: long (feminine), to the chin (neutral), none (masculine).
-    if (character.species !== 'Goliath' && character.species !== 'Dragonborn') {
-      if (build === 'feminine') path(`M ${-headRx * 1.12} ${headCy} Q ${-headRx * 1.25} ${p.shoulderY + 7} ${-headRx * 1.3} ${p.shoulderY + 9} L ${headRx * 1.3} ${p.shoulderY + 9} Q ${headRx * 1.25} ${p.shoulderY + 7} ${headRx * 1.12} ${headCy} Z`);
-      else if (build === 'neutral') path(`M ${-headRx * 1.08} ${headCy} L ${-headRx * 1.1} ${p.head * 0.95} L ${headRx * 1.1} ${p.head * 0.95} L ${headRx * 1.08} ${headCy} Z`);
+    const bodyHalf = body(mix(BODY.masculine, BODY.feminine, t));
+    const armRight = body(mix(ARM.masculine, ARM.feminine, t));
+    const L = name => bodyHalf[{ neck: 2, trap: 3, trapOut: 4, shoulder: 5, deltoid: 6, armpit: 7, chest: 8, waist: 10, hip: 12, thigh: 13, knee: 15, calf: 16, shin: 17, ankle: 18, foot: 19, sole: 20, ankleIn: 21, calfIn: 22, kneeIn: 23 }[name]];
+    const hand = P((armRight[6].x + armRight[7].x) / 2, (armRight[6].y + armRight[7].y) / 2);
+    const back = [];
+    const shapes = [];
+    const front = [];
+    const shape = (list, d, extra = {}) => list.push(svg('path', Object.assign({ d, fill }, extra)));
+    const stroke = (list, d, width) => list.push(svg('path', { d, fill: 'none', stroke: fill, 'stroke-width': width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    let left = -hand.x - 3;
+    let right = hand.x + 3;
+    const reach = (l, r) => { left = Math.min(left, l); right = Math.max(right, r); };
+    const outfit = OUTFIT[character.className] || null;
+    const hooded = outfit === 'hoodedRobe' || outfit === 'rogue' || outfit === 'ranger';
+
+    // Hair (behind the head), unless a hood or a bald species.
+    if (!hooded && !['Goliath', 'Dragonborn'].includes(species) && HAIR[build]) shape(back, smooth(mirrored(head(HAIR[build]))));
+    // A cloak behind (rangers and rogues).
+    if (outfit === 'ranger' || outfit === 'rogue') {
+      // To the knees, so the legs show below it.
+      shape(back, smooth(mirrored([P(0, mapY(16)), P(L('trapOut').x, mapY(17.4)), P(L('shoulder').x + 1.2, mapY(19.5)), P(L('deltoid').x + 2, mapY(32)), P(L('hip').x + 3, mapY(58)), P(L('hip').x + 4.6, mapY(75), 1), P(L('hip').x + 1, mapY(75.6)), P(0, mapY(76.5), 1)])));
+      reach(-(L('hip').x + 5), L('hip').x + 5);
     }
-    // Head and neck.
-    add('ellipse', { cx: 0, cy: headCy, rx: headRx, ry: p.head / 2 });
-    add('rect', { x: -headRx * 0.45, y: p.head * 0.8, width: headRx * 0.9, height: p.shoulderY - p.head * 0.8 + 1 });
-    // Torso: shoulders, waist, hips.
-    path(`M ${-sh} ${p.shoulderY + 1.5} Q ${-sh} ${p.shoulderY - 0.5} ${-sh + 2.5} ${p.shoulderY - 0.8} L ${sh - 2.5} ${p.shoulderY - 0.8} Q ${sh} ${p.shoulderY - 0.5} ${sh} ${p.shoulderY + 1.5}
-      L ${p.waist} ${p.hipY - 13} L ${p.hips} ${p.hipY} L ${-p.hips} ${p.hipY} L ${-p.waist} ${p.hipY - 13} Z`);
-    // Arms (thick rounded strokes), slightly away from the body.
-    line(-sh + 1.6, p.shoulderY + 1.5, -sh - 1.4, handY, 4.4);
-    line(sh - 1.6, p.shoulderY + 1.5, sh + 1.4, handY, 4.4);
-    // Legs, or a robe for the spellcasters.
-    if (robe) {
-      path(`M ${-p.waist} ${p.hipY - 13} L ${p.waist} ${p.hipY - 13} L ${p.hips * 1.55} 99 Q 0 101 ${-p.hips * 1.55} 99 Z`);
-      add('ellipse', { cx: -p.hips * 0.6, cy: 99.2, rx: 3.2, ry: 1.1 });
-      add('ellipse', { cx: p.hips * 0.6, cy: 99.2, rx: 3.2, ry: 1.1 });
-    } else {
-      const legW = Math.max(5.2, p.hips * 0.62);
-      line(-p.hips + legW / 2, p.hipY - 1, -p.hips * 0.6, 97, legW);
-      line(p.hips - legW / 2, p.hipY - 1, p.hips * 0.6, 97, legW);
-      add('ellipse', { cx: -p.hips * 0.6 - 1.2, cy: 98.6, rx: 3.6, ry: 1.6 });
-      add('ellipse', { cx: p.hips * 0.6 + 1.2, cy: 98.6, rx: 3.6, ry: 1.6 });
+
+    // The body, the arms and the head.
+    shape(shapes, smooth(mirrored(bodyHalf)));
+    const armShape = outfit === 'robe' || outfit === 'hoodedRobe'
+      // Bell sleeves; the hand shows below.
+      ? [armRight[0], armRight[1], P(armRight[1].x + 1.6, mapY(32)), P(hand.x + 3.4, mapY(46)), P(hand.x + 4.8, mapY(52), 1), P(armRight[8].x - 0.6, mapY(51.5), 1), P(armRight[9].x - 0.8, mapY(44)), P(armRight[12].x - 0.3, mapY(30)), armRight[13]]
+      : armRight;
+    shape(shapes, smooth(armShape));
+    shape(shapes, smooth(flipX(armShape)));
+    if (armShape !== armRight) {
+      // The hands, just out of the sleeve.
+      const hemY = mapY(52);
+      shapes.push(svg('ellipse', { cx: f2(hand.x + 1), cy: f2(hemY + 1), rx: 1.9, ry: 2.4, fill }));
+      shapes.push(svg('ellipse', { cx: f2(-hand.x - 1), cy: f2(hemY + 1), rx: 1.9, ry: 2.4, fill }));
+      reach(-hand.x - 5.5, hand.x + 5.5);
+    }
+    shape(shapes, smooth(mirrored(head(HEAD))));
+
+    // The outfit, over the body.
+    const legShape = points => { shape(shapes, smooth(points)); shape(shapes, smooth(flipX(points))); };
+    switch (outfit) {
+      case 'robe':
+      case 'hoodedRobe':
+        shape(shapes, smooth(mirrored([P(0, mapY(14.6)), P(L('neck').x + 0.4, mapY(15)), P(L('trapOut').x, mapY(17.6)), P(L('shoulder').x + 0.6, mapY(19.5)), P(L('armpit').x + 0.8, mapY(26)), P(L('waist').x + 1, mapY(38)), P(L('hip').x + 1.6, mapY(50)), P(L('hip').x + 4, mapY(72)), P(L('hip').x + 6.4, mapY(96)), P(L('hip').x + 7, mapY(99.8), 1), P(0, 100.3, 1)])));
+        reach(-(L('hip').x + 7), L('hip').x + 7);
+        if (character.className === 'Cleric') {
+          // A hood down, round the neck.
+          shape(shapes, smooth(mirrored([P(0, mapY(14)), P(L('neck').x + 2.2, mapY(13.6)), P(L('trapOut').x + 0.4, mapY(17)), P(L('trapOut').x - 1, mapY(19.4)), P(0, mapY(20.5))])));
+        }
+        break;
+      case 'coat':
+        shape(shapes, smooth(mirrored([P(0, mapY(15)), P(L('neck').x + 0.3, mapY(15.2)), P(L('trapOut').x + 0.2, mapY(17.6)), P(L('shoulder').x + 0.5, mapY(19.6)), P(L('armpit').x + 0.5, mapY(26)), P(L('waist').x + 0.8, mapY(38.5)), P(L('hip').x + 1.3, mapY(48)), P(L('hip').x + 3.4, mapY(63)), P(L('hip').x + 4.8, mapY(75), 1), P(L('hip').x + 0.6, mapY(75.6)), P(2.2, mapY(74.5)), P(0, mapY(73), 1)])));
+        reach(-(L('hip').x + 5), L('hip').x + 5);
+        break;
+      case 'ranger':
+        // A coat to the knees, and boots.
+        shape(shapes, smooth(mirrored([P(0, mapY(15)), P(L('trapOut').x + 0.2, mapY(17.6)), P(L('shoulder').x + 0.4, mapY(19.6)), P(L('armpit').x + 0.4, mapY(26)), P(L('waist').x + 0.6, mapY(38.5)), P(L('hip').x + 1.6, mapY(52)), P(L('hip').x + 2.8, mapY(70), 1), P(L('hip').x - 1.5, mapY(69)), P(3, mapY(71), 1), P(0, mapY(66), 1)])));
+        legShape([P(L('knee').x + 0.6, mapY(76)), P(L('calf').x + 0.9, mapY(81)), P(L('shin').x + 1, mapY(89)), P(L('ankle').x + 1.1, mapY(95)), P(L('foot').x + 0.6, 99.8, 1), P(L('sole').x - 0.4, 99.8, 1), P(L('ankleIn').x - 0.6, mapY(94)), P(L('calfIn').x - 0.6, mapY(82)), P(L('kneeIn').x - 0.5, mapY(76.5))]);
+        break;
+      case 'armor':
+        // Pauldrons, a mail skirt and greaves.
+        legShape([P(L('trapOut').x - 1.6, mapY(18.6)), P(L('shoulder').x + 0.6, mapY(16.8)), P(L('shoulder').x + 3.8, mapY(19.2)), P(L('shoulder').x + 4.2, mapY(23.4), 1), P(L('shoulder').x + 1, mapY(22.6)), P(L('shoulder').x - 1.2, mapY(24.8), 1), P(L('trapOut').x - 2.4, mapY(21.4))]);
+        shape(shapes, smooth(mirrored([P(0, mapY(39.5)), P(L('waist').x + 1, mapY(39.5)), P(L('hip').x + 2, mapY(52)), P(L('hip').x + 3.2, mapY(63), 1), P(L('hip').x - 1, mapY(62.4)), P(4.2, mapY(63.6), 1), P(0, mapY(63), 1)])));
+        legShape([P(L('knee').x + 0.7, mapY(73.5)), P(L('calf').x + 1.1, mapY(80)), P(L('shin').x + 1.1, mapY(89)), P(L('ankle').x + 1.2, mapY(95)), P(L('foot').x + 0.7, 99.8, 1), P(L('sole').x - 0.5, 99.8, 1), P(L('ankleIn').x - 0.7, mapY(94)), P(L('calfIn').x - 0.7, mapY(82)), P(L('kneeIn').x - 0.6, mapY(74))]);
+        reach(-(L('shoulder').x + 4.4), L('shoulder').x + 4.4);
+        break;
+      case 'fur': {
+        // A ragged fur mantle and kilt, fur-topped boots.
+        const s = L('shoulder').x;
+        shape(shapes, smooth(mirrored([P(0, mapY(14.8)), P(L('neck').x + 0.6, mapY(15.2)), P(L('trapOut').x, mapY(16.2)), P(s + 2.8, mapY(18.4)), P(s + 3.6, mapY(22)), P(s + 2.4, mapY(27.5), 1), P(s + 0.4, mapY(25.2), 1), P(s - 1.6, mapY(28.4), 1), P(s - 3.6, mapY(25.6), 1), P(5.2, mapY(28.6), 1), P(2.8, mapY(25.8), 1), P(0, mapY(27.8), 1)])));
+        const h = L('hip').x;
+        shape(shapes, smooth(mirrored([P(0, mapY(43.5)), P(L('waist').x + 0.8, mapY(43.5)), P(h + 1.4, mapY(50)), P(h + 2.2, mapY(58)), P(h + 2.6, mapY(65), 1), P(h + 0.4, mapY(61), 1), P(h - 1.8, mapY(66), 1), P(4.6, mapY(61.4), 1), P(2.8, mapY(66.4), 1), P(0, mapY(62), 1)])));
+        legShape([P(L('knee').x + 1.4, mapY(76), 1), P(L('knee').x - 0.2, mapY(78.5), 1), P(L('calf').x + 1.4, mapY(81)), P(L('shin').x + 1, mapY(89)), P(L('ankle').x + 1.2, mapY(95)), P(L('foot').x + 0.6, 99.8, 1), P(L('sole').x - 0.4, 99.8, 1), P(L('ankleIn').x - 0.6, mapY(94)), P(L('calfIn').x - 0.8, mapY(82)), P(L('kneeIn').x - 1.2, mapY(76.5), 1), P(L('kneeIn').x + 0.8, mapY(79), 1)]);
+        reach(-(s + 3.8), s + 3.8);
+        break;
+      }
+      case 'monk':
+        // Loose trousers and a sash.
+        legShape([P(L('hip').x + 0.8, mapY(50)), P(L('thigh').x + 1.6, mapY(60)), P(L('knee').x + 2.4, mapY(72)), P(L('calf').x + 2.2, mapY(84)), P(L('ankle').x + 1.2, mapY(92), 1), P(L('ankleIn').x - 0.6, mapY(92), 1), P(L('calfIn').x - 1, mapY(84)), P(L('kneeIn').x - 0.8, mapY(72)), P(1, mapY(55))]);
+        shape(shapes, smooth([P(L('waist').x + 0.4, mapY(41)), P(L('hip').x + 1.6, mapY(45)), P(L('hip').x + 3, mapY(60)), P(L('hip').x + 2, mapY(61), 1), P(L('hip').x + 0.6, mapY(48))]));
+        break;
+      default:
+        break;
+    }
+    // Hoods, over the head.
+    if (hooded) {
+      shape(shapes, smooth(mirrored([P(0, -2.8 * headScale), P(4.8 * headScale, -1.4 * headScale), P(6.8 * headScale, 2.6 * headScale), P(7.2 * headScale, 8.6 * headScale), P(6.6 * headScale, 13.4 * headScale), P(L('trapOut').x + 0.4, mapY(17.6)), P(L('shoulder').x + 1.2, mapY(21)), P(L('armpit').x, mapY(25.5), 1), P(0, mapY(23), 1)])));
     }
 
     // Species.
-    const ears = (size, tilt) => {
-      path(`M ${-headRx + 0.6} ${headCy - 0.5} L ${-headRx - size} ${headCy - tilt} L ${-headRx + 0.4} ${headCy + 2} Z`);
-      path(`M ${headRx - 0.6} ${headCy - 0.5} L ${headRx + size} ${headCy - tilt} L ${headRx - 0.4} ${headCy + 2} Z`);
+    const hs = headScale;
+    const ears = (size, rise) => {
+      const ear = [P(4.6 * hs, 5.2 * hs), P((5.2 + size) * hs, (5.4 - rise) * hs, 1), P(5.1 * hs, 8.2 * hs)];
+      shape(shapes, smooth(ear)); shape(shapes, smooth(flipX(ear)));
     };
-    const tail = (thick) => {
-      strokePath(`M ${p.hips * 0.4} ${p.hipY - 2} Q ${p.hips + 10} ${p.hipY + 8} ${p.hips + 9} ${88} Q ${p.hips + 8} ${95} ${p.hips + 14} ${92}`, thick);
-      right = Math.max(right, p.hips + 15);
+    const tail = width => {
+      const h = L('hip').x;
+      const outer = [P(h * 0.3, mapY(49)), P(h + 4, mapY(56)), P(h + 9, mapY(72)), P(h + 9.6, mapY(86)), P(h + 14, mapY(91), 1)];
+      const inner = [P(h + 8.2, mapY(87)), P(h + 7.6 - width, mapY(73)), P(h + 3 - width, mapY(59)), P(h * 0.3, mapY(52))];
+      shape(back, smooth([...outer, ...inner]));
+      reach(left, h + 14.5);
     };
-    switch (character.species) {
-      case 'Elf': ears(3.2, 4.8); break;
-      case 'Gnome': ears(2.2, 3.2); break;
-      case 'Orc': ears(1.6, 2); break;
-      case 'Tiefling':
-        strokePath(`M ${-headRx * 0.45} ${p.head * 0.15} Q ${-headRx * 1.3} ${-p.head * 0.35} ${-headRx * 1.6} ${p.head * 0.12}`, 1.9);
-        strokePath(`M ${headRx * 0.45} ${p.head * 0.15} Q ${headRx * 1.3} ${-p.head * 0.35} ${headRx * 1.6} ${p.head * 0.12}`, 1.9);
-        tail(1.4);
+    switch (species) {
+      case 'Elf': if (!hooded) ears(3.6, 4.8); break;
+      case 'Gnome': if (!hooded) ears(2.4, 3); break;
+      case 'Orc': if (!hooded) ears(1.6, 1.6); break;
+      case 'Tiefling': {
+        // Horns sweeping up and back, and a tail.
+        const horn = [P(1.6 * hs, 1 * hs), P(3.2 * hs, -3.6 * hs), P(6.6 * hs, -5.4 * hs), P(8.8 * hs, -2.6 * hs, 1), P(6.4 * hs, -3.2 * hs), P(4.6 * hs, -0.6 * hs), P(3.8 * hs, 1.6 * hs)];
+        shape(shapes, smooth(horn)); shape(shapes, smooth(flipX(horn)));
+        tail(1.2);
         break;
-      case 'Dragonborn':
-        // A crest of spikes on the head, and a heavy tail.
-        [-0.55, 0, 0.55].forEach(offset => path(`M ${offset * headRx - 1.2} ${p.head * 0.12} L ${offset * headRx} ${-p.head * 0.22} L ${offset * headRx + 1.2} ${p.head * 0.12} Z`));
-        tail(3.2);
+      }
+      case 'Dragonborn': {
+        // A crest of spikes, a heavy tail.
+        const crest = [P(-3.6 * hs, 2 * hs), P(-2.6 * hs, -2.6 * hs, 1), P(-1.2 * hs, 0.6 * hs), P(0, -3.8 * hs, 1), P(1.2 * hs, 0.6 * hs), P(2.6 * hs, -2.6 * hs, 1), P(3.6 * hs, 2 * hs)];
+        shape(shapes, smooth(crest));
+        tail(2.6);
         break;
+      }
       case 'Dwarf':
-        path(`M ${-headRx * 0.85} ${p.head * 0.62} L ${headRx * 0.85} ${p.head * 0.62} L ${headRx * 0.5} ${p.shoulderY + 13} Q 0 ${p.shoulderY + 16} ${-headRx * 0.5} ${p.shoulderY + 13} Z`);
+        // A beard over the chest.
+        shape(shapes, smooth(mirrored([P(0, 9.6 * hs), P(4.6 * hs, 9 * hs), P(5.4 * hs, mapY(19)), P(4 * hs, mapY(27)), P(1.6, mapY(31), 1), P(0, mapY(29.5), 1)])));
         break;
       case 'Aasimar':
-        shapes.push(svg('ellipse', { cx: 0, cy: -2.5, rx: headRx * 0.95, ry: 1.3, fill: 'none', stroke: fill, 'stroke-width': 0.9 }));
+        shapes.push(svg('ellipse', { cx: 0, cy: -3 * hs, rx: 5 * hs, ry: 1.4, fill: 'none', stroke: fill, 'stroke-width': 0.9 }));
         break;
       case 'Halfling':
-        [-0.5, 0, 0.5].forEach(offset => add('circle', { cx: offset * headRx, cy: p.head * 0.12, r: headRx * 0.42 }));
+        if (!hooded) [-0.55, 0, 0.55].forEach(offset => shapes.push(svg('circle', { cx: f2(offset * 4.6 * hs), cy: f2(0.6 * hs), r: f2(2.3 * hs), fill })));
         break;
       default:
         break;
     }
 
-    // Class props, in or by the right hand (x > 0) unless said otherwise.
-    const rx = sh + 1.6;
+    // Class props: right hand (x > 0) unless said otherwise.
+    const hx = hand.x;
+    const hy = hand.y;
     switch (character.className) {
-      case 'Wizard':
-        line(rx + 2.4, 4, rx + 2.4, 100, 1.5);
-        add('circle', { cx: rx + 2.4, cy: 3.5, r: 2.4 });
-        right = Math.max(right, rx + 5);
+      case 'Wizard': {
+        // A gnarled staff with a crystal held in claws.
+        const x = hx + 2.2;
+        shape(front, smooth([P(x - 0.7, 100, 1), P(x + 0.3, 70), P(x - 0.6, 40), P(x + 0.2, 12), P(x - 0.5, 4, 1), P(x + 0.9, 4, 1), P(x + 1.1, 12), P(x + 0.5, 40), P(x + 1.2, 70), P(x + 0.7, 100, 1)]));
+        shape(front, smooth([P(x + 0.2, -4.4, 1), P(x + 1.8, -0.4), P(x + 0.2, 3.4, 1), P(x - 1.4, -0.4)]));
+        stroke(front, `M ${f2(x - 0.4)} 4.4 Q ${f2(x - 2.8)} 1 ${f2(x - 1.2)} -2.2 M ${f2(x + 0.8)} 4.4 Q ${f2(x + 3.2)} 1 ${f2(x + 1.6)} -2.2`, 0.7);
+        reach(left, x + 3.4);
         break;
-      case 'Druid':
-        line(rx + 2.4, 10, rx + 2.4, 100, 1.5);
-        strokePath(`M ${rx + 2.4} 10 Q ${rx + 2.4} 2 ${rx + 7} 4 Q ${rx + 9} 8 ${rx + 5} 9`, 1.5);
-        right = Math.max(right, rx + 9);
+      }
+      case 'Druid': {
+        const x = hx + 2.2;
+        stroke(front, `M ${f2(x)} 100 Q ${f2(x + 0.8)} 60 ${f2(x)} 14 Q ${f2(x - 0.4)} 4 ${f2(x + 4)} 3.6 Q ${f2(x + 7.4)} 5 ${f2(x + 5)} 9 Q ${f2(x + 3)} 10 ${f2(x + 3)} 7.6`, 1.4);
+        [[x + 1, 15, -30], [x - 1.6, 20, 30], [x + 1.4, 24, -20]].forEach(([lx, ly, angle]) => front.push(svg('ellipse', { cx: f2(lx), cy: ly, rx: 1.8, ry: 0.8, fill, transform: `rotate(${angle} ${f2(lx)} ${ly})` })));
+        reach(left, x + 7.6);
         break;
+      }
       case 'Sorcerer':
-        add('circle', { cx: rx + 1.5, cy: handY - 4.5, r: 3.3 });
-        right = Math.max(right, rx + 5);
+        // An orb with flames above the raised hand.
+        front.push(svg('circle', { cx: f2(hx + 1.6), cy: f2(hy - 4.6), r: 3.2, fill }));
+        shape(front, smooth([P(hx - 0.6, hy - 6.4), P(hx + 0.4, hy - 11, 1), P(hx + 1.6, hy - 8.2), P(hx + 2.4, hy - 12.6, 1), P(hx + 3.2, hy - 8.4), P(hx + 4.4, hy - 10.4, 1), P(hx + 4.2, hy - 6)]));
+        reach(left, hx + 5);
         break;
       case 'Warlock':
-        // An open book in the left hand.
-        path(`M ${-rx - 1} ${handY - 3} L ${-rx - 10} ${handY - 7} L ${-rx - 10} ${handY + 3} L ${-rx - 1} ${handY + 6} Z`);
-        left = Math.min(left, -rx - 11);
+        // An open tome in the left hand.
+        shape(front, smooth([P(-hx + 0.6, hy - 1.6), P(-hx - 4.4, hy - 4.4), P(-hx - 9.6, hy - 3.2, 1), P(-hx - 9.2, hy + 5.4, 1), P(-hx - 4.2, hy + 4.4), P(-hx + 0.8, hy + 6.6, 1), P(-hx + 5.6, hy + 3.4, 1), P(-hx + 5.2, hy - 4.6, 1)]));
+        reach(-hx - 10, right);
         break;
       case 'Cleric': {
-        line(rx, handY, rx + 2.5, handY + 17, 1.4);
-        const cx = rx + 2.8;
-        const cy = handY + 19;
-        const spikes = Array.from({ length: 16 }, (_, i) => {
-          const angle = (i / 16) * Math.PI * 2;
-          const radius = i % 2 ? 2.2 : 3.8;
-          return (cx + Math.cos(angle) * radius).toFixed(2) + ',' + (cy + Math.sin(angle) * radius).toFixed(2);
-        }).join(' ');
-        add('polygon', { points: spikes });
-        right = Math.max(right, cx + 4);
+        // A flanged mace.
+        stroke(front, `M ${f2(hx)} ${f2(hy - 1)} L ${f2(hx + 2.4)} ${f2(hy + 15)}`, 1.3);
+        const cx = hx + 2.8;
+        const cy = hy + 18;
+        const flanges = Array.from({ length: 12 }, (_, i) => {
+          const angle = (i / 12) * Math.PI * 2;
+          const radius = i % 2 ? 2 : 3.6;
+          return P(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius * 1.2, 1);
+        });
+        shape(front, smooth(flanges));
+        reach(left, cx + 3.8);
         break;
       }
       case 'Fighter':
-        line(rx + 0.5, handY + 1, rx + 7, handY + 32, 1.6);
-        line(rx - 1.8, handY + 2.2, rx + 3.2, handY + 0.2, 1.3);
-        right = Math.max(right, rx + 8);
+        // A longsword, point down.
+        shape(front, smooth([P(hx - 0.5, hy + 3, 1), P(hx + 1.4, hy + 2.6, 1), P(hx + 7.6, hy + 33, 1)]));
+        stroke(front, `M ${f2(hx - 2.4)} ${f2(hy + 3.6)} L ${f2(hx + 3.4)} ${f2(hy + 2)}`, 1);
+        stroke(front, `M ${f2(hx + 0.4)} ${f2(hy + 2.8)} L ${f2(hx - 0.4)} ${f2(hy - 1.8)}`, 1);
+        front.push(svg('circle', { cx: f2(hx - 0.6), cy: f2(hy - 2.4), r: 1, fill }));
+        reach(left, hx + 8);
         break;
       case 'Paladin':
-        line(rx + 0.5, handY, rx + 3, handY - 28, 1.6);
-        line(rx - 2, handY - 1.5, rx + 3, handY - 2.5, 1.3);
-        // A shield on the left arm.
-        path(`M ${-rx - 6} ${p.shoulderY + 10} L ${-rx + 4} ${p.shoulderY + 10} L ${-rx + 4} ${p.shoulderY + 20} Q ${-rx - 1} ${p.shoulderY + 28} ${-rx - 6} ${p.shoulderY + 20} Z`);
-        left = Math.min(left, -rx - 7);
-        right = Math.max(right, rx + 4);
+        // A sword raised, a kite shield on the left arm.
+        shape(front, smooth([P(hx - 0.2, hy - 2, 1), P(hx + 1.6, hy - 2.2, 1), P(hx + 3.4, hy - 32, 1)]));
+        stroke(front, `M ${f2(hx - 2)} ${f2(hy - 1.4)} L ${f2(hx + 3.6)} ${f2(hy - 2.8)}`, 1);
+        shape(front, smooth([P(-hx + 3.4, hy - 24, 1), P(-hx - 3, hy - 25.4), P(-hx - 9, hy - 24, 1), P(-hx - 8.2, hy - 13), P(-hx - 3, hy - 2, 1), P(-hx + 2.6, hy - 13)]));
+        reach(-hx - 9.4, Math.max(right, hx + 4));
         break;
-      case 'Barbarian':
-        // A great axe over the right shoulder.
-        line(rx + 1, handY, sh + 1, -10, 1.8);
-        // The head: a broad, curved blade facing out.
-        path(`M ${sh + 1} ${-14} L ${sh + 5} ${-12.5} Q ${sh + 14} ${-12} ${sh + 15} ${-3} Q ${sh + 14} ${6} ${sh + 5} ${6.5} L ${sh + 1} ${8} Q ${sh + 4} ${-3} ${sh + 1} ${-14} Z`);
-        right = Math.max(right, sh + 16);
+      case 'Barbarian': {
+        // A double-bitted greataxe over the right shoulder.
+        const top = P(hx - 6, -9);
+        stroke(front, `M ${f2(hx + 0.6)} ${f2(hy + 4)} L ${f2(top.x)} ${f2(top.y)}`, 1.7);
+        const blade = side => [P(top.x + 0.4 * side, top.y - 2.6), P(top.x + 7 * side, top.y - 7.4, 1), P(top.x + 9.4 * side, top.y + 0.6), P(top.x + 7.6 * side, top.y + 8, 1), P(top.x + 0.6 * side, top.y + 4)];
+        shape(front, smooth(blade(1)));
+        shape(front, smooth(blade(-1)));
+        reach(Math.min(left, top.x - 9.6), Math.max(right, top.x + 9.6, hx + 2));
         break;
-      case 'Ranger':
-        // A bow in the left hand.
-        strokePath(`M ${-rx - 2} ${p.shoulderY - 4} Q ${-rx - 13} ${handY - 4} ${-rx - 2} ${handY + 14}`, 1.4);
-        line(-rx - 2, p.shoulderY - 4, -rx - 2, handY + 14, 0.4);
-        left = Math.min(left, -rx - 10);
+      }
+      case 'Ranger': {
+        // A recurve bow in the left hand.
+        const x = -hx - 1;
+        stroke(front, `M ${f2(x + 1.6)} ${f2(hy - 30)} Q ${f2(x - 1)} ${f2(hy - 27)} ${f2(x - 1.4)} ${f2(hy - 20)} Q ${f2(x - 7)} ${f2(hy)} ${f2(x - 1.4)} ${f2(hy + 20)} Q ${f2(x - 1)} ${f2(hy + 27)} ${f2(x + 1.6)} ${f2(hy + 29)}`, 1.3);
+        stroke(front, `M ${f2(x + 1.2)} ${f2(hy - 29.4)} L ${f2(x + 1.2)} ${f2(hy + 28.4)}`, 0.3);
+        reach(x - 6, right);
         break;
+      }
       case 'Rogue':
-        line(rx + 0.4, handY + 1, rx + 2.4, handY + 10, 1.2);
-        line(-rx - 0.4, handY + 1, -rx - 2.4, handY + 10, 1.2);
+        // A dagger in each hand.
+        [1, -1].forEach(side => {
+          shape(front, smooth([P(side * (hx - 0.4), hy + 2.6, 1), P(side * (hx + 1.2), hy + 2.4, 1), P(side * (hx + 1.8), hy + 12, 1)]));
+          stroke(front, `M ${f2(side * (hx - 1.4))} ${f2(hy + 2.8)} L ${f2(side * (hx + 2.2))} ${f2(hy + 2.2)}`, 0.8);
+        });
         break;
       case 'Monk':
-        line(-rx - 5, p.shoulderY - 8, rx + 6, 96, 1.4);
-        left = Math.min(left, -rx - 6);
-        right = Math.max(right, rx + 7);
+        stroke(front, `M ${f2(-hx - 7)} 12 L ${f2(hx + 8)} 98`, 1.4);
+        reach(-hx - 7.6, hx + 8.6);
         break;
-      case 'Bard':
-        add('ellipse', { cx: -rx + 1, cy: handY + 2, rx: 4, ry: 5.2, transform: `rotate(-30 ${-rx + 1} ${handY + 2})` });
-        line(-rx + 3, handY - 2, rx - 2, p.shoulderY + 4, 1.2);
-        left = Math.min(left, -rx - 4);
+      case 'Bard': {
+        // A lute held across the body.
+        const cx = -hx + 2.4;
+        const cy = hy + 1;
+        front.push(svg('ellipse', { cx: f2(cx), cy: f2(cy), rx: 4.4, ry: 5.6, fill, transform: `rotate(-38 ${f2(cx)} ${f2(cy)})` }));
+        stroke(front, `M ${f2(cx + 2)} ${f2(cy - 3)} L ${f2(hx - 1)} ${f2(hy - 15)} L ${f2(hx + 1.6)} ${f2(hy - 14.4)}`, 1.1);
+        reach(cx - 5.6, right);
         break;
+      }
       case 'Artificer':
-        line(rx, handY, rx + 1.5, handY + 12, 1.3);
-        add('rect', { x: rx - 1.5, y: handY + 11, width: 6, height: 3.2, rx: 0.6 });
-        right = Math.max(right, rx + 5);
+        stroke(front, `M ${f2(hx)} ${f2(hy)} L ${f2(hx + 1.6)} ${f2(hy + 12)}`, 1.2);
+        shape(front, smooth([P(hx - 1.6, hy + 10.6, 1), P(hx + 4.6, hy + 10, 1), P(hx + 4.8, hy + 13.6, 1), P(hx - 1.4, hy + 14.2, 1)]));
+        reach(left, hx + 5.2);
         break;
       default:
         break;
     }
-    return { shapes, left: Math.min(left, -headRx * 1.6), right: Math.max(right, headRx * 1.6) };
+    return { shapes: [...back, ...shapes, ...front], left, right };
   }
 
   // ─── The chart ────────────────────────────────────────────────────────────
