@@ -247,6 +247,23 @@ function changeResource(vitals, key, delta, { resources }) {
   return { vitals: { ...vitals, resourcesUsed }, events: [] };
 }
 
+// Second Wind (Bonus Action): spends a use and heals 1d10 + Fighter level.
+// A use spent without healing (Tactical Mind, Fighter 2) goes through
+// useResource instead, which is why the sheet keeps the tick boxes too.
+function useSecondWind(vitals, context) {
+  const fighterLevel = context.classLevels && context.classLevels.Fighter;
+  if (!fighterLevel) throw new Error('This character has no Second Wind to use.');
+  if (vitals.hpCurrent === 0) throw new Error("You can't use Second Wind at 0 Hit Points.");
+  const spent = changeResource(vitals, 'secondWind', 1, context).vitals;
+  const roll = rollDie(10, context.rng);
+  const outcome = heal(spent, roll + fighterLevel, { hpMax: context.hpMax });
+  return {
+    ...outcome,
+    rolls: [{ die: 'd10', roll, bonus: fighterLevel }],
+    healed: Math.max(0, outcome.vitals.hpCurrent - vitals.hpCurrent)
+  };
+}
+
 // Wild Shape (Bonus Action): spends a use, gives Temporary HP (druid level, or
 // 3 × for Circle of the Moon) and puts the druid in a learned form. Using it
 // again in a form switches to the new one. A Circle of the Titan druid can take
@@ -370,10 +387,15 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
   const hp = calculateMaxHp({ classes: classRows, constitution, species, feats });
   const bonus = Number.isInteger((sheetData || {}).hpMaxBonus) ? sheetData.hpMaxBonus : 0;
   const spellSlots = getSpellSlots(classRows);
+  const classLevels = classRows.reduce((levels, row) => {
+    levels[row.className] = (levels[row.className] || 0) + row.level;
+    return levels;
+  }, {});
   return {
     baseHpMax: hp.max,
     hpBreakdown: hp.breakdown,
     hpMax: Math.max(1, hp.max + bonus),
+    classLevels,
     hitDicePool: getHitDicePool(classRows),
     conModifier: abilityModifier(constitution),
     slots: spellSlots.slots,
@@ -420,6 +442,7 @@ const ACTIONS = {
   inspiration: (vitals, params) => ({ vitals: { ...vitals, heroicInspiration: Boolean(params.on) }, events: [] }),
   useResource: (vitals, params, context) => changeResource(vitals, params.key, params.amount === undefined ? 1 : Number(params.amount), context),
   restoreResource: (vitals, params, context) => changeResource(vitals, params.key, -(params.amount === undefined ? 1 : Number(params.amount)), context),
+  secondWind: (vitals, params, context) => useSecondWind(vitals, context),
   exhaustion: (vitals, params) => setExhaustion(vitals, params.level),
   spendSlot: (vitals, params, context) => changeSlot(vitals, params.level, 1, context),
   restoreSlot: (vitals, params, context) => changeSlot(vitals, params.level, -1, context),

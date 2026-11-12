@@ -55,6 +55,40 @@ test('healing caps at max and revives a dying character', () => {
   assert.deepEqual(revived.events, ['revived']);
 });
 
+test('Second Wind spends a use and heals 1d10 plus Fighter level', () => {
+  const ctx = context({ rng: dice(5) });
+  const result = act(fresh({ hpCurrent: 10 }), 'secondWind', {}, ctx);
+  assert.equal(result.vitals.hpCurrent, 18);
+  assert.equal(result.healed, 8);
+  assert.deepEqual(result.rolls, [{ die: 'd10', roll: 5, bonus: 3 }]);
+  assert.deepEqual(result.vitals.resourcesUsed, { secondWind: 1 });
+
+  const capped = act(fresh({ hpCurrent: 27 }), 'secondWind', {}, context({ rng: dice(10) }));
+  assert.equal(capped.vitals.hpCurrent, 28);
+  assert.equal(capped.healed, 1);
+  assert.throws(() => act(fresh({ hpCurrent: 0 }), 'secondWind', {}, context({ rng: dice(10) })), /at 0 Hit Points/);
+
+  let spent = fresh({ hpCurrent: 28 });
+  spent = act(spent, 'secondWind', {}, context({ rng: dice(1) })).vitals;
+  spent = act(spent, 'secondWind', {}, context({ rng: dice(1) })).vitals;
+  assert.throws(() => act(spent, 'secondWind', {}, context({ rng: dice(1) })), /only 0 left/);
+  spent = act(spent, 'shortRest', {}, ctx).vitals;
+  assert.deepEqual(spent.resourcesUsed, { secondWind: 1 });
+  spent = act(spent, 'longRest', {}, ctx).vitals;
+  assert.deepEqual(spent.resourcesUsed, {});
+
+  // Tactical Mind: a use spent without healing.
+  const tactical = act(fresh({ hpCurrent: 10 }), 'useResource', { key: 'secondWind' }, ctx);
+  assert.equal(tactical.vitals.hpCurrent, 10);
+  assert.deepEqual(tactical.vitals.resourcesUsed, { secondWind: 1 });
+
+  // Only Fighter levels count; a non-Fighter has no Second Wind.
+  const multiclass = rules.deriveVitalsContext({ ...fighter, classRows: [{ className: 'Fighter', level: 2 }, { className: 'Wizard', level: 3 }] });
+  assert.equal(act(fresh({ hpCurrent: 10 }), 'secondWind', {}, { ...multiclass, rng: dice(4) }).vitals.hpCurrent, 16);
+  const wizard = rules.deriveVitalsContext({ ...fighter, classRows: [{ className: 'Wizard', level: 3 }] });
+  assert.throws(() => act(fresh({ hpCurrent: 10 }), 'secondWind', {}, { ...wizard, rng: dice(4) }), /no Second Wind/);
+});
+
 test('temporary HP keep the higher value', () => {
   assert.equal(act(fresh({ hpTemp: 8 }), 'tempHp', { amount: 5 }).vitals.hpTemp, 8);
   assert.equal(act(fresh({ hpTemp: 3 }), 'tempHp', { amount: 5 }).vitals.hpTemp, 5);

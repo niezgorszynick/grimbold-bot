@@ -65,7 +65,7 @@
       vitals = result.vitals;
       const parts = [];
       if (result.rolls && result.rolls.length) {
-        parts.push('Rolled ' + result.rolls.map(r => r.die + ': ' + r.roll).join(', ') +
+        parts.push('Rolled ' + result.rolls.map(r => r.die + ': ' + r.roll + (r.bonus === undefined ? '' : ' + ' + r.bonus)).join(', ') +
           (result.healed !== undefined ? ' → healed ' + result.healed + ' HP.' : '.'));
       }
       (result.events || []).forEach(event => parts.push(EVENT_MESSAGES[event] || effectMessage(event)));
@@ -96,7 +96,7 @@
   }
 
   // "effectStarted:rage" → "Rage is on: the attacks include it."
-  const RESOURCE_ACTIONS = ['shortRest', 'longRest', 'useResource', 'restoreResource', 'spendSlot', 'restoreSlot', 'startEffect', 'endEffect'];
+  const RESOURCE_ACTIONS = ['shortRest', 'longRest', 'useResource', 'restoreResource', 'secondWind', 'spendSlot', 'restoreSlot', 'startEffect', 'endEffect'];
   let lastArea = 'hp';
   // Damage / heal / temp HP behind "± HP"; remembered in this browser.
   let hpActionsOpen = (() => { try { return localStorage.getItem('grimbold.hpActions') !== 'closed'; } catch { return true; } })();
@@ -377,6 +377,12 @@
         : [button('Start ' + effect.name, () => send('startEffect', { effect: effect.key }), 'btn btn-small', {
           disabled: left === 0 ? true : null, title: effect.text + ' Spends one use; ends with End, a rest or 0 HP.'
         })]));
+      // Second Wind heals; a plain tick spends a use without healing (Tactical Mind).
+      const secondWind = resource.key === 'secondWind'
+        ? el('p', { className: 'small vitals-effect' }, [button('Heal (Second Wind)', () => send('secondWind'), 'btn btn-small', {
+          disabled: left === 0 || vitals.hpCurrent === 0 ? true : null, title: resource.text + ' Spends one use.'
+        })])
+        : null;
       return el('div', { className: 'vitals-resource' }, [
         el('div', { className: 'vitals-slot-row' }, [
           el('span', { className: 'vitals-slot-label' }, [el('strong', { text: resource.name })]),
@@ -384,6 +390,7 @@
           el('span', { className: 'muted small', text: left + ' / ' + resource.max + ' left' })
         ]),
         el('p', { className: 'muted small vitals-resource-text sheet-help', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' }),
+        secondWind,
         ...effects,
         rolls
       ]);
