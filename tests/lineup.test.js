@@ -23,7 +23,7 @@ test('the lineup: living characters with height, build, species and main class; 
     db.prepare('INSERT INTO character_classes (character_id, class_name, subclass_name, class_level) VALUES (?, ?, ?, 3)').run(id, cls, '');
     return id;
   };
-  const ilphas = add('Ilphas', 'Elf', 'Wizard', { height: '1.80 m', build: 'feminine' });
+  const ilphas = add('Ilphas', 'Elf', 'Wizard', { height: '1.80 m', build: 'feminine', hairLength: 'medium' });
   add('Torak', 'Goliath', 'Barbarian', { height: '6\'4"', build: 'giant' });
   add('Gone', 'Human', 'Fighter', { height: '170' }, 'dead');
   const adventureId = db.startAdventure({ title: 'Wolves', dmPlayerId: dm });
@@ -33,5 +33,6 @@ test('the lineup: living characters with height, build, species and main class; 
   assert.deepEqual(lineup.characters.map(c => [c.name, c.heightCm, c.build, c.className, c.mine]),
     [['Ilphas', 180, 'feminine', 'Wizard', true], ['Torak', 193, null, 'Barbarian', true]], 'the dead are left out; an unknown build is none');
   assert.deepEqual(lineup.parties.find(party => party.id === adventureId).characterIds, [ilphas]);
+  assert.deepEqual(lineup.characters.map(c => c.hairLength), ['medium', null]);
   assert.equal(db.getLineup({ id: dm }).characters[0].mine, false);
 });

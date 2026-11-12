@@ -9,6 +9,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 
 const BUILDS = ['masculine', 'feminine', 'neutral'];
+const HAIR_LENGTHS = ['bald', 'short', 'medium', 'long'];
 
 function readSheet(raw) {
   try {
@@ -42,7 +43,8 @@ function getLineup(user) {
       level: row.level,
       heightText,
       heightCm: rules.parseHeightCm(heightText),
-      build: BUILDS.includes(look.build) ? look.build : null
+      build: BUILDS.includes(look.build) ? look.build : null,
+      hairLength: HAIR_LENGTHS.includes(look.hairLength) ? look.hairLength : null
     };
   });
   const parties = db.prepare(`

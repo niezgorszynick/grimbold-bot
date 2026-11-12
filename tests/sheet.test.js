@@ -99,6 +99,10 @@ test('appearance: height, eyes and hair are saved with the sheet, tidied, and ke
   assert.equal(stored(id).appearance.build, 'feminine');
   save(id, player, { ...stored(id), appearance: { ...stored(id).appearance, build: 'giant' } });
   assert.equal(stored(id).appearance.build, undefined);
+  save(id, player, { ...stored(id), appearance: { ...stored(id).appearance, hairLength: 'medium' } });
+  assert.equal(stored(id).appearance.hairLength, 'medium');
+  save(id, player, { ...stored(id), appearance: { ...stored(id).appearance, hairLength: 'mohawk' } });
+  assert.equal(stored(id).appearance.hairLength, undefined);
   save(id, player, { ...stored(id), appearance: 'blue' });
   assert.deepEqual(stored(id).appearance, {});
 });

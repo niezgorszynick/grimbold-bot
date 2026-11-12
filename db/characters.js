@@ -34,14 +34,14 @@ function isRulesManaged(sheetData) {
 }
 
 // How a character looks (free text, just for fun): only these fields, trimmed.
-const APPEARANCE_FIELDS = { height: 40, eyes: 40, hairColor: 40, hairstyle: 80, other: 500, build: 20 };
-// Build (the Lineup tab's outline): one of these, or not set.
-const APPEARANCE_BUILDS = ['masculine', 'feminine', 'neutral'];
+const APPEARANCE_FIELDS = { height: 40, eyes: 40, hairColor: 40, hairstyle: 80, other: 500, build: 20, hairLength: 10 };
+// Build and hair length (the Lineup tab's outline): one of these, or not set.
+const APPEARANCE_CHOICES = { build: ['masculine', 'feminine', 'neutral'], hairLength: ['bald', 'short', 'medium', 'long'] };
 function cleanAppearance(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(APPEARANCE_FIELDS)
     .map(([key, max]) => [key, typeof source[key] === 'string' ? source[key].replace(/\s+/g, ' ').trim().slice(0, max) : ''])
-    .filter(([key, text]) => text && (key !== 'build' || APPEARANCE_BUILDS.includes(text))));
+    .filter(([key, text]) => text && (!APPEARANCE_CHOICES[key] || APPEARANCE_CHOICES[key].includes(text))));
 }
 
 // Keeps the stored value of each key (or leaves it unset when there is none).

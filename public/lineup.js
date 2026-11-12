@@ -91,10 +91,27 @@
     feminine: [P(9.8, 19.2), P(11.7, 21.3), P(12.4, 27), P(12.6, 34.5), P(13, 40), P(12.9, 47), P(13.5, 50.5), P(12.9, 54), P(11.3, 53), P(10.9, 47), P(10.6, 40.5), P(10, 34), P(9.6, 27.5), P(9.2, 24)]
   };
   const HEAD = [P(0, 0), P(3.4, 0.6), P(4.8, 2.8), P(5.2, 6), P(5, 8.6), P(4.2, 10.6), P(2.6, 12.2), P(0, 12.9)];
+  // An orc's heavier jaw.
+  const ORC_HEAD = [P(0, 0), P(3.6, 0.6), P(5, 2.8), P(5.4, 6), P(5.5, 8.8), P(5.1, 11.1), P(3.5, 12.7), P(0, 13.1)];
+  // Hair behind the head (Appearance → Hair length).
   const HAIR = {
-    feminine: [P(0, -0.7), P(4.2, 0), P(5.9, 3), P(6.3, 8), P(6.9, 15), P(7.3, 21), P(5, 22.5), P(0, 22)],
-    neutral: [P(0, -0.6), P(4, 0), P(5.7, 3), P(6, 8.5), P(5.9, 11.5), P(3, 12.2), P(0, 12)]
+    short: [P(0, -1.1), P(2.2, -1.2, 1), P(3.8, -0.5), P(5.5, 1.2, 1), P(5.7, 4.2), P(5.5, 6.6), P(0, 6)],
+    medium: [P(0, -0.7), P(4.1, 0), P(5.8, 3), P(6.1, 8.5), P(6.3, 13.2), P(5.4, 15.4), P(0, 14.6)],
+    long: [P(0, -0.7), P(4.2, 0), P(5.9, 3), P(6.3, 8), P(6.9, 15), P(7.3, 21), P(5, 22.5), P(0, 22)]
   };
+  // Without a hair length on the sheet: long for feminine, short otherwise.
+  const DEFAULT_HAIR = { feminine: 'long', masculine: 'short', neutral: 'short' };
+  // These show their species in the head (ears, tusks, crest, curls), so their
+  // hood is drawn down, as a cowl.
+  const HOOD_DOWN = ['Elf', 'Orc', 'Gnome', 'Halfling', 'Dragonborn'];
+  // Neutral is a build of its own (not halfway, which reads feminine): the
+  // shoulders between the two, a straight torso with no waist and narrow hips.
+  const NEUTRAL_BODY = (() => {
+    const base = mix(BODY.masculine, BODY.feminine, 0.4);
+    const set = (index, x) => { base[index] = P(x, base[index].y, base[index].s); };
+    set(8, 10.1); set(9, 9.4); set(10, 8.6); set(11, 8.6); set(12, 9.1); set(13, 9.5); set(14, 9.1);
+    return base;
+  })();
   // Which outfit each class wears.
   const OUTFIT = {
     Wizard: 'robe', Sorcerer: 'robe', Cleric: 'robe', Warlock: 'hoodedRobe', Druid: 'hoodedRobe',
@@ -108,14 +125,14 @@
     const species = character.species;
     // Proportions: head size (bigger for the small folk) and breadth.
     const headScale = species === 'Dwarf' ? 1.2 : species === 'Halfling' || species === 'Gnome' ? 1.3 : species === 'Goliath' ? 0.94 : 1;
-    const breadth = species === 'Dwarf' ? 1.3 : species === 'Goliath' ? 1.14 : species === 'Orc' ? 1.1 : species === 'Halfling' || species === 'Gnome' ? 1.08 : 1;
+    const breadth = species === 'Dwarf' ? 1.3 : species === 'Goliath' ? 1.14 : species === 'Orc' ? 1.18 : species === 'Halfling' || species === 'Gnome' ? 1.08 : species === 'Elf' ? 0.94 : 1;
     const headH = 12.9 * headScale;
     const mapY = y => (y <= 12.9 ? y * headScale : headH + (y - 12.9) * (100 - headH) / (100 - 12.9));
     const body = list => list.map(p => P(p.x * breadth, mapY(p.y), p.s));
     const head = list => list.map(p => P(p.x * headScale, p.y * headScale, p.s));
 
-    const bodyHalf = body(mix(BODY.masculine, BODY.feminine, t));
-    const armRight = body(mix(ARM.masculine, ARM.feminine, t));
+    const bodyHalf = body(build === 'neutral' ? NEUTRAL_BODY : mix(BODY.masculine, BODY.feminine, t));
+    const armRight = body(mix(ARM.masculine, ARM.feminine, build === 'neutral' ? 0.4 : t));
     const L = name => bodyHalf[{ neck: 2, trap: 3, trapOut: 4, shoulder: 5, deltoid: 6, armpit: 7, chest: 8, waist: 10, hip: 12, thigh: 13, knee: 15, calf: 16, shin: 17, ankle: 18, foot: 19, sole: 20, ankleIn: 21, calfIn: 22, kneeIn: 23 }[name]];
     const hand = P((armRight[6].x + armRight[7].x) / 2, (armRight[6].y + armRight[7].y) / 2);
     const back = [];
@@ -127,10 +144,12 @@
     let right = hand.x + 3;
     const reach = (l, r) => { left = Math.min(left, l); right = Math.max(right, r); };
     const outfit = OUTFIT[character.className] || null;
-    const hooded = outfit === 'hoodedRobe' || outfit === 'rogue' || outfit === 'ranger';
+    const hoodWorn = outfit === 'hoodedRobe' || outfit === 'rogue' || outfit === 'ranger';
+    const hooded = hoodWorn && !HOOD_DOWN.includes(species);
+    const hairLength = character.hairLength || (['Goliath', 'Dragonborn'].includes(species) ? 'bald' : DEFAULT_HAIR[build]);
 
-    // Hair (behind the head), unless a hood or a bald species.
-    if (!hooded && !['Goliath', 'Dragonborn'].includes(species) && HAIR[build]) shape(back, smooth(mirrored(head(HAIR[build]))));
+    // Hair (behind the head), unless under a hood; dragonborn have none.
+    if (!hooded && species !== 'Dragonborn' && HAIR[hairLength]) shape(back, smooth(mirrored(head(HAIR[hairLength]))));
     // A cloak behind (rangers and rogues).
     if (outfit === 'ranger' || outfit === 'rogue') {
       // To the knees, so the legs show below it.
@@ -153,7 +172,7 @@
       shapes.push(svg('ellipse', { cx: f2(-hand.x - 1), cy: f2(hemY + 1), rx: 1.9, ry: 2.4, fill }));
       reach(-hand.x - 5.5, hand.x + 5.5);
     }
-    shape(shapes, smooth(mirrored(head(HEAD))));
+    shape(shapes, smooth(mirrored(head(species === 'Orc' ? ORC_HEAD : HEAD))));
 
     // The outfit, over the body.
     const legShape = points => { shape(shapes, smooth(points)); shape(shapes, smooth(flipX(points))); };
@@ -201,6 +220,10 @@
       default:
         break;
     }
+    // A hood down, round the neck (species that show it in the head).
+    if (hoodWorn && !hooded) {
+      shape(shapes, smooth(mirrored([P(0, mapY(14)), P(L('neck').x + 2.4, mapY(13.4)), P(L('trapOut').x + 0.8, mapY(17)), P(L('shoulder').x + 0.6, mapY(20.5)), P(L('armpit').x - 0.4, mapY(23.5), 1), P(0, mapY(22), 1)])));
+    }
     // Hoods, over the head.
     if (hooded) {
       shape(shapes, smooth(mirrored([P(0, -2.8 * headScale), P(4.8 * headScale, -1.4 * headScale), P(6.8 * headScale, 2.6 * headScale), P(7.2 * headScale, 8.6 * headScale), P(6.6 * headScale, 13.4 * headScale), P(L('trapOut').x + 0.4, mapY(17.6)), P(L('shoulder').x + 1.2, mapY(21)), P(L('armpit').x, mapY(25.5), 1), P(0, mapY(23), 1)])));
@@ -222,7 +245,13 @@
     switch (species) {
       case 'Elf': if (!hooded) ears(3.6, 4.8); break;
       case 'Gnome': if (!hooded) ears(2.4, 3); break;
-      case 'Orc': if (!hooded) ears(1.6, 1.6); break;
+      case 'Orc': {
+        if (!hooded) ears(1.8, 1.8);
+        // Tusks out past the jaw.
+        const tusk = [P(2.9 * hs, 11.7 * hs), P(6.9 * hs, 7.9 * hs, 1), P(4.7 * hs, 12.2 * hs)];
+        shape(shapes, smooth(tusk)); shape(shapes, smooth(flipX(tusk)));
+        break;
+      }
       case 'Tiefling': {
         // Horns sweeping up and back, and a tail.
         const horn = [P(1.6 * hs, 1 * hs), P(3.2 * hs, -3.6 * hs), P(6.6 * hs, -5.4 * hs), P(8.8 * hs, -2.6 * hs, 1), P(6.4 * hs, -3.2 * hs), P(4.6 * hs, -0.6 * hs), P(3.8 * hs, 1.6 * hs)];
@@ -245,7 +274,7 @@
         shapes.push(svg('ellipse', { cx: 0, cy: -3 * hs, rx: 5 * hs, ry: 1.4, fill: 'none', stroke: fill, 'stroke-width': 0.9 }));
         break;
       case 'Halfling':
-        if (!hooded) [-0.55, 0, 0.55].forEach(offset => shapes.push(svg('circle', { cx: f2(offset * 4.6 * hs), cy: f2(0.6 * hs), r: f2(2.3 * hs), fill })));
+        if (!hooded && hairLength !== 'bald') [-0.55, 0, 0.55].forEach(offset => shapes.push(svg('circle', { cx: f2(offset * 4.6 * hs), cy: f2(0.6 * hs), r: f2(2.3 * hs), fill })));
         break;
       default:
         break;
