@@ -36,3 +36,25 @@ test('the lineup: living characters with height, build, species and main class; 
   assert.deepEqual(lineup.characters.map(c => c.hairLength), ['medium', null]);
   assert.equal(db.getLineup({ id: dm }).characters[0].mine, false);
 });
+
+test('the lineup knows what each character has on: armour, shield, weapon, a robe', () => {
+  const player = createPlayer();
+  const scores = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map(key => [key, { score: 14 }]));
+  const add = (name, cls, items) => {
+    const sheet = {
+      abilities: scores, armorTraining: ['Light armor', 'Medium armor', 'Heavy armor', 'Shields'], weaponProficiencies: ['Simple weapons', 'Martial weapons'],
+      appearance: { height: '180' }, inventory: items.map(item => ({ name: item, quantity: 1, equipped: true }))
+    };
+    const id = Number(db.prepare(`INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+      VALUES (?, ?, 'Human', ?, '', 3, 0, 'alive', 0, ?)`).run(player, name, cls, JSON.stringify(sheet)).lastInsertRowid);
+    db.prepare('INSERT INTO character_classes (character_id, class_name, subclass_name, class_level) VALUES (?, ?, ?, 3)').run(id, cls, '');
+    return id;
+  };
+  add('Knight', 'Fighter', ['Plate Armor', 'Longsword', 'Shield']);
+  add('Mage', 'Wizard', ['Robe', 'Quarterstaff']);
+  add('Scout', 'Ranger', ['Hide Armor', 'Longbow']);
+  const gear = Object.fromEntries(db.getLineup({ id: player }).characters.filter(c => ['Knight', 'Mage', 'Scout'].includes(c.name)).map(c => [c.name, c.gear]));
+  assert.deepEqual(gear.Knight, { armor: 'heavy', armorName: 'Plate Armor', shield: true, weapon: 'Longsword', robe: false });
+  assert.deepEqual(gear.Mage, { armor: null, armorName: null, shield: false, weapon: 'Quarterstaff', robe: true });
+  assert.deepEqual([gear.Scout.armor, gear.Scout.armorName, gear.Scout.weapon], ['medium', 'Hide Armor', 'Longbow']);
+});

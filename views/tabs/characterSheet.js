@@ -221,7 +221,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <label>Eye colour<input id="cs_eyes" type="text" maxlength="40" placeholder="e.g. storm grey"></label>
               <label>Hair colour<input id="cs_hair_color" type="text" maxlength="40" placeholder="e.g. copper red"></label>
               <label>Hairstyle<input id="cs_hairstyle" type="text" maxlength="80" placeholder="e.g. long braid, shaved sides"></label>
-              <label>Hair length<select id="cs_hair_length" title="The outline in the Lineup tab"><option value="">—</option><option value="bald">Bald</option><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></label>
+              <label>Hair length<select id="cs_hair_length" title="The outline in the Lineup tab"><option value="">—</option><option value="bald">Bald</option><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option><option value="shaggy">Shaggy (messy, to the chin)</option></select></label>
               <label class="sheet-appearance-other">Other features<textarea id="cs_appearance_other" rows="2" maxlength="500" placeholder="Scars, tattoos, freckles, a missing tooth…"></textarea></label>
             </div>
             <p class="muted small">Saved with the sheet.</p>

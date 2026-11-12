@@ -36,7 +36,7 @@ function isRulesManaged(sheetData) {
 // How a character looks (free text, just for fun): only these fields, trimmed.
 const APPEARANCE_FIELDS = { height: 40, eyes: 40, hairColor: 40, hairstyle: 80, other: 500, build: 20, hairLength: 10 };
 // Build and hair length (the Lineup tab's outline): one of these, or not set.
-const APPEARANCE_CHOICES = { build: ['masculine', 'feminine', 'neutral'], hairLength: ['bald', 'short', 'medium', 'long'] };
+const APPEARANCE_CHOICES = { build: ['masculine', 'feminine', 'neutral'], hairLength: ['bald', 'short', 'medium', 'long', 'shaggy'] };
 function cleanAppearance(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(APPEARANCE_FIELDS)

@@ -7,9 +7,10 @@
 
 const { db } = require('./connection');
 const rules = require('../rules');
+const { buildCharacterCombat } = require('./combat');
 
 const BUILDS = ['masculine', 'feminine', 'neutral'];
-const HAIR_LENGTHS = ['bald', 'short', 'medium', 'long'];
+const HAIR_LENGTHS = ['bald', 'short', 'medium', 'long', 'shaggy'];
 
 function readSheet(raw) {
   try {
@@ -20,12 +21,35 @@ function readSheet(raw) {
   }
 }
 
+// What the character has on, from the same calculation as their AC and
+// attacks: { armor: 'light' | 'medium' | 'heavy' | null, armorName, shield,
+// weapon (the first weapon in hand, by its base name), robe (carried) }.
+function gearOf(row, sheet) {
+  const inventory = Array.isArray(sheet.inventory) ? sheet.inventory : [];
+  const robe = inventory.some(item => item && /\brobes?\b/i.test(String(item.name || '')));
+  try {
+    const combat = buildCharacterCombat(row, sheet);
+    const armor = combat.armorClass.armor ? rules.identifyGear(combat.armorClass.armor) : null;
+    const category = armor && armor.type === 'armor' ? String(armor.category || '').split(' ')[0].toLowerCase() : null;
+    const weapon = combat.attacks.find(attack => attack.weapon && !attack.needsType && attack.from !== 'unarmed');
+    return {
+      armor: ['light', 'medium', 'heavy'].includes(category) ? category : null,
+      armorName: armor ? armor.name : null,
+      shield: Boolean(combat.armorClass.shield),
+      weapon: weapon ? weapon.weapon : null,
+      robe
+    };
+  } catch {
+    return { armor: null, armorName: null, shield: false, weapon: null, robe };
+  }
+}
+
 function getLineup(user) {
   const classRows = db.prepare('SELECT character_id, class_name, class_level FROM character_classes ORDER BY class_level DESC, id').all();
   const mainClass = new Map();
   for (const row of classRows) if (!mainClass.has(row.character_id)) mainClass.set(row.character_id, row.class_name);
   const characters = db.prepare(`
-    SELECT c.id, c.name, c.race, c.class, c.level, c.player_id, c.sheet_data, p.discord_tag AS player
+    SELECT c.id, c.name, c.race, c.class, c.subclass, c.level, c.player_id, c.sheet_data, p.discord_tag AS player
     FROM characters c LEFT JOIN players p ON p.id = c.player_id
     WHERE c.status = 'alive' ORDER BY c.name COLLATE NOCASE
   `).all().map(row => {
@@ -44,7 +68,8 @@ function getLineup(user) {
       heightText,
       heightCm: rules.parseHeightCm(heightText),
       build: BUILDS.includes(look.build) ? look.build : null,
-      hairLength: HAIR_LENGTHS.includes(look.hairLength) ? look.hairLength : null
+      hairLength: HAIR_LENGTHS.includes(look.hairLength) ? look.hairLength : null,
+      gear: gearOf(row, sheet)
     };
   });
   const parties = db.prepare(`
