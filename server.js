@@ -19,7 +19,11 @@ function requireAuth(req, res, next) {
   const user = loadSessionUser(req);
   if (!user) {
     req.session = null;
-    return res.redirect('/login');
+    // A link into the panel (a sheet, a tab) is kept so login can return to it.
+    const target = req.method === 'GET' ? req.originalUrl || '' : '';
+    return res.redirect(target && target !== '/admin' && target !== '/admin/'
+      ? '/login?next=' + encodeURIComponent(target)
+      : '/login');
   }
   // Keep the session in step with role or tag changes made by an admin.
   req.session.user = { id: user.id, discord_tag: user.discord_tag, role: user.role };
@@ -66,6 +70,7 @@ const ADMIN_ASSETS = {
   'character-live.js': path.join(__dirname, 'public', 'character-live.js'),
   'sheet-sections.js': path.join(__dirname, 'public', 'sheet-sections.js'),
   'sheet-mode.js': path.join(__dirname, 'public', 'sheet-mode.js'),
+  'sheet-help.js': path.join(__dirname, 'public', 'sheet-help.js'),
   'character-proficiencies.js': path.join(__dirname, 'public', 'character-proficiencies.js'),
   'character-wild-shape.js': path.join(__dirname, 'public', 'character-wild-shape.js'),
   'auctions.js': path.join(__dirname, 'public', 'auctions.js')

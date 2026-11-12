@@ -191,6 +191,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
         <script src="/admin/assets/character-live.js" defer></script>
         <script src="/admin/assets/sheet-sections.js" defer></script>
         <script src="/admin/assets/sheet-mode.js" defer></script>
+        <script src="/admin/assets/sheet-help.js" defer></script>
         <script src="/admin/assets/character-levelup.js" defer></script>
         <section id="fullCharacterSheetContainer" class="character-sheet-full" data-roll-character="${Number(characterToEdit.id)}">
           <header class="sheet-header" data-collapse="details">
@@ -244,6 +245,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
           </section>
             <div class="sheet-topband-stats">
+              <section id="cs_senses" class="sheet-card sheet-senses-card" data-collapse="senses" hidden>
+                <h4>Senses</h4>
+                <div id="cs_senses_body"></div>
+                <div id="cs_defenses"></div>
+              </section>
               <div class="sheet-combat-stats">
                 <label class="sheet-stat"><span>Armor Class</span><input type="number" id="cs_ac" min="0" max="100"></label>
                 <div class="sheet-stat is-rollable" data-roll="initiative" title="Click to roll initiative (Shift: Advantage). DEX modifier, plus Proficiency Bonus with Alert, plus magic items"><span>Initiative <button type="button" class="roll-button" data-roll="initiative" title="Roll initiative">🎲</button></span><input type="text" id="cs_initiative" maxlength="20" aria-label="Initiative" readonly tabindex="-1"></div>
@@ -253,10 +259,6 @@ module.exports = function renderCharacterSheetTab(ctx) {
               </div>
               <p id="cs_inspiration_text" class="muted small sheet-inspiration-text" hidden>Heroic Inspiration (2024): spend it to reroll any one die right after you roll it, and use the new roll. You can only have one at a time. The DM awards it; Humans (Resourceful) also gain it after every Long Rest.</p>
               <div id="cs_ac_details" class="ac-details" aria-live="polite"></div>
-              <section id="cs_senses" class="sheet-card sheet-senses-card" data-collapse="senses" hidden>
-                <h4>Senses</h4>
-                <div id="cs_senses_body"></div>
-              </section>
             </div>
           </div>
           <div class="sheet-layout">
@@ -277,9 +279,13 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
             <div class="sheet-col">
               <section class="sheet-card sheet-vitals-card" data-collapse="vitals">
-                <h4>Hit Points &amp; Vitality</h4>
+                <h4>Hit Points</h4>
                 <div id="cs_vitals" class="vitals" data-character-id="${Number(characterToEdit.id)}" aria-live="polite">Loading hit points...</div>
                 <script src="/admin/assets/character-vitals.js" defer></script>
+              </section>
+              <section class="sheet-card sheet-resources-card" data-collapse="resources">
+                <h4>Resources</h4>
+                <div id="cs_resources_body" aria-live="polite"></div>
               </section>
               <section id="cs_wild_shape" class="sheet-card sheet-wild-shape-card" data-collapse="wildShape" data-character-id="${Number(characterToEdit.id)}" hidden>
                 <h4>Wild Shape</h4>
@@ -291,7 +297,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <div id="cs_attacks_auto" data-character-id="${Number(characterToEdit.id)}">Loading attacks...</div>
                 <script src="/admin/assets/character-combat.js" defer></script>
                 <div class="sheet-section-heading sheet-other-attacks">
-                  <h5>Other attacks <span class="muted small">(typed in; saved with the sheet)</span></h5>
+                  <h5>Other attacks</h5><p class="muted small sheet-help">Attacks typed in by hand, saved with the sheet.</p>
                   <button id="cs_add_attack" class="btn btn-small" type="button">+ Add attack</button>
                 </div>
                 <div>
@@ -718,24 +724,42 @@ module.exports = function renderCharacterSheetTab(ctx) {
           Object.entries(classData.featuresByLevel || {})
             .filter(([level]) => Number(level) <= classLevel)
             .forEach(([, names]) => classFeatures.push(...names));
-          const autoLines = [
-            ...classFeatures.map(name => 'Class: ' + name),
-            ...(subclassSelect.value && classLevel >= 3
-              ? ['Subclass selected: ' + subclassSelect.value]
-              : []),
-            ...(backgroundData.skillProficiencies || []).map(skill => 'Background proficiency: ' + skill),
-            ...(speciesData.traits || []).map(trait => trait.name + ': ' + trait.description)
-          ];
-          autoFeatures.replaceChildren();
-          if (autoLines.length) {
-            const list = document.createElement('ul');
-            autoLines.forEach(line => {
-              const item = document.createElement('li');
-              item.textContent = line;
-              list.appendChild(item);
-            });
-            autoFeatures.appendChild(list);
-          } else {
+          // Grouped as short names: the class's features (not the level-up
+          // steps), the subclass, and species traits (click one for its text).
+          // Background skills are in the skill list already.
+          const featureNames = classFeatures.filter(name => !/Subclass$|^Ability Score Improvement$|^Epic Boon$/.test(name));
+          const chip = (name, text) => {
+            if (!text) return Object.assign(document.createElement('span'), { className: 'feature-chip', textContent: name });
+            const details = document.createElement('details');
+            details.className = 'feature-chip has-text';
+            const summary = document.createElement('summary');
+            summary.textContent = name;
+            const body = document.createElement('p');
+            body.className = 'small feature-chip-text';
+            body.textContent = text;
+            details.append(summary, body);
+            return details;
+          };
+          const group = (label, chips) => {
+            if (!chips.length) return null;
+            const row = document.createElement('div');
+            row.className = 'feature-group';
+            const title = document.createElement('span');
+            title.className = 'feature-group-label';
+            title.textContent = label;
+            const list = document.createElement('div');
+            list.className = 'feature-chips';
+            list.append(...chips);
+            row.append(title, list);
+            return row;
+          };
+          const groups = [
+            group(classSelect.value || 'Class', featureNames.map(name => chip(name))),
+            subclassSelect.value && classLevel >= 3 ? group('Subclass', [chip(subclassSelect.value)]) : null,
+            group(speciesSelect.value || 'Species', (speciesData.traits || []).map(trait => chip(trait.name, trait.description)))
+          ].filter(Boolean);
+          autoFeatures.replaceChildren(...groups);
+          if (!groups.length) {
             autoFeatures.textContent = 'Choose a class, species, and background to see features and proficiencies.';
           }
           updateDerivedStats(sheetCharacterLevel);

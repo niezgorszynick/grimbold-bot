@@ -27,8 +27,16 @@ app.use(cookieSession({
   secure: process.env.NODE_ENV === 'production'
 }));
 
+// Where login leads: the panel link that sent the player here, otherwise What's new.
+const START_PAGE = '/admin?tab=changelog';
+function loginTarget(next) {
+  return typeof next === 'string' && /^\/admin(?:[/?#]|$)/.test(next) ? next : START_PAGE;
+}
+const escapeAttr = value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
 app.get('/login', (req, res) => {
-  if (req.session && req.session.user) return res.redirect('/admin');
+  if (req.session && req.session.user) return res.redirect(loginTarget(req.query.next));
+  const next = loginTarget(req.query.next) === START_PAGE ? '' : req.query.next;
 
   const error = req.query.error
     ? '<div class="alert alert-danger py-2 small mb-3">Invalid username or password.</div>'
@@ -54,6 +62,7 @@ app.get('/login', (req, res) => {
         </div>
         ${error}
         <form method="POST" action="/login">
+          ${next ? `<input type="hidden" name="next" value="${escapeAttr(next)}">` : ''}
           <div class="mb-3">
             <label for="username" class="form-label text-light small fw-bold">Discord Tag</label>
             <input id="username" type="text" name="username" class="form-control bg-dark text-light border-secondary" placeholder="e.g. alastar" autocomplete="username" required autofocus>
@@ -71,7 +80,7 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
-  const { username, password } = req.body || {};
+  const { username, password, next } = req.body || {};
   const configuredAdminPassword = process.env.ADMIN_PASSWORD;
   const passwordBytes = typeof password === 'string' ? Buffer.from(password) : null;
   const configuredPasswordBytes = typeof configuredAdminPassword === 'string'
@@ -87,11 +96,14 @@ app.post('/login', (req, res) => {
   const user = isEmergencyAdminLogin
     ? ROOT_ADMIN
     : db.authenticatePlayer(username, password);
-  if (!user) return res.redirect('/login?error=1');
+  if (!user) {
+    const target = loginTarget(next);
+    return res.redirect('/login?error=1' + (target === START_PAGE ? '' : '&next=' + encodeURIComponent(target)));
+  }
 
   req.session = null;
   req.session = { user };
-  return res.redirect('/admin');
+  return res.redirect(loginTarget(next));
 });
 
 app.get('/logout', (req, res) => {

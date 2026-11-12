@@ -222,13 +222,18 @@
       const ok = await act({ action: 'grant', name: name.value.trim(), quantity: Number(quantity.value) || 1 });
       if (ok) name.value = '';
     }, 'btn btn-small btn-green');
-    return el('div', { className: 'spell-picker magic-item-grant' }, [
+    // Folded behind one line until needed; stays open through redraws.
+    const details = el('details', { className: 'spell-picker magic-item-grant', open: grantOpen ? true : null }, [
+      el('summary', { className: 'small magic-item-grant-toggle', text: view.isDm ? '＋ Give a magic item' : '＋ Add a magic item' }),
       el('p', { className: 'muted small', text: (view.isDm ? 'DM: give this character a magic item (for example adventure loot).' : 'Add a magic item your character has (the DM sees it was added by you).') + ' Items with versions need the full name, e.g. "Weapon +1" or "Belt of Giant Strength (Hill)". Name the base weapon or armor where the item allows several, e.g. "+1 Longsword", "Frost Brand (Longsword)" or "Elven Chain (Chain Shirt)", so it shows in AC and attacks.' }),
       el('div', { className: 'vitals-actions' }, [name, quantity, give]),
       datalist
     ]);
+    details.addEventListener('toggle', () => { grantOpen = details.open; });
+    return details;
   }
 
+  let grantOpen = false;
   function render() {
     if (!view) return;
     root.hidden = !view.items.length && !view.canGrant;

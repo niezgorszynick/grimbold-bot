@@ -332,7 +332,7 @@
         choosable ? button(editing === source.key ? 'Close' : 'Choose spells', () => { editing = editing === source.key ? null : source.key; draft = null; render(); }) : null
       ]),
       counts.length ? el('p', { className: 'muted small', text: counts.join(' · ') + (missing > 0 ? ' — ' + missing + ' still to choose' : '') }) : null,
-      source.changeRuleText ? el('p', { className: 'muted small', text: source.changeRuleText }) : null,
+      source.changeRuleText ? el('p', { className: 'muted small sheet-help', text: source.changeRuleText }) : null,
       badges.length ? el('div', { className: 'spell-badges' }, badges.map(text => el('span', { className: 'tag gold', text }))) : null,
       source.land ? landPicker(source) : null,
       featListChanger(source),
@@ -532,7 +532,7 @@
         button(editingInvocations ? 'Close' : 'Choose invocations', () => { editingInvocations = !editingInvocations; render(); })
       ]),
       missing > 0 ? el('p', { className: 'muted small', text: missing + ' still to choose' }) : null,
-      el('p', { className: 'muted small', text: 'Replace one invocation when you gain a Warlock level.' }),
+      el('p', { className: 'muted small sheet-help', text: 'Replace one invocation when you gain a Warlock level.' }),
       inv.allowance.swaps
         ? el('div', { className: 'spell-badges' }, [el('span', { className: 'tag gold', text: inv.allowance.swaps + ' invocation replacement available' })])
         : null,

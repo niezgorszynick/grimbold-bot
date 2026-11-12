@@ -625,6 +625,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .character-sheet-full .sheet-combat-stats { order: 3; }
   .character-sheet-full .ac-details { order: 4; }
   .character-sheet-full .sheet-vitals-card { order: 5; }
+  .character-sheet-full .sheet-resources-card { order: 5; }
   .character-sheet-full .sheet-attacks-card { order: 6; }
   .character-sheet-full #cs_spells { order: 7; }
   .character-sheet-full .sheet-saves-card { order: 8; }
@@ -1226,3 +1227,38 @@ body.sheet-view .sheet-notes-label textarea { resize: none; border-color: transp
 /* DM settings card on the character sheet (views/characterDmSettings.js). */
 .sheet-dm-settings > summary { cursor: pointer; }
 .sheet-dm-settings input:not([type=checkbox]), .sheet-dm-settings select, .sheet-dm-settings textarea { box-sizing: border-box; max-width: 100%; }
+
+/* ⓘ on the character sheet (public/sheet-help.js): explanations on request. */
+.help-toggle { padding: 0 3px; border: 0; background: none; color: #6d6f78; font-size: 12px; line-height: 1; cursor: pointer; vertical-align: middle; }
+.help-toggle:hover, .help-toggle.is-open { color: #f1c40f; }
+.sheet-help { margin: 2px 0 6px; }
+
+/* Hit points: the number with "± HP" beside it; the controls open below. */
+.vitals-hp-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.sheet-resources-card .vitals-slots:first-child, .sheet-resources-card > div > :first-child { margin-top: 0; }
+/* Defenses on the Senses strip, after the senses. */
+#cs_defenses:empty { display: none; }
+.sheet-topband #cs_defenses { flex-basis: 100%; }
+.sheet-defenses-inline { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 2px 0 0; color: #b5bac1; }
+
+/* Features as grouped name chips (class, subclass, species); species traits open their text. */
+.feature-group { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 6px 10px; align-items: start; margin: 0 0 8px; }
+.feature-group-label { color: #949ba4; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding-top: 5px; }
+.feature-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.feature-chip { display: inline-block; padding: 4px 9px; border: 1px solid #3f4147; border-radius: 14px; background: #1e1f22; font-size: 13px; color: #dbdee1; }
+.feature-chip.has-text > summary { cursor: pointer; list-style: none; }
+.feature-chip.has-text > summary::-webkit-details-marker { display: none; }
+.feature-chip.has-text > summary::after { content: ' ▾'; color: #6d6f78; font-size: 11px; }
+.feature-chip.has-text[open] { flex-basis: 100%; border-radius: 8px; }
+.feature-chip-text { margin: 6px 0 2px; color: #b5bac1; }
+@media (max-width: 640px) { .feature-group { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
+/* Magic items: the give/add form folded behind one line. */
+.magic-item-grant { padding: 0; border: 0; background: none; }
+.magic-item-grant > summary { cursor: pointer; color: #8ea1ff; width: max-content; }
+.magic-item-grant[open] { padding: 10px; border: 1px dashed #3f4147; border-radius: 6px; }
+.magic-item-grant[open] > summary { margin-bottom: 6px; }
+/* View mode: proficiency as a dot, not a checkbox to tick. */
+body.sheet-view .sheet-check-list input[type=checkbox] { appearance: none; -webkit-appearance: none; width: 9px; height: 9px; margin: 0 4px; border: 1.5px solid #6d6f78; border-radius: 50%; background: transparent; opacity: 1; }
+body.sheet-view .sheet-check-list input[type=checkbox]:checked { background: #f1c40f; border-color: #f1c40f; }
+body.sheet-view .roll-link, body.sheet-view .sheet-check-modifier[data-roll], body.sheet-view .sheet-ability-modifier[data-roll] { border-bottom-color: transparent; }

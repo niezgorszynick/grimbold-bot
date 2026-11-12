@@ -50,6 +50,8 @@
 
   async function send(action, params) {
     if (busy) return;
+    // Which card reports the outcome.
+    lastArea = RESOURCE_ACTIONS.includes(action) ? 'resources' : 'hp';
     busy = true;
     root.classList.add('is-busy');
     try {
@@ -94,6 +96,14 @@
   }
 
   // "effectStarted:rage" → "Rage is on: the attacks include it."
+  const RESOURCE_ACTIONS = ['shortRest', 'longRest', 'useResource', 'restoreResource', 'spendSlot', 'restoreSlot', 'startEffect', 'endEffect'];
+  let lastArea = 'hp';
+  // Damage / heal / temp HP behind "± HP"; remembered in this browser.
+  let hpActionsOpen = (() => { try { return localStorage.getItem('grimbold.hpActions') === 'open'; } catch { return false; } })();
+  function rememberHpActions() {
+    try { localStorage.setItem('grimbold.hpActions', hpActionsOpen ? 'open' : 'closed'); } catch { /* private window */ }
+  }
+
   function effectMessage(event) {
     const match = /^effect(Started|Ended):(\w+)$/.exec(event);
     if (!match) return '';
@@ -182,12 +192,13 @@
     const critical = el('input', { type: 'checkbox' });
 
     return el('div', { className: 'vitals-hp ' + state }, [
+      el('div', { className: 'vitals-hp-top' }, [
       editingHp
         ? renderHpEditor()
         : el('button', {
           type: 'button',
           className: 'vitals-hp-numbers vitals-hp-edit',
-          title: 'Click to set current and max HP',
+          title: 'Max HP: ' + breakdown + '.\nClick to set current and max HP (e.g. Aid).',
           onclick: () => { editingHp = true; render(); }
         }, [
           el('strong', { className: 'vitals-hp-current', text: String(vitals.hpCurrent) }),
@@ -195,16 +206,18 @@
           vitals.hpTemp ? el('span', { className: 'vitals-temp', text: '+' + vitals.hpTemp + ' temp' }) : null,
           el('span', { className: 'vitals-hp-pencil', 'aria-hidden': 'true', text: '✎' })
         ]),
+        button(hpActionsOpen ? '× Close' : '± HP', () => { hpActionsOpen = !hpActionsOpen; rememberHpActions(); render(); },
+          'btn btn-small ' + (hpActionsOpen ? 'btn-secondary' : ''), { title: 'Damage, healing and temporary HP', 'aria-expanded': String(hpActionsOpen) })
+      ]),
       el('div', { className: 'vitals-bar', role: 'presentation' }, el('span', { style: 'width:' + Math.max(0, Math.min(100, percent)) + '%' })),
-      el('div', { className: 'vitals-actions' }, [
+      hpActionsOpen ? el('div', { className: 'vitals-actions' }, [
         amount,
         button('Damage', () => { const v = readAmount(amount); if (v !== null) send('damage', { amount: v, critical: critical.checked }); }, 'btn btn-small btn-red'),
         button('Heal', () => { const v = readAmount(amount); if (v !== null) send('heal', { amount: v }); }, 'btn btn-small btn-green'),
         button('Set Temp HP', () => { const v = readAmount(amount); if (v !== null) send('tempHp', { amount: v }); }),
         vitals.hpTemp ? button('Clear Temp', () => send('clearTempHp')) : null,
         el('label', { className: 'vitals-inline' }, [critical, ' Critical hit'])
-      ]),
-      el('p', { className: 'muted small vitals-breakdown', title: 'Max HP follows the average-HP rule and updates with level and Constitution; click the HP to adjust it (e.g. Aid).' }, 'Max HP: ' + breakdown)
+      ]) : null
     ]);
   }
 
@@ -249,7 +262,7 @@
     });
     return el('div', { className: 'vitals-rests' }, [
       el('h5', { text: 'Hit Point Dice & Rests' }),
-      el('p', { className: 'muted small', text: 'Each die spent restores its roll ' + (vitals.conModifier >= 0 ? '+ ' : '− ') + Math.abs(vitals.conModifier) + ' (CON), minimum 1.' }),
+      el('p', { className: 'muted small sheet-help', text: 'Each die spent restores its roll ' + (vitals.conModifier >= 0 ? '+ ' : '− ') + Math.abs(vitals.conModifier) + ' (CON), minimum 1.' }),
       ...rows,
       el('div', { className: 'vitals-actions' }, [
         button('Short Rest', () => {
@@ -336,7 +349,7 @@
         // No uses to count: only what it does, and its dice.
         return el('div', { className: 'vitals-resource' }, [
           el('div', { className: 'vitals-slot-row' }, [el('span', { className: 'vitals-slot-label' }, [el('strong', { text: resource.name })])]),
-          el('p', { className: 'muted small vitals-resource-text', text: resource.text }),
+          el('p', { className: 'muted small vitals-resource-text sheet-help', text: resource.text }),
           rolls
         ]);
       }
@@ -370,14 +383,14 @@
           control,
           el('span', { className: 'muted small', text: left + ' / ' + resource.max + ' left' })
         ]),
-        el('p', { className: 'muted small vitals-resource-text', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' }),
+        el('p', { className: 'muted small vitals-resource-text sheet-help', text: resource.text + ' ' + RECOVERY_TEXT[resource.recovery] + '.' }),
         ...effects,
         rolls
       ]);
     });
     return el('div', { className: 'vitals-slots vitals-resources' }, [
       el('h5', { text: 'Class Features' }),
-      el('p', { className: 'muted small', text: 'Tick a box to spend a use; rests bring them back.' }),
+      el('p', { className: 'muted small sheet-help', text: 'Tick a box to spend a use; rests bring them back.' }),
       ...rows
     ]);
   }
@@ -388,7 +401,7 @@
     if (!rows.length) return null;
     return el('div', { className: 'vitals-slots' }, [
       el('h5', { text: 'Spell Slots' }),
-      el('p', { className: 'muted small', text: 'Tick a box to spend a slot. Pact Magic slots return on a Short Rest; all slots return on a Long Rest.' }),
+      el('p', { className: 'muted small sheet-help', text: 'Tick a box to spend a slot. Pact Magic slots return on a Short Rest; all slots return on a Long Rest.' }),
       ...rows
     ]);
   }
@@ -413,6 +426,23 @@
       ]);
     }).filter(Boolean);
     return el('div', { className: 'vitals-defenses' }, [el('h5', { text: 'Defenses' }), ...rows]);
+  }
+  // In the Senses strip: one line, without the senses (the strip lists them).
+  function renderDefensesInline() {
+    const defenses = (vitals.defenses || []).filter(item => item.kind !== 'sense');
+    if (!defenses.length) return null;
+    const SHORT = { type: '', resistance: 'Resist', immunity: 'Immune', condition: 'Immune', advantage: 'Advantage on', note: '' };
+    return el('p', { className: 'small sheet-defenses-inline' }, DEFENSE_LABELS.filter(([kind]) => kind !== 'sense').flatMap(([kind]) => {
+      const items = defenses.filter(item => item.kind === kind);
+      if (!items.length) return [];
+      return [el('span', { className: 'sheet-defense' }, [
+        SHORT[kind] ? el('strong', { text: SHORT[kind] + ' ' }) : null,
+        ...items.flatMap((item, index) => [index ? ', ' : '', el('span', {
+          className: item.when && !item.active ? 'muted' : '', title: item.source,
+          text: item.text + (item.when ? ' (' + item.when + (item.active ? ', now' : '') + ')' : '')
+        })])
+      ])];
+    }));
   }
 
   // Buff spells on this character, from themselves or a party member.
@@ -451,17 +481,24 @@
     if (!vitals) return;
     syncInspiration();
     // Optional sections return null; replaceChildren would render that as text.
+    const message = area => (lastArea === area && lastMessage
+      ? el('p', { className: 'sheet-message' + (lastIsError ? ' is-error' : ''), role: 'status', text: lastMessage })
+      : null);
+    // Hit points, rests and uses: two cards when the sheet has a Resources card.
+    const resourcesRoot = document.getElementById('cs_resources_body');
+    const defensesRoot = document.getElementById('cs_defenses');
+    const resources = [renderRests(), renderResources(), renderSlots()];
     root.replaceChildren(...[
       renderHitPoints(),
       renderDying(),
       renderExhaustion(),
-      renderDefenses(),
+      defensesRoot ? null : renderDefenses(),
       renderSpellEffects(),
-      renderRests(),
-      renderResources(),
-      renderSlots(),
-      el('p', { className: 'sheet-message' + (lastIsError ? ' is-error' : ''), role: 'status', text: lastMessage })
+      ...(resourcesRoot ? [] : resources),
+      message(resourcesRoot ? 'hp' : lastArea)
     ].filter(Boolean));
+    if (resourcesRoot) resourcesRoot.replaceChildren(...[...resources, message('resources')].filter(Boolean));
+    if (defensesRoot) defensesRoot.replaceChildren(...[renderDefensesInline()].filter(Boolean));
   }
 
   async function load() {

@@ -123,7 +123,7 @@
         el('thead', {}, el('tr', {}, [el('th', { text: 'Name' }), el('th', { text: 'Atk Bonus' }), el('th', { text: 'Damage / Type' }), el('th', { text: 'Notes' })])),
         el('tbody', {}, rows)
       ]),
-      el('p', { className: 'muted small', text: 'Weapons at hand in Equipment & Items (and magic weapons worn or held) appear here.' }),
+      el('p', { className: 'muted small sheet-help', text: 'Weapons at hand in Equipment & Items (and magic weapons worn or held) appear here.' }),
       pactWeaponEditor(),
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), text: message }) : null
     ].filter(Boolean));
