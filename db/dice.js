@@ -17,6 +17,42 @@ const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', 
 const MODES = ['normal', 'advantage', 'disadvantage'];
 const MAX_LABEL = 80;
 
+// Dice colours a player picks (when the dice stop rolling well, change them).
+// Each roll keeps the colour it was made with; Owlbear and the panel show it.
+const DICE_COLORS = {
+  red: { name: 'Red', hex: '#e5484d', emoji: '🟥' },
+  orange: { name: 'Orange', hex: '#f76b15', emoji: '🟧' },
+  yellow: { name: 'Yellow', hex: '#f5c518', emoji: '🟨' },
+  green: { name: 'Green', hex: '#30a46c', emoji: '🟩' },
+  blue: { name: 'Blue', hex: '#3e8ef7', emoji: '🟦' },
+  purple: { name: 'Purple', hex: '#9d6ef0', emoji: '🟪' },
+  brown: { name: 'Brown', hex: '#a07553', emoji: '🟫' },
+  white: { name: 'White', hex: '#e8e8e8', emoji: '⬜' },
+  black: { name: 'Black', hex: '#4b4b55', emoji: '⬛' }
+};
+const diceColorView = key => (Object.hasOwn(DICE_COLORS, key) ? { key, ...DICE_COLORS[key] } : null);
+
+function diceColorOf(playerId) {
+  const id = Number(playerId);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const row = db.prepare('SELECT dice_color FROM players WHERE id = ?').get(id);
+  return row && Object.hasOwn(DICE_COLORS, row.dice_color) ? row.dice_color : null;
+}
+
+// color: a DICE_COLORS key, or '' / null for none. Returns the colour view.
+function setDiceColor({ playerId, color }) {
+  const id = Number(playerId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Only player accounts have dice.');
+  const key = color ? String(color) : null;
+  if (key && !Object.hasOwn(DICE_COLORS, key)) throw new Error('Unknown dice colour.');
+  db.prepare('UPDATE players SET dice_color = ? WHERE id = ?').run(key, id);
+  return diceColorView(key);
+}
+
+function diceColorChoices() {
+  return Object.keys(DICE_COLORS).map(diceColorView);
+}
+
 function readSheet(raw) {
   try {
     const parsed = JSON.parse(raw || '{}');
@@ -173,6 +209,25 @@ function rollOptions(character) {
   return options;
 }
 
+// "spelldice:<source key>|<spell>|<slot level>|<n>": the n-th dice in the
+// spell's text, scaled to the slot (cantrips: the character's level) and with
+// the source's spellcasting modifier where the text adds it (rules/spellDice.js).
+function spellDiceOption(character, spec) {
+  const [sourceKey, spellName, level, index] = String(spec).split('|');
+  const sheetData = readSheet(character.sheet_data);
+  const classes = classesOf(character);
+  const source = rules.getSpellSources({ classes, species: character.race, sheetData }).find(entry => entry.key === sourceKey);
+  const spell = rules.findSpell(spellName);
+  if (!source || !spell) throw new Error('That roll is not on this character sheet.');
+  const slotLevel = spell.level === 0 ? 0 : Math.min(9, Math.max(spell.level, Number(level) || spell.level));
+  const characterLevel = classes.reduce((sum, row) => sum + row.level, 0) || character.level || 1;
+  const modifier = source.ability ? rules.abilityModifier(rules.effectiveAbilityScore(sheetData, source.ability)) : 0;
+  const dice = rules.spellDice(spell, { slotLevel, characterLevel, modifier })[Number(index)];
+  if (!dice) throw new Error('That roll is not on this character sheet.');
+  const label = `${spell.name}${spell.level ? ` (level ${slotLevel})` : ''}${dice.type ? ` — ${dice.type}` : ''}`;
+  return { id: 'spelldice', label: label.slice(0, MAX_LABEL), formula: dice.formula, kind: 'damage' };
+}
+
 function loadCharacter(characterId) {
   const id = Number(characterId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid character ID.');
@@ -206,6 +261,8 @@ function rollView(row) {
     text: detail.text,
     // initiative, check, save, attack, damage, custom (Owlbear puts initiative in the tracker).
     kind: detail.kind || null,
+    // The dice colour the roller had picked then (DICE_COLORS), or null.
+    color: diceColorView(detail.color),
     critical: Boolean(detail.critical),
     private: Boolean(row.private),
     createdAt: row.created_at
@@ -224,7 +281,9 @@ function rollForCharacter({ characterId, user, request = {} }) {
   let mode = MODES.includes(request.mode) ? request.mode : 'normal';
   let option;
   if (request.roll) {
-    option = rollOptions(character).get(String(request.roll));
+    option = String(request.roll).startsWith('spelldice:')
+      ? spellDiceOption(character, String(request.roll).slice('spelldice:'.length))
+      : rollOptions(character).get(String(request.roll));
     if (!option) throw new Error('That roll is not on this character sheet.');
     // An item's Advantage / Disadvantage joins the roller's choice; one of
     // each cancels out (2024 rules).
@@ -246,7 +305,7 @@ function rollForCharacter({ characterId, user, request = {} }) {
   }
   const critical = Boolean(request.critical) && (option.kind === 'damage' || option.kind === 'custom');
   const result = rules.rollFormula(option.formula, { mode: option.kind === 'damage' ? 'normal' : mode, critical });
-  const detail = { text: rules.describeRoll(result), natural: result.natural, critical, parts: result.parts, kind: option.kind };
+  const detail = { text: rules.describeRoll(result), natural: result.natural, critical, parts: result.parts, kind: option.kind, color: diceColorOf(user.id) };
   // context: what the roll is for, e.g. "Skill challenge: Escape the gnolls".
   const context = typeof request.context === 'string' && request.context.trim() ? `${request.context.trim()}: ` : '';
   const label = `${context}${critical ? `${option.label} — critical` : option.label}`.slice(0, MAX_LABEL);
@@ -390,13 +449,19 @@ function getVttRolls({ key, after, afterReveal }) {
   const latest = db.prepare('SELECT MAX(id) AS id FROM dice_rolls WHERE player_id = ?').get(row.player_id).id || 0;
   const monsters = require('./encounters').getVttMonsterRolls({ playerId: row.player_id, afterReveal });
   const since = Number(after);
-  if (!Number.isSafeInteger(since) || since < 0) return { player: row.discord_tag, latest, rolls: [], ...monsters };
+  const diceColor = diceColorView(diceColorOf(row.player_id));
+  if (!Number.isSafeInteger(since) || since < 0) return { player: row.discord_tag, diceColor, latest, rolls: [], ...monsters };
   const rolls = db.prepare(`${ROLL_QUERY} WHERE r.player_id = ? AND r.id > ? ORDER BY r.id LIMIT 20`)
     .all(row.player_id, since).map(rollView);
-  return { player: row.discord_tag, latest, rolls, ...monsters };
+  return { player: row.discord_tag, diceColor, latest, rolls, ...monsters };
 }
 
 module.exports = {
+  DICE_COLORS,
+  diceColorOf,
+  setDiceColor,
+  diceColorChoices,
+  diceColorView,
   rollOptions,
   rollForCharacter,
   getRecentRolls,

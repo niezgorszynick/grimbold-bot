@@ -31,7 +31,10 @@ export function detail(text) {
 export function rollList(log) {
   if (!log.length) return el('p', { className: 'muted', text: 'No rolls yet.' });
   return el('ol', { className: 'rolls' }, log.map(roll => el('li', {
-    className: [roll.private ? 'private' : '', roll.natural === 20 ? 'nat20' : roll.natural === 1 ? 'nat1' : ''].join(' ').trim()
+    className: [roll.private ? 'private' : '', roll.natural === 20 ? 'nat20' : roll.natural === 1 ? 'nat1' : '', roll.color ? 'colored' : ''].join(' ').trim(),
+    // The roller's dice colour (picked in the panel or the Dice window).
+    style: roll.color ? `--dice: ${roll.color.hex}` : null,
+    title: roll.color ? `${roll.color.name} dice` : null
   }, [
     el('span', { className: 'total', text: String(roll.total) }),
     el('strong', { text: roll.character }), ' — ', roll.label,
@@ -50,6 +53,8 @@ export const ROLLS_CSS = `
   .total { font-size: 18px; font-weight: bold; float: right; margin-left: 8px; }
   .nat20 .total { color: #23a55a; }
   .nat1 .total { color: #f23f43; }
+  li.colored { border-left: 4px solid var(--dice); }
+  li.colored:not(.nat20):not(.nat1) .total { color: var(--dice); }
   .detail { color: #a3a3a3; font-size: 11px; }
   s { opacity: .6; }
 `;

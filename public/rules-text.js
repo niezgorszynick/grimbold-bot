@@ -13,13 +13,32 @@
     return node;
   }
 
+  // Same pattern as rules/spellDice.js, so the n-th dice here is the n-th there.
+  const DICE = /\b(\d+)d(\d+)\b(?:\s*\+\s*(\d+)\b)?/g;
+  // Plain text, or with options.dice(token, index) → a node for each dice
+  // expression, numbered in reading order across the whole text.
+  let diceHook = null;
+  let diceIndex = 0;
+  function plain(text) {
+    if (!diceHook) return [text];
+    const out = [];
+    let last = 0;
+    for (const match of text.matchAll(DICE)) {
+      if (match.index > last) out.push(text.slice(last, match.index));
+      out.push(diceHook(match[0], diceIndex++) || match[0]);
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  }
+
   // **bold** and *italic* inside a line, as nodes.
   function inline(text) {
     const parts = [];
     String(text).split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/).forEach(part => {
-      if (/^\*\*[^*]+\*\*$/.test(part)) parts.push(el('strong', '', [part.slice(2, -2)]));
-      else if (/^\*[^*]+\*$/.test(part)) parts.push(el('em', '', [part.slice(1, -1)]));
-      else if (part) parts.push(document.createTextNode(part));
+      if (/^\*\*[^*]+\*\*$/.test(part)) parts.push(el('strong', '', plain(part.slice(2, -2))));
+      else if (/^\*[^*]+\*$/.test(part)) parts.push(el('em', '', plain(part.slice(1, -1))));
+      else if (part) parts.push(...plain(part));
     });
     return parts;
   }
@@ -68,7 +87,14 @@
     return out;
   }
 
-  window.renderRulesText = function renderRulesText(text, className) {
-    return el('div', className || 'spell-text', blocks(text));
+  // options.dice(token, index): see plain() (spell dice you can click).
+  window.renderRulesText = function renderRulesText(text, className, options) {
+    diceHook = (options && options.dice) || null;
+    diceIndex = 0;
+    try {
+      return el('div', className || 'spell-text', blocks(text));
+    } finally {
+      diceHook = null;
+    }
   };
 })();

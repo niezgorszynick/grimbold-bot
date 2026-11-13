@@ -24,6 +24,11 @@
     .total { font-size: 18px; font-weight: bold; float: right; margin-left: 8px; }
     .nat20 .total { color: #23a55a; }
     .nat1 .total { color: #f23f43; }
+    li.colored { border-left: 4px solid var(--dice); }
+    li.colored:not(.nat20):not(.nat1) .total { color: var(--dice); }
+    .dice-colors { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 10px; }
+    .dice-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--dice); }
+    .dice-swatch.is-on { border-color: #fff; box-shadow: 0 0 0 2px var(--dice); }
     .detail { color: #a3a3a3; font-size: 11px; }
     s { opacity: .6; }
     .row label { display: block; }

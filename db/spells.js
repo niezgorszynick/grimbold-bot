@@ -44,6 +44,28 @@ function vitalsFor(spellChar) {
   return { context, vitals: rules.normalizeVitals(spellChar.sheetData, context.hpMax) };
 }
 
+// The dice in each spell's text, scaled per slot level (rules/spellDice.js):
+// { sourceKey: { spell: { slotLevel: [formula, ...] } } }, for the clickable
+// dice in the spell text and the concentration bar.
+function spellDiceView(spellChar, sources) {
+  const characterLevel = spellChar.classes.reduce((sum, row) => sum + (row.level || 0), 0) || 1;
+  const out = {};
+  for (const source of sources) {
+    const modifier = source.ability ? rules.abilityModifier(rules.effectiveAbilityScore(spellChar.sheetData, source.ability)) : 0;
+    const names = new Set([...(source.cantrips || []), ...(source.prepared || []), ...(source.alwaysPrepared || []),
+      ...(source.spellbook || []).map(entry => entry.name)]);
+    const spells = {};
+    for (const name of names) {
+      const spell = rules.findSpell(name);
+      if (!spell || !rules.spellDice(spell, { slotLevel: spell.level, characterLevel, modifier }).length) continue;
+      spells[name] = Object.fromEntries(rules.spellDiceLevels(spell).map(level => [level,
+        rules.spellDice(spell, { slotLevel: level, characterLevel, modifier }).map(entry => entry.formula)]));
+    }
+    out[source.key] = spells;
+  }
+  return out;
+}
+
 function buildView(character, sheetData) {
   const spellChar = spellCharacter(character, sheetData);
   const view = rules.buildSpellsView(spellChar, rules.readSpellcasting(sheetData));
@@ -66,7 +88,7 @@ function buildView(character, sheetData) {
       Array.from({ length: 10 }, (_, slot) => [slot, rules.buffTargeting(name, slot).max]).map(([slot, max]) => [slot, Number.isFinite(max) ? max : 99])
     ) }];
   }));
-  return { ...view, slots, pact, goldCp: character.gold_cp, buffs, buffTargets: Object.keys(buffs).length ? buffTargets(character.id) : [] };
+  return { ...view, slots, pact, goldCp: character.gold_cp, buffs, buffTargets: Object.keys(buffs).length ? buffTargets(character.id) : [], spellDice: spellDiceView(spellChar, view.sources) };
 }
 
 function getCharacterSpells({ id, player_id, is_admin }) {
@@ -107,9 +129,13 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
     const sheetData = readSheet(character.sheet_data);
     const spellChar = spellCharacter(character, sheetData);
     const result = rules.castSpell(rules.readSpellcasting(sheetData), rules.getSpellSources(spellChar), request || {});
-    // Each Concentration casting gets an id, so spells it put on others end with it.
+    const slotLevel = result.slotChange && result.slotChange.level === 'pact'
+      ? (rules.getSpellSlots(spellChar.classes).pact || {}).slotLevel || result.spell.level
+      : result.slotChange ? result.slotChange.level : result.spell.level;
+    // Each Concentration casting gets an id, so spells it put on others end with it;
+    // its slot level scales the damage it deals later (Moonbeam, Spirit Guardians).
     const state = result.events.includes('concentrating')
-      ? { ...result.state, concentration: { ...result.state.concentration, castId: crypto.randomUUID() } }
+      ? { ...result.state, concentration: { ...result.state.concentration, castId: crypto.randomUUID(), slotLevel } }
       : result.state;
     let nextSheet = { ...sheetData, spellcasting: state };
     if (result.slotChange) {
@@ -124,9 +150,6 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
       nextSheet = { ...nextSheet, ...outcome.vitals };
     }
     let buffedTargets = [];
-    const slotLevel = result.slotChange && result.slotChange.level === 'pact'
-      ? (rules.getSpellSlots(spellChar.classes).pact || {}).slotLevel || result.spell.level
-      : result.slotChange ? result.slotChange.level : result.spell.level;
     // False Life, Armor of Agathys: Temporary Hit Points on casting. Cast with
     // Fiendish Vigor (an invocation, no slot), False Life's dice roll their highest.
     let tempHp = null;
@@ -148,7 +171,7 @@ function castCharacterSpell({ id, player_id, is_admin, request }) {
     }
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
     return {
-      spell: result.spell.name, events: result.events, slotChange: result.slotChange, targets: buffedTargets, tempHp,
+      spell: result.spell.name, slotLevel, events: result.events, slotChange: result.slotChange, targets: buffedTargets, tempHp,
       // E.g. a Death Point's extra effect, to show with the cast.
       note: (result.resourceCost && result.resourceCost.note) || null,
       spells: buildView(character, nextSheet)

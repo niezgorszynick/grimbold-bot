@@ -67,12 +67,49 @@
     if (formula.value.trim() && target) roll(target.dataset.rollCharacter, { formula: formula.value.trim(), label: formula.value.trim() });
   });
   const keyButton = el('button', { type: 'button', className: 'btn btn-small btn-secondary', text: 'Owlbear key', onclick: showKey });
+  // Dice colour: when the dice stop rolling well, change them. Each roll keeps
+  // the colour it was made with (Owlbear and the dice bar show it).
+  let diceColor = null;
+  let diceChoices = [];
+  const colorButton = el('button', { type: 'button', className: 'btn btn-small btn-secondary dice-color-button', text: 'Dice colour', onclick: () => { colorRow.hidden = !colorRow.hidden; } });
+  const colorRow = el('div', { className: 'dice-bar-row dice-colors', hidden: true });
+  function renderColors() {
+    colorButton.style.setProperty('--dice', diceColor ? diceColor.hex : 'transparent');
+    colorButton.classList.toggle('has-color', Boolean(diceColor));
+    colorButton.title = diceColor ? diceColor.name + ' dice. Click to change.' : 'Pick a dice colour';
+    colorRow.replaceChildren(...diceChoices.map(choice => el('button', {
+      type: 'button', className: 'dice-swatch' + (diceColor && diceColor.key === choice.key ? ' is-on' : ''),
+      style: '--dice: ' + choice.hex, 'aria-label': choice.name + ' dice',
+      title: choice.name + (diceColor && diceColor.key === choice.key ? ' (yours now; click to go back to none)' : ''),
+      onclick: () => saveColor(diceColor && diceColor.key === choice.key ? null : choice.key)
+    })));
+  }
+  async function saveColor(color) {
+    try {
+      const response = await fetch('/api/dice-color', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ color }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not change the dice colour.');
+      diceColor = data.color;
+      colorRow.hidden = true;
+      result.replaceChildren(el('span', { className: 'muted small', text: diceColor ? 'New dice: ' + diceColor.name + '. May they roll better.' : 'Dice colour cleared.' }));
+    } catch (error) {
+      result.replaceChildren(el('span', { className: 'sheet-message is-error', text: error.message }));
+    }
+    renderColors();
+  }
+  fetch('/api/dice-color', { cache: 'no-store' }).then(response => (response.ok ? response.json() : null)).then(data => {
+    if (!data) return;
+    diceColor = data.color;
+    diceChoices = data.choices || [];
+    renderColors();
+  }).catch(() => { /* no colour picker */ });
   const collapse = el('button', { type: 'button', className: 'dice-collapse', text: '–', title: 'Hide the dice bar', onclick: () => { bar.classList.toggle('is-collapsed'); collapse.textContent = bar.classList.contains('is-collapsed') ? '🎲' : '–'; } });
   const bar = el('aside', { className: 'dice-bar', 'aria-label': 'Dice' }, [
     el('div', { className: 'dice-bar-row' }, [el('strong', { text: '🎲 Dice' }), el('span', { className: 'dice-toggles' }, [...modeButtons, critButton, privateButton]), collapse]),
     monstersRow,
     result,
-    el('div', { className: 'dice-bar-row' }, [singleCharacter ? customForm : null, keyButton])
+    el('div', { className: 'dice-bar-row' }, [singleCharacter ? customForm : null, colorButton, keyButton]),
+    colorRow
   ]);
   document.body.append(bar);
   // Phones: start as the slim bottom bar (a roll opens it to show the result).
@@ -99,8 +136,10 @@
     String(rollResult.text || '').split(/(~~\d+~~)/).forEach(part => {
       textNode.append(/^~~\d+~~$/.test(part) ? el('s', { text: part.slice(2, -2) }) : document.createTextNode(part));
     });
+    result.style.setProperty('--dice', rollResult.color ? rollResult.color.hex : 'transparent');
+    result.classList.toggle('is-colored', Boolean(rollResult.color));
     result.replaceChildren(
-      el('div', { className: 'dice-total' + nat, text: String(rollResult.total) }),
+      el('div', { className: 'dice-total' + nat, text: String(rollResult.total), title: rollResult.color ? rollResult.color.name + ' dice' : null }),
       el('div', {}, [
         el('strong', { text: rollResult.character }), ' — ' + rollResult.label,
         rollResult.mode !== 'normal' ? el('span', { className: 'muted small', text: ' (' + rollResult.mode + ')' }) : null,

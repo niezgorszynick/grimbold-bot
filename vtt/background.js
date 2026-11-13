@@ -67,7 +67,7 @@ OBR.onReady(async () => {
         store.setStatus({ ok: false, error: data.error || 'The panel did not accept the key.' });
         return;
       }
-      store.setStatus({ ok: true, player: data.player, at: Date.now() });
+      store.setStatus({ ok: true, player: data.player, diceColor: data.diceColor || null, at: Date.now() });
       // Monster rolls the DM revealed (their key only): sent like any roll.
       if (afterReveal === null) {
         store.setAfterReveal(data.latestReveal || 0);

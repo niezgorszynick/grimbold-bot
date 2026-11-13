@@ -151,6 +151,48 @@ function challengeLine() {
   ]);
 }
 
+// Dice colour: a click on a swatch changes it for this player's next rolls
+// (the same setting as the panel's dice bar).
+let diceChoices = [];
+let colorError = '';
+async function loadDiceChoices() {
+  try {
+    const response = await fetch(new URL('/vtt/dice-color', window.location.origin), { cache: 'no-store' });
+    diceChoices = (await response.json()).choices || [];
+  } catch (error) {
+    diceChoices = [];
+  }
+  render();
+}
+async function pickDiceColor(color) {
+  try {
+    const response = await fetch(new URL('/vtt/dice-color', window.location.origin), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: store.key(), color })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not change the dice colour.');
+    colorError = '';
+    store.setStatus({ ...(store.status() || {}), diceColor: data.color });
+  } catch (error) {
+    colorError = error.message;
+  }
+  render();
+}
+function diceColorRow() {
+  if (!diceChoices.length) return null;
+  const current = (store.status() || {}).diceColor;
+  return el('div', { className: 'dice-colors' }, [
+    el('span', { className: 'muted', text: 'Dice colour: ' }),
+    ...diceChoices.map(choice => el('button', {
+      type: 'button', className: 'dice-swatch' + (current && current.key === choice.key ? ' is-on' : ''),
+      style: `--dice: ${choice.hex}`, title: choice.name + (current && current.key === choice.key ? ' (yours now; click to go back to none)' : ''),
+      'aria-label': choice.name + ' dice',
+      onclick: () => pickDiceColor(current && current.key === choice.key ? null : choice.key)
+    })),
+    colorError ? el('span', { className: 'muted', text: ' ' + colorError }) : null
+  ]);
+}
+
 function render() {
   const key = store.key();
   const status = store.status();
@@ -183,6 +225,7 @@ function render() {
         el('button', { type: 'button', className: 'secondary', text: 'Disconnect', onclick: () => { store.setKey(''); render(); } })
       ])
     ]));
+    parts.push(diceColorRow());
   }
   parts.push(challengeLine());
   parts.push(encounterSection());
@@ -206,6 +249,7 @@ onStoreChange(name => {
   render();
 });
 render();
+loadDiceChoices();
 OBR.onReady(async () => {
   isGm = (await OBR.player.getRole()) === 'GM';
   OBR.player.onChange(player => {

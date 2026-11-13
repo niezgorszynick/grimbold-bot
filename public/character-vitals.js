@@ -96,7 +96,7 @@
   }
 
   // "effectStarted:rage" → "Rage is on: the attacks include it."
-  const RESOURCE_ACTIONS = ['shortRest', 'longRest', 'useResource', 'restoreResource', 'secondWind', 'spendSlot', 'restoreSlot', 'startEffect', 'endEffect'];
+  const RESOURCE_ACTIONS = ['shortRest', 'longRest', 'setHitDice', 'useResource', 'restoreResource', 'secondWind', 'spendSlot', 'restoreSlot', 'startEffect', 'endEffect'];
   let lastArea = 'hp';
   // Damage / heal / temp HP behind "± HP"; remembered in this browser.
   let hpActionsOpen = (() => { try { return localStorage.getItem('grimbold.hpActions') !== 'closed'; } catch { return true; } })();
@@ -247,16 +247,39 @@
     ]);
   }
 
+  // The Hit Point Die whose "left" count is being set by hand (its die), or null.
+  let editingHitDie = null;
+
   function renderRests() {
     const spendInputs = {};
     const rows = vitals.hitDice.map(entry => {
       const remaining = entry.total - entry.spent;
+      if (editingHitDie === entry.die) {
+        const left = el('input', { type: 'number', min: '0', max: String(entry.total), value: String(remaining), 'aria-label': entry.die + ' Hit Point Dice left' });
+        const save = () => {
+          const value = Number(left.value);
+          editingHitDie = null;
+          send('setHitDice', { die: entry.die, remaining: value });
+        };
+        left.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); save(); } });
+        return el('div', { className: 'vitals-hitdie' }, [
+          el('strong', { text: entry.die }),
+          el('label', { className: 'vitals-inline' }, [left, ' / ' + entry.total + ' left']),
+          button('Save', save),
+          button('Cancel', () => { editingHitDie = null; render(); })
+        ]);
+      }
       const input = el('input', { type: 'number', min: '0', max: String(remaining), value: '0', 'aria-label': 'Spend ' + entry.die });
       input.disabled = remaining === 0;
       spendInputs[entry.die] = input;
       return el('div', { className: 'vitals-hitdie' }, [
         el('strong', { text: entry.die }),
-        el('span', { className: 'muted', text: remaining + ' / ' + entry.total + ' left' }),
+        // Click to set how many are left (spent outside a rest, or put back); no healing.
+        el('button', {
+          type: 'button', className: 'link-button vitals-hitdie-count', text: remaining + ' / ' + entry.total + ' left',
+          title: 'Change how many ' + entry.die + ' Hit Point Dice are left (no healing)',
+          onclick: () => { editingHitDie = entry.die; render(); }
+        }),
         el('label', { className: 'vitals-inline' }, ['Spend ', input])
       ]);
     });

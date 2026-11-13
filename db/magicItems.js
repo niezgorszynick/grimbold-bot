@@ -180,7 +180,7 @@ function administerPotion(character, sheetData, params, user) {
     INSERT INTO dice_rolls (character_id, player_id, label, formula, mode, total, detail, private)
     VALUES (?, ?, ?, ?, 'normal', ?, ?, 0)
   `).run(character.id, Number(user) > 0 ? Number(user) : null, label, roll.formula, roll.total,
-    JSON.stringify({ text, natural: null, critical: false, parts: roll.parts, kind: 'damage' }));
+    JSON.stringify({ text, natural: null, critical: false, parts: roll.parts, kind: 'damage', color: require('./dice').diceColorOf(user) }));
 
   // Heal the target (the drinker's own sheet is saved with the used-up potion).
   const healSheet = (owner, ownerSheet) => {

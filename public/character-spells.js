@@ -37,8 +37,8 @@
 
   // Minimal Markdown for spell text: paragraphs, **bold**, *italic*, bullets.
   // Paragraphs, **bold**, *italic*, bullets and tables (public/rules-text.js).
-  function renderText(text) {
-    if (window.renderRulesText) return window.renderRulesText(text);
+  function renderText(text, options) {
+    if (window.renderRulesText) return window.renderRulesText(text, undefined, options);
     const wrap = el('div', { className: 'spell-text' });
     wrap.append(el('p', { text: String(text || '') }));
     return wrap;
@@ -60,6 +60,28 @@
   let invocationTexts = {};
   let creationRules = null; // origin feats, skills and tools for Lessons of the First Ones
   const openDetails = new Set();
+  // The cast option picked in each spell's dropdown (key → index), kept
+  // through redraws so its dice stay at that slot level.
+  const chosenCast = new Map();
+
+  // The spell's dice as roll links, scaled to slotLevel (view.spellDice from
+  // rules/spellDice.js); the server rolls the same n-th dice.
+  function diceLinks(source, spell, slotLevel) {
+    const levels = (view.spellDice && view.spellDice[source.key] || {})[spell.name];
+    const formulas = levels && (levels[spell.level === 0 ? 0 : slotLevel] || levels[spell.level]);
+    if (!formulas) return null;
+    return (token, index) => {
+      const formula = formulas[index];
+      if (!formula) return null;
+      const scaled = formula !== token.replace(/\s+/g, '');
+      return el('button', {
+        type: 'button', className: 'roll-link spell-dice',
+        'data-roll': 'spelldice:' + source.key + '|' + spell.name + '|' + slotLevel + '|' + index,
+        title: 'Roll ' + formula + (spell.level ? ' (level ' + slotLevel + ' slot)' : '') + (scaled ? '; the text says ' + token : ''),
+        text: formula
+      });
+    };
+  }
 
   function field(label, control) {
     return el('label', { className: 'creator-field' }, [el('span', { text: label }), control]);
@@ -221,6 +243,8 @@
       extraTag
     ].filter(Boolean);
     const controls = el('span', { className: 'spell-cast' });
+    // The slot level the dice in the text are shown at: the dropdown's choice.
+    let diceLevel = spell.level;
     if (canCast) {
       if (spell.level === 0) {
         controls.append(button('Cast', () => startCast(source, spell, {})));
@@ -229,6 +253,11 @@
         if (options.length) {
           const select = el('select', { 'aria-label': 'How to cast ' + spell.name });
           options.forEach((option, index) => select.add(new Option(option.label, String(index))));
+          const picked = chosenCast.get(key);
+          if (picked !== undefined && picked < options.length) select.value = String(picked);
+          diceLevel = slotLevelOf(spell, options[Number(select.value)].value);
+          // Another slot level changes the dice in the text.
+          select.addEventListener('change', () => { chosenCast.set(key, Number(select.value)); render(); });
           controls.append(select, button('Cast', () => startCast(source, spell, options[Number(select.value)].value)));
         } else {
           controls.append(el('span', { className: 'muted small', text: source.slotless ? 'Used — returns after a Long Rest' : 'No slots left' }));
@@ -238,7 +267,7 @@
     const details = openDetails.has(key)
       ? el('div', { className: 'spell-details' }, [
         el('p', { className: 'muted small', text: [spell.school, spell.castingTime, spell.range, spell.components && spell.components.text, spell.duration].filter(Boolean).join(' · ') }),
-        renderText(spell.description),
+        renderText(spell.description, { dice: diceLinks(source, spell, diceLevel) }),
         spell.higherLevels ? el('p', {}, [el('strong', { text: 'Using a Higher-Level Spell Slot. ' }), spell.higherLevels]) : null,
         spell.cantripUpgrade ? el('p', {}, [el('strong', { text: 'Cantrip Upgrade. ' }), spell.cantripUpgrade]) : null
       ])
@@ -689,6 +718,27 @@
     ]);
   }
 
+  // Moonbeam, Spirit Guardians, Hex: damage that comes again while the spell
+  // lasts, at the level it was cast with.
+  function concentrationDice(concentration) {
+    const source = view.sources.find(entry => entry.key === concentration.source);
+    const spell = catalog[concentration.spell];
+    if (!source || !spell) return null;
+    const level = spell.level === 0 ? 0 : (concentration.slotLevel || spell.level);
+    const link = diceLinks(source, spell, level);
+    if (!link) return null;
+    const tokens = [...String(spell.description || '').matchAll(/\b(\d+)d(\d+)\b(?:\s*\+\s*(\d+)\b)?/g)];
+    const links = tokens.map((match, index) => link(match[0], index)).filter(Boolean);
+    // The same dice twice (Spirit Guardians' Radiant or Necrotic): show it once.
+    const seen = new Set();
+    const unique = links.filter(node => !seen.has(node.textContent) && seen.add(node.textContent));
+    if (!unique.length) return null;
+    return el('span', { className: 'spell-concentration-dice' }, [
+      spell.level ? el('span', { className: 'muted small', text: 'level ' + level + ':' }) : null,
+      ...unique
+    ]);
+  }
+
   function render() {
     if (!view) return;
     root.hidden = view.sources.length === 0 && !view.invocations;
@@ -700,6 +750,7 @@
       view.concentration
         ? el('div', { className: 'spell-concentration' }, [
           el('span', {}, ['Concentrating on ', el('strong', { text: view.concentration.spell })]),
+          concentrationDice(view.concentration),
           button('End concentration', () => act({ action: 'endConcentration' }, () => 'Concentration ended.')),
           concentrationSaves(view.concentration)
         ])

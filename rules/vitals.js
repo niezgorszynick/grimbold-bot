@@ -184,6 +184,16 @@ function shortRest(vitals, spend, { hpMax, hitDicePool, conModifier, rng }) {
   return { vitals: next, events: ['shortRest'], rolls, healed };
 }
 
+// Hit Point Dice left, set by hand ({ die: 'd8', remaining: 3 }): spent
+// outside a Short Rest, or put back. No healing; the Short Rest heals.
+function setHitDice(vitals, { die, remaining }, { hitDicePool }) {
+  const total = hitDicePool[die];
+  if (!total) throw new Error(`This character has no ${die} Hit Point Dice.`);
+  const left = Number(remaining);
+  if (!Number.isInteger(left) || left < 0 || left > total) throw new Error(`Hit Point Dice left must be a whole number from 0 to ${total}.`);
+  return { vitals: { ...vitals, hitDiceSpent: { ...vitals.hitDiceSpent, [die]: total - left } }, events: [] };
+}
+
 // Long Rest: full HP, all Hit Point Dice and spell slots back, Temporary HP
 // end, Exhaustion drops by 1. Requires at least 1 Hit Point to start.
 function longRest(vitals, { hpMax }) {
@@ -427,6 +437,7 @@ const ACTIONS = {
   clearTempHp: vitals => clearTempHp(vitals),
   deathSave: (vitals, params, context) => deathSave(vitals, { roll: params.roll, rng: context.rng }),
   stabilize: vitals => stabilize(vitals),
+  setHitDice: (vitals, params, context) => setHitDice(vitals, params, context),
   shortRest: (vitals, params, context) => endAllEffects(withRecovery(shortRest(vitals, params.hitDice, context), vitals, context, 'short')),
   longRest: (vitals, params, context) => {
     // A Long Rest outlasts any Wild Shape.

@@ -145,7 +145,7 @@ export function onStoreChange(callback) {
 export function describe(roll) {
   const extra = roll.natural === 20 ? ' — natural 20!' : roll.natural === 1 ? ' — natural 1' : '';
   const mode = roll.mode === 'advantage' ? ' (advantage)' : roll.mode === 'disadvantage' ? ' (disadvantage)' : '';
-  return `${roll.private ? '🔒 ' : ''}${roll.character} — ${roll.label}${mode}: ${roll.total}${extra}`;
+  return `${roll.private ? '🔒 ' : ''}${roll.color ? `${roll.color.emoji} ` : ''}${roll.character} — ${roll.label}${mode}: ${roll.total}${extra}`;
 }
 
 // ─── Owlbear's own Initiative Tracker ─────────────────────────────────────

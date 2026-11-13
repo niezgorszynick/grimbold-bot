@@ -1287,3 +1287,13 @@ html { scrollbar-gutter: stable; }
 /* Healing potion: who gets it, after Action or Bonus Action (character-magic-items.js). */
 .potion-form { margin: 4px 0 6px; }
 .potion-form select { padding: 3px 6px; font-size: 12px; }
+/* Spell dice you can click: in the spell text and beside the concentration (character-spells.js). */
+.spell-concentration-dice { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-left: 8px; }
+/* Dice colour (public/dice.js): the picker and the colour of the last roll. */
+.dice-color-button.has-color { box-shadow: inset 4px 0 0 var(--dice); }
+.dice-colors { justify-content: flex-start; gap: 5px; }
+.dice-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--dice); cursor: pointer; }
+.dice-swatch.is-on { border-color: #fff; box-shadow: 0 0 0 2px var(--dice); }
+.dice-result.is-colored { border-left: 4px solid var(--dice); padding-left: 6px; }
+.dice-result.is-colored .dice-total:not(.nat20):not(.nat1) { color: var(--dice); }
+.vitals-hitdie-count { color: #b5bac1; text-decoration: underline dotted; }

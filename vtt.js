@@ -11,7 +11,7 @@ const express = require('express');
 const db = require('./db');
 
 const router = express.Router();
-const VERSION = '1.6.1';
+const VERSION = '1.7.0';
 
 router.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -45,6 +45,27 @@ router.get('/rolls', (req, res) => {
     return res.json(db.getVttRolls({ key: req.query.key, after: req.query.after, afterReveal: req.query.afterReveal }));
   } catch (error) {
     return res.status(401).json({ error: error.message });
+  }
+});
+
+// The key's player picks a dice colour from Owlbear: { key, color } → { color, choices }.
+router.get('/dice-color', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.json({ choices: db.diceColorChoices() });
+});
+router.post('/dice-color', express.json(), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  let player;
+  try {
+    player = db.vttPlayerForKey(body.key);
+  } catch (error) {
+    return res.status(401).json({ error: error.message });
+  }
+  try {
+    return res.json({ color: db.setDiceColor({ playerId: player.player_id, color: body.color }), choices: db.diceColorChoices() });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });
 

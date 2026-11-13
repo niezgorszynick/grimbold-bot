@@ -673,6 +673,23 @@ router.get('/vtt/key', (req, res) => {
   }
 });
 
+// Dice colour: { color: key | null, choices: [{ key, name, hex, emoji }] }.
+// POST { color } changes it (empty: none).
+router.get('/dice-color', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  return res.json({ color: db.diceColorView(db.diceColorOf(user.id)), choices: db.diceColorChoices() });
+});
+router.post('/dice-color', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ color: db.setDiceColor({ playerId: user.id, color: (req.body || {}).color }), choices: db.diceColorChoices() });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 router.post('/vtt/key', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });

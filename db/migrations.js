@@ -1090,6 +1090,15 @@ const MIGRATIONS = [
         WHERE status = 'completed' AND (dm_character_id IS NOT NULL OR dm_player_id IS NOT NULL);
       `);
     }
+  },
+  {
+    // A player's dice colour (db/dice.js DICE_COLORS), changed when the dice
+    // stop rolling well; each roll keeps the colour it was made with.
+    version: 36,
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(players)').all().map(column => column.name));
+      if (!columns.has('dice_color')) db.exec('ALTER TABLE players ADD COLUMN dice_color TEXT');
+    }
   }
 ];
 
