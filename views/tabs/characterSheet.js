@@ -447,7 +447,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
     : '';
   contentHtml = `
     <script src="/admin/assets/feature-choices.js"></script>
-    <section class="card">
+    <section class="card sheet-intro">
       <h3>${isAdmin ? 'Campaign Characters' : 'Your Characters'}</h3>
       ${canManageOwnCharacters
         ? `${isAdmin ? '' : '<p class="muted">Create a character or edit your existing character details below.</p>'}${req.query.edit_char ? '' : `<button id="open-character-creator" class="btn btn-green" type="button">+ Create New Character</button><section id="character-creator-view" class="card" hidden><div class="sheet-section-heading"><h4>Create New Character</h4><button id="close-character-creator" class="btn btn-secondary" type="button">Cancel</button></div><div id="character-creator-root"></div><script src="/admin/assets/character-creator.js" defer></script></section>`}`

@@ -510,6 +510,8 @@
   function render() {
     if (!vitals) return;
     syncInspiration();
+    // The phone bar at the top of the sheet shows HP too (public/sheet-sections.js).
+    document.dispatchEvent(new CustomEvent('grimbold-vitals', { detail: { hpCurrent: vitals.hpCurrent, hpMax: vitals.hpMax, hpTemp: vitals.hpTemp } }));
     // Optional sections return null; replaceChildren would render that as text.
     const message = area => (lastArea === area && lastMessage
       ? el('p', { className: 'sheet-message' + (lastIsError ? ' is-error' : ''), role: 'status', text: lastMessage })
