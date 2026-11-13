@@ -39,7 +39,7 @@ module.exports = {
             `*Grimbold waves you off.*\n"You already tried your luck this week, ${interaction.user}. Come back Monday."\n\n` +
             `Your roll: **${existing}** — ${modifier.label}\n${modDesc}`
           )
-          .setFooter({ text: 'Resets every Monday at midnight UTC' });
+          .setFooter({ text: 'Resets every Monday at midnight (Polish time)' });
 
         return await interaction.editReply({ embeds: [embed] });
       }
@@ -82,7 +82,7 @@ module.exports = {
             '`11–13` → −5%  •  `2–10` → 0%  •  `1` → **+10%**',
           inline: false,
         })
-        .setFooter({ text: 'One roll per week • Resets Monday midnight UTC • Use /show to see your personal prices' });
+        .setFooter({ text: 'One roll per week • Resets Monday at midnight (Polish time) • Use /show to see your personal prices' });
 
       await interaction.editReply({ embeds: [embed] });
 

@@ -58,13 +58,23 @@ function addToSheet(sheetJson, itemName, quantity, source = 'shop') {
   return JSON.stringify({ ...sheet, inventory });
 }
 
+// For the Discord receipt: total level and "Druid" (or "Fighter 3 / Wizard 2").
+function levelAndClass(character) {
+  const rows = db.getCharacterClasses(character.id);
+  if (!rows.length) return { level: character.level || 1, class: character.class || null };
+  return {
+    level: rows.reduce((sum, row) => sum + row.class_level, 0),
+    class: rows.length > 1 ? rows.map(row => `${row.class_name} ${row.class_level}`).join(' / ') : rows[0].class_name
+  };
+}
+
 function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag, buyerDiscordId, giftToCharacterId = null, giftNote = '' }) {
   const qty = Number(quantity);
   if (!Number.isSafeInteger(qty) || qty <= 0) throw new PurchaseError('Invalid quantity.');
 
   return db.transaction(() => {
     const character = db.prepare(`
-      SELECT id, name, player_id, status, gold_cp, sheet_data
+      SELECT id, name, player_id, status, gold_cp, sheet_data, level, class
       FROM characters
       WHERE id = ?
     `).get(Number(characterId));
@@ -136,7 +146,7 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
 
     return {
       item,
-      character: { id: character.id, name: character.name, gold_cp: character.gold_cp - dueCp },
+      character: { id: character.id, name: character.name, gold_cp: character.gold_cp - dueCp, ...levelAndClass(character) },
       depositUsedCp,
       refundedReservation: refunded,
       quantity: qty,

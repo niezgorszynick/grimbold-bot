@@ -91,6 +91,8 @@ test('buying a gift at the counter: the buyer pays, the other sheet gets it', ()
   assert.throws(() => shop.purchaseItem({ itemName: 'Gift Candle', characterId: kael, playerId: ola, giftToCharacterId: kael }), /themselves/);
   const result = shop.purchaseItem({ itemName: 'Gift Candle', quantity: 2, characterId: kael, playerId: ola, buyerTag: 'ola', giftToCharacterId: brin, giftNote: 'Happy name day!' });
   assert.equal(result.character.gold_cp, 400);
+  // The Discord receipt names the level and class ("Lvl 3 Fighter").
+  assert.deepEqual([result.character.level, result.character.class], [3, 'Fighter']);
   assert.equal(db.getCharacterById(kael).gold_cp, 400, 'the buyer pays');
   assert.equal(sheetOf(kael).inventory, undefined, 'and gets nothing');
   assert.deepEqual(sheetOf(brin).inventory, [{ name: 'Gift Candle', quantity: 2, source: 'gift' }]);
@@ -107,4 +109,15 @@ test('giving one of two torches keeps the other', () => {
   db.giveItem({ characterId: kael, user: { id: ola, role: 'player' }, request: { toCharacterId: brin, kind: 'item', index: 0, name: 'Torch', quantity: 1 } });
   assert.deepEqual(sheetOf(kael).inventory, [{ name: 'Torch', quantity: 1, source: 'catalog' }]);
   assert.deepEqual(sheetOf(brin).inventory, [{ name: 'Torch', quantity: 1, source: 'catalog' }]);
+});
+
+test('the purchase receipt counts every class level of a multiclass character', () => {
+  const ola = createPlayer();
+  const kael = addCharacter(ola, 'Kael', { goldCp: 1000 });
+  const addClass = (name, level) => db.prepare('INSERT INTO character_classes (character_id, class_name, subclass_name, class_level) VALUES (?, ?, NULL, ?)').run(kael, name, level);
+  addClass('Fighter', 3);
+  addClass('Wizard', 2);
+  db.addItem({ name: 'Receipt Candle', category: 'Gear', price: 100, stock: 5, description: 'A plain candle.' });
+  const result = shop.purchaseItem({ itemName: 'Receipt Candle', characterId: kael, playerId: ola, buyerTag: 'ola' });
+  assert.deepEqual([result.character.level, result.character.class], [5, 'Fighter 3 / Wizard 2']);
 });

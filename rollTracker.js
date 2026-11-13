@@ -1,12 +1,15 @@
 // rollTracker.js — persists weekly d20 rolls per Discord user in SQLite
 const db = require('./db');
 
-// ─── week key (resets every Monday) ──────────────────────────────────────────
-function getWeekKey() {
-  const now = new Date();
-  const day = now.getUTCDay() || 7;             // Sun=0 → treat as 7
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() - (day - 1));
+const { warsawParts } = require('./rules/schedule');
+
+// ─── week key (resets every Monday at midnight, Polish time) ─────────────────
+// Polish time (with summer time) like the sessions and the weekly restock, so
+// the new week's roll opens at the same midnight as the new stock.
+function getWeekKey(now = new Date()) {
+  const today = warsawParts(now);
+  const day = today.weekday || 7;               // Sun=0 → treat as 7
+  const monday = new Date(Date.UTC(today.year, today.month - 1, today.day - (day - 1)));
   return monday.toISOString().slice(0, 10);     // "YYYY-MM-DD" of the Monday
 }
 

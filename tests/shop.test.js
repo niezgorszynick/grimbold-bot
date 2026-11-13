@@ -95,3 +95,11 @@ test('DM gold edits are in gp with up to two decimals', () => {
   assert.throws(() => db.updateCharacterGold(id, '-5'), /non-negative/);
   assert.throws(() => db.updateCharacterGold(9999, '1'), /Character not found/);
 });
+
+test('the weekly roll resets at Monday midnight Polish time, summer time included', () => {
+  assert.equal(getWeekKey(new Date('2026-11-15T22:59:00Z')), '2026-11-09', 'Sunday 23:59 in Poland (winter)');
+  assert.equal(getWeekKey(new Date('2026-11-15T23:00:00Z')), '2026-11-16', 'Monday 00:00 in Poland (winter)');
+  assert.equal(getWeekKey(new Date('2026-07-12T21:59:00Z')), '2026-07-06', 'Sunday 23:59 in Poland (summer)');
+  assert.equal(getWeekKey(new Date('2026-07-12T22:00:00Z')), '2026-07-13', 'Monday 00:00 in Poland (summer)');
+  assert.equal(getWeekKey(new Date('2026-11-22T12:00:00Z')), '2026-11-16', 'Sunday afternoon is still that week');
+});
