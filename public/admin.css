@@ -252,6 +252,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-ability input { width: 100%; padding: 5px; text-align: center; font-weight: bold; }
 .sheet-ability-final { color: #dbdee1; text-align: center; font-weight: bold; }
 .sheet-ability-modifier { text-align: center; color: #f2f3f5; font-weight: bold; }
+.sheet-ability-boost { color: #8ea1ff; font-size: 11px; font-weight: normal; white-space: nowrap; cursor: help; }
 .sheet-check-list { display: grid; gap: 5px; }
 .sheet-check-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; min-height: 24px; font-size: 13px; }
 .sheet-check-row input { width: 15px; height: 15px; accent-color: #d4af37; }

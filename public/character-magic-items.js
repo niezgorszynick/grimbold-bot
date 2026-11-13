@@ -230,6 +230,9 @@
   let grantOpen = false;
   function render() {
     if (!view) return;
+    // Raised scores and save/check bonuses for the sheet's numbers (characterSheet.js).
+    window.magicItemEffects = view.effects;
+    if (window.applyMagicItemEffects) window.applyMagicItemEffects(view.effects);
     root.hidden = !view.items.length && !view.canGrant;
     if (root.hidden) return;
     const summary = effectsSummary(view.effects);

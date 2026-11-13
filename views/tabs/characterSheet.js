@@ -544,6 +544,11 @@ module.exports = function renderCharacterSheetTab(ctx) {
           // Click to roll an ability check (public/dice.js).
           modifier.dataset.roll = 'check:' + ability;
           modifier.title = 'Roll a ' + ability.toUpperCase() + ' check';
+          // The score a magic item raises this to (updateDerivedStats).
+          const boost = document.createElement('small');
+          boost.className = 'sheet-ability-boost';
+          boost.hidden = true;
+          name.append(' ', boost);
           row.append(name, score, modifier);
           abilityContainer.appendChild(row);
         });
@@ -823,6 +828,21 @@ module.exports = function renderCharacterSheetTab(ctx) {
           const title = [advantage.length ? 'Advantage: ' + advantage.join(', ') : '', disadvantage.length ? 'Disadvantage: ' + disadvantage.join(', ') : ''].filter(Boolean).join('. ');
           return { value, mark, title };
         };
+        // Magic items (public/character-magic-items.js): raised ability scores
+        // ({ ability, from, to, items }) and bonuses to all saves and checks.
+        let sheetMagic = window.magicItemEffects || null;
+        window.applyMagicItemEffects = effects => {
+          sheetMagic = effects || null;
+          updateDerivedStats(sheetCharacterLevel);
+        };
+        // The score the modifier uses: an item's raised score while the typed
+        // score is still the one the item raised (an unsaved edit shows as typed).
+        function effectiveScore(ability) {
+          const base = Number(abilityContainer.querySelector('[data-ability="' + ability + '"]').value);
+          const change = sheetMagic && (sheetMagic.scores || []).find(score => score.ability === ability);
+          return change && base === change.from ? change.to : base;
+        }
+        const scoreModifier = score => Number.isInteger(score) && score >= 1 && score <= 30 ? Math.floor((score - 10) / 2) : 0;
         // Initiative from the server: { total, parts: [{ label, value }], advantage }.
         let sheetInitiative = null;
         // Ability modifiers as last loaded or saved, to preview unsaved changes elsewhere (spell DC).
@@ -845,25 +865,30 @@ module.exports = function renderCharacterSheetTab(ctx) {
           abilityScores.forEach(input => {
             const ability = input.dataset.ability;
             const base = Number(input.value);
+            const score = effectiveScore(ability);
             const modifier = Number.isInteger(base) && base >= 1 && base <= 30
-              ? Math.floor((base - 10) / 2)
+              ? scoreModifier(score)
               : null;
             const label = document.querySelector('[data-modifier="' + ability + '"]');
             label.textContent = modifier === null
               ? '—'
               : (modifier >= 0 ? '+' : '') + modifier;
+            // A magic item raised the score: show the score it counts as.
+            const change = score !== base && sheetMagic && (sheetMagic.scores || []).find(entry => entry.ability === ability);
+            const boost = input.closest('.sheet-ability').querySelector('.sheet-ability-boost');
+            boost.hidden = !change;
+            boost.textContent = change ? '→ ' + score : '';
+            boost.title = change ? ability.toUpperCase() + ' ' + score + ' from ' + change.items.join(', ') + ' (typed score ' + base + ')' : '';
           });
+          const magicSaves = (sheetMagic && sheetMagic.saves) || 0;
+          const magicChecks = (sheetMagic && sheetMagic.checks) || 0;
           abilities.forEach(ability => {
-            const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
-            const score = Number(scoreInput.value);
-            const modifier = Number.isInteger(score) && score >= 1 && score <= 30
-              ? Math.floor((score - 10) / 2)
-              : 0;
+            const modifier = scoreModifier(effectiveScore(ability));
             const saveRow = savesContainer.querySelector('[data-save="' + ability + '"]').closest('.sheet-check-row');
             const saveItems = sheetItemBonuses
               ? itemExtra(['save:' + ability, 'saves'], (sheetItemBonuses.saves[ability] || 0) + sheetItemBonuses.allSaves)
               : itemExtra([], 0);
-            const saveTotal = modifier + (saveRow.querySelector('input').checked ? bonus : 0) + saveItems.value;
+            const saveTotal = modifier + (saveRow.querySelector('input').checked ? bonus : 0) + saveItems.value + magicSaves;
             const saveModifier = saveRow.querySelector('.sheet-check-modifier');
             saveModifier.textContent = (saveTotal >= 0 ? '+' : '') + saveTotal;
             if (saveItems.mark) saveModifier.dataset.adv = saveItems.mark; else delete saveModifier.dataset.adv;
@@ -871,8 +896,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
           });
           // Initiative: the DEX on the sheet now, plus Alert and items from the server.
           if (sheetInitiative) {
-            const dexScore = Number(abilityContainer.querySelector('[data-ability="dex"]').value);
-            const dexMod = Number.isInteger(dexScore) && dexScore >= 1 && dexScore <= 30 ? Math.floor((dexScore - 10) / 2) : 0;
+            const dexMod = scoreModifier(effectiveScore('dex'));
             const others = sheetInitiative.parts.filter(part => part.label !== 'DEX');
             const total = dexMod + others.reduce((sum, part) => sum + part.value, 0);
             const initiativeInput = document.getElementById('cs_initiative');
@@ -882,11 +906,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               (sheetInitiative.advantage.length ? '. Advantage: ' + sheetInitiative.advantage.join(', ') : '');
           }
           skills.forEach(([skill, ability]) => {
-            const scoreInput = abilityContainer.querySelector('[data-ability="' + ability + '"]');
-            const score = Number(scoreInput.value);
-            const modifier = Number.isInteger(score) && score >= 1 && score <= 30
-              ? Math.floor((score - 10) / 2)
-              : 0;
+            const modifier = scoreModifier(effectiveScore(ability));
             const skillRow = skillsContainer.querySelector('[data-skill="' + skill + '"]').closest('.sheet-check-row');
             const proficient = skillRow.querySelector('input').checked;
             const expert = proficient && sheetExpertise.includes(skill);
@@ -895,7 +915,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 (sheetItemBonuses.skills[skill] || 0) + (sheetItemBonuses.checks[ability] || 0) + sheetItemBonuses.allChecks)
               : itemExtra([], 0);
             const total = modifier + (proficient ? bonus : 0) + (expert ? bonus : 0) +
-              Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0) + skillItems.value;
+              Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0) + skillItems.value + magicChecks;
             skillRow.classList.toggle('has-expertise', expert);
             skillRow.title = [expert ? 'Expertise: proficiency bonus counts twice' : (skillRow.dataset.sourceTitle || ''), skillItems.title].filter(Boolean).join('. ');
             const skillModifier = skillRow.querySelector('.sheet-check-modifier');
