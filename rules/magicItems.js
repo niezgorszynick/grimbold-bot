@@ -459,6 +459,44 @@ function changeMagicItem(character, action, params = {}, catalog = getMagicItemC
   return { magicItems: list.filter(other => (other.quantity ?? 1) > 0), events, name };
 }
 
+// Potions of Healing by catalog name: the Hit Points they restore.
+const HEALING_POTIONS = {
+  'Potion of Healing': '2d4 + 2',
+  'Potion of Healing (Greater)': '4d4 + 4',
+  'Potion of Healing (Superior)': '8d4 + 8',
+  'Potion of Healing (Supreme)': '10d4 + 20'
+};
+// Campaign rule: taking a whole Action to drink or give the potion heals the
+// maximum; a Bonus Action rolls the dice.
+const POTION_MODES = { action: 'Action', bonus: 'Bonus Action' };
+
+function potionHealing(entry, catalog = getMagicItemCatalog()) {
+  return HEALING_POTIONS[catalogName(entry, catalog)] || null;
+}
+
+// A table listing every variant ("| Potion of Healing (greater) | 4d4 + 4 |
+// Uncommon |") keeps only the header and the row of the variant owned. Tables
+// without that variant's row stay whole.
+function variantDescription(description, variantName) {
+  if (!variantName) return description;
+  const wanted = variantName.toLowerCase();
+  const firstCell = line => line.trim().replace(/^\|/, '').split('|')[0].trim().toLowerCase();
+  const lines = String(description || '').split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length;) {
+    if (!lines[i].trim().startsWith('|')) { out.push(lines[i]); i += 1; continue; }
+    let end = i;
+    while (end < lines.length && lines[end].trim().startsWith('|')) end += 1;
+    const table = lines.slice(i, end);
+    const [header, divider, ...rows] = table;
+    const isDivider = /^\|?\s*:?-{2,}/.test(String(divider || '').trim());
+    const matching = isDivider ? rows.filter(row => firstCell(row).split(/\s+or\s+/).includes(wanted)) : [];
+    out.push(...(matching.length ? [header, divider, ...matching] : table));
+    i = end;
+  }
+  return out.join('\n');
+}
+
 function rollDice(expression, rng = Math.random) {
   const match = String(expression).match(/^(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?$/);
   if (!match) return Number(expression) || 0;
@@ -554,5 +592,8 @@ module.exports = {
   regainChargesOnLongRest,
   magicItemEffects,
   effectiveAbilityScore,
+  POTION_MODES,
+  potionHealing,
+  variantDescription,
   rollDice
 };

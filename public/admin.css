@@ -1284,3 +1284,6 @@ body.sheet-view .roll-link, body.sheet-view .sheet-check-modifier[data-roll], bo
 
 /* Room for the scrollbar on every page, so short pages (Lineup) line up with long ones. */
 html { scrollbar-gutter: stable; }
+/* Healing potion: who gets it, after Action or Bonus Action (character-magic-items.js). */
+.potion-form { margin: 4px 0 6px; }
+.potion-form select { padding: 3px 6px; font-size: 12px; }

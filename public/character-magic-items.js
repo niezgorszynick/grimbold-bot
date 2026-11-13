@@ -25,6 +25,37 @@
   const button = (text, onclick, className = 'btn btn-small', title) => el('button', { type: 'button', className, text, onclick, title });
   // The magic item whose gift form is open (its uid).
   let giving = null;
+  // A healing potion being used: { uid, mode: 'action' | 'bonus' } until it is given.
+  let administering = null;
+  // "2d4 + 2" → 10: what an Action heals (campaign rule: the maximum).
+  function maxOf(formula) {
+    return String(formula).replace(/\s+/g, '').split(/(?=[+-])/).reduce((sum, term) => {
+      const dice = term.match(/^([+-]?)(\d+)d(\d+)$/);
+      if (dice) return sum + (dice[1] === '-' ? -1 : 1) * Number(dice[2]) * Number(dice[3]);
+      return sum + (Number(term) || 0);
+    }, 0);
+  }
+
+  // After Action or Bonus Action: who gets the potion, then "Administer healing".
+  function potionForm(item) {
+    const targets = view.potionTargets && view.potionTargets.length ? view.potionTargets : [{ id: characterId, name: 'Yourself', self: true }];
+    const select = el('select', { 'aria-label': 'Who gets the ' + item.name },
+      targets.map(target => el('option', { value: String(target.id), text: target.self ? target.name + ' (yourself)' : target.name })));
+    const how = administering.mode === 'action'
+      ? 'Action: heals the maximum, ' + maxOf(item.healing) + ' HP.'
+      : 'Bonus Action: roll ' + item.healing + ' to heal.';
+    return el('div', { className: 'vitals-actions potion-form' }, [
+      el('span', { className: 'small', text: how }),
+      select,
+      button('Administer healing', async () => {
+        const mode = administering.mode;
+        administering = null;
+        await act({ action: 'administer', uid: item.uid, mode, targetId: Number(select.value) });
+      }, 'btn btn-small btn-green'),
+      button('Cancel', () => { administering = null; render(); }, 'btn btn-small btn-secondary'),
+      targets.length > 1 ? null : el('span', { className: 'muted small', text: 'Party members appear here while you are in a running adventure together.' })
+    ]);
+  }
   function afterGift(result) {
     giving = null;
     if (window.refreshCharacterInventory) window.refreshCharacterInventory();
@@ -137,7 +168,18 @@
       badges.push(el('span', { className: 'tag red', text: (choice.kind === 'armor' ? 'Armor' : 'Weapon') + ' type not set — your DM chooses it' }));
     }
     if (choice && choice.current && !view.canGrant) badges.push(el('span', { className: 'tag', text: choice.current }));
-    if (item.consumable) {
+    if (item.healing) {
+      // Campaign rule: an Action heals the maximum, a Bonus Action rolls.
+      const pick = mode => () => {
+        administering = administering && administering.uid === item.uid && administering.mode === mode ? null : { uid: item.uid, mode };
+        render();
+      };
+      const chosen = mode => administering && administering.uid === item.uid && administering.mode === mode;
+      controls.append(
+        button('Action (' + maxOf(item.healing) + ' HP)', pick('action'), chosen('action') ? 'btn btn-small btn-green' : 'btn btn-small', 'Drink or give it as an Action: heals the maximum'),
+        button('Bonus Action (' + item.healing + ')', pick('bonus'), chosen('bonus') ? 'btn btn-small btn-green' : 'btn btn-small', 'Drink or give it as a Bonus Action: roll the healing')
+      );
+    } else if (item.consumable) {
       controls.append(button('Use one', () => {
         if (window.confirm('Use up one ' + item.name + '?')) act({ action: 'consume', uid: item.uid });
       }));
@@ -202,6 +244,7 @@
         characterId, kind: 'magic', uid: item.uid, itemName: item.name, max: item.quantity || 1,
         onDone: afterGift, onCancel: () => { giving = null; render(); }
       }) : null,
+      administering && administering.uid === item.uid ? potionForm(item) : null,
       details
     ]);
   }

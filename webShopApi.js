@@ -513,6 +513,7 @@ router.get('/characters/:id/magic-items', (req, res) => {
 
 // { action: 'grant', name, variant, quantity } (DM) | { action: 'remove', uid } (DM)
 // { action: 'equip' | 'unequip' | 'attune' | 'unattune' | 'consume', uid }
+// { action: 'administer', uid, mode: 'action' | 'bonus', targetId } (healing potions)
 // { action: 'useCharges' | 'restoreCharges', uid, count }
 router.post('/characters/:id/magic-items', (req, res) => {
   const user = getSessionApiUser(req);

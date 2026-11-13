@@ -8,6 +8,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
 const { combatWithArmorClass } = require('./combat');
+const { buffTargets } = require('./spellEffects');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 // Actions only an admin (DM) may take.
@@ -106,12 +107,17 @@ function buildView(character, sheetData, isAdmin) {
         const gear = rules.gearOfMagicItem(entry, rules.magicItemEntryInfo(entry, catalog));
         return { kind: item.kind === 'Armor' ? 'armor' : 'weapon', options, current: gear && !gear.unknown ? gear.name : null };
       })(),
-      description: item ? item.description : 'This item is not in the magic item list.'
+      // Potions of Healing: the dice they heal, for the Action / Bonus Action buttons.
+      healing: rules.potionHealing(entry, catalog),
+      // A table of every variant shows only this one's row.
+      description: item ? rules.variantDescription(item.description, variant && variant.name) : 'This item is not in the magic item list.'
     };
   });
   const totals = rules.magicItemEffects(sheetData, catalog);
   return {
     items,
+    // Who a healing potion can go to: the character and their party in a running adventure.
+    potionTargets: items.some(item => item.healing) ? buffTargets(character.id) : [],
     attuned: items.filter(item => item.attuned).length,
     attunementLimit: rules.ATTUNEMENT_LIMIT,
     effects: {
@@ -151,13 +157,67 @@ function withHpMax(character, sheetData) {
 //       | setBase { uid, base } (DM: which weapon or armor the item is)
 //       | equip | unequip | attune | unattune | consume { uid }
 //       | useCharges | restoreCharges { uid, count }
+// A Potion of Healing drunk or given: { uid, mode: 'action' | 'bonus', targetId }.
+// An Action heals the maximum, a Bonus Action rolls (campaign rule). The
+// target is the character or a living party member in a running adventure;
+// the roll goes to Rolls History (and Owlbear) under the potion's owner.
+function administerPotion(character, sheetData, params, user) {
+  const entry = rules.readMagicItems(sheetData).find(item => item.uid === params.uid);
+  if (!entry) throw new Error('This character does not have that magic item.');
+  const formula = rules.potionHealing(entry);
+  if (!formula) throw new Error(`${rules.magicItemDisplayName(entry)} is not a healing potion.`);
+  const mode = Object.hasOwn(rules.POTION_MODES, params.mode) ? params.mode : null;
+  if (!mode) throw new Error('Choose an Action or a Bonus Action.');
+  const targetId = params.targetId === undefined || params.targetId === null || params.targetId === '' ? character.id : Number(params.targetId);
+  const target = buffTargets(character.id).find(entry => entry.id === targetId);
+  if (!target) throw new Error('A potion can go to this character or a party member in a running adventure with them.');
+
+  const roll = rules.rollFormula(formula, mode === 'action' ? { rng: sides => sides } : {});
+  const name = rules.magicItemDisplayName(entry);
+  const label = `${name} (${rules.POTION_MODES[mode]}${target.self ? '' : ` → ${target.name}`})`.slice(0, 80);
+  const text = mode === 'action' ? `${rules.describeRoll(roll)} (maximum)` : rules.describeRoll(roll);
+  db.prepare(`
+    INSERT INTO dice_rolls (character_id, player_id, label, formula, mode, total, detail, private)
+    VALUES (?, ?, ?, ?, 'normal', ?, ?, 0)
+  `).run(character.id, Number(user) > 0 ? Number(user) : null, label, roll.formula, roll.total,
+    JSON.stringify({ text, natural: null, critical: false, parts: roll.parts, kind: 'damage' }));
+
+  // Heal the target (the drinker's own sheet is saved with the used-up potion).
+  const healSheet = (owner, ownerSheet) => {
+    const context = rules.deriveVitalsContext({ species: owner.race, sheetData: ownerSheet, classRows: classRowsOf(owner) });
+    const before = rules.normalizeVitals(ownerSheet, context.hpMax);
+    const outcome = rules.applyVitalsAction(before, 'heal', { amount: roll.total }, context);
+    return { sheet: { ...ownerSheet, ...outcome.vitals }, healed: outcome.vitals.hpCurrent - before.hpCurrent, hp: outcome.vitals.hpCurrent, hpMax: context.hpMax, revived: outcome.events.includes('revived') };
+  };
+  let ownSheet = sheetData;
+  let result;
+  if (target.self) {
+    result = healSheet(character, sheetData);
+    ownSheet = result.sheet;
+  } else {
+    const other = db.prepare('SELECT * FROM characters WHERE id = ?').get(target.id);
+    result = healSheet(other, readSheet(other.sheet_data));
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(result.sheet), other.id);
+  }
+  const used = rules.changeMagicItem(itemCharacter(character, ownSheet), 'consume', { uid: entry.uid });
+  const who = target.self ? character.name : target.name;
+  const message = `${name} (${rules.POTION_MODES[mode]}): ${text} = ${roll.total}. ${who} regains ${result.healed} HP (${result.hp}/${result.hpMax})${result.revived ? ' and is back on their feet' : ''}.`;
+  return { sheet: ownSheet, magicItems: used.magicItems, message, healing: { total: roll.total, healed: result.healed, target: who } };
+}
+
 function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {} }) {
   return db.transaction(() => {
     const character = loadCharacter(id, player_id, is_admin);
     const sheetData = readSheet(character.sheet_data);
     let magicItems;
     let message;
-    if (action === 'setBase') {
+    let baseSheet = sheetData;
+    let healing = null;
+    if (action === 'administer') {
+      const result = administerPotion(character, sheetData, params, player_id);
+      ({ magicItems, message, healing } = result);
+      baseSheet = result.sheet;
+    } else if (action === 'setBase') {
       magicItems = rules.readMagicItems(sheetData).map(entry => ({ ...entry }));
       const entry = magicItems.find(item => item.uid === params.uid);
       if (!entry) throw new Error('This character does not have that magic item.');
@@ -199,14 +259,14 @@ function changeCharacterMagicItems({ id, player_id, is_admin, action, params = {
         remove: `${result.name} removed.`
       }[action];
     }
-    let nextSheet = { ...sheetData, magicItems };
+    let nextSheet = { ...baseSheet, magicItems };
     // Putting on magic armor or a shield takes off the one worn before.
     if ((action === 'equip' || action === 'attune') && magicItems.some(entry => entry.uid === params.uid)) {
       nextSheet = rules.setWorn(nextSheet, { from: 'magic', uid: params.uid }, true);
     }
     nextSheet = combatWithArmorClass(character, withHpMax(character, nextSheet));
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
-    return { message, magicItems: buildView(character, nextSheet, is_admin) };
+    return { message, healing, magicItems: buildView(character, nextSheet, is_admin) };
   })();
 }
 
