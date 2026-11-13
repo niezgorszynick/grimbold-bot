@@ -225,3 +225,61 @@ function setupTableFilter(table) {
   restore();
   refresh();
 }
+
+// ─── Tables on phones ────────────────────────────────────────────────────────
+// Below 700px wide, data tables show each row as a card: every cell gets its
+// column's heading (data-label), which the CSS puts in front of the value
+// (admin.css "Tables on phones"). Small grids that fit keep their table look:
+// fewer than 4 columns, or a class in KEEP_TABLE. Tables drawn later by the
+// sheet's scripts are labelled when they appear.
+(function () {
+  const KEEP_TABLE = ['sheet-attacks', 'statblock-abilities', 'beast-abilities', 'rules-table', 'level-table', 'subclass-table', 'keep-table'];
+
+  function headings(table) {
+    const row = (table.tHead && table.tHead.rows[table.tHead.rows.length - 1])
+      || [...table.rows].find(tr => tr.cells.length && [...tr.cells].every(cell => cell.tagName === 'TH'));
+    if (!row) return null;
+    const labels = [];
+    for (const cell of row.cells) {
+      const text = cell.textContent.replace(/[⇅▲▼]/g, '').replace(/\s+/g, ' ').trim();
+      for (let i = 0; i < (cell.colSpan || 1); i += 1) labels.push(text);
+    }
+    return { row, labels };
+  }
+
+  function label(table) {
+    if (KEEP_TABLE.some(name => table.classList.contains(name))) return;
+    const head = headings(table);
+    if (!head || head.labels.length < 4) return;
+    table.classList.add('rt-cards');
+    // The card's title: the name column ("Name", "Character", "Monster", ...), else the first.
+    const TITLES = ['name', 'character', 'monster', 'item', 'title', 'adventure', 'npc', 'player'];
+    const rank = text => { const word = (text.toLowerCase().match(/^[a-z]+/) || [''])[0]; const at = TITLES.indexOf(word); return at < 0 ? Infinity : at; };
+    const best = Math.min(...head.labels.map(rank));
+    const titleAt = best === Infinity ? 0 : head.labels.findIndex(text => rank(text) === best);
+    for (const tr of table.rows) {
+      if (tr === head.row || (table.tHead && table.tHead.contains(tr))) continue;
+      let column = 0;
+      for (const cell of tr.cells) {
+        const text = head.labels[column] || '';
+        if (cell.dataset.label !== text) cell.dataset.label = text;
+        cell.classList.toggle('rt-title', column === titleAt);
+        column += cell.colSpan || 1;
+      }
+    }
+  }
+
+  const labelAll = root => (root.querySelectorAll ? root.querySelectorAll('table') : []).forEach(label);
+  const start = () => {
+    labelAll(document);
+    // Rows and tables added later (filters, the sheet, the adventure table).
+    let queued = false;
+    new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; labelAll(document); });
+    }).observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();

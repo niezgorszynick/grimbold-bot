@@ -38,7 +38,7 @@ module.exports = function renderPlayersTab(ctx) {
  const rosterHtml = `
 
     <!-- Top Forms Grid: 1fr (Player Registration) to 2fr (Character Creation) -->
-   ${isAdmin ? `<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px;">
+   ${isAdmin ? `<div class="layout-split" style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px;">
       
       <!-- Left Card: Register Player -->
       <div class="card" style="margin-bottom: 0;">

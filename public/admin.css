@@ -1297,3 +1297,39 @@ html { scrollbar-gutter: stable; }
 .dice-result.is-colored { border-left: 4px solid var(--dice); padding-left: 6px; }
 .dice-result.is-colored .dice-total:not(.nat20):not(.nat1) { color: var(--dice); }
 .vitals-hitdie-count { color: #b5bac1; text-decoration: underline dotted; }
+
+/* ─── Phones (admin-ui.js "Tables on phones") ───────────────────────────────
+   Data tables become one card per row, each value with its column's name;
+   rows of form fields (inline grid styles) wrap to fit; side-by-side page
+   layouts (.layout-split) stack. */
+@media (max-width: 700px) {
+  /* Each row a card: label above value, two to a line; the first cell (the
+     name) and cells with buttons or fields take the whole line. */
+  table.rt-cards, table.rt-cards tbody { display: block; width: 100%; }
+  table.rt-cards { margin-top: 6px; }
+  table.rt-cards thead, table.rt-cards tr:has(> th) { display: none; }
+  table.rt-cards tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; margin-bottom: 8px; padding: 8px 10px; background: #232428; border: 1px solid #3f4147; border-radius: 8px; }
+  table.rt-cards tr[hidden] { display: none; }
+  table.rt-cards td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; overflow-wrap: anywhere; }
+  table.rt-cards td::before { content: attr(data-label); display: block; color: #949ba4; font-size: 11px; font-weight: normal; line-height: 1.3; }
+  table.rt-cards td:not([data-label])::before, table.rt-cards td[data-label=""]::before { display: none; }
+  table.rt-cards td.rt-title, table.rt-cards td[colspan], table.rt-cards td:has(button, .btn, form, select, input, textarea) { grid-column: 1 / -1; }
+  /* The name leads the card. */
+  table.rt-cards td.rt-title { order: -1; font-size: 15px; }
+  table.rt-cards td:empty { display: none; }
+  table.rt-cards td .btn, table.rt-cards td button { margin: 2px 4px 2px 0; }
+  table.rt-cards td form { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+  /* Rows of form fields written as inline grids: as many columns as fit. */
+  [style*="grid-template-columns"] { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important; }
+  .layout-split, .layout-split[style] { grid-template-columns: minmax(0, 1fr) !important; }
+  input, select, textarea { max-width: 100%; }
+
+  /* Tooltips sit inside the screen: anchored right, not centred on the "?". */
+  .tooltip .tooltip-text { width: min(260px, 80vw); left: auto; right: -8px; transform: none; white-space: normal; }
+  .tooltip .tooltip-text::after { left: auto; right: 12px; }
+  a { overflow-wrap: anywhere; }
+  /* Card grids sized for desktops (420px dice cards, 360px inventory): one column. */
+  .analytics-other-dice, .inventory-list, .party-grid, .npc-grid, .auction-grid { grid-template-columns: minmax(0, 1fr); }
+  body { padding: 10px; }
+}
