@@ -52,3 +52,27 @@ test('uses follow levels and abilities; pools spend several at once', () => {
   const multi = context([{ className: 'Fighter', subclassName: 'Battle Master', level: 3 }, { className: 'Cleric', subclassName: null, level: 2 }], { wis: 14 });
   assert.deepEqual(multi.resources.map(resource => resource.name), ['Second Wind', 'Action Surge', 'Superiority Dice', 'Channel Divinity']);
 });
+
+test('Channel Divinity has its dice to roll', () => {
+  const rollsOf = (row, abilities, key) => Object.fromEntries(context([row], abilities).resources
+    .find(resource => resource.key === key).rolls.map(roll => [roll.key, roll.formula]));
+  assert.deepEqual(rollsOf({ className: 'Cleric', subclassName: 'War Domain', level: 2 }, { wis: 16 }, 'channelDivinityCleric'), { spark: '1d8+3' });
+  assert.deepEqual(rollsOf({ className: 'Cleric', subclassName: 'Light Domain', level: 7 }, { wis: 18 }, 'channelDivinityCleric'),
+    { spark: '2d8+4', sear: '4d8', dawn: '2d10+7' });
+  assert.deepEqual(rollsOf({ className: 'Cleric', subclassName: null, level: 5 }, { wis: 10 }, 'channelDivinityCleric'), { spark: '1d8', sear: '1d8' });
+  assert.deepEqual(rollsOf({ className: 'Paladin', subclassName: 'Oath of Glory', level: 3 }, { cha: 16 }, 'channelDivinityPaladin'), { smite: '2d8+3' });
+  assert.deepEqual(rollsOf({ className: 'Paladin', subclassName: 'Oath of Devotion', level: 3 }, { cha: 16 }, 'channelDivinityPaladin'), {});
+});
+
+test('feature dice: Second Wind, Bardic Inspiration, Superiority, Psionic, Healing Light, Dark One\'s Own Luck', () => {
+  const rollsOf = (row, abilities, key) => Object.fromEntries(context([row], abilities).resources
+    .find(resource => resource.key === key).rolls.map(roll => [roll.key, roll.formula]));
+  assert.deepEqual(rollsOf({ className: 'Fighter', subclassName: 'Battle Master', level: 10 }, {}, 'secondWind'), { heal: '1d10+10' });
+  assert.deepEqual(rollsOf({ className: 'Fighter', subclassName: 'Battle Master', level: 10 }, {}, 'superiorityDice'), { die: '1d10' });
+  assert.deepEqual(rollsOf({ className: 'Fighter', subclassName: 'Psi Warrior', level: 5 }, {}, 'psionicDiceFighter'), { die: '1d8' });
+  assert.deepEqual(rollsOf({ className: 'Rogue', subclassName: 'Soulknife', level: 3 }, {}, 'psionicDiceRogue'), { die: '1d6' });
+  assert.deepEqual(rollsOf({ className: 'Bard', subclassName: 'College of Lore', level: 5 }, { cha: 16 }, 'bardicInspiration'), { die: '1d8' });
+  assert.deepEqual(rollsOf({ className: 'Warlock', subclassName: 'Celestial Patron', level: 3 }, { cha: 16 }, 'healingLight'),
+    { heal1: '1d6', heal2: '2d6', heal3: '3d6' });
+  assert.deepEqual(rollsOf({ className: 'Warlock', subclassName: 'Fiend Patron', level: 6 }, { cha: 16 }, 'darkOnesOwnLuck'), { die: '1d10' });
+});
