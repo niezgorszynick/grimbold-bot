@@ -11,7 +11,9 @@
 //   scroll  — the scroll case: spell scrolls drawn from the whole spell list,
 //             spell level capped by the party level, all new each week.
 //   artisan — goods of resident artisans (db/artisans.js): each restock adds
-//             their weekly amount, up to a cap; unsold stock stays.
+//             their weekly amount, up to a cap; unsold stock stays. Artisans
+//             with their own delivery window deliver then instead
+//             (db/deliveries.js); the restock only resets their prices.
 //   event   — a visiting merchant's goods (a weekly event): one week only.
 //   manual  — items a DM put on the shelf by hand: left alone (removed once
 //             sold out).
@@ -114,6 +116,9 @@ function partyLevel(config = readConfig()) {
 
 const isScrollRow = row => /^(spell scroll|scroll)$/i.test(String(row.category || '').trim()) || /^spell scroll \(/i.test(row.name);
 
+// A shopkeeper's price: whole gold from 10 gp, whole silver below that.
+const roundPrice = cp => (cp >= 1000 ? Math.round(cp / 100) * 100 : cp >= 10 ? Math.round(cp / 10) * 10 : Math.max(1, Math.round(cp)));
+
 function shuffle(list, random) {
   const copy = [...list];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -136,8 +141,6 @@ function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisa
   const plan = { remove: [], keep: [], update: [], insert: [], held: [], partyLevel: level };
   const params = (event && event.params) || {};
   const shortage = event && event.kind === 'shortage' ? params.target : null;
-  // A shopkeeper's price: whole gold from 10 gp, whole silver below that.
-  const roundPrice = cp => (cp >= 1000 ? Math.round(cp / 100) * 100 : cp >= 10 ? Math.round(cp / 10) * 10 : Math.max(1, Math.round(cp)));
   const fluctuate = priceCp => roundPrice(priceCp * (config.fluctuation_min + random() * (config.fluctuation_max - config.fluctuation_min)));
   const between = (min, max) => min + Math.floor(random() * (Math.max(min, max) - min + 1));
   const allowed = catalog.filter(row => row.min_level <= level && row.availability !== 'adventure' && row.tier !== 'service');
@@ -155,13 +158,18 @@ function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisa
   }
 
   // Artisans: this week's batch, up to each good's cap. Goods no longer made
-  // (artisan away or the good removed) leave the shelf.
+  // (artisan away or the good removed) leave the shelf. An artisan with their
+  // own delivery window brings nothing now: their stock stays, at full price
+  // again (a new sale may cut it below).
   const artisanRows = new Map(shelf.filter(item => item.source === 'artisan').map(item => [item.name.toLowerCase(), item]));
   for (const good of artisanGoods) {
     const key = good.name.toLowerCase();
     if (taken.has(key)) continue;
     const existing = artisanRows.get(key);
-    if (existing) {
+    if (good.scheduled) {
+      if (existing) plan.update.push({ id: existing.id, stock: existing.stock, price: good.price_cp, source: 'artisan' });
+      artisanRows.delete(key);
+    } else if (existing) {
       plan.update.push({ id: existing.id, stock: Math.min(good.cap, (existing.stock || 0) + good.per_week), price: good.price_cp, source: 'artisan' });
       artisanRows.delete(key);
     } else {
@@ -277,7 +285,10 @@ function runRestock({ random = Math.random } = {}) {
     plan.update.forEach(row => restock.run(row.stock, row.price, row.id));
     // The last event, shown in the Restock Engine tab.
     db.prepare("INSERT INTO config (key, value) VALUES ('last_shop_event', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-      .run(JSON.stringify(event ? { title: event.title, at: new Date().toISOString() } : { title: null, at: new Date().toISOString() }));
+      .run(JSON.stringify(event
+        // The kind and its target too: a mid-week artisan delivery keeps the week's sale or shortage.
+        ? { title: event.title, at: new Date().toISOString(), kind: event.kind, params: event.kind === 'sale' || event.kind === 'shortage' ? { target: event.params.target, percent: event.params.percent } : {} }
+        : { title: null, at: new Date().toISOString() }));
     const insert = db.prepare(`
       INSERT INTO items (name, category, price, stock, description, is_active, source, rarity, weeks)
       VALUES (@name, @category, @price, @stock, @description, 1, @source, @rarity, 0)
@@ -305,6 +316,7 @@ function runRestock({ random = Math.random } = {}) {
 
 module.exports = {
   RESTOCK_DEFAULTS: DEFAULTS,
+  shopRoundPrice: roundPrice,
   readRestockConfig: readConfig,
   saveRestockConfig: saveConfig,
   medianCharacterLevel,

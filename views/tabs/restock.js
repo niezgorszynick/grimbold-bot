@@ -38,7 +38,7 @@ module.exports = function renderRestockTab(ctx) {
           <li><strong>Mundane counter</strong> — every mundane item in the Master Catalog (no rarity) up to the party level, always in stock at catalog price.</li>
           <li><strong>Staples</strong> — catalog items with the <em>staple</em> tier (Potion of Healing, rations…): always there, stock rolled weekly.</li>
           <li><strong>Magic vault</strong> — the counts below, drawn from Common / Uncommon items (and Rare from party level 5) that are set to <em>Shop</em>. Each item stays two weeks unless it sells out, so about half changes every week. Adventure-only items never appear.</li>
-          <li><strong>Artisans and events</strong> — resident artisans' goods pile up to their caps, and one weekly event may happen (below).</li>
+          <li><strong>Artisans and events</strong> — resident artisans' goods pile up to their caps (those with their own delivery days bring them then, with an announcement), and one weekly event may happen (below).</li>
           <li><strong>Scroll case</strong> — new spell scrolls each week from the whole spell list: two cantrip/level 1, two level 2–3, one level 4+, never above half the party level (rounded up).</li>
         </ul>
         <form method="POST" action="/admin/restock-settings" class="restock-form">

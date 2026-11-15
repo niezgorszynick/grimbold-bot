@@ -3,8 +3,11 @@
 //
 //   Artisans (e.g. Benet the leatherworker) with a few goods each. A resident
 //   artisan supplies every restock: `per_week` of each good, up to `cap` on the
-//   shelf; buying frees room for the next delivery. A travelling artisan only
-//   comes through a visiting-merchant event and sells their goods for a week.
+//   shelf; buying frees room for the next delivery. A resident with a delivery
+//   window (days and hours, Polish time) delivers on their own instead, once a
+//   week at a random moment inside it, and Grimbold announces it on Discord
+//   (db/deliveries.js). A travelling artisan only comes through a
+//   visiting-merchant event and sells their goods for a week.
 //
 //   Weekly events: a DM-written list. Each restock there's a chance (Restock
 //   Engine setting) that one of them happens, picked by weight:
@@ -18,6 +21,7 @@
 'use strict';
 
 const { db } = require('./connection');
+const { pickDeliveryTime, weekStart } = require('../rules/deliveryWindow');
 
 const EVENT_KINDS = ['merchant', 'shortage', 'sale', 'news'];
 const ARTISAN_MODES = ['resident', 'travelling'];
@@ -48,21 +52,74 @@ function priceCp(value, label = 'Price') {
 
 // ─── Artisans ───────────────────────────────────────────────────────────────
 
+// An artisan row's delivery window ({ dayFrom, dayTo, hourFrom, hourTo }), or
+// null: they deliver with the weekly restock.
+function deliveryWindow(row) {
+  return row && row.delivery_day_from ? { dayFrom: row.delivery_day_from, dayTo: row.delivery_day_to, hourFrom: row.delivery_hour_from, hourTo: row.delivery_hour_to } : null;
+}
+
 function listArtisans() {
   const artisans = db.prepare('SELECT * FROM artisans ORDER BY name COLLATE NOCASE').all();
   const goods = db.prepare('SELECT * FROM artisan_goods ORDER BY name COLLATE NOCASE').all();
-  return artisans.map(artisan => ({ ...artisan, mode: artisan.mode || 'resident', active: Boolean(artisan.active), goods: goods.filter(good => good.artisan_id === artisan.id) }));
+  return artisans.map(artisan => ({
+    ...artisan,
+    mode: artisan.mode || 'resident',
+    active: Boolean(artisan.active),
+    delivery: deliveryWindow(artisan),
+    goods: goods.filter(good => good.artisan_id === artisan.id)
+  }));
 }
 
-function saveArtisan(fields) {
+// The window from the panel form: day_from empty = with the weekly restock.
+function readDeliveryFields(fields) {
+  if (!String(fields.delivery_day_from || '').trim()) return null;
+  const window = {
+    dayFrom: whole(fields.delivery_day_from, 1, 7, 'First delivery day'),
+    dayTo: whole(fields.delivery_day_to || fields.delivery_day_from, 1, 7, 'Last delivery day'),
+    hourFrom: whole(fields.delivery_hour_from || 0, 0, 23, 'Delivery from (hour)'),
+    hourTo: whole(fields.delivery_hour_to || 24, 1, 24, 'Delivery until (hour)')
+  };
+  if (window.dayTo < window.dayFrom) throw new Error('The last delivery day can\'t come before the first (weeks run Monday to Sunday).');
+  if (window.hourTo <= window.hourFrom) throw new Error('"Until" must be a later hour than "from".');
+  return window;
+}
+
+// When a scheduled artisan delivers next: inside this week's window, unless
+// they already delivered this week (then next week's). null: no window, away,
+// or travelling.
+function nextDeliveryAt(row, now = new Date(), random = Math.random) {
+  const window = deliveryWindow(row);
+  if (!window || !row.active || (row.mode || 'resident') !== 'resident') return null;
+  const deliveredThisWeek = row.last_delivery_at && new Date(row.last_delivery_at) >= weekStart(now);
+  const moment = pickDeliveryTime(window, deliveredThisWeek ? weekStart(now, 1) : now, random);
+  return moment ? moment.toISOString() : null;
+}
+
+const SCHEDULE_KEYS = ['delivery_day_from', 'delivery_day_to', 'delivery_hour_from', 'delivery_hour_to', 'active', 'mode'];
+
+function saveArtisan(fields, { now = new Date(), random = Math.random } = {}) {
   const mode = ARTISAN_MODES.includes(fields.mode) ? fields.mode : 'resident';
   const values = [text(fields.name, 80, 'Name', true), text(fields.description, 1000, 'Description'), fields.active === undefined || fields.active === '1' || fields.active === true ? 1 : 0, mode];
+  // Delivery fields left out (a script, a travelling artisan's form) keep what's stored.
+  const hasDelivery = fields.delivery_day_from !== undefined;
+  const window = hasDelivery ? readDeliveryFields(fields) : null;
+  const note = hasDelivery ? text(fields.delivery_note, 1000, 'Delivery announcement') : null;
   const id = Number(fields.id) || null;
-  if (id) {
-    if (!db.prepare('UPDATE artisans SET name = ?, description = ?, active = ?, mode = ? WHERE id = ?').run(...values, id).changes) throw new Error('Artisan not found.');
-    return id;
-  }
-  return Number(db.prepare('INSERT INTO artisans (name, description, active, mode) VALUES (?, ?, ?, ?)').run(...values).lastInsertRowid);
+  return db.transaction(() => {
+    const before = id ? db.prepare('SELECT * FROM artisans WHERE id = ?').get(id) : null;
+    if (id && !before) throw new Error('Artisan not found.');
+    const rowId = id || Number(db.prepare('INSERT INTO artisans (name, description, active, mode) VALUES (?, ?, ?, ?)').run(...values).lastInsertRowid);
+    if (id) db.prepare('UPDATE artisans SET name = ?, description = ?, active = ?, mode = ? WHERE id = ?').run(...values, id);
+    if (hasDelivery) {
+      db.prepare('UPDATE artisans SET delivery_day_from = ?, delivery_day_to = ?, delivery_hour_from = ?, delivery_hour_to = ?, delivery_note = ? WHERE id = ?')
+        .run(window ? window.dayFrom : null, window ? window.dayTo : null, window ? window.hourFrom : null, window ? window.hourTo : null, note, rowId);
+    }
+    // A new window, a return from being away, or a new mode: pick the moment again.
+    const row = db.prepare('SELECT * FROM artisans WHERE id = ?').get(rowId);
+    const unchanged = before && row.next_delivery_at && SCHEDULE_KEYS.every(key => before[key] === row[key]);
+    if (!unchanged) db.prepare('UPDATE artisans SET next_delivery_at = ? WHERE id = ?').run(nextDeliveryAt(row, now, random), rowId);
+    return rowId;
+  })();
 }
 
 function deleteArtisan(id) {
@@ -91,12 +148,14 @@ function deleteArtisanGood(id) {
   db.prepare('DELETE FROM artisan_goods WHERE id = ?').run(Number(id));
 }
 
-// Goods of active resident artisans, for the restock: [{ name, category, price_cp, description, per_week, cap, artisan }].
+// Goods of active resident artisans, for the restock: [{ name, category,
+// price_cp, description, per_week, cap, artisan, scheduled }]. scheduled: the
+// artisan delivers in their own window (db/deliveries.js), not with the restock.
 function activeArtisanGoods() {
   return db.prepare(`
-    SELECT g.*, a.name AS artisan FROM artisan_goods g JOIN artisans a ON a.id = g.artisan_id
+    SELECT g.*, a.name AS artisan, a.delivery_day_from IS NOT NULL AS scheduled FROM artisan_goods g JOIN artisans a ON a.id = g.artisan_id
     WHERE a.active = 1 AND a.mode = 'resident' ORDER BY g.id
-  `).all();
+  `).all().map(good => ({ ...good, scheduled: Boolean(good.scheduled) }));
 }
 
 // A travelling artisan's goods as a visiting merchant sells them (their weekly
@@ -225,6 +284,8 @@ module.exports = {
   SHOP_EVENT_KINDS: EVENT_KINDS,
   SHOP_SHORTAGE_TARGETS: SHORTAGE_TARGETS,
   ARTISAN_MODES,
+  artisanDeliveryWindow: deliveryWindow,
+  nextArtisanDeliveryAt: nextDeliveryAt,
   travellingGoods,
   shortageOptions,
   SHOP_SALE_TARGETS: SALE_TARGETS,

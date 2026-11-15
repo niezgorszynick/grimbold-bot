@@ -42,7 +42,7 @@ A Discord bot and web campaign panel for a D&D 2024 one-shot community. Grimbold
 
 ### Shop & economy
 - Weekly d20 price rolls, the shop counter, and purchases from the web or Discord charged to a character's purse (in copper).
-- Master catalog and a restock engine with artisans and shop events; reservations that hold an item through restocks.
+- Master catalog and a restock engine with artisans (residents can deliver on their own days, announced on Discord) and shop events; reservations that hold an item through restocks.
 - Auctions (`/sell`, `/bid`) with NPC bidders, settled automatically, and a sales ledger.
 
 ### Adventures & encounters

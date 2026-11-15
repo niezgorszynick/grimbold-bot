@@ -7,6 +7,7 @@
 const db = require('../../db');
 const { formatCp } = require('../../currency');
 const { escapeHtml } = require('../helpers');
+const { DELIVERY_DAY_NAMES, describeWindow, describeMoment } = require('../../rules/deliveryWindow');
 
 const KIND_LABELS = { merchant: 'Visiting merchant', shortage: 'Shortage', sale: 'Sale', news: 'News only' };
 const MODE_LABELS = { resident: 'Resident: supplies every week', travelling: 'Travelling: only visits through a "Visiting merchant" event' };
@@ -36,6 +37,42 @@ const catalogSearch = (purpose) => `
     <input type="search" list="restock-catalog" placeholder="Type to search, e.g. Chain Shirt" data-fill="${purpose}" autocomplete="off">
   </label>`;
 
+// A resident's delivery window and Discord line (db/deliveries.js).
+function deliveryFields(artisan) {
+  const window = artisan.delivery || {};
+  const options = (from, to, selected, label) => Array.from({ length: to - from + 1 }, (_, index) => from + index)
+    .map(value => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label(value)}</option>`).join('');
+  const hour = value => `${String(value).padStart(2, '0')}:00`;
+  const status = !artisan.delivery ? 'Delivers silently with the weekly restock (Monday midnight).'
+    : !artisan.active ? 'Away: no deliveries until they\'re back.'
+      : artisan.next_delivery_at ? `Next delivery: <strong>${escapeHtml(describeMoment(new Date(artisan.next_delivery_at)))}</strong> (Polish time, picked at random inside the window).`
+        : 'The next delivery is picked within five minutes.';
+  return `
+    <fieldset class="artisan-delivery">
+      <legend>Deliveries</legend>
+      <div class="restock-grid">
+        <label>Days<select name="delivery_day_from" class="delivery-day-from">
+          <option value="">With the weekly restock</option>
+          ${options(1, 7, window.dayFrom, value => DELIVERY_DAY_NAMES[value])}
+        </select></label>
+        <label class="delivery-window">to<select name="delivery_day_to">${options(1, 7, window.dayTo || 7, value => DELIVERY_DAY_NAMES[value])}</select></label>
+        <label class="delivery-window">between<select name="delivery_hour_from">${options(0, 23, window.hourFrom === undefined ? 9 : window.hourFrom, hour)}</select></label>
+        <label class="delivery-window">and<select name="delivery_hour_to">${options(1, 24, window.hourTo || 17, hour)}</select></label>
+      </div>
+      <label class="delivery-window">What Grimbold says on Discord (optional)<textarea name="delivery_note" rows="2" maxlength="1000" placeholder="*Benet drops a bundle of cured hides on the counter.* &quot;Fresh from the tannery, mind the smell.&quot;">${escapeHtml(artisan.delivery_note || '')}</textarea></label>
+      <p class="muted small">${status}${artisan.last_delivery_at ? ` Last delivery: ${escapeHtml(describeMoment(new Date(artisan.last_delivery_at)))}.` : ''}</p>
+    </fieldset>
+    <script>
+      (() => {
+        const box = document.currentScript.previousElementSibling;
+        const from = box.querySelector('.delivery-day-from');
+        const show = () => box.querySelectorAll('.delivery-window').forEach(part => { part.hidden = !from.value; });
+        from.addEventListener('change', show);
+        show();
+      })();
+    </script>`;
+}
+
 function artisanCard(artisan, openId) {
   const travelling = artisan.mode === 'travelling';
   return `
@@ -43,6 +80,7 @@ function artisanCard(artisan, openId) {
       <summary>
         <strong>${escapeHtml(artisan.name)}</strong>
         <span class="tag">${travelling ? 'Travelling' : 'Resident'}</span>
+        ${!travelling && artisan.delivery ? `<span class="tag">🧺 ${escapeHtml(describeWindow(artisan.delivery))}</span>` : ''}
         ${artisan.active ? '' : '<span class="tag">Away</span>'}
         <span class="muted small">${artisan.goods.length} item${artisan.goods.length === 1 ? '' : 's'}</span>
       </summary>
@@ -54,6 +92,7 @@ function artisanCard(artisan, openId) {
           ${Object.entries(MODE_LABELS).map(([value, label]) => `<option value="${value}" ${artisan.mode === value ? 'selected' : ''}>${label}</option>`).join('')}
         </select></label>
         <label class="creator-check"><input type="checkbox" name="active" value="1" ${artisan.active ? 'checked' : ''}> Available (untick while they're away: a resident's goods leave the shelf, a travelling one doesn't visit)</label>
+        ${travelling ? '' : deliveryFields(artisan)}
         <div class="vitals-actions">
           <button class="btn btn-small" type="submit">Save</button>
         </div>
@@ -183,7 +222,7 @@ function renderArtisansAndEvents(req, cfg) {
   return `
     <div class="card" id="artisans">
       <h3>Artisans</h3>
-      <p class="muted small">Craftspeople who supply Grimbold. A <strong>resident</strong> artisan adds every item's weekly amount at each restock, up to its cap; unsold stock waits on the shelf, and buying frees room for the next batch. A <strong>travelling</strong> artisan only comes through a "Visiting merchant" event (Weekly events below) and sells their goods for that week.</p>
+      <p class="muted small">Craftspeople who supply Grimbold. A <strong>resident</strong> artisan adds every item's weekly amount at each restock, up to its cap; unsold stock waits on the shelf, and buying frees room for the next batch. Give a resident <strong>delivery days and hours</strong> and they come once a week at a random moment inside that window instead, and Grimbold announces it on Discord. A <strong>travelling</strong> artisan only comes through a "Visiting merchant" event (Weekly events below) and sells their goods for that week.</p>
       ${artisans.map(artisan => artisanCard(artisan, openId)).join('') || '<p class="muted">No artisans yet.</p>'}
       <form method="POST" action="/admin/artisans/save" class="artisan-new">
         <input name="name" maxlength="80" required placeholder="New artisan, e.g. Benet the Leatherworker" aria-label="New artisan name">

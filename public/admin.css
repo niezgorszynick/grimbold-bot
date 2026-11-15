@@ -812,6 +812,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .artisan-form label.creator-check, .event-form label.creator-check { display: flex; gap: 8px; align-items: center; }
 .artisan-good-form input, .artisan-form input, .artisan-form textarea { width: 100%; box-sizing: border-box; min-width: 0; }
 .event-form [data-for][hidden] { display: none !important; }
+.artisan-delivery { border: 1px solid #3f4147; border-radius: 6px; padding: 8px 12px; display: grid; gap: 8px; min-width: 0; }
+.artisan-delivery legend { font-size: 13px; padding: 0 4px; }
+.artisan-delivery select { width: 100%; box-sizing: border-box; }
+.artisan-delivery .delivery-window[hidden] { display: none !important; }
 .event-form input[name=title] { max-width: none; width: 100%; box-sizing: border-box; }
 /* Auctions tab */
 .auction-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-bottom: 20px; }

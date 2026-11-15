@@ -1099,6 +1099,24 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(players)').all().map(column => column.name));
       if (!columns.has('dice_color')) db.exec('ALTER TABLE players ADD COLUMN dice_color TEXT');
     }
+  },
+  {
+    // A resident artisan's own delivery window (days 1 = Monday … 7 = Sunday,
+    // hours 0–24, Polish time) and Discord line; NULL days = they deliver with
+    // the weekly restock, as before. next_delivery_at is this week's moment,
+    // picked at random inside the window (db/deliveries.js).
+    version: 37,
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(artisans)').all().map(column => column.name));
+      const add = (name, type) => { if (!columns.has(name)) db.exec(`ALTER TABLE artisans ADD COLUMN ${name} ${type}`); };
+      add('delivery_day_from', 'INTEGER');
+      add('delivery_day_to', 'INTEGER');
+      add('delivery_hour_from', 'INTEGER');
+      add('delivery_hour_to', 'INTEGER');
+      add('delivery_note', "TEXT NOT NULL DEFAULT ''");
+      add('next_delivery_at', 'TEXT');
+      add('last_delivery_at', 'TEXT');
+    }
   }
 ];
 

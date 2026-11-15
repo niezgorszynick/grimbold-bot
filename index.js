@@ -164,6 +164,8 @@ require('./naturalRolls').setNaturalRollsClient(client);
 require('./scheduleDiscord').setScheduleClient(client);
 // Auction news (listings, bids, results) and settling auctions that are due.
 require('./auctionNews').setAuctionNewsClient(client);
+// Resident artisans who deliver on their own days, announced in the shop channel.
+require('./artisanDeliveries').startArtisanDeliveries();
 
 // ─── Load all commands from /commands folder ──────────────────────────────────
 
