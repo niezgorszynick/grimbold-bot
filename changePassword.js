@@ -7,6 +7,7 @@
 
 const express = require('express');
 const db = require('./db');
+const { LOGIN_BACKDROP, LOGIN_BACKDROP_STYLE } = require('./views/loginBackdrop');
 
 const escapeAttr = value => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
@@ -21,15 +22,17 @@ function authPage(title, body) {
       <title>Grimbold's Vault — ${title}</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
       <style>
-        body { background-color: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; }
-        .login-card { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; width: 100%; max-width: 400px; padding: 2rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        body { background-color: #0b1024; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; }
+        .login-card { background-color: rgba(20, 26, 48, 0.82); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgba(201, 163, 74, 0.45); border-radius: 12px; width: 100%; max-width: 400px; padding: 2rem; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+        ${LOGIN_BACKDROP_STYLE}
       </style>
     </head>
     <body>
+      ${LOGIN_BACKDROP}
       <main class="login-card">
         <div class="text-center mb-4">
           <h3 class="fw-bold text-warning mb-1">Grimbold's Vault</h3>
-          <p class="text-muted small">Campaign Hub &amp; Provisions</p>
+          <p class="small" style="color: #a9a3c9">Campaign Hub &amp; Provisions</p>
         </div>
         ${body}
       </main>
