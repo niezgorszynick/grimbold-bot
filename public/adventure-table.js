@@ -1531,19 +1531,21 @@
       select.value = [...select.options].some(entry => entry.value === chosen) ? chosen : select.options[0].value;
     }
     fillPlaces();
-    // Your characters, then (the DM) Grimbrandt, the NPCs at the table and the
-    // other Notable NPCs. The choice survives reloads (remembered per adventure).
+    // Your characters, then (the DM) Grimbrandt, the NPCs at the table, the
+    // other Notable NPCs and the rest of the party. The choice survives reloads (remembered per adventure).
     const select = speakBox.speaker;
     let chosen = select.options.length ? select.value : remember('speak-npc-' + adventureId);
     if (/^\d+$/.test(chosen)) chosen = 'npc:' + chosen; // saved before characters could speak
     const option = (kind, entry) => el('option', { value: kind + ':' + entry.id, text: entry.name });
     const atTable = data.canManage ? data.npcs || [] : [];
     const others = data.canManage ? (data.npcCandidates || []).filter(npc => !atTable.some(entry => entry.id === npc.id)) : [];
+    const party = data.canManage ? (data.party || []).filter(member => member.playerId !== data.viewerId) : [];
     select.replaceChildren(...[
       mine.length ? el('optgroup', { label: 'Your characters' }, mine.map(member => option('char', member))) : null,
       data.canManage ? el('option', { value: '', text: 'Grimbrandt (the chronicler)' }) : null,
       atTable.length ? el('optgroup', { label: 'At the table' }, atTable.map(npc => option('npc', npc))) : null,
-      others.length ? el('optgroup', { label: 'Other Notable NPCs' }, others.map(npc => option('npc', npc))) : null
+      others.length ? el('optgroup', { label: 'Other Notable NPCs' }, others.map(npc => option('npc', npc))) : null,
+      party.length ? el('optgroup', { label: 'The party' }, party.map(member => option('char', member))) : null
     ].filter(Boolean));
     select.value = [...select.options].some(entry => entry.value === chosen) ? chosen : select.options[0].value;
     return speakBox;
