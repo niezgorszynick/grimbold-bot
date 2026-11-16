@@ -1254,6 +1254,26 @@ router.post('/adventures/:id/message', async (req, res) => {
 });
 
 // { xp, dmCharacterId, notes, title }
+// The character sheet speaks in Discord as the character, with or without an
+// adventure: where it can (GET) and { text, adventureId } (POST; no
+// adventureId: the speak channel).
+function characterSpeakRoute(handler) {
+  return async (req, res) => {
+    const user = getSessionApiUser(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    try {
+      return res.json(await handler({ characterId: Number(req.params.id), user, body }));
+    } catch (error) {
+      return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
+    }
+  };
+}
+router.get('/characters/:id/speak', characterSpeakRoute(({ characterId, user }) =>
+  require('./adventureThreads').characterSpeakPlaces({ characterId, user })));
+router.post('/characters/:id/speak', characterSpeakRoute(({ characterId, user, body }) =>
+  require('./adventureThreads').sayAsCharacter({ characterId, user, adventureId: body.adventureId ? Number(body.adventureId) : null, text: body.text })));
+
 // The speak channel's id and name, for the table's "Send to" choice.
 router.get('/speak-channel', async (req, res) => {
   const user = getSessionApiUser(req);

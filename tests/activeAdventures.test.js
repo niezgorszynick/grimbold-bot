@@ -281,6 +281,41 @@ test('a player speaks as their character in the party, in the thread or the spea
   threads.setClientForTests(null);
 });
 
+test('a character speaks from the sheet, with or without an adventure', async () => {
+  process.env.SPEAK_CHANNEL_ID = 'chan-tawerna';
+  const dm = createPlayer();
+  const alice = createPlayer();
+  const bob = createPlayer();
+  const posts = [];
+  const hookOn = id => ({ id, fetchWebhooks: async () => [], createWebhook: async () => ({ name: 'Grimbrandt', avatar: 'a', send: async post => { posts.push({ on: id, ...post }); } }) });
+  const thread = fakeThread({ ownerId: discordIdOf(dm) });
+  thread.parent = hookOn('chan-zlecenia');
+  const tavern = { ...hookOn('chan-tawerna'), name: 'tawerna', isThread: () => false };
+  threads.setClientForTests({ user: { id: 'bot' }, channels: { fetch: async id => (id === thread.id ? thread : id === tavern.id ? tavern : null) } });
+  const adventure = await threads.logAdventureThread(thread, { announce: false });
+  const hero = addCharacter(alice, 'Idril');
+  const fallen = addCharacter(alice, 'Gone', { status: 'dead' });
+
+  let places = await threads.characterSpeakPlaces({ characterId: hero, user: userOf(alice) });
+  assert.deepEqual(places, { channel: { id: 'chan-tawerna', name: 'tawerna' }, adventures: [] }, 'no adventure: only the channel');
+  assert.deepEqual(await threads.sayAsCharacter({ characterId: hero, user: userOf(alice), text: 'Good evening.' }), { sent: true, as: 'Idril', webhook: true });
+  assert.equal(posts.at(-1).on, 'chan-tawerna');
+
+  db.setPartyMember({ adventureId: adventure.id, user: userOf(dm), characterId: hero, inParty: true });
+  places = await threads.characterSpeakPlaces({ characterId: hero, user: userOf(alice) });
+  assert.deepEqual(places.adventures.map(row => row.id), [adventure.id]);
+  await threads.sayAsCharacter({ characterId: hero, user: userOf(alice), adventureId: adventure.id, text: 'Onward.' });
+  assert.equal(posts.at(-1).threadId, thread.id);
+
+  await assert.rejects(threads.sayAsCharacter({ characterId: hero, user: userOf(bob), text: 'hi' }), /Forbidden/);
+  await assert.rejects(threads.characterSpeakPlaces({ characterId: hero, user: userOf(bob) }), /Forbidden/);
+  await assert.rejects(threads.sayAsCharacter({ characterId: fallen, user: userOf(alice), text: 'hi' }), /living/);
+  await assert.rejects(threads.sayAsCharacter({ characterId: hero, user: userOf(alice), text: ' ' }), /Write a message/);
+  assert.equal((await threads.sayAsCharacter({ characterId: hero, user: userOf(bob, 'admin'), text: 'hi' })).as, 'Idril', 'admins too');
+  delete process.env.SPEAK_CHANNEL_ID;
+  threads.setClientForTests(null);
+});
+
 test('an adventure made in the panel is tied to an open thread later', async () => {
   const dm = createPlayer();
   const outsider = createPlayer();

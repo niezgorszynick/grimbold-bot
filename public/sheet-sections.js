@@ -23,6 +23,7 @@
     { key: 'inventory', label: 'Inventory & Magic Items', icon: '🎒', sections: ['equipment', 'magicItems'] },
     { key: 'features', label: 'Features & Traits', icon: '📜', sections: ['features'] },
     { key: 'proficiencies', label: 'Proficiencies & Languages', icon: '🛠️', sections: ['proficiencies'] },
+    { key: 'speak', label: 'Speak in Discord', icon: '💬', sections: ['speak'] },
     { key: 'details', label: 'Details, Appearance & Levels', icon: '🪪', sections: ['details'], extra: ['.sheet-appearance', '.level-breakdown'] }
   ];
 

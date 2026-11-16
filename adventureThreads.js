@@ -130,7 +130,7 @@ async function postAsGrimbrandt(thread, content) {
   return false;
 }
 
-// ─── Speaking in Discord from the adventure table ───────────────────────────
+// ─── Speaking in Discord (adventure table, character sheet) ─────────────────
 
 const SPEAKER_LIMIT = 80;
 const MESSAGE_LIMIT = 2000;
@@ -147,6 +147,12 @@ const webhookName = name => String(name).trim().slice(0, SPEAKER_LIMIT).replace(
 const panelBase = () => String(process.env.PANEL_URL || '').replace(/\/+$/, '');
 const botAvatar = () => (client && client.user && typeof client.user.displayAvatarURL === 'function' ? client.user.displayAvatarURL() : undefined);
 
+// A character's name and portrait for a webhook post.
+function characterSpeaker(character) {
+  const portrait = panelBase() && character.portrait_file ? `${panelBase()}/avatars/character/${encodeURIComponent(character.portrait_file)}` : null;
+  return { name: webhookName(character.name), avatarURL: portrait || botAvatar() };
+}
+
 // Who speaks: Grimbrandt (nothing chosen), one of the Notable NPCs (the DM),
 // or a character in the party (its player, or the DM). Portraits go through
 // their public addresses (see index.js, /avatars/...).
@@ -158,8 +164,7 @@ function speakerFor({ adventure, user, npcId, characterId }) {
     const inParty = db.prepare('SELECT 1 FROM adventure_party WHERE adventure_id = ? AND character_id = ?').get(adventure.id, character.id);
     if (!inParty) throw new Error('That character is not in this adventure.');
     if (!manage && character.player_id !== Number(user && user.id)) throw new Error('Forbidden.');
-    const portrait = panelBase() && character.portrait_file ? `${panelBase()}/avatars/character/${encodeURIComponent(character.portrait_file)}` : null;
-    return { name: webhookName(character.name), avatarURL: portrait || botAvatar() };
+    return characterSpeaker(character);
   }
   if (!manage) throw new Error('Forbidden.');
   if (!npcId) return { name: PERSONA, avatarURL: process.env.GRIMBRANDT_AVATAR_URL || undefined };
@@ -189,11 +194,23 @@ async function sayInAdventureThread({ adventureId, user, npcId, characterId, tar
   const { name: speaker, avatarURL } = speakerFor({ adventure, user, npcId, characterId });
   if (!db.canManageAdventure(adventure, user) && adventure.status !== 'active') throw new Error('This adventure is no longer running.');
   if (!toChannel && !adventure.discord_thread_id) throw new Error('This adventure has no Discord thread.');
+  const content = checkMessage(text);
+  return postInDiscord({ placeId: toChannel ? speakChannelId() : adventure.discord_thread_id, toChannel, speaker, avatarURL, content });
+}
+
+function checkMessage(text) {
   const content = String(text || '').trim();
   if (!content) throw new Error('Write a message first.');
   if (content.length > MESSAGE_LIMIT) throw new Error(`Discord messages can be ${MESSAGE_LIMIT} characters at most.`);
+  return content;
+}
+
+// Posts under the speaker's name and portrait (a webhook on the channel);
+// without one, the bot posts it with the name on top. toChannel: the speak
+// channel (a plain channel, or a thread), otherwise an adventure thread.
+async function postInDiscord({ placeId, toChannel, speaker, avatarURL, content }) {
   if (!client) throw new Error('The bot is not connected to Discord right now.');
-  const place = await client.channels.fetch(toChannel ? speakChannelId() : adventure.discord_thread_id).catch(() => null);
+  const place = await client.channels.fetch(placeId).catch(() => null);
   if (!place) throw new Error(toChannel ? 'The channel could not be found (does the bot see it?).' : 'The Discord thread could not be found (deleted?).');
   const isThread = toChannel ? Boolean(typeof place.isThread === 'function' ? place.isThread() : place.parent && place.parentId) : true;
   if (isThread && place.archived && typeof place.setArchived === 'function') await place.setArchived(false).catch(() => {});
@@ -211,6 +228,38 @@ async function sayInAdventureThread({ adventureId, user, npcId, characterId, tar
   if (typeof place.send !== 'function') throw new Error('Could not post there.');
   await place.send({ content: `**${speaker}:** ${content}`.slice(0, MESSAGE_LIMIT), allowedMentions });
   return { sent: true, as: speaker, webhook: false };
+}
+
+// From the character sheet: its player (or an admin) speaks as a living
+// character, with or without an adventure.
+function speakingCharacter(characterId, user) {
+  const character = db.prepare('SELECT id, name, player_id, status, portrait_file FROM characters WHERE id = ?').get(Number(characterId));
+  if (!character) throw new Error('Character not found.');
+  const isAdmin = Boolean(user && user.role === 'admin');
+  if (!isAdmin && character.player_id !== Number(user && user.id)) throw new Error('Forbidden.');
+  if (character.status !== 'alive') throw new Error('Only living characters can speak.');
+  return character;
+}
+
+// Where the sheet can speak: the speak channel, and the threads of running
+// adventures the character is in.
+async function characterSpeakPlaces({ characterId, user }) {
+  const character = speakingCharacter(characterId, user);
+  const adventures = db.prepare(`
+    SELECT a.id, a.title FROM adventures a JOIN adventure_party ap ON ap.adventure_id = a.id
+    WHERE ap.character_id = ? AND a.status = 'active' AND a.discord_thread_id IS NOT NULL
+    ORDER BY a.created_at DESC, a.id DESC
+  `).all(character.id);
+  return { channel: await speakChannelInfo(), adventures };
+}
+
+// { characterId, user, adventureId, text }: without an adventure, to the speak channel.
+async function sayAsCharacter({ characterId, user, adventureId, text }) {
+  const character = speakingCharacter(characterId, user);
+  if (adventureId) return sayInAdventureThread({ adventureId, user, characterId: character.id, target: 'thread', text });
+  const content = checkMessage(text);
+  const { name: speaker, avatarURL } = characterSpeaker(character);
+  return postInDiscord({ placeId: speakChannelId(), toChannel: true, speaker, avatarURL, content });
 }
 
 // ─── Linking an adventure made in the panel ─────────────────────────────────
@@ -398,6 +447,8 @@ module.exports = {
   catchUpAdventureThreads,
   sayInAdventureThread,
   speakChannelInfo,
+  characterSpeakPlaces,
+  sayAsCharacter,
   unlinkedAdventureThreads,
   linkAdventureThread,
   stripStatusTag,
