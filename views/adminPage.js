@@ -108,6 +108,13 @@ module.exports = function renderAdminPage(req) {
     statusBanner = '<div class="alert red">🗑️ Player and associated characters deleted.</div>';
   } else if (status === 'credentials_updated') {
     statusBanner = '<div class="alert green">✅ Player login credentials updated!</div>';
+  } else if (status === 'password_changed') {
+    statusBanner = '<div class="alert green">🔑 Your password has been changed.</div>';
+  } else if (status === 'logins_sent') {
+    const sent = String(req.query.sent || '');
+    const failed = String(req.query.failed || '');
+    statusBanner = `<div class="alert green">✉️ Grimbold sent login details to: ${sent ? escapeHtml(sent) : 'nobody'}.</div>` +
+      (failed ? `<div class="alert red">⚠️ Not sent (no password was set for them): ${escapeHtml(failed)}. Set those by hand below.</div>` : '');
   } else if (status === 'char_added') {
     statusBanner = '<div class="alert green">✅ Character created successfully!</div>';
   } else if (status === 'char_updated') {
@@ -153,6 +160,7 @@ module.exports = function renderAdminPage(req) {
           <div style="display: flex; align-items: center; gap: 10px;">
             <a href="/admin?tab=changelog" class="header-link${currentTab === 'changelog' ? ' active' : ''}">What's new</a>
             <span class="small">${escapeHtml(currentUser.discord_tag)} (${escapeHtml(currentUser.role)})</span>
+            ${currentUser.id > 0 ? '<a href="/change-password" class="header-link">Change password</a>' : ''}
             <a href="/logout" class="btn btn-small">Logout</a>
           </div>
         </div>

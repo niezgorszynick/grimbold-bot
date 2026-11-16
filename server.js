@@ -336,6 +336,19 @@ router.post(['/players/set-access', '/players/credentials'], requireRootAdmin, (
   }
 });
 
+// Grimbold DMs every player without a password their login details.
+router.post('/players/send-logins', requireRootAdmin, async (req, res) => {
+  try {
+    const { sent, failed } = await require('./loginInvites').sendLoginInvites();
+    const query = new URLSearchParams({ tab: 'players', view: 'accounts', status: 'logins_sent', sent: sent.join(', ') });
+    if (failed.length) query.set('failed', failed.map(entry => `${entry.tag} (${entry.reason})`).join('; '));
+    res.redirect(`/admin?${query}`);
+  } catch (err) {
+    console.error('Error sending login details:', err);
+    res.redirect(`/admin?tab=players&view=accounts&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 router.post('/players/add', (req, res) => {
   try {
     const { discord_id, discord_tag } = req.body;

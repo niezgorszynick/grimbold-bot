@@ -393,10 +393,26 @@ module.exports = function renderPlayersTab(ctx) {
     </script>
   `;
 
+  // Grimbold DMs the players without a password their login details.
+  const loginInvites = require('../../loginInvites');
+  const withoutPassword = allPlayers.filter(player => !player.has_password);
+  const loginInvitesHtml = withoutPassword.length ? `
+      <div class="login-invites">
+        <p><strong>${withoutPassword.length} without a password:</strong> ${withoutPassword.map(player => escapeHtml(player.discord_tag)).join(', ')}</p>
+        <details>
+          <summary class="small">The message each one gets (with their own username and a new password)</summary>
+          <pre class="small" style="white-space: pre-wrap">${escapeHtml(loginInvites.inviteMessage({ username: withoutPassword[0].discord_tag, password: 'ember-otter-quill-42' }))}</pre>
+        </details>
+        <form method="POST" action="/admin/players/send-logins" onsubmit="return confirm('Grimbold will DM ${withoutPassword.length} player(s) a new password and the login link. Send?')">
+          <button type="submit" class="btn btn-small btn-gold">✉️ Send login details by Discord DM</button>
+        </form>
+        <p class="muted small">Each gets a fresh password; it is saved only if the DM goes through (closed DMs are listed afterwards).</p>
+      </div>` : '<p class="muted small">Every player has a password.</p>';
   const accountAccessHtml = `
     <section class="card">
       <h3>Passwords &amp; Roles (${allPlayers.length} accounts)</h3>
       <p class="muted">Set or reset a player's password and choose whether they can manage the campaign as a DM.</p>
+      ${loginInvitesHtml}
       <div class="analytics-table-wrap">
         <table>
           <thead>

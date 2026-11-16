@@ -9,6 +9,7 @@ const adminRouter = require('./server');
 const webShopApiRouter = require('./webShopApi');
 const db = require('./db');
 const { ROOT_ADMIN } = require('./auth');
+const { authPage, changePasswordRouter } = require('./changePassword');
 
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret || sessionSecret.length < 32) {
@@ -40,26 +41,8 @@ app.get('/login', (req, res) => {
 
   const error = req.query.error
     ? '<div class="alert alert-danger py-2 small mb-3">Invalid username or password.</div>'
-    : '';
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Grimbold's Vault — Login</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-      <style>
-        body { background-color: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .login-card { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; width: 100%; max-width: 400px; padding: 2rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-      </style>
-    </head>
-    <body>
-      <main class="login-card">
-        <div class="text-center mb-4">
-          <h3 class="fw-bold text-warning mb-1">Grimbold's Vault</h3>
-          <p class="text-muted small">Campaign Hub &amp; Provisions</p>
-        </div>
+    : req.query.changed ? '<div class="alert alert-success py-2 small mb-3">Password changed. Log in with the new one.</div>' : '';
+  res.send(authPage('Login', `
         ${error}
         <form method="POST" action="/login">
           ${next ? `<input type="hidden" name="next" value="${escapeAttr(next)}">` : ''}
@@ -73,11 +56,12 @@ app.get('/login', (req, res) => {
           </div>
           <button type="submit" class="btn btn-warning w-100 fw-bold">Enter the Realm</button>
         </form>
-      </main>
-    </body>
-    </html>
-  `);
+        <p class="text-center small mt-3 mb-0"><a href="/change-password" class="link-warning">Change password</a></p>
+  `));
 });
+
+// Change password (from the login page, or signed in): changePassword.js.
+app.use(changePasswordRouter({ startPage: START_PAGE }));
 
 app.post('/login', (req, res) => {
   const { username, password, next } = req.body || {};
@@ -171,6 +155,8 @@ require('./naturalRolls').setNaturalRollsClient(client);
 require('./scheduleDiscord').setScheduleClient(client);
 // Auction news (listings, bids, results) and settling auctions that are due.
 require('./auctionNews').setAuctionNewsClient(client);
+// Login details DMed to players without a password (Players → Passwords & Roles).
+require('./loginInvites').setLoginInvitesClient(client);
 // Resident artisans who deliver on their own days, announced in the shop channel.
 require('./artisanDeliveries').startArtisanDeliveries();
 
