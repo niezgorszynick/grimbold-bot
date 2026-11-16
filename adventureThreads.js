@@ -130,54 +130,86 @@ async function postAsGrimbrandt(thread, content) {
   return false;
 }
 
-// ─── DMs speaking in a thread from the panel ────────────────────────────────
+// ─── Speaking in Discord from the adventure table ───────────────────────────
 
 const SPEAKER_LIMIT = 80;
 const MESSAGE_LIMIT = 2000;
+// The other place the table can speak in (in-character talk outside the
+// adventure thread) — override with SPEAK_CHANNEL_ID.
+const DEFAULT_SPEAK_CHANNEL_ID = '1420801859865808970';
 
-// Who speaks: Grimbrandt (no npcId) or one of the Notable NPCs, with the
-// NPC's portrait through its public address (see index.js, /avatars/npc).
-function speakerFor(npcId) {
+function speakChannelId() {
+  return process.env.SPEAK_CHANNEL_ID || DEFAULT_SPEAK_CHANNEL_ID;
+}
+
+// Discord refuses webhook names containing these.
+const webhookName = name => String(name).trim().slice(0, SPEAKER_LIMIT).replace(/discord/gi, 'Disc0rd').replace(/clyde/gi, 'Clyd3');
+const panelBase = () => String(process.env.PANEL_URL || '').replace(/\/+$/, '');
+const botAvatar = () => (client && client.user && typeof client.user.displayAvatarURL === 'function' ? client.user.displayAvatarURL() : undefined);
+
+// Who speaks: Grimbrandt (nothing chosen), one of the Notable NPCs (the DM),
+// or a character in the party (its player, or the DM). Portraits go through
+// their public addresses (see index.js, /avatars/...).
+function speakerFor({ adventure, user, npcId, characterId }) {
+  const manage = db.canManageAdventure(adventure, user);
+  if (characterId) {
+    const character = db.prepare('SELECT id, name, player_id, portrait_file FROM characters WHERE id = ?').get(Number(characterId));
+    if (!character) throw new Error('Character not found.');
+    const inParty = db.prepare('SELECT 1 FROM adventure_party WHERE adventure_id = ? AND character_id = ?').get(adventure.id, character.id);
+    if (!inParty) throw new Error('That character is not in this adventure.');
+    if (!manage && character.player_id !== Number(user && user.id)) throw new Error('Forbidden.');
+    const portrait = panelBase() && character.portrait_file ? `${panelBase()}/avatars/character/${encodeURIComponent(character.portrait_file)}` : null;
+    return { name: webhookName(character.name), avatarURL: portrait || botAvatar() };
+  }
+  if (!manage) throw new Error('Forbidden.');
   if (!npcId) return { name: PERSONA, avatarURL: process.env.GRIMBRANDT_AVATAR_URL || undefined };
   const npc = db.prepare('SELECT id, name, portrait_file FROM npcs WHERE id = ?').get(Number(npcId));
   if (!npc) throw new Error('NPC not found.');
-  // Discord refuses webhook names containing these.
-  const name = String(npc.name).trim().slice(0, SPEAKER_LIMIT).replace(/discord/gi, 'Disc0rd').replace(/clyde/gi, 'Clyd3');
-  const base = String(process.env.PANEL_URL || '').replace(/\/+$/, '');
-  const portrait = base && npc.portrait_file ? `${base}/avatars/npc/${encodeURIComponent(npc.portrait_file)}` : null;
-  const botAvatar = client && client.user && typeof client.user.displayAvatarURL === 'function' ? client.user.displayAvatarURL() : undefined;
-  return { name, avatarURL: portrait || botAvatar };
+  const portrait = panelBase() && npc.portrait_file ? `${panelBase()}/avatars/npc/${encodeURIComponent(npc.portrait_file)}` : null;
+  return { name: webhookName(npc.name), avatarURL: portrait || botAvatar() };
 }
 
-// From the adventure table: { adventureId, user, npcId, text }. The message
-// goes into the adventure's thread under the NPC's name and portrait (a
-// webhook on the channel); without one, the bot posts it with the name on top.
-async function sayInAdventureThread({ adventureId, user, npcId, text }) {
+// The speak channel's name for the table ("#tawerna"), or null if the bot
+// can't see it.
+async function speakChannelInfo() {
+  if (!client) return { id: speakChannelId(), name: null };
+  const channel = await client.channels.fetch(speakChannelId()).catch(() => null);
+  return { id: speakChannelId(), name: channel && channel.name ? channel.name : null };
+}
+
+// From the adventure table: { adventureId, user, npcId, characterId, target,
+// text }. target 'thread' (the adventure's thread, the default) or 'channel'
+// (the speak channel). The message goes out under the speaker's name and
+// portrait (a webhook on the channel); without one, the bot posts it with the
+// name on top.
+async function sayInAdventureThread({ adventureId, user, npcId, characterId, target, text }) {
   const adventure = db.getAdventureById(Number(adventureId));
   if (!adventure) throw new Error('Adventure not found.');
-  if (!db.canManageAdventure(adventure, user)) throw new Error('Forbidden.');
-  if (!adventure.discord_thread_id) throw new Error('This adventure has no Discord thread.');
+  const toChannel = target === 'channel';
+  const { name: speaker, avatarURL } = speakerFor({ adventure, user, npcId, characterId });
+  if (!db.canManageAdventure(adventure, user) && adventure.status !== 'active') throw new Error('This adventure is no longer running.');
+  if (!toChannel && !adventure.discord_thread_id) throw new Error('This adventure has no Discord thread.');
   const content = String(text || '').trim();
   if (!content) throw new Error('Write a message first.');
   if (content.length > MESSAGE_LIMIT) throw new Error(`Discord messages can be ${MESSAGE_LIMIT} characters at most.`);
-  const { name: speaker, avatarURL } = speakerFor(npcId);
   if (!client) throw new Error('The bot is not connected to Discord right now.');
-  const thread = await client.channels.fetch(adventure.discord_thread_id).catch(() => null);
-  if (!thread) throw new Error('The Discord thread could not be found (deleted?).');
-  if (thread.archived && typeof thread.setArchived === 'function') await thread.setArchived(false).catch(() => {});
+  const place = await client.channels.fetch(toChannel ? speakChannelId() : adventure.discord_thread_id).catch(() => null);
+  if (!place) throw new Error(toChannel ? 'The channel could not be found (does the bot see it?).' : 'The Discord thread could not be found (deleted?).');
+  const isThread = toChannel ? Boolean(typeof place.isThread === 'function' ? place.isThread() : place.parent && place.parentId) : true;
+  if (isThread && place.archived && typeof place.setArchived === 'function') await place.setArchived(false).catch(() => {});
 
   const allowedMentions = { parse: ['users', 'roles'] };
   try {
-    const hook = await webhookFor(thread.parent);
+    const hook = await webhookFor(isThread ? place.parent : place);
     if (hook) {
-      await hook.send({ content, threadId: thread.id, username: speaker, avatarURL, allowedMentions });
+      await hook.send({ content, ...(isThread ? { threadId: place.id } : {}), username: speaker, avatarURL, allowedMentions });
       return { sent: true, as: speaker, webhook: true };
     }
   } catch (error) {
     console.warn(`Could not speak through a webhook (${error.message}); posting as the bot.`);
   }
-  if (typeof thread.send !== 'function') throw new Error('Could not post in the thread.');
-  await thread.send({ content: `**${speaker}:** ${content}`.slice(0, MESSAGE_LIMIT), allowedMentions });
+  if (typeof place.send !== 'function') throw new Error('Could not post there.');
+  await place.send({ content: `**${speaker}:** ${content}`.slice(0, MESSAGE_LIMIT), allowedMentions });
   return { sent: true, as: speaker, webhook: false };
 }
 
@@ -365,6 +397,7 @@ module.exports = {
   announceAdventureEnd,
   catchUpAdventureThreads,
   sayInAdventureThread,
+  speakChannelInfo,
   unlinkedAdventureThreads,
   linkAdventureThread,
   stripStatusTag,

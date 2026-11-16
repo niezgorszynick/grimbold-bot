@@ -123,6 +123,13 @@ app.get('/avatars/npc/:file', (req, res) => {
   res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
   return res.sendFile(found.file);
 });
+// The same for characters a player speaks as.
+app.get('/avatars/character/:file', (req, res) => {
+  const found = db.getCharacterPortraitByName(req.params.file);
+  if (!found) return res.status(404).end();
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(found.file);
+});
 
 // DM Panel route
 // The Owlbear Rodeo extension (public, works without a panel login).

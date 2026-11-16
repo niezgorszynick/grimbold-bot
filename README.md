@@ -168,6 +168,7 @@ node scripts/check-characters.js backup.sqlite
 | `AUCTIONS_CHANNEL_ID` | optional | Auction news, if not in the announcement channel |
 | `NAT_ROLLS_CHANNEL_ID` | optional | Natural 1s and 20s are announced here |
 | `CAMPAIGN_DM_IDS` | optional | Discord IDs (comma-separated) of DMs without a panel DM account who may run `/campaign` |
+| `SPEAK_CHANNEL_ID` | optional | Channel the adventure table can also speak in (default 1420801859865808970) |
 | `GRIMBRANDT_AVATAR_URL` | optional | Avatar for Grimbrandt's webhook posts |
 | `PORT`, `DB_PATH`, `UPLOADS_DIR` | optional | Defaults: `10000`, `data.sqlite`, `uploads/` |
 

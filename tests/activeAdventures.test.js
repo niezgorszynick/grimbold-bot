@@ -233,6 +233,54 @@ test('the DM speaks in the adventure thread as Grimbrandt or a Notable NPC', asy
   threads.setClientForTests(null);
 });
 
+test('a player speaks as their character in the party, in the thread or the speak channel', async () => {
+  process.env.PANEL_URL = 'https://panel.example/';
+  process.env.SPEAK_CHANNEL_ID = 'chan-tawerna';
+  const dm = createPlayer();
+  const alice = createPlayer();
+  const bob = createPlayer();
+  const posts = [];
+  const hookOn = id => ({ id, fetchWebhooks: async () => [], createWebhook: async () => ({ name: 'Grimbrandt', avatar: 'a', send: async post => { posts.push({ on: id, ...post }); } }) });
+  const thread = fakeThread({ ownerId: discordIdOf(dm) });
+  thread.parent = hookOn('chan-zlecenia');
+  const tavern = { ...hookOn('chan-tawerna'), name: 'tawerna', isThread: () => false };
+  threads.setClientForTests({ user: { id: 'bot', displayAvatarURL: () => 'https://cdn.example/bot.png' }, channels: { fetch: async id => (id === thread.id ? thread : id === tavern.id ? tavern : null) } });
+  const adventure = await threads.logAdventureThread(thread, { announce: false });
+  const say = (user, fields) => threads.sayInAdventureThread({ adventureId: adventure.id, user, ...fields });
+  const hero = addCharacter(alice, 'Thalia');
+  const benched = addCharacter(alice, 'Ławka');
+  const bobs = addCharacter(bob, 'Borin');
+  db.prepare("UPDATE characters SET portrait_file = 'character-1-portrait.png' WHERE id = ?").run(hero);
+  db.setPartyMember({ adventureId: adventure.id, user: userOf(dm), characterId: hero, inParty: true });
+  db.setPartyMember({ adventureId: adventure.id, user: userOf(dm), characterId: bobs, inParty: true });
+
+  assert.deepEqual(await say(userOf(alice), { characterId: hero, text: 'I draw my sword.' }), { sent: true, as: 'Thalia', webhook: true });
+  assert.equal(posts[0].on, 'chan-zlecenia');
+  assert.equal(posts[0].threadId, thread.id);
+  assert.equal(posts[0].avatarURL, 'https://panel.example/avatars/character/character-1-portrait.png');
+  assert.equal(db.getCharacterPortraitByName('character-1-portrait.png'), null, 'no file on disk: nothing served');
+
+  await say(userOf(alice), { characterId: hero, target: 'channel', text: 'Another ale!' });
+  assert.equal(posts[1].on, 'chan-tawerna');
+  assert.equal(posts[1].threadId, undefined, 'a plain channel: no thread');
+  assert.equal(posts[1].username, 'Thalia');
+  assert.deepEqual(await threads.speakChannelInfo(), { id: 'chan-tawerna', name: 'tawerna' });
+
+  // Only their own characters, only those in the party, and no NPCs.
+  await assert.rejects(say(userOf(alice), { characterId: bobs, text: 'hi' }), /Forbidden/);
+  await assert.rejects(say(userOf(alice), { characterId: benched, text: 'hi' }), /not in this adventure/);
+  await assert.rejects(say(userOf(alice), { npcId: db.saveNpc({ name: 'Vex' }), text: 'hi' }), /Forbidden/);
+  await assert.rejects(say(userOf(alice), { text: 'hi' }), /Forbidden/, 'not as Grimbrandt either');
+  // The DM may speak for a party character.
+  assert.equal((await say(userOf(dm), { characterId: bobs, target: 'channel', text: 'Borin nods.' })).as, 'Borin');
+
+  // Once the adventure is over, players are done talking from the table.
+  db.prepare("UPDATE adventures SET status = 'cancelled' WHERE id = ?").run(adventure.id);
+  await assert.rejects(say(userOf(alice), { characterId: hero, text: 'hi' }), /no longer running/);
+  delete process.env.SPEAK_CHANNEL_ID;
+  threads.setClientForTests(null);
+});
+
 test('an adventure made in the panel is tied to an open thread later', async () => {
   const dm = createPlayer();
   const outsider = createPlayer();

@@ -65,4 +65,11 @@ function getCharacterPortraitFile(characterId) {
   return { file, contentType: CONTENT_TYPES[path.extname(name).slice(1)] || 'application/octet-stream' };
 }
 
-module.exports = { characterPortraitUrl, saveCharacterPortrait, removeCharacterPortrait, getCharacterPortraitFile };
+// A portrait by its file name (random, so it can't be guessed): the public
+// address Discord fetches when a character speaks through a webhook.
+function getCharacterPortraitByName(name) {
+  const character = db.prepare("SELECT id FROM characters WHERE portrait_file = ? AND portrait_file != ''").get(String(name || ''));
+  return character ? getCharacterPortraitFile(character.id) : null;
+}
+
+module.exports = { characterPortraitUrl, saveCharacterPortrait, removeCharacterPortrait, getCharacterPortraitFile, getCharacterPortraitByName };

@@ -1237,14 +1237,16 @@ router.get('/encounter-targets', (req, res) => {
   return res.json({ adventures: db.listEncounterTargets(user) });
 });
 
-// { npcId, text } — the DM speaks in the adventure's Discord thread.
+// { npcId | characterId, target: 'thread' | 'channel', text } — the DM speaks
+// as an NPC (or Grimbrandt), a player as their character in the party, in the
+// adventure's Discord thread or the speak channel.
 router.post('/adventures/:id/message', async (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body || {};
   try {
     return res.json(await require('./adventureThreads').sayInAdventureThread({
-      adventureId: req.params.id, user, npcId: body.npcId, text: body.text
+      adventureId: req.params.id, user, npcId: body.npcId, characterId: body.characterId, target: body.target, text: body.text
     }));
   } catch (error) {
     return res.status(adventureErrorStatus(error.message)).json({ error: error.message });
@@ -1252,6 +1254,13 @@ router.post('/adventures/:id/message', async (req, res) => {
 });
 
 // { xp, dmCharacterId, notes, title }
+// The speak channel's id and name, for the table's "Send to" choice.
+router.get('/speak-channel', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  return res.json(await require('./adventureThreads').speakChannelInfo());
+});
+
 router.post('/adventures/:id/finish', adventureRoute(({ adventureId, user, body }) => {
   const result = db.finishAdventure({ adventureId, user, xp: body.xp, dmCharacterId: body.dmCharacterId || null, notes: body.notes, title: body.title });
   announceAdventureEnd(adventureId);

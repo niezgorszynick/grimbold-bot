@@ -1463,23 +1463,37 @@
     return threadPicker;
   }
 
-  // The DM speaks in the adventure's Discord thread under any name (Grimbrandt,
-  // an NPC, "The Narrator"...). Built once, so a reload does not wipe a
-  // half-written message; the last name and picture are remembered.
+  // Speaking in Discord from the table: the DM as Grimbrandt or a Notable NPC,
+  // a player as their own character in the party; in the adventure's thread or
+  // the speak channel. Built once, so a reload does not wipe a half-written
+  // message; the last speaker and place are remembered per adventure.
   let speakBox = null;
   const remember = (key, value) => { try { if (value === undefined) return localStorage.getItem(key) || ''; localStorage.setItem(key, value); } catch (error) { /* private window */ } return ''; };
+  const ownCharacters = () => (data.party || []).filter(member => member.playerId === data.viewerId);
   function speakSection() {
+    const mine = ownCharacters();
+    const active = data.adventure.status === 'active';
+    if (!data.canManage && !(active && mine.length)) return null;
     if (!speakBox) {
       const speaker = el('select', { 'aria-label': 'Speak as' });
+      const place = el('select', { 'aria-label': 'Send to' });
       const text = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'What do they say? Markdown and @mentions work as in Discord.', 'aria-label': 'Message' });
       const status = el('small', { className: 'muted', role: 'status' });
-      const send = button('Send to thread', async () => {
+      const send = button('Send', async () => {
         if (!text.value.trim()) { status.textContent = 'Write a message first.'; return; }
+        if (!place.value) { status.textContent = 'Choose where to send it.'; return; }
         send.disabled = true;
         status.textContent = 'Sending…';
+        const [kind, id] = speaker.value.split(':');
         try {
-          const result = await api('/message', { npcId: speaker.value ? Number(speaker.value) : null, text: text.value });
+          const result = await api('/message', {
+            npcId: kind === 'npc' ? Number(id) : null,
+            characterId: kind === 'char' ? Number(id) : null,
+            target: place.value,
+            text: text.value
+          });
           remember('speak-npc-' + adventureId, speaker.value);
+          remember('speak-place-' + adventureId, place.value);
           text.value = '';
           status.textContent = 'Sent as ' + result.as + (result.webhook ? '.' : ' (by the bot: it needs the Manage Webhooks permission to use the name itself).');
         } catch (error) {
@@ -1490,28 +1504,48 @@
       }, 'btn btn-small btn-gold');
       text.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send.click(); });
       speakBox = el('details', { className: 'sheet-card speak-box' }, [
-        el('summary', { text: '💬 Speak in the Discord thread' }),
+        el('summary', { text: '💬 Speak in Discord' }),
         el('div', { className: 'table-filter' }, [
-          el('label', { className: 'table-filter-level' }, ['Speak as ', speaker])
+          el('label', { className: 'table-filter-level' }, ['Speak as ', speaker]),
+          el('label', { className: 'table-filter-level' }, ['Send to ', place])
         ]),
         text,
         el('div', { className: 'vitals-actions' }, [send, status])
       ]);
       speakBox.speaker = speaker;
+      speakBox.place = place;
+      speakBox.channelName = null;
+      fetch('/api/speak-channel').then(response => response.json()).then(channel => {
+        speakBox.channelName = channel && channel.name ? '#' + channel.name : null;
+        fillPlaces();
+      }).catch(() => {});
     }
-    // Grimbrandt, the NPCs at the table, then the other Notable NPCs. The
-    // choice survives reloads (and is remembered per adventure).
+    // The adventure thread (when it has one) and the speak channel.
+    function fillPlaces() {
+      const select = speakBox.place;
+      const chosen = select.options.length ? select.value : remember('speak-place-' + adventureId);
+      select.replaceChildren(...[
+        data.adventure.threadUrl ? el('option', { value: 'thread', text: 'The adventure thread' }) : null,
+        el('option', { value: 'channel', text: speakBox.channelName || 'The roleplay channel' })
+      ].filter(Boolean));
+      select.value = [...select.options].some(entry => entry.value === chosen) ? chosen : select.options[0].value;
+    }
+    fillPlaces();
+    // Your characters, then (the DM) Grimbrandt, the NPCs at the table and the
+    // other Notable NPCs. The choice survives reloads (remembered per adventure).
     const select = speakBox.speaker;
-    const chosen = select.options.length ? select.value : remember('speak-npc-' + adventureId);
-    const option = npc => el('option', { value: String(npc.id), text: npc.name });
-    const atTable = data.npcs || [];
-    const others = (data.npcCandidates || []).filter(npc => !atTable.some(entry => entry.id === npc.id));
+    let chosen = select.options.length ? select.value : remember('speak-npc-' + adventureId);
+    if (/^\d+$/.test(chosen)) chosen = 'npc:' + chosen; // saved before characters could speak
+    const option = (kind, entry) => el('option', { value: kind + ':' + entry.id, text: entry.name });
+    const atTable = data.canManage ? data.npcs || [] : [];
+    const others = data.canManage ? (data.npcCandidates || []).filter(npc => !atTable.some(entry => entry.id === npc.id)) : [];
     select.replaceChildren(...[
-      el('option', { value: '', text: 'Grimbrandt (the chronicler)' }),
-      atTable.length ? el('optgroup', { label: 'At the table' }, atTable.map(option)) : null,
-      others.length ? el('optgroup', { label: 'Other Notable NPCs' }, others.map(option)) : null
+      mine.length ? el('optgroup', { label: 'Your characters' }, mine.map(member => option('char', member))) : null,
+      data.canManage ? el('option', { value: '', text: 'Grimbrandt (the chronicler)' }) : null,
+      atTable.length ? el('optgroup', { label: 'At the table' }, atTable.map(npc => option('npc', npc))) : null,
+      others.length ? el('optgroup', { label: 'Other Notable NPCs' }, others.map(npc => option('npc', npc))) : null
     ].filter(Boolean));
-    select.value = [...select.options].some(entry => entry.value === chosen) ? chosen : '';
+    select.value = [...select.options].some(entry => entry.value === chosen) ? chosen : select.options[0].value;
     return speakBox;
   }
 
@@ -1677,7 +1711,7 @@
       controls.length ? el('div', { className: 'table-filter' }, controls) : null,
       finishing && data.canManage && active ? finishForm() : null,
       data.canManage && !adventure.threadUrl ? threadSection() : null,
-      data.canManage && adventure.threadUrl ? speakSection() : null,
+      speakSection(),
       message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null,
       (() => { const section = scheduleSection(); if (section) section.addEventListener('toggle', () => { scheduleOpen = section.open; }); return section; })(),
       runningSection(),
