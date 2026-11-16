@@ -101,7 +101,7 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     spellSlots: vitals ? vitals.view.spellSlots.filter(slot => slot.total > 0) : [],
     pact: vitals ? vitals.view.pact : null,
     // Channel Divinity, Rage, ...: uses left.
-    resources: vitals ? vitals.view.resources.map(({ key, name, max, used }) => ({ key, name, max, left: max - used })) : [],
+    resources: vitals ? vitals.view.resources.filter(resource => resource.max > 0).map(({ key, name, max, used }) => ({ key, name, max, left: max - used })) : [],
     hitDice: vitals ? vitals.view.hitDice : [],
     // Resistances, senses, creature type: what a DM needs mid-fight.
     defenses: vitals ? vitals.view.defenses : [],

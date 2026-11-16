@@ -12,7 +12,8 @@
 // Points, Sorcery Points, Healing Light dice). `rolls({ level, mods, pb })`
 // gives dice the sheet can roll for the feature: [{ key, label, formula }]
 // (roll id "resource:<key>:<roll key>", see db/dice.js). An entry with max 0
-// has no uses, only text and rolls (Soul Siphon).
+// has no uses, only text and rolls (Soul Siphon); a class entry needs
+// `info: true` for that (Martial Arts), else max 0 means "not yet".
 
 const { atLevel, abilityModifier, proficiencyBonus } = require('./util');
 const { getClass } = require('./classes');
@@ -25,6 +26,7 @@ const byLevel = steps => level => steps.filter(([at]) => level >= at).reduce((va
 const dieAtLevel = steps => level => steps.filter(([at]) => level >= at).reduce((die, [, size]) => size, null);
 const PSIONIC_DICE = byLevel([[3, 4], [5, 6], [9, 8], [13, 10], [17, 12]]);
 const PSIONIC_DIE = dieAtLevel([[3, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
+const MARTIAL_ARTS_DIE = level => `d${table('Monk', 'martialArtsDie')(level)}`;
 
 // className (and subclass) → features. max({ level, mods, pb }) gives the uses.
 const RESOURCES = [
@@ -81,10 +83,40 @@ const RESOURCES = [
   { key: 'psionicDiceFighter', name: 'Psionic Energy Dice', subclass: 'Psi Warrior', minLevel: 3, max: ({ level }) => PSIONIC_DICE(level), recovery: 'shortOne',
     rolls: ({ level }) => [{ key: 'die', label: 'Psionic Energy die', formula: `1${PSIONIC_DIE(level)}` }],
     text: ({ level }) => `${PSIONIC_DIE(level)}s for Protective Field, Psionic Strike and Telekinetic Movement.` },
+  // Monk: what a beginner needs on one card — what the points buy at this
+  // level, and the Martial Arts die. Martial Arts and Deflect Attacks have no
+  // uses (info: true), only their text and dice.
+  { key: 'martialArts', name: 'Martial Arts', className: 'Monk', minLevel: 1, max: () => 0, info: true,
+    rolls: ({ level, mods }) => [{ key: 'die', label: 'Martial Arts die', formula: `1${MARTIAL_ARTS_DIE(level)}${signed(mods.dex)}` }],
+    text: ({ level }) => `Without armor or a Shield, using only your fists or Monk weapons (Simple melee, Martial melee with Light): ` +
+      `make one Unarmed Strike as a Bonus Action (no points needed); roll ${MARTIAL_ARTS_DIE(level)} for damage instead of the weapon's die; use DEX instead of STR. ` +
+      `AC is 10 + DEX + WIS (Unarmored Defense)${level >= 2 ? `; Speed +${table('Monk', 'unarmoredMovement')(level)} feet` : ''}.` +
+      (level >= 5 ? ' Extra Attack: two attacks with the Attack action.' : '') +
+      (level >= 6 ? ' Unarmed Strikes can deal Force damage.' : '') },
   { key: 'focusPoints', name: 'Focus Points', className: 'Monk', minLevel: 2, max: ({ level }) => table('Monk', 'focusPoints')(level), recovery: 'short', pool: true,
-    text: () => 'Flurry of Blows, Patient Defense, Step of the Wind and more.' },
+    rolls: ({ level, mods }) => [
+      ...(level >= 3 ? [{ key: 'redirect', label: 'Deflect Attacks: redirect', formula: `2${MARTIAL_ARTS_DIE(level)}${signed(mods.dex)}` }] : []),
+      ...(level >= 10 ? [{ key: 'patient', label: 'Patient Defense: temporary HP', formula: `2${MARTIAL_ARTS_DIE(level)}` }] : [])
+    ],
+    text: ({ level, mods, pb }) => [
+      `Spend 1 on your turn, as a Bonus Action:`,
+      `Flurry of Blows — ${level >= 10 ? 'three' : 'two'} Unarmed Strikes (instead of the free one);`,
+      `Patient Defense — Disengage and Dodge (attacks against you have Disadvantage)${level >= 10 ? `, plus 2${MARTIAL_ARTS_DIE(level)} temporary HP` : ''};`,
+      `Step of the Wind — Disengage and Dash, jump twice as far${level >= 10 ? ', and carry a willing creature along' : ''}.`,
+      `Without a point, Patient Defense is a Disengage and Step of the Wind a Dash.`,
+      level >= 3 ? `Deflect Attacks: when you reduce a hit's damage to 0, spend 1 to throw it at someone (DEX save).` : '',
+      level >= 5 ? `Stunning Strike: once per turn on a hit, spend 1 — CON save or Stunned until your next turn.` : '',
+      level >= 14 ? `Disciplined Survivor: spend 1 to reroll a failed save.` : '',
+      level >= 18 ? `Superior Defense: spend 3 at the start of your turn for Resistance to all but Force damage for 1 minute.` : '',
+      `Save DC ${8 + mods.wis + pb}.`
+    ].filter(Boolean).join(' ') },
+  { key: 'deflectAttacks', name: 'Deflect Attacks', className: 'Monk', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level, mods }) => [{ key: 'reduce', label: 'Damage reduced', formula: `1d10${signed(level + mods.dex)}` }],
+    text: ({ level }) => `Reaction when an attack hits you${level >= 13 ? '' : ' with Bludgeoning, Piercing or Slashing damage'}: take that much less damage.` },
   { key: 'uncannyMetabolism', name: 'Uncanny Metabolism', className: 'Monk', minLevel: 2, max: () => 1, recovery: 'long',
-    text: ({ level }) => `When you roll Initiative: regain all Focus Points and Martial Arts die + ${level} HP.` },
+    rolls: ({ level }) => [{ key: 'heal', label: 'Uncanny Metabolism (heal)', formula: `1${MARTIAL_ARTS_DIE(level)}+${level}` }],
+    text: ({ level }) => `When you roll Initiative: regain all Focus Points and heal ${MARTIAL_ARTS_DIE(level)} + ${level} HP.` +
+      (level >= 15 ? ' Perfect Focus: if you don\'t use it, you still get back up to 4 Focus Points.' : '') },
   { key: 'layOnHands', name: 'Lay On Hands', className: 'Paladin', minLevel: 1, max: ({ level }) => 5 * level, recovery: 'long', pool: true,
     text: () => 'Bonus Action: heal from the pool, or spend 5 to remove the Poisoned condition.' },
   { key: 'channelDivinityPaladin', name: 'Channel Divinity', className: 'Paladin', minLevel: 3, max: ({ level }) => table('Paladin', 'channelDivinity')(level), recovery: 'shortOne',
@@ -111,8 +143,22 @@ const RESOURCES = [
   { key: 'healingLight', name: 'Healing Light (d6 pool)', subclass: 'Celestial Patron', minLevel: 3, max: ({ level }) => 1 + level, recovery: 'long', pool: true,
     rolls: ({ level, mods }) => Array.from({ length: Math.min(1 + level, Math.max(1, mods.cha)) }, (_, index) => ({ key: `heal${index + 1}`, label: `Healing Light, ${index + 1} ${index ? 'dice' : 'die'}`, formula: `${index + 1}d6` })),
     text: ({ mods }) => `Bonus Action: roll up to ${Math.max(1, mods.cha)} of these d6s to heal a creature within 60 ft.` },
+  // Each cast (with a use or a slot) adds one Fey step; Misty Escape (level 6) adds two more.
   { key: 'stepsOfTheFey', name: 'Steps of the Fey', subclass: 'Archfey Patron', minLevel: 3, max: modMin1('cha'), recovery: 'long',
-    text: () => 'Cast Misty Step without a spell slot.' },
+    rolls: ({ level }) => [
+      { key: 'refreshing', label: 'Refreshing Step: temporary HP', formula: '1d10' },
+      ...(level >= 6 ? [{ key: 'dreadful', label: 'Dreadful Step (Psychic)', formula: '2d10' }] : [])
+    ],
+    text: ({ level, mods, pb }) => [
+      `Cast Misty Step without a spell slot (Bonus Action, teleport up to 30 ft.).`,
+      level >= 6 ? `Misty Escape: you can also cast it as a Reaction when you take damage.` : '',
+      `Whenever you cast it, choose one:`,
+      `Refreshing Step — right after you teleport, you or a creature you can see within 10 ft. gains 1d10 temporary HP;`,
+      `Taunting Step — creatures within 5 ft. of the space you left make a WIS save or have Disadvantage on attacks against anyone but you until the start of your next turn${level >= 6 ? ';' : '.'}`,
+      level >= 6 ? `Disappearing Step — you are Invisible until the start of your next turn, or until you attack, deal damage or cast a spell;` : '',
+      level >= 6 ? `Dreadful Step — creatures within 5 ft. of the space you left or arrive in make a WIS save or take 2d10 Psychic damage.` : '',
+      `Save DC ${8 + mods.cha + pb}.`
+    ].filter(Boolean).join(' ') },
   { key: 'darkOnesOwnLuck', name: "Dark One's Own Luck", subclass: 'Fiend Patron', minLevel: 6, max: modMin1('cha'), recovery: 'long',
     rolls: () => [{ key: 'die', label: "Dark One's Own Luck", formula: '1d10' }],
     text: () => 'Add a d10 to an ability check or saving throw.' },
@@ -133,7 +179,7 @@ function classResources(classRows, scoreOf) {
       if (!matches || row.level < resource.minLevel) continue;
       const context = { level: row.level, mods, pb, subclass: row.subclassName };
       const max = resource.max(context);
-      if (!max) continue;
+      if (!max && !resource.info) continue;
       const recovery = typeof resource.recovery === 'function' ? resource.recovery(context) : resource.recovery;
       result.push({
         key: resource.key,
