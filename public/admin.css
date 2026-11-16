@@ -641,6 +641,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
   .character-sheet-full .sheet-features-card { order: 11; }
   .character-sheet-full .sheet-equipment { order: 12; }
   .character-sheet-full #cs_magic_items { order: 13; }
+  .character-sheet-full > #cs_speak { order: 14; margin: 0; }
 
   /* Dice: a slim bar along the bottom; Adv/Dis stay visible when it's folded. */
   .dice-bar { left: 8px; right: 8px; bottom: 8px; width: auto; }
@@ -876,6 +877,8 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-portrait-remove { color: #949ba4; text-decoration: none; }
 .sheet-portrait-remove:hover { color: #f23f43; }
 .speak-box summary { cursor: pointer; color: #f1c40f; font-weight: 600; }
+/* The character sheet's Speak in Discord card (public/character-speak.js). */
+.character-sheet-full > #cs_speak { margin: 12px 0 14px; padding: 10px 12px; }
 .speak-box[open] summary { margin-bottom: 8px; }
 .speak-box textarea { box-sizing: border-box; width: 100%; padding: 7px; background: #2b2d31; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }
 .speak-box select { min-width: 240px; max-width: 100%; padding: 6px; background: #1e1f22; border: 1px solid #3f4147; border-radius: 4px; color: #dbdee1; }

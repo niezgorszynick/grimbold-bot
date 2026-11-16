@@ -230,6 +230,9 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
             <p class="muted small">Saved with the sheet.</p>
           </details>
+          <!-- Speak in Discord as the character: one folded line, above everything in every layout. -->
+          ${characterToEdit.status === 'alive' ? `<section id="cs_speak" class="sheet-card" data-collapse="speak" data-character-id="${Number(characterToEdit.id)}"></section>
+          <script src="/admin/assets/character-speak.js" defer></script>` : ''}
           <!-- Ability scores, combat stats and senses side by side (a band on wide screens). -->
           <div class="sheet-topband">
           <section class="sheet-card point-buy-card" data-collapse="abilities">
@@ -321,8 +324,6 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
             <!-- Features, magic items and spells: a third column on wide screens, under the other two below that. -->
             <div class="sheet-col sheet-col-side">
-              ${characterToEdit.status === 'alive' ? `<section id="cs_speak" class="sheet-card" data-collapse="speak" data-character-id="${Number(characterToEdit.id)}"></section>
-              <script src="/admin/assets/character-speak.js" defer></script>` : ''}
               <section class="sheet-card sheet-features-card" data-collapse="features">
               <h4>Class Features &amp; Species Traits</h4>
               <div id="cs_auto_features" class="sheet-auto-features" aria-live="polite"></div>
