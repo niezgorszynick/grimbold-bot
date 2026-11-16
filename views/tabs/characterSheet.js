@@ -149,6 +149,20 @@ function levelBreakdownHtml(characterId) {
     </details>`;
 }
 
+// The class rules the sheet's script reads, with skill choices always a list
+// of skill names: the Bard's "any three" ('any') becomes every skill, as
+// character creation reads it (a string there made every Bard's class picks
+// look like 0 selected).
+function sheetClassRules() {
+  const { SKILL_NAMES } = require('../../rules/util');
+  return Object.fromEntries(Object.entries({ ...DND_DATA.classes, ...DND_DATA.supplementalClasses }).map(([name, data]) => [
+    name,
+    data.skillChoices && data.skillChoices.options === 'any'
+      ? { ...data, skillChoices: { ...data.skillChoices, options: SKILL_NAMES } }
+      : data
+  ]));
+}
+
 module.exports = function renderCharacterSheetTab(ctx) {
   const { req, currentUser, isAdmin, status } = ctx;
   let contentHtml = '';
@@ -178,10 +192,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
   const sheetClassTreeJson = JSON.stringify(DND_CLASSES_AND_SUBCLASSES).replace(/</g, '\\u003c');
   const sheetSpeciesJson = JSON.stringify(DND_DATA.species).replace(/</g, '\\u003c');
   const sheetBackgroundsJson = JSON.stringify(DND_DATA.backgrounds).replace(/</g, '\\u003c');
-  const sheetClassRulesJson = JSON.stringify({
-    ...DND_DATA.classes,
-    ...DND_DATA.supplementalClasses
-  }).replace(/</g, '\\u003c');
+  const sheetClassRulesJson = JSON.stringify(sheetClassRules()).replace(/</g, '\\u003c');
   const editFormHtml = req.query.edit_char
     ? canEditRequestedCharacter
       ? `
@@ -1345,3 +1356,5 @@ module.exports = function renderCharacterSheetTab(ctx) {
   `;
   return contentHtml;
 };
+
+module.exports.sheetClassRules = sheetClassRules;
