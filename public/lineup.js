@@ -181,6 +181,9 @@
     const armRight = body(mix(ARM.masculine, ARM.feminine, build === 'neutral' ? 0.4 : t));
     const L = name => bodyHalf[{ neck: 2, trap: 3, trapOut: 4, shoulder: 5, deltoid: 6, armpit: 7, chest: 8, waist: 10, hip: 12, thigh: 13, knee: 15, calf: 16, shin: 17, ankle: 18, foot: 19, sole: 20, ankleIn: 21, calfIn: 22, kneeIn: 23 }[name]];
     const hand = P((armRight[6].x + armRight[7].x) / 2, (armRight[6].y + armRight[7].y) / 2);
+    // The middle of the right hand (the end of the arm): where a weapon's grip
+    // goes, under a fist (robes move it to the hand below the sleeve).
+    let grip = P((armRight[6].x + armRight[7].x + armRight[8].x + armRight[9].x) / 4, (armRight[6].y + armRight[7].y + armRight[8].y + armRight[9].y) / 4);
     const back = [];
     const shapes = [];
     const front = [];
@@ -220,8 +223,9 @@
     if (armShape !== armRight) {
       // The hands, just out of the sleeve.
       const hemY = mapY(52);
-      shapes.push(svg('ellipse', { cx: f2(hand.x + 1), cy: f2(hemY + 1), rx: 1.9, ry: 2.4, fill }));
-      shapes.push(svg('ellipse', { cx: f2(-hand.x - 1), cy: f2(hemY + 1), rx: 1.9, ry: 2.4, fill }));
+      grip = P(hand.x + 1, hemY + 1);
+      shapes.push(svg('ellipse', { cx: f2(grip.x), cy: f2(grip.y), rx: 1.9, ry: 2.4, fill }));
+      shapes.push(svg('ellipse', { cx: f2(-grip.x), cy: f2(grip.y), rx: 1.9, ry: 2.4, fill }));
       reach(-hand.x - 5.5, hand.x + 5.5);
     }
     shape(shapes, smooth(mirrored(head(species === 'Orc' ? ORC_HEAD : HEAD))));
@@ -259,7 +263,7 @@
         legShape([P(L('knee').x + 1, mapY(66)), P(L('calf').x + 1.4, mapY(80)), P(L('shin').x + 1.3, mapY(89)), P(L('ankle').x + 1.4, mapY(95)), P(L('foot').x + 1, 99.8, 1), P(L('sole').x - 0.6, 99.8, 1), P(L('ankleIn').x - 0.8, mapY(94)), P(L('calfIn').x - 0.9, mapY(82)), P(L('kneeIn').x - 0.8, mapY(66))]);
         [1, -1].forEach(side => {
           shapes.push(svg('circle', { cx: f2(side * (L('knee').x + L('kneeIn').x) / 2), cy: f2(mapY(70.5)), r: f2((L('knee').x - L('kneeIn').x) / 2 + 1.6), fill }));
-          shapes.push(svg('ellipse', { cx: f2(side * (hand.x + 0.3)), cy: f2(hand.y), rx: 2.4, ry: 2.8, fill }));
+          shapes.push(svg('ellipse', { cx: f2(side * grip.x), cy: f2(grip.y), rx: 2.4, ry: 2.8, fill }));
         });
         reach(-(sh + 6), sh + 6);
         break;
@@ -350,9 +354,11 @@
     }
 
     // Props: the weapon in hand (by kind), else the class's; a shield worn on
-    // the left arm. Right hand (x > 0) unless said otherwise.
-    const hx = hand.x;
-    const hy = hand.y;
+    // the left arm. Right hand (x > 0) unless said otherwise. (hx, hy) is the
+    // middle of the hand: each held prop's grip passes through it, and a fist
+    // is drawn over it (fists below), so the hand closes on the weapon.
+    const hx = grip.x;
+    const hy = grip.y;
     const kind = WEAPON_PROP[gear.weapon] || CLASS_PROP[character.className] || null;
     const hasGear = Boolean(gear.weapon || gear.armor || gear.shield);
     const shield = gear.shield || (!hasGear && character.className === 'Paladin');
@@ -364,16 +370,19 @@
     switch (kind) {
       case 'staff':
         if (character.className === 'Druid') {
-          const x = hx + 2.2;
+          const x = hx;
           stroke(front, `M ${f2(x)} 100 Q ${f2(x + 0.8)} 60 ${f2(x)} 14 Q ${f2(x - 0.4)} 4 ${f2(x + 4)} 3.6 Q ${f2(x + 7.4)} 5 ${f2(x + 5)} 9 Q ${f2(x + 3)} 10 ${f2(x + 3)} 7.6`, 1.4);
           [[x + 1, 15, -30], [x - 1.6, 20, 30], [x + 1.4, 24, -20]].forEach(([lx, ly, angle]) => front.push(svg('ellipse', { cx: f2(lx), cy: ly, rx: 1.8, ry: 0.8, fill, transform: `rotate(${angle} ${f2(lx)} ${ly})` })));
           reach(left, x + 7.6);
         } else if (character.className === 'Monk') {
-          stroke(front, `M ${f2(-hx - 7)} 12 L ${f2(hx + 8)} 98`, 1.4);
-          reach(-hx - 7.6, hx + 8.6);
+          // Slanted, the top leaning in over the shoulder, through the hand.
+          const topX = hx - 10;
+          const bottomX = hx + (hx - topX) * (98 - hy) / (hy - 8);
+          stroke(front, `M ${f2(topX)} 8 L ${f2(bottomX)} 98`, 1.4);
+          reach(left, bottomX + 0.8);
         } else {
           // A gnarled staff; a wizard's holds a crystal in claws.
-          const x = hx + 2.2;
+          const x = hx - 0.2;
           shape(front, smooth([P(x - 0.7, 100, 1), P(x + 0.3, 70), P(x - 0.6, 40), P(x + 0.2, 12), P(x - 0.5, 4, 1), P(x + 0.9, 4, 1), P(x + 1.1, 12), P(x + 0.5, 40), P(x + 1.2, 70), P(x + 0.7, 100, 1)]));
           if (character.className === 'Wizard') {
             shape(front, smooth([P(x + 0.2, -4.4, 1), P(x + 1.8, -0.4), P(x + 0.2, 3.4, 1), P(x - 1.4, -0.4)]));
@@ -383,9 +392,10 @@
         }
         break;
       case 'orb':
-        front.push(svg('circle', { cx: f2(hx + 1.6), cy: f2(hy - 4.6), r: 3.2, fill }));
-        shape(front, smooth([P(hx - 0.6, hy - 6.4), P(hx + 0.4, hy - 11, 1), P(hx + 1.6, hy - 8.2), P(hx + 2.4, hy - 12.6, 1), P(hx + 3.2, hy - 8.4), P(hx + 4.4, hy - 10.4, 1), P(hx + 4.2, hy - 6)]));
-        reach(left, hx + 5);
+        // Resting on the palm, flames above.
+        front.push(svg('circle', { cx: f2(hx + 0.4), cy: f2(hy - 4.4), r: 3.2, fill }));
+        shape(front, smooth([P(hx - 1.8, hy - 6.4), P(hx - 0.8, hy - 11, 1), P(hx + 0.4, hy - 8.2), P(hx + 1.2, hy - 12.6, 1), P(hx + 2, hy - 8.4), P(hx + 3.2, hy - 10.4, 1), P(hx + 3, hy - 6)]));
+        reach(left, hx + 3.8);
         break;
       case 'tome':
         shape(front, smooth([P(-hx + 0.6, hy - 1.6), P(-hx - 4.4, hy - 4.4), P(-hx - 9.6, hy - 3.2, 1), P(-hx - 9.2, hy + 5.4, 1), P(-hx - 4.2, hy + 4.4), P(-hx + 0.8, hy + 6.6, 1), P(-hx + 5.6, hy + 3.4, 1), P(-hx + 5.2, hy - 4.6, 1)]));
@@ -404,10 +414,10 @@
         const cx = hx + 2.8;
         const cy = hy + 18;
         if (kind === 'mace') {
-          stroke(front, `M ${f2(hx)} ${f2(hy - 1)} L ${f2(hx + 2.4)} ${f2(hy + 15)}`, 1.3);
+          stroke(front, `M ${f2(hx - 0.4)} ${f2(hy - 3.6)} L ${f2(hx + 2.4)} ${f2(hy + 15)}`, 1.3);
         } else {
           // A short handle, a chain, a spiked ball.
-          stroke(front, `M ${f2(hx)} ${f2(hy - 1)} L ${f2(hx + 0.8)} ${f2(hy + 7)}`, 1.3);
+          stroke(front, `M ${f2(hx - 0.2)} ${f2(hy - 3.6)} L ${f2(hx + 0.8)} ${f2(hy + 7)}`, 1.3);
           stroke(front, `M ${f2(hx + 0.8)} ${f2(hy + 7)} Q ${f2(hx + 3.4)} ${f2(hy + 11)} ${f2(cx)} ${f2(cy - 3)}`, 0.5);
         }
         shape(front, smooth(Array.from({ length: 12 }, (_, i) => {
@@ -439,13 +449,15 @@
         reach(left, hx + 8.4);
         break;
       case 'rapier':
-        stroke(front, `M ${f2(hx + 0.4)} ${f2(hy + 2.6)} L ${f2(hx + 6.4)} ${f2(hy + 34)}`, 0.6);
-        front.push(svg('circle', { cx: f2(hx + 0.6), cy: f2(hy + 2.4), r: 2, fill }));
+        // Grip and pommel in the fist, the cup guard below it.
+        stroke(front, `M ${f2(hx - 0.3)} ${f2(hy - 3.4)} L ${f2(hx + 6.4)} ${f2(hy + 34)}`, 0.6);
+        front.push(svg('circle', { cx: f2(hx - 0.3), cy: f2(hy - 3.4), r: 0.9, fill }));
+        front.push(svg('circle', { cx: f2(hx + 0.5), cy: f2(hy + 3), r: 2, fill }));
         reach(left, hx + 7);
         break;
       case 'axe':
         // One-handed, head down by the leg.
-        stroke(front, `M ${f2(hx)} ${f2(hy - 1)} L ${f2(hx + 2)} ${f2(hy + 16)}`, 1.3);
+        stroke(front, `M ${f2(hx - 0.4)} ${f2(hy - 3.4)} L ${f2(hx + 2)} ${f2(hy + 16)}`, 1.3);
         shape(front, smooth([P(hx + 1.4, hy + 11.4), P(hx + 6.4, hy + 9.6, 1), P(hx + 7.6, hy + 14), P(hx + 6.4, hy + 18.6, 1), P(hx + 1.8, hy + 16)]));
         reach(left, hx + 8);
         break;
@@ -460,38 +472,42 @@
         break;
       }
       case 'hammer':
-        stroke(front, `M ${f2(hx)} ${f2(hy)} L ${f2(hx + 1.6)} ${f2(hy + 12)}`, 1.2);
+        stroke(front, `M ${f2(hx - 0.4)} ${f2(hy - 3.2)} L ${f2(hx + 1.6)} ${f2(hy + 12)}`, 1.2);
         shape(front, smooth([P(hx - 1.6, hy + 10.6, 1), P(hx + 4.6, hy + 10, 1), P(hx + 4.8, hy + 13.6, 1), P(hx - 1.4, hy + 14.2, 1)]));
         reach(left, hx + 5.2);
         break;
       case 'maul':
         // A great hammer, head down beside the leg.
-        stroke(front, `M ${f2(hx)} ${f2(hy - 2)} L ${f2(hx + 2.6)} ${f2(hy + 30)}`, 1.5);
+        stroke(front, `M ${f2(hx - 0.3)} ${f2(hy - 3.6)} L ${f2(hx + 2.6)} ${f2(hy + 30)}`, 1.5);
         shape(front, smooth([P(hx - 1.6, hy + 28, 1), P(hx + 7, hy + 27, 1), P(hx + 7.4, hy + 34, 1), P(hx - 1.2, hy + 35, 1)]));
         reach(left, hx + 7.8);
         break;
       case 'club':
-        shape(front, smooth([P(hx - 0.6, hy - 1, 1), P(hx + 0.8, hy - 1.2, 1), P(hx + 4.4, hy + 16), P(hx + 2.6, hy + 19), P(hx + 1.2, hy + 16)]));
+        shape(front, smooth([P(hx - 1, hy - 3.4, 1), P(hx + 0.4, hy - 3.6, 1), P(hx + 4.4, hy + 16), P(hx + 2.6, hy + 19), P(hx + 1.2, hy + 16)]));
         reach(left, hx + 5);
         break;
       case 'spear':
         // A long shaft, butt on the ground, a leaf blade above the head.
-        stroke(front, `M ${f2(hx + 2)} 100 L ${f2(hx + 2)} 0`, 1.2);
-        shape(front, smooth([P(hx + 2, -8, 1), P(hx + 3.6, -2.4), P(hx + 2, 1, 1), P(hx + 0.4, -2.4)]));
-        reach(left, hx + 4);
+        stroke(front, `M ${f2(hx)} 100 L ${f2(hx)} 0`, 1.2);
+        shape(front, smooth([P(hx, -8, 1), P(hx + 1.6, -2.4), P(hx, 1, 1), P(hx - 1.6, -2.4)]));
+        reach(left, hx + 2.4);
         break;
-      case 'halberd':
-        stroke(front, `M ${f2(hx + 2)} 100 L ${f2(hx + 2)} -4`, 1.3);
-        shape(front, smooth([P(hx + 2, -10, 1), P(hx + 3, -5), P(hx + 2, -3, 1), P(hx + 1, -5)]));
-        shape(front, smooth([P(hx + 2.4, -4, 1), P(hx + 8, -6.4, 1), P(hx + 9, 0), P(hx + 7.6, 4.6, 1), P(hx + 2.4, 2, 1)]));
-        shape(front, smooth([P(hx + 1.6, -2.6, 1), P(hx - 2.6, -0.6, 1), P(hx + 1.6, 1, 1)]));
-        reach(hx - 3, hx + 9.4);
+      case 'halberd': {
+        const x = hx;
+        stroke(front, `M ${f2(x)} 100 L ${f2(x)} -4`, 1.3);
+        shape(front, smooth([P(x, -10, 1), P(x + 1, -5), P(x, -3, 1), P(x - 1, -5)]));
+        shape(front, smooth([P(x + 0.4, -4, 1), P(x + 6, -6.4, 1), P(x + 7, 0), P(x + 5.6, 4.6, 1), P(x + 0.4, 2, 1)]));
+        shape(front, smooth([P(x - 0.4, -2.6, 1), P(x - 4.6, -0.6, 1), P(x - 0.4, 1, 1)]));
+        reach(Math.min(left, x - 5), Math.max(right, x + 7.4));
         break;
+      }
       case 'bow': {
-        const x = -hx - 1;
-        stroke(front, `M ${f2(x + 1.6)} ${f2(hy - 30)} Q ${f2(x - 1)} ${f2(hy - 27)} ${f2(x - 1.4)} ${f2(hy - 20)} Q ${f2(x - 7)} ${f2(hy)} ${f2(x - 1.4)} ${f2(hy + 20)} Q ${f2(x - 1)} ${f2(hy + 27)} ${f2(x + 1.6)} ${f2(hy + 29)}`, 1.3);
-        stroke(front, `M ${f2(x + 1.2)} ${f2(hy - 29.4)} L ${f2(x + 1.2)} ${f2(hy + 28.4)}`, 0.3);
-        reach(x - 6, right);
+        // Held by its grip in the left hand, the limbs bowing out past it and
+        // the string on the outside.
+        const o = -hx;
+        stroke(front, `M ${f2(o - 3)} ${f2(hy - 30)} Q ${f2(o - 6)} ${f2(hy - 27)} ${f2(o - 6.2)} ${f2(hy - 20)} Q ${f2(o + 6.2)} ${f2(hy)} ${f2(o - 6.2)} ${f2(hy + 20)} Q ${f2(o - 6)} ${f2(hy + 27)} ${f2(o - 3)} ${f2(hy + 29)}`, 1.3);
+        stroke(front, `M ${f2(o - 3.2)} ${f2(hy - 29.4)} L ${f2(o - 3.2)} ${f2(hy + 28.4)}`, 0.3);
+        reach(o - 7, right);
         break;
       }
       case 'crossbow':
@@ -511,7 +527,7 @@
         });
         break;
       case 'sickle':
-        stroke(front, `M ${f2(hx)} ${f2(hy)} L ${f2(hx + 0.8)} ${f2(hy + 6)}`, 1.1);
+        stroke(front, `M ${f2(hx - 0.3)} ${f2(hy - 3)} L ${f2(hx + 0.8)} ${f2(hy + 6)}`, 1.1);
         stroke(front, `M ${f2(hx + 0.8)} ${f2(hy + 6)} Q ${f2(hx + 7)} ${f2(hy + 6)} ${f2(hx + 6.4)} ${f2(hy + 12)}`, 1.1);
         reach(left, hx + 7.2);
         break;
@@ -528,6 +544,11 @@
       shape(front, smooth([P(-hx + 3.4, hy - 24, 1), P(-hx - 3, hy - 25.4), P(-hx - 9, hy - 24, 1), P(-hx - 8.2, hy - 13), P(-hx - 3, hy - 2, 1), P(-hx + 2.6, hy - 13)]));
       reach(-hx - 9.4, right);
     }
+    // Fists over the grips: the right hand on a held weapon, the left on a bow
+    // (both for daggers). Orb, book, lute and whip are not gripped.
+    const fist = x => front.push(svg('ellipse', { cx: f2(x), cy: f2(hy), rx: outfit === 'plate' ? 2.4 : 1.9, ry: outfit === 'plate' ? 2.8 : 2.4, fill }));
+    if (kind && !['orb', 'tome', 'lute', 'whip', 'bow'].includes(kind)) fist(hx);
+    if (kind === 'bow' || kind === 'daggers') fist(-hx);
     return { shapes: [...back, ...shapes, ...front], left, right };
   }
 
