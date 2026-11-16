@@ -116,7 +116,9 @@ function receiveInventoryRow(sheetData, row, quantity) {
   const plain = !row.nickname && !row.weapon && !(Array.isArray(row.bonuses) && row.bonuses.length);
   const stack = plain && inventory.find(entry => entry && entry.name && !entry.nickname && !entry.weapon &&
     !(Array.isArray(entry.bonuses) && entry.bonuses.length) &&
-    entry.name.toLowerCase() === row.name.toLowerCase() && (entry.description || '') === (row.description || ''));
+    entry.name.toLowerCase() === row.name.toLowerCase() && (entry.description || '') === (row.description || '') &&
+    // Gear the giver couldn't sell stays apart from gear the recipient can.
+    rules.sameSaleStatus(entry, row));
   if (stack) {
     stack.quantity = Math.min(9999, (Number(stack.quantity) || 1) + quantity);
   } else {

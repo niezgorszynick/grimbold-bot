@@ -7,6 +7,8 @@
 const { db } = require('./connection');
 const rules = require('../rules');
 const { combatWithArmorClass } = require('./combat');
+const { recordGoldChange } = require('./gold');
+const { formatCp } = require('../currency');
 
 const MAX_QUANTITY = 9999;
 
@@ -52,11 +54,27 @@ function cleanQuantity(value) {
 // Shop catalog items a sheet can add (services such as lodging excluded).
 function getCatalogForSheets() {
   return db.prepare(`
-    SELECT id, name, category, description FROM catalog WHERE tier != 'service' ORDER BY name COLLATE NOCASE
+    SELECT id, name, category, description, base_price_cp, rarity, tier FROM catalog WHERE tier != 'service' ORDER BY name COLLATE NOCASE
   `).all();
 }
 
-function buildView(sheetData, isAdmin) {
+// The catalog row Grimbold prices a piece of mundane gear by (none for magic items).
+function mundaneCatalogRow(name, catalog) {
+  const known = catalog.get(String(name || '').toLowerCase());
+  if (!known || known.rarity || known.tier === 'magic' || rules.matchMagicItem(known.name)) return null;
+  return known;
+}
+
+// The owner's weekly roll, which moves Grimbold's offers: { roll, discountPercent }.
+function saleContext(character) {
+  const owner = db.prepare('SELECT discord_id FROM players WHERE id = ?').get(character.player_id);
+  // Required here: rollTracker loads the whole db module.
+  const { getUserRoll, getDiscount } = require('../rollTracker');
+  const roll = owner && owner.discord_id ? getUserRoll(owner.discord_id) : null;
+  return { roll, discountPercent: roll === null ? 0 : getDiscount(roll).percent };
+}
+
+function buildView(sheetData, isAdmin, sale = { roll: null, discountPercent: 0 }) {
   const catalog = new Map(getCatalogForSheets().map(row => [row.name.toLowerCase(), row]));
   return {
     items: readInventory(sheetData).map((row, index) => {
@@ -78,9 +96,13 @@ function buildView(sheetData, isAdmin) {
         gear: gear ? { type: gear.type, name: gear.name, stats: rules.describeGear(gear) } : null,
         worn: gear ? rules.isWornByDefault(row, gear, sheetData) : false,
         // A custom description wins; otherwise the catalog's.
-        description: row.description || (known ? known.description : '')
+        description: row.description || (known ? known.description : ''),
+        // What Grimbold pays for one: { unitCp, share } or { unitCp: 0, reason }.
+        sale: rules.gearOffer(row, { catalogRow: mundaneCatalogRow(row.name, catalog), discountPercent: sale.discountPercent, isAdmin })
       };
     }),
+    // The owner's weekly roll behind the offers (null: not rolled this week).
+    saleRoll: sale.roll,
     // Choices for custom weapon stats.
     weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS },
     // What item bonuses add up to now, for the skill and save numbers.
@@ -95,7 +117,7 @@ function buildView(sheetData, isAdmin) {
 
 function getCharacterInventory({ id, player_id, is_admin }) {
   const character = loadCharacter(id, player_id, is_admin);
-  return buildView(readSheet(character.sheet_data), is_admin);
+  return buildView(readSheet(character.sheet_data), is_admin, saleContext(character));
 }
 
 // action: add { catalogId | name, quantity, description }
@@ -103,6 +125,7 @@ function getCharacterInventory({ id, player_id, is_admin }) {
 //       | wear { index, name, worn } (armor, shields and weapons)
 //       | rename { index, name, nickname } | setWeapon { index, name, weapon | null } (custom items)
 //       | setBonuses { index, name, bonuses } | useBonuses { index, name, active }
+//       | sell { index, name, quantity } (to Grimbold, see rules/gearSales.js)
 // add with weapon stats (custom items): see rules/customWeapons.js.
 // `name` with update/remove guards against a list changed in another tab.
 function changeCharacterInventory({ id, player_id, is_admin, action, params = {} }) {
@@ -112,6 +135,7 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
     const inventory = readInventory(sheetData).map(row => ({ ...row }));
     let nextSheet;
     let message;
+    let sold = null;
 
     if (action === 'add') {
       const quantity = cleanQuantity(params.quantity);
@@ -141,12 +165,15 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         message = `${name} added to Magic Items.`;
       } else {
         // A nicknamed item ("Ambassador") stays its own row.
+        const added = { name, quantity, source };
+        // The DM's additions (loot) can be sold; a player's own can't.
+        if (source === 'catalog' && is_admin) added.addedBy = 'dm';
         const existing = customWeapon || bonuses.length ? null : inventory.find(row => !row.nickname && !row.weapon && row.name.toLowerCase() === name.toLowerCase() &&
-          (row.description || '') === description);
+          (row.description || '') === description && rules.sameSaleStatus(row, added));
         if (existing) {
           existing.quantity = Math.min(MAX_QUANTITY, (Number(existing.quantity) || 1) + quantity);
         } else {
-          const row = { name, quantity, source };
+          const row = added;
           if (description) row.description = description;
           if (category) row.category = category;
           if (customWeapon) row.weapon = customWeapon;
@@ -167,7 +194,10 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         inventory.splice(index, 1);
         message = `Removed ${row.name}.`;
       } else {
-        row.quantity = cleanQuantity(params.quantity);
+        const quantity = cleanQuantity(params.quantity);
+        // More than the list had: the extra wasn't paid for, so only the DM sells the stack.
+        if (!is_admin && quantity > (Number(row.quantity) || 1)) row.unsellable = true;
+        row.quantity = quantity;
         message = `${row.name}: ${row.quantity}.`;
       }
       nextSheet = { ...sheetData, inventory };
@@ -215,6 +245,30 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
       else delete row.nickname;
       nextSheet = { ...sheetData, inventory };
       message = row.nickname ? `${row.name} is now called ${row.nickname}.` : `${row.name} has its own name again.`;
+    } else if (action === 'sell') {
+      const index = Number(params.index);
+      const row = Number.isSafeInteger(index) ? inventory[index] : null;
+      if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+      if (character.status !== 'alive') throw new Error(`${character.name} can't sell anything now.`);
+      const have = Number.isSafeInteger(row.quantity) && row.quantity > 0 ? row.quantity : 1;
+      const quantity = params.quantity === undefined || params.quantity === '' ? 1 : Number(params.quantity);
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > have) throw new Error(`Sell from 1 to ${have}.`);
+      const catalog = new Map(getCatalogForSheets().map(entry => [entry.name.toLowerCase(), entry]));
+      const context = saleContext(character);
+      const offer = rules.gearOffer(row, { catalogRow: mundaneCatalogRow(row.name, catalog), discountPercent: context.discountPercent, isAdmin: is_admin });
+      if (!offer.unitCp) throw new Error(offer.reason);
+      if (quantity === have) inventory.splice(index, 1);
+      else row.quantity = have - quantity;
+      nextSheet = { ...sheetData, inventory };
+      // Remembered, so rebuilding the character doesn't hand out a new set to sell.
+      if (row.source === 'class' || row.source === 'background') nextSheet.soldStartingGear = true;
+      const totalCp = offer.unitCp * quantity;
+      const purseCp = character.gold_cp + totalCp;
+      db.prepare('UPDATE characters SET gold_cp = ? WHERE id = ?').run(purseCp, character.id);
+      const label = `${quantity > 1 ? `${quantity} × ` : ''}${row.nickname ? `${row.nickname} (${row.name})` : row.name}`;
+      recordGoldChange({ characterId: character.id, user: { id: player_id, role: is_admin ? 'admin' : 'player' }, oldCp: character.gold_cp, newCp: purseCp, reason: `Sold ${label} to Grimbold` });
+      sold = { characterId: character.id, characterName: character.name, item: label, quantity, unitCp: offer.unitCp, totalCp, share: offer.share, fullValue: Boolean(offer.fullValue), roll: offer.fullValue ? null : context.roll, purseCp };
+      message = `Sold ${label} to Grimbold for ${formatCp(totalCp)}.`;
     } else if (action === 'wear') {
       const index = Number(params.index);
       const row = Number.isSafeInteger(index) ? inventory[index] : null;
@@ -233,7 +287,7 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
     // Armor and shields change the Armor Class shown elsewhere.
     nextSheet = combatWithArmorClass(character, nextSheet);
     db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
-    return { message, inventory: buildView(nextSheet, is_admin) };
+    return { message, inventory: buildView(nextSheet, is_admin, saleContext(character)), ...(sold ? { sold } : {}) };
   })();
 }
 

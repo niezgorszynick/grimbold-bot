@@ -576,9 +576,15 @@ router.post('/characters/:id/inventory', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
-    return res.json(db.changeCharacterInventory({
+    const result = db.changeCharacterInventory({
       id: req.params.id, player_id: user.id, is_admin: isAdmin(user), action: body.action, params: body
-    }));
+    });
+    // Gear sold to Grimbold: his note in the character's thread.
+    if (result.sold) {
+      const seller = Number(user.id) > 0 ? db.prepare('SELECT discord_tag FROM players WHERE id = ?').get(user.id) : null;
+      void require('./characterThreads').announceSale(result.sold, { sellerTag: seller ? seller.discord_tag : 'the DM' });
+    }
+    return res.json(result);
   } catch (error) {
     if (error instanceof TypeError) {
       console.error('Inventory action failed:', error);

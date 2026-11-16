@@ -20,7 +20,7 @@ const RULES_KEYS = [
   'levelHistory', 'classFeatures', 'pendingChoices', 'inventory', 'languages',
   'toolProficiencies', 'weaponProficiencies', 'armorTraining', 'startingEquipment',
   'generationMethod', 'baseScores', 'backgroundBonuses', 'hpMax', 'hpBreakdown',
-  'hitDice', 'spellSlots', 'spellcasting', 'magicItems', 'acAdjustment', 'wildShape'
+  'hitDice', 'spellSlots', 'spellcasting', 'magicItems', 'acAdjustment', 'wildShape', 'soldStartingGear'
 ];
 
 // For characters built by the rules engine these come from creation and
@@ -449,9 +449,15 @@ function rebuildCharacter({ id, player_id, is_admin, character }) {
       .filter(row => row && row.source !== 'class' && row.source !== 'background');
     const keptMagicItems = (Array.isArray(oldSheet.magicItems) ? oldSheet.magicItems : [])
       .filter(item => item && item.source !== 'creation');
+    // Starting gear already sold to Grimbold: the rebuild's new set can't be sold again.
+    const soldStart = Boolean(oldSheet.soldStartingGear);
+    const startingItems = soldStart
+      ? character.sheetData.inventory.map(row => ({ ...row, unsellable: true }))
+      : character.sheetData.inventory;
     const sheetData = {
       ...character.sheetData,
-      inventory: [...character.sheetData.inventory, ...keptItems],
+      ...(soldStart ? { soldStartingGear: true } : {}),
+      inventory: [...startingItems, ...keptItems],
       ...(keptMagicItems.length ? { magicItems: keptMagicItems } : {})
     };
     const level = Math.max(character.level, Number(stored.level) || 0);

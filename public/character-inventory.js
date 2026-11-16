@@ -49,6 +49,51 @@
   const openResults = new Set();
   // The item whose gift form is open (its index|name).
   let giving = null;
+  // The item being sold to Grimbold (its index|name).
+  let selling = null;
+
+  // 1234 cp → "12 gp 3 sp 4 cp".
+  function coins(cp) {
+    const total = Math.max(0, Math.round(Number(cp) || 0));
+    const parts = [];
+    if (total >= 100) parts.push(Math.floor(total / 100) + ' gp');
+    if (total % 100 >= 10) parts.push(Math.floor((total % 100) / 10) + ' sp');
+    if (total % 10) parts.push((total % 10) + ' cp');
+    return parts.join(' ') || '0 cp';
+  }
+
+  // Selling some of a row to Grimbold: how many, his offer, then confirm.
+  function sellForm(item, key) {
+    const sale = item.sale;
+    const label = item.nickname || item.name;
+    const count = el('input', { type: 'number', min: '1', max: String(item.quantity), value: '1', className: 'inventory-qty', 'aria-label': 'How many ' + label + ' to sell' });
+    const confirm = button('', null, 'btn btn-small btn-green');
+    const update = () => {
+      const n = Math.min(item.quantity, Math.max(1, Math.floor(Number(count.value) || 1)));
+      confirm.textContent = 'Sell for ' + coins(sale.unitCp * n);
+      return n;
+    };
+    count.addEventListener('input', update);
+    confirm.addEventListener('click', () => {
+      const n = update();
+      act({ action: 'sell', index: item.index, name: item.name, quantity: n }).then(ok => { if (ok) selling = null; render(); });
+    });
+    update();
+    const rate = sale.fullValue
+      ? 'Treasure keeps its full value.'
+      : 'That is ' + (Math.round(sale.share * 1000) / 10) + '% of the shop price' +
+        (view.saleRoll === null || view.saleRoll === undefined
+          ? '. No haggling roll this week: /roll in Discord first and a good roll gets up to 60%.'
+          : ", from this week's roll of " + view.saleRoll + '.');
+    return el('div', { className: 'gift-form sell-form' }, [
+      el('p', { className: 'small mb-0', text: 'Grimbold offers ' + coins(sale.unitCp) + (item.quantity > 1 ? ' each' : '') + ' for ' + label + '. ' + rate }),
+      el('div', { className: 'vitals-actions' }, [
+        item.quantity > 1 ? el('label', { className: 'muted small' }, ['sell ', count, ' of ' + item.quantity]) : null,
+        confirm,
+        button('Cancel', () => { selling = null; render(); }, 'btn btn-small btn-secondary')
+      ])
+    ]);
+  }
 
   function afterGift(result) {
     giving = null;
@@ -58,7 +103,7 @@
   }
   function giftButton(key, label) {
     if (!window.grimboldGiftForm) return null;
-    return button('🎁', () => { giving = giving === key ? null : key; render(); }, 'btn btn-small btn-secondary gift-button', { title: 'Give ' + label + ' to another character', 'aria-label': 'Give ' + label + ' as a gift' });
+    return button('🎁', () => { giving = giving === key ? null : key; selling = null; render(); }, 'btn btn-small btn-secondary gift-button', { title: 'Give ' + label + ' to another character', 'aria-label': 'Give ' + label + ' as a gift' });
   }
 
   async function request(method, body) {
@@ -84,6 +129,8 @@
       if (window.refreshCharacterCombat) window.refreshCharacterCombat();
       // Item bonuses change skill and save numbers (and initiative).
       if (window.applyItemBonuses) window.applyItemBonuses(view.itemBonuses);
+      // Coins from Grimbold go into the purse.
+      if (body.action === 'sell' && window.refreshCharacterPurse) window.refreshCharacterPurse();
       return true;
     } catch (error) {
       message = error.message;
@@ -112,7 +159,7 @@
     const quantity = el('input', {
       type: 'number', min: '1', max: '9999', value: String(item.quantity),
       className: 'inventory-qty', 'aria-label': 'How many ' + item.name + ' you have',
-      title: 'How many you have. Changing it changes your sheet; to give some away, use 🎁.'
+      title: 'How many you have. Changing it changes your sheet; to give some away, use 🎁; to sell, use 🪙. Raising it by hand means only the DM can sell them to Grimbold.'
     });
     quantity.addEventListener('change', () => {
       const value = Number(quantity.value);
@@ -136,6 +183,13 @@
           title: item.worn ? (weapon ? 'Stow it (no longer listed as an attack)' : 'Take it off') : (weapon ? 'Have it at hand (listed as an attack)' : 'Put it on')
         });
     }
+    const canSell = Boolean(item.sale && item.sale.unitCp > 0);
+    const sell = canSell
+      ? button('🪙', () => { selling = selling === key ? null : key; giving = null; render(); }, 'btn btn-small btn-secondary gift-button', {
+        title: 'Sell ' + (item.nickname || item.name) + ' to Grimbold (' + coins(item.sale.unitCp) + (item.quantity > 1 ? ' each' : '') + ')',
+        'aria-label': 'Sell ' + (item.nickname || item.name) + ' to Grimbold'
+      })
+      : null;
     const stats = item.gear && item.gear.stats ? el('p', { className: 'small gear-stats', text: item.gear.stats }) : null;
     return el('li', { className: 'inventory-row' }, [
       el('div', { className: 'inventory-row-main' }, [
@@ -153,8 +207,9 @@
           title: item.bonuses.map(bonus => bonus.text).join('; ') + (item.bonusesActive ? '' : ' (not in use)'),
           text: item.bonuses[0].text + (item.bonuses.length > 1 ? ' +' + (item.bonuses.length - 1) : '')
         }) : null,
-        el('span', { className: 'inventory-controls' }, [wear, el('label', { className: 'inventory-have muted small' }, ['have ', quantity]), giftButton(key, item.nickname || item.name), remove])
+        el('span', { className: 'inventory-controls' }, [wear, el('label', { className: 'inventory-have muted small' }, ['have ', quantity]), sell, giftButton(key, item.nickname || item.name), remove])
       ]),
+      selling === key && canSell ? sellForm(item, key) : null,
       giving === key ? window.grimboldGiftForm({
         characterId, kind: 'item', index: item.index, name: item.name, itemName: item.nickname || item.name, max: item.quantity,
         onDone: afterGift, onCancel: () => { giving = null; render(); }
@@ -163,6 +218,7 @@
         ? el('div', { className: 'spell-details' }, [stats, item.description
           ? renderText(item.description)
           : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' })),
+        item.sale && !canSell && item.sale.reason ? el('p', { className: 'muted small', text: '🪙 ' + item.sale.reason }) : null,
         item.source === 'custom' ? weaponEditor(item) : null,
         bonusEditor(item),
         nicknameField(item.nickname, nickname => act({ action: 'rename', index: item.index, name: item.name, nickname }))])

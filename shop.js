@@ -52,9 +52,11 @@ function addToSheet(sheetJson, itemName, quantity, source = 'shop') {
     return JSON.stringify({ ...sheet, magicItems });
   }
   const inventory = Array.isArray(sheet.inventory) ? sheet.inventory.map(row => ({ ...row })) : [];
-  const existing = inventory.find(row => row.name === itemName && !row.description && !row.nickname);
+  const added = { name: itemName, quantity, source };
+  // Bought gear stacks only with gear that can be sold the same way.
+  const existing = inventory.find(row => row.name === itemName && !row.description && !row.nickname && rules.sameSaleStatus(row, added));
   if (existing) existing.quantity += quantity;
-  else inventory.push({ name: itemName, quantity, source });
+  else inventory.push(added);
   return JSON.stringify({ ...sheet, inventory });
 }
 

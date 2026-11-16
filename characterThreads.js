@@ -234,6 +234,35 @@ function announcePurchase(result, { buyerTag } = {}) {
     .catch(error => ({ ok: false, reason: error.message }));
 }
 
+// Gear sold back to Grimbold (sold: from the inventory's sell action).
+function saleMessage(sold, sellerTag) {
+  const each = sold.quantity > 1 ? ` (${formatCp(sold.unitCp)} each)` : '';
+  const rate = sold.fullValue
+    ? ' — full value for treasure'
+    : ` — ${Math.round(sold.share * 1000) / 10}% of the price${sold.roll !== null && sold.roll !== undefined ? ` (weekly roll ${sold.roll})` : ''}`;
+  return {
+    text: `🪙 *Grimbold buys from ${sold.characterName}:* **${sold.item}** for **${formatCp(sold.totalCp)}**${each}${rate}. Purse now: **${formatCp(sold.purseCp)}**.`,
+    embeds: [{
+      title: '🪙 Grimbold buys some gear',
+      color: 0xd4af37,
+      description: `*Grimbold turns the ${sold.quantity > 1 ? 'pieces' : 'piece'} over in his hands, grunts, and counts out the coins for ${sold.characterName}.*`,
+      fields: [
+        { name: 'Sold', value: `**${sold.item}**`, inline: true },
+        { name: 'Paid', value: `**${formatCp(sold.totalCp)}**${each}${rate}`, inline: true },
+        { name: 'Purse now', value: `**${formatCp(sold.purseCp)}**`, inline: true }
+      ],
+      footer: { text: sellerTag ? `Sold by ${sellerTag}` : "Grimbold's Emporium" },
+      timestamp: new Date().toISOString()
+    }]
+  };
+}
+
+function announceSale(sold, { sellerTag } = {}) {
+  if (!sold) return Promise.resolve({ ok: false, reason: 'Nothing sold.' });
+  return postToCharacterThread(sold.characterId, saleMessage(sold, sellerTag))
+    .catch(error => ({ ok: false, reason: error.message }));
+}
+
 function announceGoldChange(change) {
   if (!change) return Promise.resolve({ ok: false, reason: 'Nothing changed.' });
   return postToCharacterThread(change.character_id, goldChangeMessage(change))
@@ -256,6 +285,8 @@ module.exports = {
   postToCharacterThread,
   announcePurchase,
   announceGoldChange,
+  announceSale,
+  saleMessage,
   announceGift,
   giftMessages,
   announceReservation,

@@ -40,6 +40,7 @@ module.exports = {
   ...require('./schedule'),
   ...require('./encounters'),
   ...require('./shopCatalog'),
+  ...require('./gearSales'),
   ...require('./itemBonuses'),
   ...require('./vitals'),
   ...require('./content')
