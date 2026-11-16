@@ -232,6 +232,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
           </details>
           <!-- Speak in Discord as the character: one folded line, above everything in every layout. -->
           ${characterToEdit.status === 'alive' ? `<section id="cs_speak" class="sheet-card" data-collapse="speak" data-character-id="${Number(characterToEdit.id)}"></section>
+          <script src="/admin/assets/discord-editor.js" defer></script>
           <script src="/admin/assets/character-speak.js" defer></script>` : ''}
           <!-- Ability scores, combat stats and senses side by side (a band on wide screens). -->
           <div class="sheet-topband">

@@ -1477,10 +1477,10 @@
     if (!speakBox) {
       const speaker = el('select', { 'aria-label': 'Speak as' });
       const place = el('select', { 'aria-label': 'Send to' });
-      const text = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'What do they say? Markdown and @mentions work as in Discord.', 'aria-label': 'Message' });
+      const text = window.DiscordEditor.create({ placeholder: 'What do they say? Format it with the buttons, or type Markdown as in Discord.' });
       const status = el('small', { className: 'muted', role: 'status' });
       const send = button('Send', async () => {
-        if (!text.value.trim()) { status.textContent = 'Write a message first.'; return; }
+        if (text.isEmpty()) { status.textContent = 'Write a message first.'; return; }
         if (!place.value) { status.textContent = 'Choose where to send it.'; return; }
         send.disabled = true;
         status.textContent = 'Sending…';
@@ -1490,11 +1490,11 @@
             npcId: kind === 'npc' ? Number(id) : null,
             characterId: kind === 'char' ? Number(id) : null,
             target: place.value,
-            text: text.value
+            text: text.markdown()
           });
           remember('speak-npc-' + adventureId, speaker.value);
           remember('speak-place-' + adventureId, place.value);
-          text.value = '';
+          text.clear();
           status.textContent = 'Sent as ' + result.as + (result.webhook ? '.' : ' (by the bot: it needs the Manage Webhooks permission to use the name itself).');
         } catch (error) {
           status.textContent = error.message;
@@ -1502,14 +1502,14 @@
           send.disabled = false;
         }
       }, 'btn btn-small btn-gold');
-      text.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send.click(); });
+      text.onSubmit(() => send.click());
       speakBox = el('details', { className: 'sheet-card speak-box' }, [
         el('summary', { text: '💬 Speak in Discord' }),
         el('div', { className: 'table-filter' }, [
           el('label', { className: 'table-filter-level' }, ['Speak as ', speaker]),
           el('label', { className: 'table-filter-level' }, ['Send to ', place])
         ]),
-        text,
+        text.node,
         el('div', { className: 'vitals-actions' }, [send, status])
       ]);
       speakBox.speaker = speaker;

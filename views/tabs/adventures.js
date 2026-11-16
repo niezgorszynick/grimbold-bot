@@ -11,6 +11,7 @@ function renderAdventureTable(adventureId, isAdmin) {
     <div class="adventure-table-page">
       <a href="/admin?tab=adventures" class="btn btn-small btn-secondary">← All adventures</a>
       <section id="adventure-table" data-roll-page="party" data-adventure-id="${adventureId}" data-is-admin="${isAdmin ? 'true' : 'false'}" aria-live="polite">Loading adventure…</section>
+      <script src="/admin/assets/discord-editor.js" defer></script>
       <script src="/admin/assets/adventure-table.js" defer></script>
       <script src="/admin/assets/dice.js" defer></script>
     </div>`;

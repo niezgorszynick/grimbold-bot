@@ -44,7 +44,7 @@
   }
 
   const place = el('select', { 'aria-label': 'Send to' }, [el('option', { value: '', text: 'Loading…' })]);
-  const text = el('textarea', { rows: '3', maxlength: '2000', placeholder: 'What does your character say? Markdown and @mentions work as in Discord.', 'aria-label': 'Message' });
+  const text = window.DiscordEditor.create({ placeholder: 'What does your character say? Format it with the buttons, or type Markdown as in Discord.' });
   const status = el('small', { className: 'muted', role: 'status' });
   const send = el('button', { type: 'button', className: 'btn btn-small btn-gold', text: 'Send' });
 
@@ -67,13 +67,13 @@
   }
 
   send.addEventListener('click', async () => {
-    if (!text.value.trim()) { status.textContent = 'Write a message first.'; return; }
+    if (text.isEmpty()) { status.textContent = 'Write a message first.'; return; }
     send.disabled = true;
     status.textContent = 'Sending…';
     try {
-      const result = await request({ text: text.value, adventureId: place.value ? Number(place.value) : null });
+      const result = await request({ text: text.markdown(), adventureId: place.value ? Number(place.value) : null });
       remember(place.value);
-      text.value = '';
+      text.clear();
       status.textContent = 'Sent as ' + result.as + (result.webhook ? '.' : ' (by the bot: it needs the Manage Webhooks permission to use the name itself).');
     } catch (error) {
       status.textContent = error.message;
@@ -81,12 +81,12 @@
       send.disabled = false;
     }
   });
-  text.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send.click(); });
+  text.onSubmit(() => send.click());
 
   const box = el('details', { className: 'speak-box' }, [
     el('summary', { text: '💬 Speak in Discord' }),
     el('div', { className: 'table-filter' }, [el('label', { className: 'table-filter-level' }, ['Send to ', place])]),
-    text,
+    text.node,
     el('div', { className: 'vitals-actions' }, [send, status])
   ]);
   box.addEventListener('toggle', () => { if (box.open) loadPlaces(); });
