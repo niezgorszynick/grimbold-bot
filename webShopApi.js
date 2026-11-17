@@ -124,6 +124,19 @@ router.get('/my-characters', (req, res) => {
   return res.json({ characters: shop.getShoppingCharacters(player.id) });
 });
 
+// Chronicles: Grimbold fetches the doc from Google again and keeps the copy.
+router.post('/chronicles/:id/refresh', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Not logged in.' });
+  if (!db.getCharacterDoc(req.params.id, { isAdmin: isAdmin(user) })) return res.status(404).json({ error: 'Document not found.' });
+  try {
+    const doc = await require('./chronicles').refreshDoc(req.params.id);
+    return res.json({ ok: true, access: doc.access, savedAt: doc.saved_at });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 // DM: the character channel's threads no other character holds, to tie this one to.
 router.get('/characters/:id/thread-options', async (req, res) => {
   const user = getSessionApiUser(req);

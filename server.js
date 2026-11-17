@@ -389,6 +389,27 @@ router.post('/characters/add', (req, res) => {
   }
 });
 
+// Chronicles (admins): read the docs channel's history, and sort a doc.
+router.post('/chronicles/import', (req, res) => {
+  const started = require('./chronicles').startImport(req.session.user.discord_tag);
+  res.redirect(`/admin?tab=chronicles&status=${started ? 'docs_import_started' : 'docs_import_busy'}`);
+});
+
+router.post('/chronicles/update', (req, res) => {
+  const back = req.body.return_to === 'list' ? '/admin?tab=chronicles&character=unsorted' : `/admin?tab=chronicles&doc=${encodeURIComponent(req.body.id)}`;
+  try {
+    db.updateCharacterDoc(req.body.id, {
+      characterId: req.body.character_id,
+      kind: req.body.kind,
+      hidden: req.body.hidden === undefined ? undefined : [].concat(req.body.hidden).includes('1'),
+      title: req.body.title
+    });
+    res.redirect(`${back}&status=doc_updated`);
+  } catch (err) {
+    res.redirect(`${back}&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 // Notable NPCs (admins): create or update, and delete.
 router.post('/npcs/save', (req, res) => {
   try {

@@ -1401,3 +1401,24 @@ button.sheet-hud-tile { cursor: pointer; }
 /* With a sheet open on a phone, the list intro above it is just in the way. */
 @media (max-width: 900px) { body:has(#fullCharacterSheetContainer) .sheet-intro { display: none; } }
 .dice-bar-row.dice-colors[hidden] { display: none; }
+
+/* Chronicles tab (views/tabs/chronicles.js) and the sheet's Chronicles card. */
+.chronicles-head, .chronicle-viewer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.chronicles-head h3, .chronicle-viewer-head h3 { margin: 0 0 4px; }
+.chronicle-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+.chronicle-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.chronicle-list li { padding: 8px 10px; border-radius: 6px; border: 1px solid #3f4147; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.chronicle-list li.is-current { border-color: #d4af37; background: rgba(212, 175, 55, 0.1); }
+.chronicle-list li.is-hidden { opacity: 0.6; }
+.chronicle-list a { color: #dbdee1; text-decoration: none; }
+.chronicle-list a:hover strong { text-decoration: underline; }
+.chronicle-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.chronicle-frame { width: 100%; height: 75vh; min-height: 420px; border: 1px solid #3f4147; border-radius: 6px; background: #fff; }
+.chronicle-text { background: #f6f1e4; color: #2b2418; padding: 28px clamp(16px, 5vw, 56px); border-radius: 6px; font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.6; max-height: 75vh; overflow-y: auto; }
+.chronicle-text p { margin: 0 0 1em; }
+.chronicle-dm { margin-top: 12px; }
+.chronicle-dm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; align-items: end; margin-top: 8px; }
+.chronicle-dm-form label { display: grid; gap: 4px; font-size: 12px; }
+.chronicle-dm-form label.chronicle-hidden { display: flex; align-items: center; gap: 6px; }
+.chronicle-quick-sort { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; }
+.sheet-chronicles .chronicle-list { margin-top: 8px; }

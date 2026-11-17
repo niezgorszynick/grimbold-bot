@@ -1117,6 +1117,39 @@ const MIGRATIONS = [
       add('next_delivery_at', 'TEXT');
       add('last_delivery_at', 'TEXT');
     }
+  },
+  {
+    // Google Docs about characters (diaries, letters, stories) shared in the
+    // Discord docs channel (chronicles.js, db/characterDocs.js). doc_key is the
+    // doc's ID ('pub:<id>' for a published-to-web link); character_id NULL =
+    // unsorted. saved_text is Grimbold's copy, in case the doc goes away.
+    version: 38,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS character_docs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_key TEXT NOT NULL UNIQUE,
+          url TEXT NOT NULL,
+          title TEXT,
+          kind TEXT NOT NULL DEFAULT 'other',
+          character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL,
+          matched_by TEXT,
+          hidden INTEGER NOT NULL DEFAULT 0,
+          channel_id TEXT,
+          guild_id TEXT,
+          message_id TEXT,
+          posted_by_discord_id TEXT,
+          posted_by_tag TEXT,
+          posted_at TEXT,
+          message_text TEXT,
+          access TEXT NOT NULL DEFAULT 'unknown',
+          saved_text TEXT,
+          saved_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS character_docs_character ON character_docs (character_id);
+      `);
+    }
   }
 ];
 

@@ -149,6 +149,8 @@ client.commands = new Collection();
 require('./adventureThreads').registerAdventureThreads(client);
 // Grimbold's notes (purchases, purse changes) in each character's thread.
 require('./characterThreads').setCharacterThreadsClient(client);
+// Google Docs about characters shared in the docs channel (Chronicles tab).
+require('./chronicles').setChroniclesClient(client);
 // Natural 1s and 20s from every source, in one channel (NAT_ROLLS_CHANNEL_ID).
 require('./naturalRolls').setNaturalRollsClient(client);
 // Session changes made in the panel are announced in the adventure's thread.

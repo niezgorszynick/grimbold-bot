@@ -6,6 +6,19 @@ const db = require('../../db');
 const { DND_SPECIES, DND_DATA, DND_CLASSES_AND_SUBCLASSES } = require('../../dndData');
 const { escapeHtml } = require('../helpers');
 
+// The character's docs from the Chronicles tab (diaries, letters, stories).
+function chroniclesHtml(characterId) {
+  const docs = db.listCharacterDocs({ characterId });
+  if (!docs.length) return '';
+  return `
+          <details class="sheet-card sheet-chronicles">
+            <summary><strong>📜 Chronicles</strong> <span class="muted small">${docs.length} document${docs.length === 1 ? '' : 's'}</span></summary>
+            <ul class="chronicle-list">
+              ${docs.map(doc => `<li><a href="/admin?tab=chronicles&character=${Number(characterId)}&doc=${doc.id}#chronicle-viewer"><strong>${escapeHtml(doc.title || 'Untitled document')}</strong></a> <span class="muted small"><span class="tag">${escapeHtml(doc.kindLabel)}</span>${doc.posted_at ? ` · ${escapeHtml(String(doc.posted_at).slice(0, 10))}` : ''}</span></li>`).join('')}
+            </ul>
+          </details>`;
+}
+
 // The DM's view of every character: one sortable, filterable row each, with
 // the numbers looked up during play.
 function renderRoster() {
@@ -241,6 +254,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             </div>
             <p class="muted small">Saved with the sheet.</p>
           </details>
+          ${chroniclesHtml(characterToEdit.id)}
           <!-- Speak in Discord as the character: one folded line, above everything in every layout. -->
           ${characterToEdit.status === 'alive' ? `<section id="cs_speak" class="sheet-card" data-collapse="speak" data-character-id="${Number(characterToEdit.id)}"></section>
           <script src="/admin/assets/discord-editor.js" defer></script>
