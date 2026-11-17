@@ -1,6 +1,7 @@
 // views/loginBackdrop.js — The night scene behind the login and change
 // password card: stars, a moon with a dragon crossing it, mountains, a castle
-// on its hill and Grimbold's shop with lit windows. Inline SVG (no images to
+// on its wooded island with a drawbridge to the land, and Grimbold's shop
+// with lit windows. Inline SVG (no images to
 // load), drawn once at start; stars twinkle and windows flicker unless the
 // viewer prefers reduced motion.
 
@@ -97,12 +98,25 @@ const SVG = `
     <path d="M260 560 h12 v-10 h12 v10 h12 v-10 h12 v10 h12 v-10 h12 v10 h12 v-10 h12 v10 h12 v-10 h12 v10 h12 v-10 h12 v10 h12 v-10 h12 v10 h22 v6 h-190 Z"/>
     ${tower(260, 520, 34, 640)}${tower(450, 530, 30, 640)}${tower(355, 470, 40, 600)}
   </g>
+  <!-- Pines on the island's slopes, either side of the castle. -->
+  <g fill="#0c1024">${[[100, 724, 40], [140, 694, 52], [178, 672, 44], [216, 654, 36], [492, 660, 40], [528, 668, 50], [566, 696, 54], [602, 728, 42], [628, 756, 30]].map(([x, y, h]) => pine(x, y, h)).join('')}</g>
+  <!-- The gate, the path down to the shore and the drawbridge, lowered onto
+       the land across the water, its chains running up to the gatehouse. -->
+  <path d="M345 640 V624 Q355 612 365 624 V640 Z" fill="#05070f"/>
+  <path d="M355 640 Q372 676 404 704 Q424 726 420 758" fill="none" stroke="#1a1f3a" stroke-width="9" stroke-linecap="round"/>
+  <g fill="#232842">
+    <rect x="394" y="728" width="9" height="34"/><rect x="437" y="728" width="9" height="34"/>
+    <path d="M392 728 L398 718 L405 728 Z M435 728 L441 718 L448 728 Z"/>
+  </g>
+  <path d="M402 760 L438 760 L456 824 L384 824 Z" fill="#3a3046"/>
+  <path d="M400 768 H440 M397 778 H443 M394 788 H446 M391 798 H449 M388 808 H452 M386 817 H454 M420 760 V824" stroke="#14111f" stroke-width="1.5"/>
+  <path d="M386 822 L398 732 M454 822 L442 732" stroke="#5a5470" stroke-width="1.4" stroke-dasharray="3 2"/>
   <g class="lights" fill="#ffc266">
     <rect class="window" x="300" y="590" width="7" height="11" rx="3.5"/><rect class="window" x="400" y="596" width="7" height="11" rx="3.5" style="animation-delay:1.3s"/>
   </g>
 
-  <!-- Pines along the ridge. -->
-  <g fill="#0c1024">${[[620, 780, 70], [660, 790, 92], [700, 785, 64], [1430, 790, 88], [1470, 800, 110], [1520, 790, 76], [1570, 800, 96], [40, 800, 90], [90, 810, 70]].map(([x, y, h]) => pine(x, y, h)).join('')}</g>
+  <!-- Pines on the land (their feet behind the ground drawn below). -->
+  <g fill="#0c1024">${[[600, 842, 70], [645, 846, 92], [690, 844, 64], [1420, 845, 88], [1465, 848, 110], [1515, 852, 76], [1565, 860, 96], [30, 830, 90], [80, 826, 70]].map(([x, y, h]) => pine(x, y, h)).join('')}</g>
 
   <!-- Grimbold's shop: a timbered house with a hanging sign and smoke. -->
   <g class="smoke" fill="#b9b3d6" opacity="0.18">
@@ -123,7 +137,6 @@ const SVG = `
   <g class="lights" fill="#ffc266">
     <rect class="window" x="1090" y="720" width="34" height="40" rx="2"/>
     <rect class="window" x="1240" y="720" width="34" height="40" rx="2" style="animation-delay:0.8s"/>
-    <rect class="window" x="1160" y="624" width="26" height="30" rx="13" style="animation-delay:2.1s"/>
     <rect x="1170" y="760" width="36" height="70" rx="17" fill="#e89a3c"/>
   </g>
   <g stroke="#0a0d1e" stroke-width="3">
