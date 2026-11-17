@@ -958,11 +958,21 @@ module.exports = function renderCharacterSheetTab(ctx) {
             const skillModifier = skillRow.querySelector('.sheet-check-modifier');
             skillModifier.textContent = (total >= 0 ? '+' : '') + total;
             if (skillItems.mark) skillModifier.dataset.adv = skillItems.mark; else delete skillModifier.dataset.adv;
+            // Jack of All Trades: a coloured number, explained on hover.
+            skillModifier.title = jack
+              ? 'Roll ' + skill + '. Includes Jack of All Trades +' + jack + ' (half your proficiency bonus, as you are not proficient).'
+              : 'Roll ' + skill;
           });
           const jackNote = document.getElementById('cs_jack_note');
           if (jackNote) {
             jackNote.hidden = !sheetJack;
-            jackNote.textContent = sheetJack ? '½ Jack of All Trades: +' + Math.floor(bonus / 2) + ' (half your proficiency bonus) on every skill you are not proficient in, included above.' : '';
+            jackNote.replaceChildren();
+            if (sheetJack) {
+              const swatch = document.createElement('span');
+              swatch.className = 'sheet-jack-swatch';
+              swatch.textContent = 'Blue numbers';
+              jackNote.append(swatch, ' include Jack of All Trades: +' + Math.floor(bonus / 2) + ' (half your proficiency bonus) on skills you are not proficient in.');
+            }
           }
         }
 

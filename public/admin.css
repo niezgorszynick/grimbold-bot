@@ -1424,7 +1424,8 @@ button.sheet-hud-tile { cursor: pointer; }
 .sheet-chronicles .chronicle-list { margin-top: 8px; }
 
 /* Jack of All Trades on the skill list, and debug mode (public/sheet-debug.js). */
-.sheet-check-row.has-jack .sheet-check-modifier::before { content: '½ '; font-size: 10px; color: #d4af37; font-weight: normal; }
+.sheet-check-row.has-jack .sheet-check-modifier:not(:hover) { color: #7fc8f8; }
+.sheet-jack-note .sheet-jack-swatch { color: #7fc8f8; font-weight: bold; }
 .sheet-jack-note { margin: 6px 0 0; }
 .sheet-debug-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #949ba4; cursor: pointer; }
 .sheet-debug { border: 1px dashed #d4af37; }
