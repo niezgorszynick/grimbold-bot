@@ -124,6 +124,18 @@ router.get('/my-characters', (req, res) => {
   return res.json({ characters: shop.getShoppingCharacters(player.id) });
 });
 
+// DM: the character channel's threads no other character holds, to tie this one to.
+router.get('/characters/:id/thread-options', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Not logged in.' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    return res.json({ threads: await require('./characterThreads').untetheredThreadsForCharacter(req.params.id) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 router.get('/characters/:id', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });

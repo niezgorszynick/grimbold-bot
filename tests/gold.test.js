@@ -124,3 +124,18 @@ test("Grimbold's notes go to the character's thread and are remembered", async (
   threads.setCharacterThreadsClient(null);
   assert.equal((await threads.postToCharacterThread(id, receipt)).reason, 'The Discord bot is not connected.');
 });
+
+test('The DM gets the threads no other character holds, the likeliest first', () => {
+  const list = [
+    { id: '1', name: 'Thorin Ironfist', ownerId: 'A', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: '2', name: 'Elara', ownerId: 'A', createdAt: '2026-03-01T00:00:00.000Z' },
+    { id: '3', name: 'Vex the Fiend', ownerId: 'B', createdAt: '2026-05-01T00:00:00.000Z' },
+    { id: '4', name: 'Old notes', ownerId: 'C', createdAt: '2026-04-01T00:00:00.000Z', archived: true }
+  ];
+  const free = threads.untetheredThreads(list, { takenIds: ['3'], name: 'Elara Moonwhisper', playerDiscordId: 'A', ownerTags: { A: 'alice' } });
+  assert.deepEqual(free.map(thread => thread.id), ['2', '1', '4'], 'taken thread left out; suggested, then the player\'s, then the newest');
+  assert.equal(free[0].suggested, true);
+  assert.equal(free[0].owner, 'alice');
+  assert.equal(free[2].archived, true);
+  assert.equal(free[2].owner, null);
+});

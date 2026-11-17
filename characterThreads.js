@@ -106,6 +106,52 @@ async function postToCharacterThread(characterId, message) {
   }
 }
 
+// threads: [{ id, name, ownerId, createdAt, archived }]. Those no other
+// character holds, for the DM to choose from: the likeliest first (the one
+// Grimbold would pick, then the player's own), then the newest.
+function untetheredThreads(threads, { takenIds = [], name, playerDiscordId, ownerTags = {} } = {}) {
+  const taken = new Set(takenIds.map(String));
+  const free = threads.filter(thread => !taken.has(String(thread.id)));
+  const suggested = chooseThread(free, { name, playerDiscordId });
+  const rank = thread => (suggested && thread.id === suggested.id ? 0 : playerDiscordId && thread.ownerId === playerDiscordId ? 1 : 2);
+  return free
+    .map(thread => ({
+      id: String(thread.id),
+      name: thread.name,
+      owner: ownerTags[thread.ownerId] || null,
+      createdAt: thread.createdAt || null,
+      archived: Boolean(thread.archived),
+      suggested: rank(thread) === 0,
+      rank: rank(thread)
+    }))
+    .sort((a, b) => a.rank - b.rank || String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .map(({ rank: _rank, ...thread }) => thread);
+}
+
+// The character channel's threads not tied to another character (the
+// character's own thread stays in the list, marked current).
+async function untetheredThreadsForCharacter(characterId) {
+  if (!client || (typeof client.isReady === 'function' && !client.isReady())) throw new Error('The Discord bot is not connected right now.');
+  const character = db.prepare(`
+    SELECT c.id, c.name, c.discord_thread_id, p.discord_id
+    FROM characters c JOIN players p ON p.id = c.player_id WHERE c.id = ?
+  `).get(Number(characterId));
+  if (!character) throw new Error('Character not found.');
+  const threads = (await channelThreads()).map(thread => ({
+    id: thread.id,
+    name: thread.name,
+    ownerId: thread.ownerId,
+    archived: Boolean(thread.archived),
+    createdAt: thread.createdTimestamp ? new Date(thread.createdTimestamp).toISOString() : null
+  }));
+  const takenIds = db.prepare('SELECT discord_thread_id FROM characters WHERE discord_thread_id IS NOT NULL AND id != ?')
+    .all(character.id).map(row => row.discord_thread_id);
+  const ownerTags = Object.fromEntries(db.prepare('SELECT discord_id, discord_tag FROM players WHERE discord_id IS NOT NULL')
+    .all().map(row => [row.discord_id, row.discord_tag]));
+  return untetheredThreads(threads, { takenIds, name: character.name, playerDiscordId: character.discord_id, ownerTags })
+    .map(thread => ({ ...thread, current: thread.id === character.discord_thread_id }));
+}
+
 // ─── Grimbold's notes ───────────────────────────────────────────────────────
 
 function purchaseMessage(result, buyerTag) {
@@ -282,6 +328,8 @@ function setCharacterThreadsClient(discordClient) {
 module.exports = {
   setCharacterThreadsClient,
   chooseThread,
+  untetheredThreads,
+  untetheredThreadsForCharacter,
   postToCharacterThread,
   announcePurchase,
   announceGoldChange,

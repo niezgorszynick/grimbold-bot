@@ -58,7 +58,11 @@ module.exports = function dmSettingsHtml(charToEdit) {
               </div>
               <div>
                 <label style="font-size: 12px;">Discord thread (🧝┆soh-postaci):</label><br>
-                <input type="text" name="discord_thread" value="${escapeHtml(charToEdit.discord_thread_id || '')}" placeholder="Paste the thread link, or leave empty to find it by name" style="width: 100%; margin-top: 4px;">
+                <select id="discord-thread-choice" data-character-id="${charToEdit.id}" aria-label="Threads not tied to a character" style="width: 100%; margin-top: 4px;">
+                  <option value="">Threads without a character…</option>
+                </select>
+                <input type="text" id="discord-thread-input" name="discord_thread" value="${escapeHtml(charToEdit.discord_thread_id || '')}" placeholder="Paste the thread link, or leave empty to find it by name" style="width: 100%; margin-top: 4px;">
+                <div id="discord-thread-status" style="font-size: 11px; color: #949ba4; margin-top: 2px;"></div>
               </div>
               <div>
                 <label style="font-size: 12px;">Level (1–20):</label><br>
@@ -172,7 +176,44 @@ module.exports = function dmSettingsHtml(charToEdit) {
           input.style.opacity = cb.checked ? '1' : '0.6';
           if (!cb.checked && xpInput) input.value = levelFromXp(xpInput.value);
         }
+        // Threads of the character channel no other character holds: loaded
+        // when the DM settings open; choosing one fills the thread field.
+        function loadThreadChoices() {
+          const select = document.getElementById('discord-thread-choice');
+          const input = document.getElementById('discord-thread-input');
+          const status = document.getElementById('discord-thread-status');
+          if (!select || select.dataset.loaded) return;
+          select.dataset.loaded = '1';
+          select.options[0].textContent = 'Loading threads…';
+          fetch('/api/characters/' + select.dataset.characterId + '/thread-options', { credentials: 'same-origin' })
+            .then(response => response.json().then(body => { if (!response.ok) throw new Error(body.error || 'Could not load threads.'); return body; }))
+            .then(({ threads }) => {
+              select.options[0].textContent = threads.length ? 'Choose a thread without a character (' + threads.length + ')…' : 'Every thread already has a character';
+              threads.forEach(thread => {
+                const bits = [thread.owner ? 'by ' + thread.owner : null, thread.createdAt ? thread.createdAt.slice(0, 10) : null, thread.archived ? 'archived' : null].filter(Boolean);
+                const label = (thread.current ? '✔ ' : thread.suggested ? '★ ' : '') + thread.name + (bits.length ? ' (' + bits.join(', ') + ')' : '');
+                const option = new Option(label, thread.id);
+                if (thread.current) option.selected = true;
+                select.add(option);
+              });
+              if (status) status.textContent = threads.length ? '✔ current thread · ★ likeliest match' : '';
+            })
+            .catch(error => {
+              delete select.dataset.loaded;
+              select.options[0].textContent = 'Could not load threads (click to retry)';
+              if (status) status.textContent = error.message;
+            });
+        }
         document.addEventListener('DOMContentLoaded', () => {
+          const dmSettings = document.querySelector('.sheet-dm-settings');
+          const threadSelect = document.getElementById('discord-thread-choice');
+          const threadInput = document.getElementById('discord-thread-input');
+          if (dmSettings && threadSelect) {
+            if (dmSettings.open) loadThreadChoices();
+            dmSettings.addEventListener('toggle', () => { if (dmSettings.open) loadThreadChoices(); });
+            threadSelect.addEventListener('focus', loadThreadChoices);
+            threadSelect.addEventListener('change', () => { if (threadSelect.value && threadInput) threadInput.value = threadSelect.value; });
+          }
           const cb = document.getElementById('overrideLvlCheck');
           if (cb) {
             toggleLevelInput(cb);
