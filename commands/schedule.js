@@ -1,5 +1,6 @@
 // commands/schedule.js — /schedule, in an adventure's thread (Polish time):
 //   set      date + time picked from lists: book a known session at once
+//            (a session already coming up: asks to move it or add another)
 //   move     the next session to a new date + time
 //   propose  up to 4 times ("22.11 20:00, 29.11 18:00"; the list shows how
 //            they were read); Grimbrandt posts a poll with buttons
@@ -10,7 +11,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../db');
 const { parseSessionTimes, parseDateAndTime, dateSuggestions, timeSuggestions, describeSessionTimes, discordTime } = require('../rules/schedule');
-const { pollMessage, announceSessionChange, calendarMessage } = require('../scheduleDiscord');
+const { pollMessage, announceSessionChange, calendarMessage, moveOrAddMessage, packTime } = require('../scheduleDiscord');
 
 const EXAMPLES = 'Examples: `22.11 20:00, 29.11 18:00` · `pt 20:00` · `jutro 19:30` (Polish time).';
 
@@ -72,6 +73,15 @@ module.exports = {
         startsAt = parseDateAndTime(interaction.options.getString('date'), interaction.options.getString('time'));
       } catch (error) {
         return interaction.reply({ ephemeral: true, content: `${error.message} Pick the date and time from the lists.` });
+      }
+      // Already a session coming up: move it, or add another? (buttons)
+      const coming = subcommand === 'set' ? db.adventureSessions(adventure.id) : [];
+      if (coming.length && startsAt > new Date()) {
+        return interaction.reply(moveOrAddMessage({
+          title: adventure.title, startsAt, coming,
+          moveId: session => `sched:setmv:${session.id}:${packTime(startsAt, minutes)}`,
+          addId: `sched:setadd:a${adventure.id}:${packTime(startsAt, minutes)}`
+        }));
       }
       let result;
       try {

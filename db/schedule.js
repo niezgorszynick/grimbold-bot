@@ -192,7 +192,10 @@ function voteOnSession({ optionId, discordId, name, answer }) {
 
 // The DM locks a time in: it becomes a session. Returns it, the people who
 // said ✅ and 🤔 (to tag), and the DM's own clashes (a warning).
-function confirmSessionOption({ pollId, optionId, byDiscordId }) {
+// The DM locks a time in: a new session, or (moveSessionId) the adventure's
+// coming session moved to it, so calendars and the server event follow
+// instead of getting a second one. previousStartsAt: the moved session's time.
+function confirmSessionOption({ pollId, optionId, byDiscordId, moveSessionId = null, now = new Date() }) {
   const poll = getSchedulePoll(pollId);
   if (!poll) throw new Error('That poll is gone.');
   if (poll.status !== 'open') throw new Error('This poll is closed.');
@@ -200,14 +203,27 @@ function confirmSessionOption({ pollId, optionId, byDiscordId }) {
   if (!canSchedule(adventure, byDiscordId)) throw new Error("Only this adventure's DM (or another DM) can lock in a time.");
   const option = poll.options.find(entry => entry.id === Number(optionId));
   if (!option) throw new Error('That time is not in this poll.');
+  let previousStartsAt = null;
+  if (moveSessionId) {
+    const existing = getSession(moveSessionId);
+    if (!existing || existing.adventureId !== adventure.id || existing.status !== 'scheduled' || new Date(existing.endsAt) <= now) {
+      throw new Error('That session is no longer coming up; lock the time in again.');
+    }
+    previousStartsAt = existing.startsAt;
+  }
   const sessionId = db.transaction(() => {
     db.prepare("UPDATE session_polls SET status = 'confirmed', chosen_option_id = ? WHERE id = ?").run(option.id, poll.id);
+    if (moveSessionId) {
+      db.prepare(`UPDATE sessions SET poll_id = ?, option_id = ?, starts_at = ?, ends_at = ?, sequence = sequence + 1, reminded = 0, updated_at = ? WHERE id = ?`)
+        .run(poll.id, option.id, option.startsAt, option.endsAt, now.toISOString(), Number(moveSessionId));
+      return Number(moveSessionId);
+    }
     return Number(db.prepare(`
       INSERT INTO sessions (adventure_id, poll_id, option_id, starts_at, ends_at, created_by) VALUES (?, ?, ?, ?, ?, ?)
     `).run(adventure.id, poll.id, option.id, option.startsAt, option.endsAt, String(byDiscordId)).lastInsertRowid);
   })();
   const dmClashes = adventure.dm_discord_id ? clashesFor(adventure.dm_discord_id, option.startsAt, option.endsAt, { exceptAdventureId: adventure.id }) : [];
-  return { session: getSession(sessionId), option, poll: getSchedulePoll(poll.id), dmClashes };
+  return { session: getSession(sessionId), option, poll: getSchedulePoll(poll.id), dmClashes, previousStartsAt };
 }
 
 function cancelSchedulePoll({ pollId, byDiscordId }) {
@@ -510,6 +526,9 @@ module.exports = {
   SESSION_DEFAULT_MINUTES: DEFAULT_MINUTES,
   adventureForThread,
   canScheduleAdventure: canSchedule,
+  loadScheduleAdventure: loadAdventure,
+  authorizeCampaign,
+  loadCampaign,
   createSchedulePoll,
   setPollMessage,
   getSchedulePoll,

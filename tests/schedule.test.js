@@ -418,3 +418,72 @@ test('campaigns in the panel: their DM (a player account) and Root book, move, c
     delete process.env.CAMPAIGN_DM_IDS;
   }
 });
+
+test('booking while a session is coming up asks first: moving keeps one calendar entry and one server event', async () => {
+  const { dm, ola, first } = setUp();
+  const [dmId, olaId] = [dm, ola].map(discordIdOf);
+  const withEvents = fake => {
+    fake.interaction.guild.scheduledEvents.edit = async (id, options) => { fake.calls.events.push({ edited: id, ...options }); };
+    fake.interaction.channel = { send: async message => fake.calls.sent.push(message) };
+    fake.interaction.channelId = first.discord_thread_id;
+    return fake;
+  };
+  const sessionsOf = () => db.adventureSessions(first.id);
+
+  // The first /schedule set books at once (and makes the server event).
+  let fake = withEvents(fakeInteraction({ userId: dmId, channelId: first.discord_thread_id, subcommand: 'set', strings: { date: '2027-03-12', time: '20:00' } }));
+  await scheduleCommand.execute(fake.interaction);
+  assert.equal(sessionsOf().length, 1);
+  const booked = sessionsOf()[0];
+  assert.equal(booked.eventId, 'event-1');
+
+  // The second asks: move it, or add another?
+  fake = withEvents(fakeInteraction({ userId: dmId, channelId: first.discord_thread_id, subcommand: 'set', strings: { date: '2027-03-19', time: '18:00' } }));
+  await scheduleCommand.execute(fake.interaction);
+  assert.equal(sessionsOf().length, 1, 'nothing booked yet');
+  const question = fake.calls.replies[0];
+  assert.equal(question.ephemeral, true);
+  assert.match(question.content, /already has a session coming up/);
+  const [moveButton, addButton] = question.components[0].toJSON().components;
+  assert.match(moveButton.label, /^Move Fri 12 Mar, 20:00/);
+  assert.equal(addButton.label, 'Add another session');
+
+  // Move: the same session (one calendar entry, its change counted) and the same server event, edited.
+  fake = withEvents(fakeInteraction({ userId: dmId, customId: moveButton.custom_id }));
+  await scheduleDiscord.handleScheduleInteraction(fake.interaction);
+  assert.match(fake.calls.updates[0].content, /Moved from/);
+  const moved = sessionsOf();
+  assert.equal(moved.length, 1);
+  assert.equal(moved[0].id, booked.id);
+  assert.equal(moved[0].startsAt, rules.parseDateAndTime('2027-03-19', '18:00').toISOString());
+  assert.equal(moved[0].sequence, 1);
+  assert.deepEqual(fake.calls.events.map(event => event.edited), ['event-1'], 'the server event is edited, not made again');
+  assert.match(fake.calls.sent[0].content, /moves from/);
+
+  // Add another: a second session on purpose.
+  fake = withEvents(fakeInteraction({ userId: dmId, channelId: first.discord_thread_id, subcommand: 'set', strings: { date: '2027-03-26', time: '18:00' } }));
+  await scheduleCommand.execute(fake.interaction);
+  const add = fake.calls.replies[0].components[0].toJSON().components.find(entry => entry.label === 'Add another session');
+  fake = withEvents(fakeInteraction({ userId: dmId, customId: add.custom_id }));
+  await scheduleDiscord.handleScheduleInteraction(fake.interaction);
+  assert.equal(sessionsOf().length, 2);
+  assert.equal(fake.calls.events.length, 1, 'its own server event');
+
+  // A poll locked in also asks; moving moves the first coming session.
+  const poll = db.createSchedulePoll({ adventureId: first.id, byDiscordId: dmId, times: [rules.parseDateAndTime('2027-04-02', '20:00')], minutes: 180 });
+  db.voteOnSession({ optionId: poll.options[0].id, discordId: olaId, name: 'Ola', answer: 'yes' });
+  fake = withEvents(fakeInteraction({ userId: dmId, customId: `sched:lock:${poll.id}`, values: [String(poll.options[0].id)] }));
+  await scheduleDiscord.handleScheduleInteraction(fake.interaction);
+  assert.equal(db.getSchedulePoll(poll.id).status, 'open', 'not locked until the DM answers');
+  const lockButtons = fake.calls.replies[0].components[0].toJSON().components;
+  assert.equal(lockButtons.length, 3, 'a button for each coming session, and add');
+  fake = withEvents(fakeInteraction({ userId: dmId, customId: lockButtons[0].custom_id }));
+  await scheduleDiscord.handleScheduleInteraction(fake.interaction);
+  assert.equal(db.getSchedulePoll(poll.id).status, 'confirmed');
+  const after = sessionsOf();
+  assert.equal(after.length, 2, 'still two sessions');
+  assert.ok(after.some(session => session.id === booked.id && session.startsAt === poll.options[0].startsAt && session.minutes === 180));
+  assert.deepEqual(fake.calls.events.map(event => event.edited), ['event-1']);
+  assert.deepEqual(fake.calls.sent[0].allowedMentions, { users: [olaId] }, "the poll's ✅ are tagged");
+  assert.match(fake.calls.followUps[0].content, /server event moved/);
+});

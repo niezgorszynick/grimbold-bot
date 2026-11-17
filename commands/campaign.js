@@ -11,7 +11,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../db');
 const { parseDateAndTime, dateSuggestions, timeSuggestions, discordTime, formatSessionTime } = require('../rules/schedule');
-const { announceSessionChange } = require('../scheduleDiscord');
+const { announceSessionChange, moveOrAddMessage, packTime } = require('../scheduleDiscord');
 
 const campaignOption = option => option.setName('campaign').setDescription('Which campaign').setRequired(true).setAutocomplete(true);
 const sessionOption = option => option.setName('session').setDescription('Which session').setRequired(true).setAutocomplete(true);
@@ -114,6 +114,19 @@ module.exports = {
       }
 
       if (subcommand === 'set') {
+        // Already a session coming up: move it, or add another? (buttons)
+        const campaign = db.getCampaign(interaction.options.getString('campaign'));
+        const coming = campaign ? db.campaignSessions({ campaignId: campaign.id }) : [];
+        const startsAt = pickedTime();
+        db.authorizeCampaign(db.loadCampaign(campaign.id), by);
+        if (coming.length && startsAt > new Date()) {
+          const minutes = hours ? Math.round(hours * 60) : null;
+          return interaction.reply(moveOrAddMessage({
+            title: campaign.name, startsAt, coming,
+            moveId: session => `sched:setmv:${session.id}:${packTime(startsAt, minutes)}`,
+            addId: `sched:setadd:c${campaign.id}:${packTime(startsAt, minutes)}`
+          }));
+        }
         const result = db.bookCampaignSession({
           campaignId: interaction.options.getString('campaign'), by, startsAt: pickedTime(), minutes: hours ? Math.round(hours * 60) : db.SESSION_DEFAULT_MINUTES
         });

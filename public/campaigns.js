@@ -64,6 +64,16 @@
     return { date, time, hours, values: () => ({ date: date.value, time: time.value, hours: hours.value }), nodes: [date, time, el('label', { className: 'small' }, [hours, ' h'])] };
   }
 
+  // Booking while a session is already coming up asks first: move it (one
+  // calendar entry, one server event) or add another session on purpose.
+  function askMoveOrAdd(box, sessions, onMove, onAdd) {
+    box.replaceChildren(
+      el('span', { text: (sessions.length === 1 ? 'A session is already coming up' : sessions.length + ' sessions are already coming up') + '. Move one to this time, or add another session?' }),
+      ...sessions.slice(0, 4).map(session => button('Move ' + session.text, () => onMove(session.id))),
+      button('Add another session', onAdd, 'btn btn-small btn-secondary'),
+      button('Back', () => { box.hidden = true; }, 'btn btn-small btn-secondary'));
+    box.hidden = false;
+  }
   function campaignBlock(campaign) {
     const base = '/' + campaign.id;
     const rows = campaign.sessions.map(session => {
@@ -78,6 +88,8 @@
       ]);
     });
     const book = sessionInputs({});
+    const choice = el('div', { className: 'table-filter schedule-choice small' });
+    choice.hidden = true;
     const memberIds = new Set(campaign.members.map(member => member.discordId));
     const pick = el('select', { 'aria-label': 'Player to add' }, [el('option', { value: '', text: 'Add a player…' }),
       ...data.players.filter(player => !memberIds.has(player.discordId)).map(player => el('option', { value: player.discordId, text: player.name }))]);
@@ -95,7 +107,12 @@
       ]),
       campaign.sessions.length ? el('ul', { className: 'schedule-list' }, rows) : el('p', { className: 'muted small', text: 'No session booked.' }),
       el('div', { className: 'table-filter' }, [el('span', { className: 'small', text: 'Book a session:' }), ...book.nodes,
-        button('Book', () => act(base + '/sessions', book.values(), 'Session booked.'), 'btn btn-small btn-green')])
+        button('Book', () => {
+          if (!campaign.sessions.length) return act(base + '/sessions', book.values(), 'Session booked.');
+          return askMoveOrAdd(choice, campaign.sessions, id => act(base + '/sessions/' + id, book.values(), 'Session moved.'),
+            () => act(base + '/sessions', book.values(), 'Session booked.'));
+        }, 'btn btn-small btn-green')]),
+      choice
     ]);
   }
 

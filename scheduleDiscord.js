@@ -159,6 +159,82 @@ function calendarMessage(discordId) {
   ].join('\n');
 }
 
+// ─── Move the coming session, or add another? ──────────────────────────────
+
+// Booking a time (/schedule set, /campaign set, a poll locked in) while a
+// session is already coming up asks first: moving it keeps one calendar entry
+// and one server event; adding makes a second session on purpose.
+// coming: the coming sessions; moveId(session) / addId: the buttons' ids.
+function moveOrAddMessage({ title, startsAt, coming, moveId, addId }) {
+  const list = coming.slice(0, 4);
+  const lines = [
+    `📅 **${title}** already has ${coming.length === 1 ? 'a session' : `${coming.length} sessions`} coming up: ${list.map(session => discordTime(session.startsAt)).join(', ')}.`,
+    `Move ${coming.length === 1 ? 'it' : 'one of them'} to **${discordTime(startsAt)}**, or add another session then?`,
+    '-# Moving keeps one calendar entry and one server event; adding makes a second of each.'
+  ];
+  const row = new ActionRowBuilder().addComponents(
+    ...list.map(session => new ButtonBuilder().setCustomId(moveId(session)).setStyle(ButtonStyle.Primary)
+      .setLabel(`Move ${formatSessionTime(session.startsAt)}`.slice(0, 80))),
+    new ButtonBuilder().setCustomId(addId).setStyle(ButtonStyle.Secondary).setLabel('Add another session')
+  );
+  return { ephemeral: true, content: lines.join('\n'), components: [row] };
+}
+
+// Times in button ids: milliseconds in base 36, minutes (0 = keep the length).
+const packTime = (startsAt, minutes) => `${new Date(startsAt).getTime().toString(36)}:${minutes || 0}`;
+const unpackTime = (time, minutes) => ({ startsAt: new Date(parseInt(time, 36)), minutes: Number(minutes) || null });
+
+// The poll message redrawn where it was posted.
+async function redrawPoll(interaction, poll) {
+  if (!poll || !poll.messageId || !poll.channelId) return;
+  try {
+    const channel = await interaction.client.channels.fetch(poll.channelId);
+    const message = await channel.messages.fetch(poll.messageId);
+    await message.edit(pollMessage(poll));
+  } catch (error) {
+    // Gone or not reachable: nothing to update.
+  }
+}
+
+// After a lock-in: the announcement (tagging the poll's ✅), the server event
+// and the DM's private note. fromQuestion: answered on the move-or-add question.
+async function finishLockIn(interaction, { session, option, poll, dmClashes, previousStartsAt }, { fromQuestion = false } = {}) {
+  const moved = Boolean(previousStartsAt);
+  if (fromQuestion) {
+    await interaction.update({ content: moved ? `📅 Moved from ${discordTime(previousStartsAt)} to **${discordTime(session.startsAt)}**.` : `📅 Booked another session: **${discordTime(session.startsAt)}**.`, components: [] });
+    await redrawPoll(interaction, poll);
+  } else {
+    await interaction.update(pollMessage(poll));
+  }
+  const result = await announceSessionChange(moved ? 'moved' : 'booked', session, {
+    previousStartsAt, tagged: option.yes.map(entry => entry.discordId), maybe: option.maybe, channel: interaction.channel, guild: interaction.guild
+  });
+  const notes = [
+    result.eventProblem ? `📅 No server event: ${result.eventProblem}.` : moved ? '📅 The server event moved with it.' : '📅 Added to the server\'s Events.',
+    dmClashes.length ? `⚠️ You're also in ${clashText(dmClashes)} then.` : null
+  ].filter(Boolean);
+  await interaction.followUp({ ephemeral: true, content: notes.join('\n') });
+}
+
+// A known time booked or moved from the question (sched:setmv / sched:setadd).
+async function finishSet(interaction, kind, result) {
+  const session = result.session;
+  await interaction.update({
+    content: kind === 'moved' ? `📅 Moved from ${discordTime(result.previousStartsAt)} to **${discordTime(session.startsAt)}**.` : `📅 Booked another session: **${discordTime(session.startsAt)}**.`,
+    components: []
+  });
+  const here = session.threadId === interaction.channelId;
+  const announced = await announceSessionChange(kind, session, {
+    previousStartsAt: result.previousStartsAt || null, channel: here ? interaction.channel : null, guild: interaction.guild
+  });
+  const notes = [
+    announced.posted ? null : "Couldn't post the change in Discord: announce it yourself.",
+    announced.eventProblem ? `📅 Server event: ${announced.eventProblem}.` : null,
+    result.dmClashes && result.dmClashes.length ? `⚠️ You're also in ${clashText(result.dmClashes)} then.` : null
+  ].filter(Boolean);
+  if (notes.length) await interaction.followUp({ ephemeral: true, content: notes.join('\n') });
+}
+
 // ─── Buttons and the DM's menu ─────────────────────────────────────────────
 
 // Buttons (sched:v:<optionId>:<answer>, sched:cal) and the DM's menu (sched:lock:<pollId>).
@@ -186,16 +262,42 @@ async function handleScheduleInteraction(interaction) {
         await interaction.update(pollMessage(poll));
         return;
       }
-      const { session, option, poll, dmClashes } = db.confirmSessionOption({ pollId, optionId: Number(choice), byDiscordId: interaction.user.id });
-      await interaction.update(pollMessage(poll));
-      const result = await announceSessionChange('booked', session, {
-        tagged: option.yes.map(entry => entry.discordId), maybe: option.maybe, channel: interaction.channel, guild: interaction.guild
+      // A session already coming up: move it there, or add another? (asked first)
+      const poll = db.getSchedulePoll(pollId);
+      const adventure = poll ? db.loadScheduleAdventure(poll.adventure.id) : null;
+      const option = poll ? poll.options.find(entry => entry.id === Number(choice)) : null;
+      const coming = adventure && poll.status === 'open' && db.canScheduleAdventure(adventure, interaction.user.id) ? db.adventureSessions(adventure.id) : [];
+      if (option && coming.length) {
+        await interaction.reply(moveOrAddMessage({
+          title: adventure.title, startsAt: option.startsAt, coming,
+          moveId: session => `sched:lockmv:${pollId}:${option.id}:${session.id}`, addId: `sched:lockadd:${pollId}:${option.id}`
+        }));
+        return;
+      }
+      await finishLockIn(interaction, db.confirmSessionOption({ pollId, optionId: Number(choice), byDiscordId: interaction.user.id }));
+      return;
+    }
+    if (parts[1] === 'lockmv' || parts[1] === 'lockadd') {
+      const confirmed = db.confirmSessionOption({
+        pollId: Number(parts[2]), optionId: Number(parts[3]), byDiscordId: interaction.user.id, moveSessionId: parts[1] === 'lockmv' ? Number(parts[4]) : null
       });
-      const notes = [
-        result.eventProblem ? `📅 No server event: ${result.eventProblem}.` : '📅 Added to the server\'s Events.',
-        dmClashes.length ? `⚠️ You're also in ${clashText(dmClashes)} then.` : null
-      ].filter(Boolean);
-      await interaction.followUp({ ephemeral: true, content: notes.join('\n') });
+      await finishLockIn(interaction, confirmed, { fromQuestion: true });
+      return;
+    }
+    if (parts[1] === 'setmv') {
+      const { startsAt, minutes } = unpackTime(parts[3], parts[4]);
+      await finishSet(interaction, 'moved', db.moveSession({ sessionId: Number(parts[2]), by: { discordId: interaction.user.id }, startsAt, minutes }));
+      return;
+    }
+    if (parts[1] === 'setadd') {
+      const { startsAt, minutes } = unpackTime(parts[3], parts[4]);
+      const by = { discordId: interaction.user.id };
+      const id = Number(parts[2].slice(1));
+      const length = minutes || db.SESSION_DEFAULT_MINUTES;
+      const result = parts[2].startsWith('c')
+        ? db.bookCampaignSession({ campaignId: id, by, startsAt, minutes: length })
+        : db.bookSession({ adventureId: id, by, startsAt, minutes: length });
+      await finishSet(interaction, 'booked', result);
     }
   } catch (error) {
     const content = `*Grimbrandt shakes his head.* ${error.message}`;
@@ -242,6 +344,8 @@ module.exports = {
   announceSessionChange,
   handleScheduleInteraction,
   deleteServerEvent,
+  moveOrAddMessage,
+  packTime,
   sendDueReminders,
   startScheduleReminders,
   setScheduleClient

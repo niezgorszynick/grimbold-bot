@@ -1359,6 +1359,16 @@
       (note.eventProblem ? ' Server event: ' + note.eventProblem + '.' : '') +
       (note.clashes && note.clashes.length ? ' ⚠️ You are also in ' + note.clashes.join(', ') + ' then.' : '');
   }
+  // Booking while a session is already coming up asks first: move it (one
+  // calendar entry, one server event) or add another session on purpose.
+  function askMoveOrAdd(box, sessions, onMove, onAdd) {
+    box.replaceChildren(
+      el('span', { text: (sessions.length === 1 ? 'A session is already coming up' : sessions.length + ' sessions are already coming up') + '. Move one to this time, or add another session?' }),
+      ...sessions.slice(0, 4).map(session => button('Move ' + session.text, () => onMove(session.id))),
+      button('Add another session', onAdd, 'btn btn-small btn-secondary'),
+      button('Back', () => { box.hidden = true; }, 'btn btn-small btn-secondary'));
+    box.hidden = false;
+  }
   function scheduleSection() {
     const schedule = data.schedule || {};
     if (!data.canManage || data.adventure.status !== 'active') return null;
@@ -1375,12 +1385,20 @@
           }, 'btn btn-small btn-red')])
       ]);
     });
+    const choice = el('div', { className: 'table-filter schedule-choice small' });
+    choice.hidden = true;
+    const bookValues = () => ({ date: book.date.value, time: book.time.value, hours: book.hours.value });
+    const bookNew = () => act('/sessions', bookValues(), result => sessionMessage(result, 'Session booked.'));
     return el('details', { className: 'sheet-card schedule-panel', open: scheduleOpen || null, ontoggle: null }, [
       el('summary', { text: '📅 Sessions' + (sessions.length ? ' (' + sessions.length + ' coming)' : '') }),
       el('p', { className: 'muted small', text: "Polish time. Changes here are announced in the adventure's Discord thread and move its server event; /schedule there shows up here." }),
       sessions.length ? el('ul', { className: 'schedule-list' }, rows) : el('p', { className: 'muted small', text: 'No session booked yet.' }),
       el('div', { className: 'table-filter' }, [el('span', { className: 'small', text: 'Book a session:' }), ...book.nodes,
-        button('Book', () => act('/sessions', { date: book.date.value, time: book.time.value, hours: book.hours.value }, result => sessionMessage(result, 'Session booked.')), 'btn btn-small btn-green')])
+        button('Book', () => {
+          if (!sessions.length) return bookNew();
+          return askMoveOrAdd(choice, sessions, id => act('/sessions/' + id, bookValues(), result => sessionMessage(result, 'Session moved.')), bookNew);
+        }, 'btn btn-small btn-green')]),
+      choice
     ]);
   }
 
