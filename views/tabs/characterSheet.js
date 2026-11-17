@@ -237,9 +237,12 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <button id="cs_layout" class="btn btn-secondary" type="button" title="Wide: three columns across the screen. Slim: two narrower columns, like on a smaller window.">▥ Slim</button>
               <button id="cs_mode" class="btn btn-secondary" type="button" title="View: play the character (roll, track HP, cast). Edit: change the build (identity, abilities, skills, appearance, notes).">✏️ Edit</button>
               <button id="cs_save" class="btn btn-success" type="button" disabled>Save Sheet</button>
+              <label class="sheet-debug-toggle" title="Debug mode (this browser): each roll shows how it is calculated, and numbers on the sheet that differ from what the roll uses are marked"><input type="checkbox" id="cs_debug"> 🐞 Debug</label>
             </div>
           </header>
           <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
+          <section id="cs_debug_panel" class="sheet-card sheet-debug" hidden></section>
+          <script src="/admin/assets/sheet-debug.js" defer></script>
           ${levelBreakdownHtml(characterToEdit.id)}
           <details class="sheet-card sheet-appearance">
             <summary><strong>Appearance</strong> <span id="cs_appearance_summary" class="muted small"></span></summary>
@@ -302,6 +305,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
                 <p id="cs_skill_guidance" class="muted small" aria-live="polite"></p>
                 <div id="cs_species_skill_choices"></div>
                 <div id="cs_skills_container" class="sheet-check-list sheet-skills"></div>
+                <p id="cs_jack_note" class="muted small sheet-jack-note" hidden></p>
                 ${isAdmin ? '<details id="cs_dm_skills" class="sheet-dm-skills"><summary>DM: extra skill proficiencies &amp; Expertise</summary><p class="muted small">For feats or features the sheet doesn&#39;t apply by itself. Save the sheet afterwards.</p><div class="sheet-dm-skill-grid"></div></details>' : ''}
               </section>
               <section id="cs_proficiencies" class="sheet-card sheet-proficiencies-card" data-collapse="proficiencies" data-character-id="${Number(characterToEdit.id)}"><h4>Proficiencies &amp; Languages</h4><p class="muted small">Loading…</p></section>
@@ -845,6 +849,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
         // Expertise and feature check bonuses (Thaumaturge, ...) from the loaded sheet.
         let sheetExpertise = [];
         let sheetCheckBonuses = { skills: {}, checks: {} };
+        // Jack of All Trades (Bard 2): half proficiency on skills without proficiency.
+        let sheetJack = false;
         // Custom item bonuses (rules/itemBonuses.js): added on top, plus Advantage marks.
         let sheetItemBonuses = null;
         const itemExtra = (targets, value) => {
@@ -943,14 +949,21 @@ module.exports = function renderCharacterSheetTab(ctx) {
               ? itemExtra(['skill:' + skill, 'check:' + ability, 'checks'],
                 (sheetItemBonuses.skills[skill] || 0) + (sheetItemBonuses.checks[ability] || 0) + sheetItemBonuses.allChecks)
               : itemExtra([], 0);
-            const total = modifier + (proficient ? bonus : 0) + (expert ? bonus : 0) +
+            const jack = !proficient && sheetJack ? Math.floor(bonus / 2) : 0;
+            const total = modifier + (proficient ? bonus : 0) + (expert ? bonus : 0) + jack +
               Math.max(sheetCheckBonuses.skills[skill] || 0, sheetCheckBonuses.checks[ability] || 0) + skillItems.value + magicChecks;
             skillRow.classList.toggle('has-expertise', expert);
-            skillRow.title = [expert ? 'Expertise: proficiency bonus counts twice' : (skillRow.dataset.sourceTitle || ''), skillItems.title].filter(Boolean).join('. ');
+            skillRow.classList.toggle('has-jack', jack > 0);
+            skillRow.title = [expert ? 'Expertise: proficiency bonus counts twice' : jack ? 'Jack of All Trades: +' + jack + ' (half your proficiency bonus)' : (skillRow.dataset.sourceTitle || ''), skillItems.title].filter(Boolean).join('. ');
             const skillModifier = skillRow.querySelector('.sheet-check-modifier');
             skillModifier.textContent = (total >= 0 ? '+' : '') + total;
             if (skillItems.mark) skillModifier.dataset.adv = skillItems.mark; else delete skillModifier.dataset.adv;
           });
+          const jackNote = document.getElementById('cs_jack_note');
+          if (jackNote) {
+            jackNote.hidden = !sheetJack;
+            jackNote.textContent = sheetJack ? '½ Jack of All Trades: +' + Math.floor(bonus / 2) + ' (half your proficiency bonus) on every skill you are not proficient in, included above.' : '';
+          }
         }
 
         function updateAbilityValidation() {
@@ -1136,6 +1149,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             const data = result.sheetData || {};
             sheetExpertise = Array.isArray(data.expertise) ? data.expertise : [];
             sheetCheckBonuses = result.checkBonuses || sheetCheckBonuses;
+            sheetJack = Boolean(result.jackOfAllTrades);
             sheetItemBonuses = result.itemBonuses || null;
             sheetInitiative = result.initiative || null;
             renderSenses(result.senses);

@@ -72,6 +72,27 @@ function classesOf(character) {
     : [{ className: character.class, subclassName: character.subclass || null, level: character.level }];
 }
 
+// What adds up to a roll's bonus, for debug mode: [{ label, value }] without
+// the zeros (the ability modifier is always kept).
+const parts = (...list) => list.filter(part => part && (part.keep || part.value)).map(({ label, value }) => ({ label, value }));
+
+// "1d20+5 = d20 + DEX +2 + Proficiency +2 + Jack of All Trades +1". Parts that
+// don't add up to the formula's bonus say so (a sign the rules disagree).
+function breakdownText(option) {
+  if (!option || !Array.isArray(option.parts) || !option.parts.length) return null;
+  const formula = String(option.formula || '');
+  const d20 = /^1d20/.test(formula);
+  const text = option.parts.map(part => (part.dice ? part.label : `${part.label} ${signed(part.value)}`));
+  const sum = option.parts.reduce((total, part) => total + (Number(part.value) || 0), 0);
+  let note = '';
+  if (d20) {
+    const match = formula.match(/^1d20([+-]\d+)?/);
+    const bonus = match && match[1] ? Number(match[1]) : 0;
+    if (bonus !== sum) note = ` (the parts add up to ${signed(sum)}, the roll uses ${signed(bonus)})`;
+  }
+  return `${formula} = ${d20 ? 'd20 + ' : ''}${text.join(' + ')}${option.extraDice ? ` + ${option.extraDice}` : ''}${note}`;
+}
+
 function hasFeature(classes, feature) {
   return classes.some(row => {
     const data = rules.getClass(row.className);
@@ -120,17 +141,33 @@ function rollOptions(character) {
     // Jack of All Trades (2024) is for skill checks only, not plain ability checks.
     const check = fromItems({ type: 'check', ability });
     const save = fromItems({ type: 'save', ability });
-    add(`check:${ability}`, `${name} check`, d20(mod(ability) + items.checks + (featureBonus.checks[ability] || 0) + check.value), 'check', check);
-    add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves + save.value + buffs.saves) + saveExtra, 'save', save);
+    add(`check:${ability}`, `${name} check`, d20(mod(ability) + items.checks + (featureBonus.checks[ability] || 0) + check.value), 'check', {
+      ...check,
+      parts: parts({ label: ability.toUpperCase(), value: mod(ability), keep: true }, { label: 'Magic items', value: items.checks },
+        { label: 'Features', value: featureBonus.checks[ability] || 0 }, { label: 'Item bonuses', value: check.value })
+    });
+    add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves + save.value + buffs.saves) + saveExtra, 'save', {
+      ...save,
+      extraDice: saveExtra.replace(/^\+/, '') || null,
+      parts: parts({ label: ability.toUpperCase(), value: mod(ability), keep: true }, { label: 'Proficiency', value: saves.includes(ability) ? pb : 0 },
+        { label: 'Magic items', value: items.saves }, { label: 'Item bonuses', value: save.value }, { label: 'Spells', value: buffs.saves })
+    });
   }
   for (const [skill, ability] of Object.entries(rules.SKILLS)) {
     const proficient = skills.includes(skill);
     const bonus = mod(ability) + (proficient ? pb : jack) + (expertise.includes(skill) ? pb : 0) + items.checks +
       Math.max(featureBonus.skills[skill] || 0, featureBonus.checks[ability] || 0);
     const item = fromItems({ type: 'skill', skill, ability });
-    add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus + item.value), 'check', item);
+    add(`skill:${skill}`, `${skill} (${ability.toUpperCase()})`, d20(bonus + item.value), 'check', {
+      ...item,
+      parts: parts({ label: ability.toUpperCase(), value: mod(ability), keep: true },
+        proficient ? { label: 'Proficiency', value: pb } : { label: 'Jack of All Trades (½ proficiency)', value: jack },
+        { label: 'Expertise', value: expertise.includes(skill) ? pb : 0 }, { label: 'Magic items', value: items.checks },
+        { label: 'Features', value: Math.max(featureBonus.skills[skill] || 0, featureBonus.checks[ability] || 0) }, { label: 'Item bonuses', value: item.value })
+    });
   }
-  add('initiative', 'Initiative', d20(rules.initiativeOf({ classes, sheetData }).total), 'initiative', fromItems({ type: 'initiative' }));
+  const initiative = rules.initiativeOf({ classes, sheetData });
+  add('initiative', 'Initiative', d20(initiative.total), 'initiative', { ...fromItems({ type: 'initiative' }), parts: parts(...initiative.parts.map((part, index) => ({ ...part, keep: index === 0 }))) });
   // Concentration save: the Constitution save, against the oldest waiting DC.
   // War Caster and Eldritch Mind give Advantage.
   const concentrating = rules.readSpellcasting(sheetData).concentration;
@@ -143,16 +180,23 @@ function rollOptions(character) {
       Array.isArray(sheetData.invocations) && sheetData.invocations.some(entry => entry && entry.name === 'Eldritch Mind') ? 'Eldritch Mind' : null
     ].filter(Boolean);
     add('concentration', `Concentration save (${concentrating.spell}${waiting.length ? `, DC ${waiting[0]}` : ''})`, con.formula, 'save',
-      { ...(advantage.length ? { advantage } : {}), ...(con.disadvantage ? { disadvantage: con.disadvantage } : {}) });
+      { ...(advantage.length ? { advantage } : {}), ...(con.disadvantage ? { disadvantage: con.disadvantage } : {}), parts: con.parts, extraDice: con.extraDice });
   }
 
   const combat = buildCharacterCombat(character, sheetData);
   combat.attacks.forEach((attack, index) => {
     if (attack.needsType) return;
-    add(`attack:${index}:hit`, `${attack.name} attack`, d20(Number(attack.attackBonus)) + (attack.hitDice || ''), 'attack');
+    add(`attack:${index}:hit`, `${attack.name} attack`, d20(Number(attack.attackBonus)) + (attack.hitDice || ''), 'attack', {
+      parts: attack.hitParts ? parts(...attack.hitParts.map((part, i) => ({ ...part, keep: i === 0 }))) : undefined,
+      extraDice: attack.hitDice ? String(attack.hitDice).replace(/^\+/, '') : null
+    });
     const damage = parseDamage(attack.damage);
     if (damage) {
-      add(`attack:${index}:damage`, `${attack.name} damage (${damage.type})`, damage.formula, 'damage');
+      add(`attack:${index}:damage`, `${attack.name} damage (${damage.type})`, damage.formula, 'damage', {
+        parts: attack.damageParts && attack.damageDie
+          ? [{ label: `${attack.damageDie} (${attack.weapon || attack.name})`, dice: true }, ...parts(...attack.damageParts)]
+          : undefined
+      });
       if (damage.twoHanded) add(`attack:${index}:damage2`, `${attack.name} damage, two-handed (${damage.type})`, damage.twoHanded, 'damage');
       // The extra Light attack (no ability modifier unless negative / Two-Weapon Fighting).
       // Sneak Attack: the weapon's damage plus the Sneak Attack dice, one roll.
@@ -204,7 +248,13 @@ function rollOptions(character) {
   }
   const sources = rules.getSpellSources({ classes, species: character.race, sheetData });
   for (const source of sources) {
-    if (!options.has(`spell:${source.key}`)) add(`spell:${source.key}`, `${source.label} spell attack`, d20(source.attackBonus) + attackDice, 'attack');
+    if (options.has(`spell:${source.key}`)) continue;
+    const spellMod = source.ability ? mod(source.ability) : 0;
+    const rest = source.attackBonus - spellMod;
+    add(`spell:${source.key}`, `${source.label} spell attack`, d20(source.attackBonus) + attackDice, 'attack', {
+      parts: parts(source.ability ? { label: source.ability.toUpperCase(), value: spellMod, keep: true } : null, { label: rest === pb ? 'Proficiency' : 'Proficiency and bonuses', value: rest }),
+      extraDice: attackDice.replace(/^\+/, '') || null
+    });
   }
   return options;
 }
@@ -226,6 +276,23 @@ function spellDiceOption(character, spec) {
   if (!dice) throw new Error('That roll is not on this character sheet.');
   const label = `${spell.name}${spell.level ? ` (level ${slotLevel})` : ''}${dice.type ? ` — ${dice.type}` : ''}`;
   return { id: 'spelldice', label: label.slice(0, MAX_LABEL), formula: dice.formula, kind: 'damage' };
+}
+
+// Debug mode on the sheet: every roll this character has, with its parts.
+function rollBreakdowns({ characterId, user }) {
+  const character = loadCharacter(characterId);
+  if (!canRollFor(character, user)) throw new Error('Forbidden.');
+  return [...rollOptions(character).values()].map(option => ({
+    id: option.id, label: option.label, formula: option.formula, kind: option.kind,
+    parts: option.parts || null, breakdown: breakdownText(option),
+    advantage: option.advantage || null, disadvantage: option.disadvantage || null
+  }));
+}
+
+// Jack of All Trades (Bard 2): the sheet adds half the proficiency bonus to
+// skills the character isn't proficient in, as the rolls do.
+function hasJackOfAllTrades(character) {
+  return hasFeature(classesOf(character), 'Jack of All Trades');
 }
 
 function loadCharacter(characterId) {
@@ -264,6 +331,8 @@ function rollView(row) {
     // The dice colour the roller had picked then (DICE_COLORS), or null.
     color: diceColorView(detail.color),
     critical: Boolean(detail.critical),
+    // How the bonus adds up ("1d20+5 = d20 + DEX +2 + ..."), for debug mode.
+    breakdown: detail.breakdown || null,
     private: Boolean(row.private),
     createdAt: row.created_at
   };
@@ -305,7 +374,7 @@ function rollForCharacter({ characterId, user, request = {} }) {
   }
   const critical = Boolean(request.critical) && (option.kind === 'damage' || option.kind === 'custom');
   const result = rules.rollFormula(option.formula, { mode: option.kind === 'damage' ? 'normal' : mode, critical });
-  const detail = { text: rules.describeRoll(result), natural: result.natural, critical, parts: result.parts, kind: option.kind, color: diceColorOf(user.id) };
+  const detail = { text: rules.describeRoll(result), natural: result.natural, critical, parts: result.parts, kind: option.kind, color: diceColorOf(user.id), breakdown: breakdownText(option) };
   // context: what the roll is for, e.g. "Skill challenge: Escape the gnolls".
   const context = typeof request.context === 'string' && request.context.trim() ? `${request.context.trim()}: ` : '';
   const label = `${context}${critical ? `${option.label} — critical` : option.label}`.slice(0, MAX_LABEL);
@@ -346,7 +415,7 @@ function getRecentRolls({ characterIds, limit = 30, showPrivate = false, viewerI
     .all(...ids, Math.min(100, Number(limit) || 30))
     .map(rollView)
     .map(roll => (roll.private && !showPrivate && !(viewerId && isRoller(roll.id, viewerId))
-      ? { ...roll, total: null, formula: '', text: 'Private roll for the DM', natural: null }
+      ? { ...roll, total: null, formula: '', text: 'Private roll for the DM', natural: null, breakdown: null }
       : roll));
 }
 
@@ -464,6 +533,9 @@ module.exports = {
   diceColorView,
   rollOptions,
   rollForCharacter,
+  rollBreakdowns,
+  hasJackOfAllTrades,
+  breakdownText,
   getRecentRolls,
   getCharacterRolls,
   getVttKey,

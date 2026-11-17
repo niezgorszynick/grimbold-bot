@@ -52,6 +52,7 @@ const ADMIN_ASSETS = {
   'character-vitals.js': path.join(__dirname, 'public', 'character-vitals.js'),
   'admin.css': path.join(__dirname, 'public', 'admin.css'),
   'admin-ui.js': path.join(__dirname, 'public', 'admin-ui.js'),
+  'sheet-debug.js': path.join(__dirname, 'public', 'sheet-debug.js'),
   'character-levelup.js': path.join(__dirname, 'public', 'character-levelup.js'),
   'character-spells.js': path.join(__dirname, 'public', 'character-spells.js'),
   'character-magic-items.js': path.join(__dirname, 'public', 'character-magic-items.js'),

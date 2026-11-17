@@ -144,7 +144,10 @@
         el('strong', { text: rollResult.character }), ' — ' + rollResult.label,
         rollResult.mode !== 'normal' ? el('span', { className: 'muted small', text: ' (' + rollResult.mode + ')' }) : null,
         rollResult.private ? el('span', { className: 'tag gold', text: 'GM only' }) : null,
-        textNode
+        textNode,
+        // Debug mode on the sheet (public/sheet-debug.js): how the bonus adds up.
+        rollResult.breakdown && window.grimboldDebug && window.grimboldDebug()
+          ? el('div', { className: 'dice-breakdown', text: '🐞 ' + rollResult.breakdown }) : null
       ])
     );
     bar.classList.remove('is-collapsed');

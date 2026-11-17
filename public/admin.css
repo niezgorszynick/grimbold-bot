@@ -1422,3 +1422,17 @@ button.sheet-hud-tile { cursor: pointer; }
 .chronicle-dm-form label.chronicle-hidden { display: flex; align-items: center; gap: 6px; }
 .chronicle-quick-sort { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; }
 .sheet-chronicles .chronicle-list { margin-top: 8px; }
+
+/* Jack of All Trades on the skill list, and debug mode (public/sheet-debug.js). */
+.sheet-check-row.has-jack .sheet-check-modifier::before { content: '½ '; font-size: 10px; color: #d4af37; font-weight: normal; }
+.sheet-jack-note { margin: 6px 0 0; }
+.sheet-debug-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #949ba4; cursor: pointer; }
+.sheet-debug { border: 1px dashed #d4af37; }
+.sheet-debug h4 { margin: 0 0 6px; }
+.sheet-debug-summary { margin: 0 0 8px; }
+.sheet-debug-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sheet-debug-table td, .sheet-debug-table th { text-align: left; padding: 4px 6px; border-top: 1px solid #3f4147; vertical-align: top; }
+.sheet-debug-table tr.is-mismatch td { background: rgba(242, 63, 67, 0.12); }
+.sheet-debug-table code { white-space: normal; }
+[data-debug-mismatch] { outline: 2px solid #f23f43; outline-offset: 1px; border-radius: 3px; }
+.dice-breakdown { margin-top: 4px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #c9b779; }

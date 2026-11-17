@@ -188,6 +188,8 @@ router.get('/characters/:id', (req, res) => {
         return null;
       }
     })(),
+    // Bard 2: half the proficiency bonus on skills without proficiency.
+    jackOfAllTrades: db.hasJackOfAllTrades(character),
     // Thaumaturge, Magician, Otherworldly Glamour: bonuses the skill list adds.
     checkBonuses: rules.featureCheckBonuses(sheetData, ability => rules.effectiveAbilityScore(sheetData, ability)),
     // Custom item bonuses, added on top (skills, checks, saves) and Advantage marks.
@@ -195,6 +197,21 @@ router.get('/characters/:id', (req, res) => {
     // Passive Perception, Investigation and Insight, and senses (Darkvision, ...).
     senses: sensesOf(character, sheetData)
   });
+});
+
+// Debug mode on the sheet: every roll with what adds up to it.
+router.get('/characters/:id/roll-options', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json({ rolls: db.rollBreakdowns({ characterId: req.params.id, user }) });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      console.error('Roll options failed:', error);
+      return res.status(500).json({ error: 'Could not list the rolls.' });
+    }
+    return res.status(error.message === 'Forbidden.' ? 403 : error.message === 'Character not found.' ? 404 : 400).json({ error: error.message });
+  }
 });
 
 // Ends a buff spell on a character: { effectId }. Its owner, an admin or the caster.

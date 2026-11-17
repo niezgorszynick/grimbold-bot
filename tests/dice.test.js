@@ -217,4 +217,18 @@ test('initiative is a DEX check: DEX, Alert and items, but not Jack of All Trade
   assert.equal(options.get('initiative').formula, '1d20+2', 'DEX 15 → +2, no Jack of All Trades');
   assert.equal(options.get('check:dex').formula, '1d20+2');
   assert.equal(options.get('skill:Stealth').formula, '1d20+3', 'DEX +2 and Jack of All Trades +1');
+
+  // Debug mode: what adds up to each roll, and the sheet learns about Jack of All Trades.
+  assert.equal(db.hasJackOfAllTrades(db.getCharacterById(id)), true);
+  assert.equal(db.breakdownText(options.get('skill:Stealth')), '1d20+3 = d20 + DEX +2 + Jack of All Trades (½ proficiency) +1');
+  assert.equal(db.breakdownText(options.get('initiative')), '1d20+2 = d20 + DEX +2');
+  const admin = { id: 0, role: 'admin' };
+  const breakdowns = db.rollBreakdowns({ characterId: id, user: admin });
+  for (const roll of breakdowns.filter(entry => /^1d20/.test(entry.formula) && entry.breakdown)) {
+    assert.doesNotMatch(roll.breakdown, /add up to/, `${roll.label}: the parts add up to the roll`);
+  }
+  assert.ok(breakdowns.find(entry => entry.id === 'skill:Persuasion').breakdown.includes('Expertise'));
+  assert.throws(() => db.rollBreakdowns({ characterId: id, user: { id: createPlayer(), role: 'player' } }), /Forbidden/);
+  const rolled = db.rollForCharacter({ characterId: id, user: admin, request: { roll: 'skill:Stealth' } });
+  assert.match(rolled.breakdown, /Jack of All Trades/, 'the roll result says how it was calculated');
 });
