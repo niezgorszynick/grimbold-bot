@@ -39,3 +39,6 @@ rules/content/character-sheet.pdf
 
 # Uploaded files (NPC portraits and statblocks)
 uploads/
+
+# VS Code workspace file (personal)
+*.code-workspace
