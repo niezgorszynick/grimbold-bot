@@ -1441,8 +1441,8 @@ button.sheet-hud-tile { cursor: pointer; }
 
 /* NPC voices (views/tabs/npcs.js ?voice=, public/npc-voice.js) */
 .npc-card-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.npc-private { display: flex; gap: 8px; align-items: flex-start; }
-.npc-private input { width: auto; margin-top: 3px; }
+.npc-form label.npc-private { display: flex; gap: 8px; align-items: flex-start; }
+.npc-form label.npc-private input { width: auto; flex: none; margin: 2px 0 0; }
 .voice-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 900px) { .voice-layout { grid-template-columns: minmax(0, 1fr); } }
 .voice-modes { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; }
