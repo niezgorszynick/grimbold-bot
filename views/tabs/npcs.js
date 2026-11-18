@@ -50,10 +50,10 @@ function npcCard(npc, isAdmin) {
       <header class="npc-card-header">
         ${npc.portraitUrl ? `<img class="npc-portrait" src="${escapeHtml(npc.portraitUrl)}" alt="" loading="lazy">` : ''}
         <div class="npc-card-title">
-          <h3>${escapeHtml(npc.name)} ${isAdmin ? STATUS_TAGS[npc.status] || '' : ''}</h3>
+          <h3>${escapeHtml(npc.name)} ${isAdmin ? STATUS_TAGS[npc.status] || '' : ''}${isAdmin && npc.private ? ' <span class="tag gold" title="Only its DM and the Root DM see this NPC">🔒 Private</span>' : ''}</h3>
           ${npc.affiliation ? `<div class="muted small">${escapeHtml(npc.affiliation)}</div>` : ''}
         </div>
-        ${isAdmin ? `<a class="btn btn-small" href="/admin?tab=npcs&edit_npc=${npc.id}">Edit</a>` : ''}
+        ${isAdmin ? `<div class="npc-card-actions"><a class="btn btn-small btn-gold" href="/admin?tab=npcs&voice=${npc.id}" title="Speak as ${escapeHtml(npc.name)} in Discord">🗣 Voice</a><a class="btn btn-small" href="/admin?tab=npcs&edit_npc=${npc.id}">Edit</a></div>` : ''}
       </header>
       ${isAdmin ? plansHtml(npc) : ''}
       ${isAdmin && npc.personality ? `<p class="npc-personality"><strong>Personality:</strong> ${escapeHtml(npc.personality)}</p>` : ''}
@@ -216,6 +216,7 @@ function npcForm(npc, adventures, owners, currentUserId, startMonster) {
             ${Object.entries(PLAN_LABELS).map(([plan, label]) => `<option value="${plan}" ${(npc ? npc.plans : '') === plan ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
           </select></label>
         </div>
+        <label class="npc-private"><input type="checkbox" name="private" value="1" ${npc && npc.private ? 'checked' : ''}> 🔒 Private: only the owning DM and the Root DM see this NPC (players still see them once revealed on an adventure table). With no owning DM chosen, it becomes yours.</label>
         <label>Plans note<input name="plans_note" maxlength="500" placeholder="e.g. Becomes the villain of the Ashfall arc, keep them alive" value="${value('plansNote')}"></label>
         <label>Personality (short)<textarea name="personality" rows="2" maxlength="1000" placeholder="Gruff, loyal to a fault, hates elves">${value('personality')}</textarea></label>
         <label>Lore<textarea name="description" rows="4" maxlength="5000">${value('description')}</textarea></label>
@@ -250,10 +251,30 @@ function npcForm(npc, adventures, owners, currentUserId, startMonster) {
     </section>`;
 }
 
+// An NPC's voice page: public/npc-voice.js builds it from /admin/npcs/:id/voice.
+function voiceHtml(npc) {
+  if (!npc) return '<section class="card"><p class="muted">No such NPC.</p><a class="btn btn-small btn-secondary" href="/admin?tab=npcs">Back to NPCs</a></section>';
+  return `
+    <section class="card npc-voice" id="npc-voice" data-npc-id="${npc.id}">
+      <div class="sheet-section-heading">
+        <h3>🗣 Speak as ${escapeHtml(npc.name)}${npc.private ? ' <span class="tag gold">🔒 Private</span>' : ''}</h3>
+        <a class="btn btn-small btn-secondary" href="/admin?tab=npcs#npc-${npc.id}">Back to NPCs</a>
+      </div>
+      <p class="muted small">In a channel or an adventure thread, ${escapeHtml(npc.name)} posts under their own name and portrait. In players' DMs, Grimbold delivers it as a card under ${escapeHtml(npc.name)}'s name and portrait, in the colour you choose; what they write back shows up below.</p>
+      <div id="npc-voice-app"><p class="muted">Loading…</p></div>
+    </section>
+    <section id="npc-voice-history" aria-label="What ${escapeHtml(npc.name)} said"></section>
+    <script src="/admin/assets/discord-editor.js" defer></script>
+    <script src="/admin/assets/discord-preview.js" defer></script>
+    <script src="/admin/assets/npc-voice.js" defer></script>`;
+}
+
 module.exports = function renderNpcsTab(ctx) {
   const { req, isAdmin, status } = ctx;
-  const npcs = db.listNpcs({ showStats: isAdmin });
-  const editing = isAdmin && req.query.edit_npc ? db.getNpc(req.query.edit_npc, { showStats: true }) : null;
+  const viewer = ctx.currentUser;
+  if (isAdmin && req.query.voice) return voiceHtml(db.getNpc(req.query.voice, { showStats: true, viewer }));
+  const npcs = db.listNpcs({ showStats: isAdmin, viewer });
+  const editing = isAdmin && req.query.edit_npc ? db.getNpc(req.query.edit_npc, { showStats: true, viewer }) : null;
   const creating = isAdmin && req.query.new_npc && !editing;
   const startMonster = creating && req.query.base_monster ? rules.getMonster(req.query.base_monster) : null;
   const adventures = isAdmin && (editing || creating) ? db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all() : [];

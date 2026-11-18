@@ -141,7 +141,7 @@ const path = require('path');
 
 const client = new Client({
   // DirectMessages (and the Channel partial, as DM channels are not cached):
-  // players' replies to Głos (glos.js).
+  // players' replies to NPCs who wrote to them (npcVoice.js).
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   partials: [Partials.Channel],
 });
@@ -162,13 +162,13 @@ require('./scheduleDiscord').setScheduleClient(client);
 require('./auctionNews').setAuctionNewsClient(client);
 // Login details DMed to players without a password (Players → Passwords & Roles).
 require('./loginInvites').setLoginInvitesClient(client);
-// Głos: one DM's private messages to players, and their replies (glos.js).
-require('./glos').setGlosClient(client);
+// NPC voices: DMs to players as an NPC, and the players' replies (npcVoice.js).
+require('./npcVoice').setNpcVoiceClient(client);
 client.on('messageCreate', message => {
   try {
-    require('./glos').handleDirectMessage(message);
+    require('./npcVoice').handleDirectMessage(message);
   } catch (error) {
-    console.warn('Could not keep a reply to Głos:', error.message);
+    console.warn('Could not keep a reply to an NPC:', error.message);
   }
 });
 // Resident artisans who deliver on their own days, announced in the shop channel.

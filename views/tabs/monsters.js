@@ -16,8 +16,8 @@ const monsterHref = name => `/admin?tab=monsters&monster=${encodeURIComponent(na
 
 // The statblock with what a DM does next. Also sent on its own by
 // GET /admin/monsters/statblock when a row is picked.
-function monsterPanel(monster) {
-  const npcs = db.listNpcsBasedOn(monster.name);
+function monsterPanel(monster, viewer) {
+  const npcs = db.listNpcsBasedOn(monster.name, viewer);
   return `
     <div class="monster-panel-actions">
       <a class="btn btn-small btn-green" href="/admin?tab=npcs&new_npc=1&base_monster=${encodeURIComponent(monster.name)}">+ New NPC from this statblock</a>
@@ -186,7 +186,7 @@ module.exports = function renderMonstersTab(ctx) {
         </div>
       </details>` : ''}
     </section>
-    <section class="card monster-view" id="monster-view" ${chosen ? '' : 'hidden'}>${chosen ? monsterPanel(chosen) : ''}</section>
+    <section class="card monster-view" id="monster-view" ${chosen ? '' : 'hidden'}>${chosen ? monsterPanel(chosen, ctx.currentUser) : ''}</section>
     ${req.query.monster && !chosen ? `<div class="alert red">There is no monster called “${escapeHtml(req.query.monster)}”.</div>` : ''}
     <section class="card analytics-table-wrap">
       <table class="monster-table" id="monster-table">

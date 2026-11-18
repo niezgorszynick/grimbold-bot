@@ -12,7 +12,7 @@
 
 const { db } = require('./connection');
 const rules = require('../rules');
-const { npcCondition } = require('./npcs');
+const { npcCondition, canSeeNpc } = require('./npcs');
 
 // db/activeAdventures.js uses this module for the table; required late.
 const adventures = () => require('./activeAdventures');
@@ -375,8 +375,8 @@ function deleteAdventureStatblock({ adventureId, user, statblockId }) {
 function addEncounterNpc({ adventureId, user, encounterId, npcId }) {
   const adventure = secretAdventure(adventureId, user);
   const encounter = openEncounter(adventure, encounterId);
-  const npc = db.prepare('SELECT id, name FROM npcs WHERE id = ?').get(Number(npcId));
-  if (!npc) throw new Error('NPC not found.');
+  const npc = db.prepare('SELECT id, name, private, owner_player_id FROM npcs WHERE id = ?').get(Number(npcId));
+  if (!npc || !canSeeNpc(npc, user)) throw new Error('NPC not found.');
   if (db.prepare('SELECT 1 FROM encounter_combatants WHERE encounter_id = ? AND npc_id = ?').get(encounter.id, npc.id)) {
     throw new Error(`${npc.name} is already in this encounter.`);
   }
@@ -775,7 +775,7 @@ function addTokensToEncounter({ key, encounterId, tokens }) {
         added.push({ tokenId: token.id, combatantId: row.id, characterId: character.id, label: character.name });
         continue;
       }
-      const npc = db.prepare('SELECT id, name FROM npcs WHERE lower(trim(name)) = ?').get(name);
+      const npc = db.prepare('SELECT id, name, private, owner_player_id FROM npcs WHERE lower(trim(name)) = ?').all(name).find(row => canSeeNpc(row, user));
       if (npc) {
         const row = existing('npc_id')(npc.id) || (addEncounterNpc({ adventureId: adventure.id, user, encounterId: encounter.id, npcId: npc.id }), { id: newest() });
         added.push({ tokenId: token.id, combatantId: row.id, characterId: null, label: npc.name });

@@ -168,11 +168,14 @@ function speakerFor({ adventure, user, npcId, characterId }) {
   }
   if (!manage) throw new Error('Forbidden.');
   if (!npcId) return { name: PERSONA, avatarURL: process.env.GRIMBRANDT_AVATAR_URL || undefined };
-  const npc = db.prepare('SELECT id, name, portrait_file FROM npcs WHERE id = ?').get(Number(npcId));
-  if (!npc) throw new Error('NPC not found.');
-  const portrait = panelBase() && npc.portrait_file ? `${panelBase()}/avatars/npc/${encodeURIComponent(npc.portrait_file)}` : null;
-  return { name: webhookName(npc.name), avatarURL: portrait || botAvatar() };
+  const npc = db.prepare('SELECT id, name, portrait_file, private, owner_player_id FROM npcs WHERE id = ?').get(Number(npcId));
+  if (!npc || !db.canSeeNpc(npc, user)) throw new Error('NPC not found.');
+  return npcSpeaker(npc);
 }
+
+// An NPC's public portrait address (Discord fetches it), or null.
+const npcPortraitUrl = npc => (panelBase() && npc.portrait_file ? `${panelBase()}/avatars/npc/${encodeURIComponent(npc.portrait_file)}` : null);
+const npcSpeaker = npc => ({ name: webhookName(npc.name), avatarURL: npcPortraitUrl(npc) || botAvatar() });
 
 // The speak channel's name for the table ("#tawerna"), or null if the bot
 // can't see it.
@@ -261,6 +264,33 @@ async function sayAsCharacter({ characterId, user, adventureId, text }) {
   const { name: speaker, avatarURL } = characterSpeaker(character);
   return postInDiscord({ placeId: speakChannelId(), toChannel: true, speaker, avatarURL, content });
 }
+
+// ─── NPC voices (npcVoice.js) ───────────────────────────────────────────────
+
+// Where a DM can speak as an NPC: the speak channel, and the threads of the
+// running adventures they run.
+async function npcSpeakPlaces(user) {
+  const adventures = db.prepare(`
+    SELECT * FROM adventures WHERE status = 'active' AND discord_thread_id IS NOT NULL ORDER BY created_at DESC, id DESC
+  `).all().filter(adventure => db.canManageAdventure(adventure, user)).map(adventure => ({ id: adventure.id, title: adventure.title }));
+  return { channel: await speakChannelInfo(), adventures };
+}
+
+// { npcId, user, adventureId, text }: without an adventure, to the speak channel.
+async function sayAsNpc({ npcId, user, adventureId, text }) {
+  if (adventureId) return sayInAdventureThread({ adventureId, user, npcId, target: 'thread', text });
+  if (!(user && user.role === 'admin')) throw new Error('Forbidden.');
+  const npc = db.prepare('SELECT id, name, portrait_file, private, owner_player_id FROM npcs WHERE id = ?').get(Number(npcId));
+  if (!npc || !db.canSeeNpc(npc, user)) throw new Error('NPC not found.');
+  const content = checkMessage(text);
+  const { name: speaker, avatarURL } = npcSpeaker(npc);
+  return postInDiscord({ placeId: speakChannelId(), toChannel: true, speaker, avatarURL, content });
+}
+
+const botIdentity = () => ({
+  name: client && client.user ? (client.user.globalName || client.user.username) : 'Grimbold',
+  avatarURL: botAvatar() || null
+});
 
 // ─── Linking an adventure made in the panel ─────────────────────────────────
 
@@ -449,6 +479,10 @@ module.exports = {
   speakChannelInfo,
   characterSpeakPlaces,
   sayAsCharacter,
+  npcSpeakPlaces,
+  sayAsNpc,
+  npcPortraitUrl,
+  botIdentity,
   unlinkedAdventureThreads,
   linkAdventureThread,
   stripStatusTag,

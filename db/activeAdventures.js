@@ -8,7 +8,7 @@ const { db } = require('./connection');
 const { updateCharacterProgression } = require('./characters');
 const { getCharacterSnapshots } = require('./roster');
 const { getRecentRolls } = require('./dice');
-const { getAdventureNpcs } = require('./npcs');
+const { getAdventureNpcs, canSeeNpc, requireVisibleNpc } = require('./npcs');
 const { encountersForTable, getEncounterRolls } = require('./encounters');
 const { nextSessionForAdventure, openPollForAdventure, adventureSessions } = require('./schedule');
 const { formatSessionTime, warsawInputs } = require('../rules/schedule');
@@ -150,6 +150,7 @@ function takeOverAdventure({ adventureId, user }) {
 function setAdventureNpcHidden({ adventureId, user, npcId, hidden }) {
   const adventure = loadAdventure(adventureId);
   requireSecret(adventure, user);
+  try { requireVisibleNpc(npcId, user); } catch { throw new Error('That NPC is not in this adventure.'); }
   const changed = db.prepare('UPDATE adventure_npcs SET hidden = ? WHERE adventure_id = ? AND npc_id = ?')
     .run(hidden ? 1 : 0, adventure.id, Number(npcId)).changes;
   if (!changed) throw new Error('That NPC is not in this adventure.');
@@ -238,14 +239,14 @@ function getAdventureTable({ adventureId, user, now = new Date() }) {
     candidates,
     dmCharacters,
     // Notable NPCs with the party; stats and HP only for the DM.
-    npcs: getAdventureNpcs(adventure.id, { showStats: access.secret }),
+    npcs: getAdventureNpcs(adventure.id, { showStats: access.secret, viewer: user }),
     // reservedBy: another DM has long-term plans for this NPC (a warning, not a lock).
     npcCandidates: access.secret && adventure.status === 'active'
       ? db.prepare(`
-        SELECT n.id, n.name, n.affiliation, n.plans, n.owner_player_id, p.discord_tag AS owner_tag FROM npcs n
+        SELECT n.id, n.name, n.affiliation, n.plans, n.owner_player_id, n.private, p.discord_tag AS owner_tag FROM npcs n
         LEFT JOIN players p ON p.id = n.owner_player_id
         WHERE n.status != 'dead' AND n.id NOT IN (SELECT npc_id FROM adventure_npcs WHERE adventure_id = ?) ORDER BY n.name COLLATE NOCASE
-      `).all(adventure.id).map(row => ({
+      `).all(adventure.id).filter(row => canSeeNpc(row, user)).map(row => ({
         id: row.id,
         name: row.name,
         affiliation: row.affiliation,
@@ -261,8 +262,7 @@ function getAdventureTable({ adventureId, user, now = new Date() }) {
 function setAdventureNpc({ adventureId, user, npcId, inAdventure, hidden = false }) {
   const adventure = loadAdventure(adventureId);
   requireSecret(adventure, user);
-  const npc = db.prepare('SELECT id FROM npcs WHERE id = ?').get(Number(npcId));
-  if (!npc) throw new Error('NPC not found.');
+  const npc = requireVisibleNpc(npcId, user);
   if (inAdventure) db.prepare('INSERT OR IGNORE INTO adventure_npcs (adventure_id, npc_id, hidden) VALUES (?, ?, ?)').run(adventure.id, npc.id, hidden ? 1 : 0);
   else db.prepare('DELETE FROM adventure_npcs WHERE adventure_id = ? AND npc_id = ?').run(adventure.id, npc.id);
   return getAdventureTable({ adventureId: adventure.id, user });
@@ -276,7 +276,7 @@ function changeNpcHp({ adventureId, user, npcId, action, amount }) {
   const npc = db.prepare(`
     SELECT n.* FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id WHERE an.adventure_id = ? AND n.id = ?
   `).get(adventure.id, Number(npcId));
-  if (!npc) throw new Error('That NPC is not in this adventure.');
+  if (!npc || !canSeeNpc(npc, user)) throw new Error('That NPC is not in this adventure.');
   if (!Number.isInteger(npc.hp_max)) throw new Error(`${npc.name} has no Hit Points set: add them on the Notable NPCs tab.`);
   const value = Number(amount);
   if (!Number.isInteger(value) || value < 0 || value > 10000) throw new Error('Enter a whole number from 0 to 10000.');

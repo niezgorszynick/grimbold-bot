@@ -1173,6 +1173,39 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS glos_messages_discord ON glos_messages (discord_id, id);
       `);
     }
+  },
+  {
+    // NPC voices (npcVoice.js, db/npcVoice.js) replace Głos's own tab: a
+    // private NPC is seen only by its owning DM and the Root DM; any NPC
+    // speaks in a channel (webhook) or in a player's DMs (Grimbold, as an
+    // embed in the NPC's colour). npc_voice_messages keeps what was said and
+    // the players' replies (direction 'in'). target: 'dm', 'channel', 'thread'.
+    version: 40,
+    up(db) {
+      const columns = db.prepare('PRAGMA table_info(npcs)').all().map(column => column.name);
+      if (!columns.includes('private')) db.exec('ALTER TABLE npcs ADD COLUMN private INTEGER NOT NULL DEFAULT 0');
+      if (!columns.includes('voice_color')) db.exec('ALTER TABLE npcs ADD COLUMN voice_color TEXT');
+      db.exec(`
+        DROP TABLE IF EXISTS glos_messages;
+        CREATE TABLE IF NOT EXISTS npc_voice_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          npc_id INTEGER NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+          direction TEXT NOT NULL CHECK (direction IN ('out', 'in')),
+          target TEXT NOT NULL DEFAULT 'dm',
+          player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+          discord_id TEXT,
+          place_label TEXT,
+          text TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'sent',
+          error TEXT,
+          discord_message_id TEXT,
+          sent_by INTEGER,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS npc_voice_messages_npc ON npc_voice_messages (npc_id, id);
+        CREATE INDEX IF NOT EXISTS npc_voice_messages_discord ON npc_voice_messages (discord_id, direction, id);
+      `);
+    }
   }
 ];
 

@@ -20,6 +20,25 @@ const STATUSES = ['alive', 'dead', 'unknown'];
 // 'free': a one-off, any DM may reuse them. '': not said.
 const PLANS = ['', 'reserved', 'free'];
 
+// A private NPC is seen only by its owning DM and the Root DM: not listed,
+// not on adventure tables (unless revealed to the party there, and then only
+// as the party sees them), not usable by other DMs. viewer: the session user;
+// without one (players' views, scripts) private NPCs are left out.
+function canSeeNpc(row, viewer) {
+  if (!row) return false;
+  if (!row.private) return true;
+  if (!viewer || viewer.role !== 'admin') return false;
+  const id = Number(viewer.id);
+  return id === ROOT_ADMIN.id || id === row.owner_player_id;
+}
+
+// Throws 'NPC not found.' for an NPC the viewer may not see (as if missing).
+function requireVisibleNpc(npcId, viewer) {
+  const row = db.prepare('SELECT * FROM npcs WHERE id = ?').get(Number(npcId));
+  if (!row || !canSeeNpc(row, viewer)) throw new Error('NPC not found.');
+  return row;
+}
+
 const NPC_QUERY = 'SELECT n.*, p.discord_tag AS owner_tag FROM npcs n LEFT JOIN players p ON p.id = n.owner_player_id';
 
 function readAbilities(json) {
@@ -66,6 +85,8 @@ function npcView(row, adventures, showStats) {
     adventures: adventures || []
   };
   if (!showStats) return view;
+  view.private = Boolean(row.private);
+  view.voiceColor = row.voice_color || null;
   const abilities = readAbilities(row.abilities);
   return {
     ...view,
@@ -94,19 +115,20 @@ function baseMonsterView(name) {
 }
 
 // The NPCs built on a statblock (the Monsters tab lists them).
-function listNpcsBasedOn(monsterName) {
-  return db.prepare('SELECT id, name FROM npcs WHERE base_monster = ? ORDER BY name COLLATE NOCASE').all(String(monsterName || ''));
+function listNpcsBasedOn(monsterName, viewer) {
+  return db.prepare('SELECT id, name, private, owner_player_id FROM npcs WHERE base_monster = ? ORDER BY name COLLATE NOCASE').all(String(monsterName || ''))
+    .filter(row => canSeeNpc(row, viewer)).map(({ id, name }) => ({ id, name }));
 }
 
-function listNpcs({ showStats = false } = {}) {
-  const rows = db.prepare(`${NPC_QUERY} ORDER BY n.name COLLATE NOCASE`).all();
+function listNpcs({ showStats = false, viewer = null } = {}) {
+  const rows = db.prepare(`${NPC_QUERY} ORDER BY n.name COLLATE NOCASE`).all().filter(row => canSeeNpc(row, viewer));
   const byNpc = appearances(rows.map(row => row.id));
   return rows.map(row => npcView(row, byNpc[row.id], showStats));
 }
 
-function getNpc(id, { showStats = false } = {}) {
+function getNpc(id, { showStats = false, viewer = null } = {}) {
   const row = db.prepare(`${NPC_QUERY} WHERE n.id = ?`).get(Number(id));
-  if (!row) return null;
+  if (!row || !canSeeNpc(row, viewer)) return null;
   return npcView(row, appearances([row.id])[row.id], showStats);
 }
 
@@ -122,13 +144,15 @@ function npcCondition(row) {
 
 // NPCs on an adventure's table. showStats: the adventure's DM (stats, HP and
 // the hidden ones, marked). Everyone else: the revealed ones and their condition.
-function getAdventureNpcs(adventureId, { showStats = false } = {}) {
+function getAdventureNpcs(adventureId, { showStats = false, viewer = null } = {}) {
   const rows = db.prepare(`
     SELECT n.*, an.hidden AS table_hidden, p.discord_tag AS owner_tag FROM adventure_npcs an JOIN npcs n ON n.id = an.npc_id
     LEFT JOIN players p ON p.id = n.owner_player_id
     WHERE an.adventure_id = ? ORDER BY an.added_at, n.name COLLATE NOCASE
   `).all(Number(adventureId));
-  const shown = showStats ? rows : rows.filter(row => !row.table_hidden);
+  // A private NPC: its DMs see it as any other; the party once revealed;
+  // other DMs not at all.
+  const shown = rows.filter(row => (canSeeNpc(row, viewer) ? showStats || !row.table_hidden : !showStats && !row.table_hidden));
   const byNpc = appearances(shown.map(row => row.id));
   return shown.map(row => {
     const view = npcView(row, byNpc[row.id], showStats);
@@ -194,6 +218,9 @@ function saveNpc(fields) {
     if (score !== null) abilities[ability] = score;
   }
   let owner = readOwner(fields.owner_player_id);
+  // A private NPC needs a DM to see it: the one saving it, if nobody is chosen.
+  const isPrivate = [].concat(fields.private === undefined ? [] : fields.private).some(value => value === true || value === '1' || value === 1 || value === 'on');
+  if (isPrivate && owner === null && fields.created_by !== undefined && fields.created_by !== null) owner = Number(fields.created_by);
   const values = [
     name,
     cleanText(fields.affiliation, 100, 'Role'),
@@ -216,16 +243,16 @@ function saveNpc(fields) {
     if (id) {
       const result = db.prepare(`
         UPDATE npcs SET name = ?, affiliation = ?, description = ?, personality = ?, status = ?, dm_notes = ?,
-          plans = ?, plans_note = ?, armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ?, base_monster = ?, owner_player_id = ? WHERE id = ?
-      `).run(...values, owner, id);
+          plans = ?, plans_note = ?, armor_class = ?, hp_max = ?, hp_current = ?, speed = ?, abilities = ?, base_monster = ?, owner_player_id = ?, private = ? WHERE id = ?
+      `).run(...values, owner, isPrivate ? 1 : 0, id);
       if (!result.changes) throw new Error('NPC not found.');
     } else {
       if (owner === null && fields.created_by !== undefined && fields.created_by !== null) owner = Number(fields.created_by);
       id = Number(db.prepare(`
         INSERT INTO npcs (name, affiliation, description, personality, status, dm_notes, plans, plans_note,
-          armor_class, hp_max, hp_current, speed, abilities, base_monster, owner_player_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(...values, owner).lastInsertRowid);
+          armor_class, hp_max, hp_current, speed, abilities, base_monster, owner_player_id, private)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(...values, owner, isPrivate ? 1 : 0).lastInsertRowid);
     }
     if (fields.adventure_ids !== undefined) {
       const known = new Set(db.prepare('SELECT adventure_id FROM adventure_npcs WHERE npc_id = ?').all(id).map(row => row.adventure_id));
@@ -244,4 +271,4 @@ function deleteNpc(id) {
   return deleted;
 }
 
-module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, npcCondition, listNpcs, listNpcsBasedOn, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };
+module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, canSeeNpc, requireVisibleNpc, npcCondition, listNpcs, listNpcsBasedOn, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };

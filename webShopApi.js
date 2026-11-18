@@ -904,6 +904,7 @@ router.post('/npcs/:id/files/:kind', express.raw({ type: () => true, limit: db.N
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM can upload NPC files.' });
   try {
+    db.requireVisibleNpc(req.params.id, user);
     return res.json(db.saveNpcFile({ npcId: req.params.id, kind: req.params.kind, buffer: req.body }));
   } catch (error) {
     return res.status(error.message === 'NPC not found.' ? 404 : 400).json({ error: error.message });
@@ -915,6 +916,7 @@ router.delete('/npcs/:id/files/:kind', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM can remove NPC files.' });
   try {
+    db.requireVisibleNpc(req.params.id, user);
     return res.json(db.removeNpcFile({ npcId: req.params.id, kind: req.params.kind }));
   } catch (error) {
     return res.status(error.message === 'NPC not found.' ? 404 : 400).json({ error: error.message });

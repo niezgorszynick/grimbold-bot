@@ -8,7 +8,7 @@ const db = require('./db');
 const { coinsToCp } = require('./currency');
 const { escapeHtml } = require('./views/helpers');
 const renderAdminPage = require('./views/adminPage');
-const { loadSessionUser, isAdmin, isRootAdmin, isGlosOwner } = require('./auth');
+const { loadSessionUser, isAdmin, isRootAdmin } = require('./auth');
 const { restockShop } = require('./restock');
 
 // Parse form and JSON bodies
@@ -77,27 +77,10 @@ const ADMIN_ASSETS = {
   'character-wild-shape.js': path.join(__dirname, 'public', 'character-wild-shape.js'),
   'auctions.js': path.join(__dirname, 'public', 'auctions.js'),
   'character-speak.js': path.join(__dirname, 'public', 'character-speak.js'),
-  'discord-editor.js': path.join(__dirname, 'public', 'discord-editor.js')
+  'discord-editor.js': path.join(__dirname, 'public', 'discord-editor.js'),
+  'discord-preview.js': path.join(__dirname, 'public', 'discord-preview.js'),
+  'npc-voice.js': path.join(__dirname, 'public', 'npc-voice.js')
 };
-// Głos belongs to one DM (auth.js isGlosOwner): to anyone else its script and
-// routes don't exist (404, not 403).
-function requireGlosOwner(req, res, next) {
-  if (isGlosOwner(req.session.user)) return next();
-  return res.status(404).send('Not found');
-}
-router.get('/assets/glos.js', requireGlosOwner, (req, res) => res.sendFile(path.join(__dirname, 'public', 'glos.js')));
-router.get('/glos/messages', requireGlosOwner, (req, res) => {
-  res.json({ messages: db.getGlosMessages({ afterId: req.query.after }) });
-});
-router.post('/glos/send', requireGlosOwner, async (req, res) => {
-  try {
-    const results = await require('./glos').sendGlos({ playerIds: req.body.playerIds, text: req.body.text, imageUrl: req.body.imageUrl });
-    res.json({ results });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
 router.get('/assets/:file', (req, res) => {
   const file = Object.hasOwn(ADMIN_ASSETS, req.params.file) ? ADMIN_ASSETS[req.params.file] : null;
   if (!file) return res.status(404).send('Not found');
@@ -433,6 +416,8 @@ router.post('/chronicles/update', (req, res) => {
 // Notable NPCs (admins): create or update, and delete.
 router.post('/npcs/save', (req, res) => {
   try {
+    // A private NPC is edited only by those who see it (db/npcs.js canSeeNpc).
+    if (req.body.id) db.requireVisibleNpc(req.body.id, req.session.user);
     const adventureIds = req.body.adventure_ids === undefined ? [] : [].concat(req.body.adventure_ids);
     // A new NPC belongs to the DM who adds it, unless another owner is chosen.
     const id = db.saveNpc({ ...req.body, adventure_ids: adventureIds, created_by: req.session.user.id });
@@ -443,7 +428,38 @@ router.post('/npcs/save', (req, res) => {
   }
 });
 
+// An NPC's voice (npcVoice.js): its page's data, new messages and replies,
+// and speaking (a channel or thread, or players' DMs). DMs only; a private
+// NPC only for those who see it.
+const npcVoiceRoute = handler => async (req, res) => {
+  if (!isAdmin(req.session.user)) return res.status(403).json({ error: 'DMs only.' });
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return res.status(err.message === 'NPC not found.' ? 404 : 400).json({ error: err.message });
+  }
+};
+router.get('/npcs/:id/voice', npcVoiceRoute(req => require('./npcVoice').voicePage({ npcId: req.params.id, user: req.session.user })));
+router.get('/npcs/:id/voice/messages', npcVoiceRoute(req => {
+  db.requireVisibleNpc(req.params.id, req.session.user);
+  return { messages: db.getNpcVoiceMessages(req.params.id, { afterId: req.query.after }) };
+}));
+router.post('/npcs/:id/voice', npcVoiceRoute(req => require('./npcVoice').sendNpcVoice({
+  npcId: req.params.id,
+  user: req.session.user,
+  target: req.body.target,
+  adventureId: req.body.adventureId,
+  playerIds: req.body.playerIds,
+  text: req.body.text,
+  color: req.body.color
+})));
+
 router.post('/npcs/delete', (req, res) => {
+  try {
+    db.requireVisibleNpc(req.body.id, req.session.user);
+  } catch (err) {
+    return res.redirect(`/admin?tab=npcs&err=${encodeURIComponent(err.message)}`);
+  }
   db.deleteNpc(req.body.id);
   res.redirect('/admin?tab=npcs&status=npc_deleted');
 });
@@ -595,7 +611,7 @@ router.post('/adventures/delete', (req, res) => {
 router.get('/monsters/statblock', requireAdmin, (req, res) => {
   const monster = require('./rules').getMonster(req.query.name);
   if (!monster) return res.status(404).send('No such monster.');
-  return res.send(require('./views/tabs/monsters').monsterPanel(monster));
+  return res.send(require('./views/tabs/monsters').monsterPanel(monster, req.session.user));
 });
 
 // ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
