@@ -85,7 +85,7 @@ function viewerHtml(doc, { isAdmin, characters }) {
         ? `🔒 This doc isn't shared with “Anyone with the link”, so Google shows a sign-in box here.${hasCopy ? ' The saved copy is from before it was closed.' : ' Ask its author to share it with anyone with the link, then press Refresh.'}`
         : doc.saved_at ? `Copy saved ${escapeHtml(when(doc.saved_at))}.` : ''}</p>
       <iframe class="chronicle-frame" data-pane="live" src="${escapeHtml(doc.embedUrl)}" title="${escapeHtml(doc.title || 'Document')}" loading="lazy" referrerpolicy="no-referrer"${showCopyFirst ? ' hidden' : ''}></iframe>
-      ${hasCopy ? `<article class="chronicle-text" data-pane="copy"${showCopyFirst ? '' : ' hidden'}>${savedTextHtml(doc.saved_text)}</article>` : ''}
+      ${hasCopy ? `<article class="chronicle-text" data-pane="copy"${showCopyFirst ? '' : ' hidden'}>${doc.saved_html ? `<div class="chronicle-rich">${doc.saved_html}</div>` : savedTextHtml(doc.saved_text)}</article>` : ''}
       ${isAdmin ? `
       <details class="chronicle-dm">
         <summary><strong>🛡 Sort this document</strong>${doc.matched_by ? ` <span class="muted small">(${doc.matched_by === 'dm' ? 'set by a DM' : doc.matched_by === 'poster' ? 'the poster\'s only character' : 'named in the post or title'})</span>` : ''}</summary>

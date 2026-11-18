@@ -1498,3 +1498,18 @@ button.sheet-hud-tile { cursor: pointer; }
 .dp-mention { background: rgba(88, 101, 242, 0.3); color: #c9cdfb; border-radius: 3px; padding: 0 2px; }
 .dp-window ul, .dp-window ol, .voice-text ul, .voice-text ol { margin: 4px 0; padding-left: 22px; }
 .voice-options[hidden] { display: none; }
+
+/* Chronicles: a saved copy with the doc's own formatting (docHtml.js) */
+.chronicle-rich { --gd-pt: calc(16px / 11); font-size: calc(var(--gd-pt) * 11); }
+.chronicle-text .chronicle-rich p { margin: 0; min-height: 1.15em; }
+.chronicle-rich h1, .chronicle-rich h2, .chronicle-rich h3, .chronicle-rich h4, .chronicle-rich h5, .chronicle-rich h6 { margin: 0; font-weight: normal; color: inherit; scroll-margin-top: 12px; }
+.chronicle-rich h1 { font-size: calc(var(--gd-pt) * 20); }
+.chronicle-rich h2 { font-size: calc(var(--gd-pt) * 16); }
+.chronicle-rich h3 { font-size: calc(var(--gd-pt) * 14); }
+.chronicle-rich h4, .chronicle-rich h5, .chronicle-rich h6 { font-size: calc(var(--gd-pt) * 12); }
+.chronicle-rich [id] { scroll-margin-top: 12px; }
+.chronicle-rich a[href] { color: #1155cc; text-decoration: underline; }
+.chronicle-rich ul, .chronicle-rich ol { margin: 0; padding-left: 2em; }
+.chronicle-rich table { border-collapse: collapse; margin: 0.5em 0; max-width: 100%; }
+.chronicle-rich td, .chronicle-rich th { border: 1px solid #b9ae95; padding: 4px 8px; vertical-align: top; }
+.chronicle-rich hr { border: none; border-top: 1px solid #b9ae95; margin: 1em 0; }

@@ -12,6 +12,7 @@
 'use strict';
 
 const db = require('./db');
+const { cleanDocHtml } = require('./docHtml');
 
 // The docs channel — override with CHARACTER_DOCS_CHANNEL_ID.
 const DEFAULT_CHANNEL_ID = '1552412116873388114';
@@ -58,21 +59,28 @@ async function get(url) {
 
 // { access, text, title } for a doc key. A doc that isn't shared with
 // "anyone with the link" sends Google's sign-in page instead: restricted.
+// html: the doc with its formatting (docHtml.js), '' if Google sent none.
 async function fetchDocCopy(key) {
   if (key.startsWith('pub:')) {
     const response = await get(`https://docs.google.com/document/d/e/${key.slice(4)}/pub`);
-    if (!response.ok) return { access: 'restricted', text: null, title: null };
+    if (!response.ok) return { access: 'restricted', text: null, html: null, title: null };
     const html = await response.text();
-    return { access: 'public', text: htmlToText(html), title: titleFromHtml(html) };
+    return { access: 'public', text: htmlToText(html), html: cleanDocHtml(html, { docKey: key }), title: titleFromHtml(html) };
   }
   const exported = await get(`https://docs.google.com/document/d/${key}/export?format=txt`);
   const type = exported.headers.get('content-type') || '';
-  if (!exported.ok || !type.includes('text/plain')) return { access: 'restricted', text: null, title: null };
+  if (!exported.ok || !type.includes('text/plain')) return { access: 'restricted', text: null, html: null, title: null };
   const text = (await exported.text()).replace(/^﻿/, '').replace(/\r\n/g, '\n').trim();
+  // The same doc as HTML keeps its formatting; the text stands in without it.
+  let html = '';
+  const formatted = await get(`https://docs.google.com/document/d/${key}/export?format=html`).catch(() => null);
+  if (formatted && formatted.ok && (formatted.headers.get('content-type') || '').includes('text/html')) {
+    html = cleanDocHtml(await formatted.text(), { docKey: key });
+  }
   let title = null;
   const page = await get(`https://docs.google.com/document/d/${key}/edit`).catch(() => null);
   if (page && page.ok) title = titleFromHtml(await page.text());
-  return { access: 'public', text, title };
+  return { access: 'public', text, html, title };
 }
 
 // Fetches the doc again and keeps the copy. Returns the doc.
@@ -189,6 +197,11 @@ async function runScan({ all = false, by = null } = {}) {
     const result = await scanChannel({ all });
     for (const doc of result.docs) {
       await refreshDoc(doc.id).catch(error => console.warn(`Chronicles: no copy of ${doc.url}: ${error.message}`));
+    }
+    // Copies saved before formatting was kept: a few each time, until all have it.
+    const fresh = new Set(result.docs.map(doc => doc.id));
+    for (const id of db.listDocsWithoutFormatting(all ? 50 : 5).filter(id => !fresh.has(id))) {
+      await refreshDoc(id).catch(error => console.warn(`Chronicles: no formatted copy of doc ${id}: ${error.message}`));
     }
     const status = { at: new Date().toISOString(), by, messages: result.messages, found: result.docs.length, contentMissing: result.contentMissing, error: null };
     remember(field, status);

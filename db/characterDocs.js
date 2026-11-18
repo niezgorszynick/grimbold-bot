@@ -10,6 +10,7 @@ const { db } = require('./connection');
 
 const KINDS = { diary: 'Diary', letter: 'Letter', story: 'Story', other: 'Other' };
 const MAX_SAVED_TEXT = 400000;
+const MAX_SAVED_HTML = 3000000;
 
 // "Qual'danis Éversong" → "qualdanis eversong" (as characterThreads.js).
 function normalize(text) {
@@ -108,12 +109,17 @@ function recordDoc({ key, title, messageText, threadName, channelId, guildId, me
 }
 
 // What Grimbold got from Google: access 'public' | 'restricted' | 'unknown'.
-function saveDocCopy(id, { title, text, access }) {
+function saveDocCopy(id, { title, text, html, access }) {
   const doc = db.prepare('SELECT * FROM character_docs WHERE id = ?').get(Number(id));
   if (!doc) throw new Error('Document not found.');
   if (text !== undefined && text !== null) {
     db.prepare('UPDATE character_docs SET saved_text = ?, saved_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(String(text).slice(0, MAX_SAVED_TEXT), doc.id);
+  }
+  // The formatted copy (docHtml.js). '' = tried, none (or too long): the text stands in.
+  if (html !== undefined && html !== null) {
+    const value = String(html);
+    db.prepare('UPDATE character_docs SET saved_html = ? WHERE id = ?').run(value.length <= MAX_SAVED_HTML ? value : '', doc.id);
   }
   if (title) db.prepare('UPDATE character_docs SET title = ? WHERE id = ?').run(String(title).slice(0, 300), doc.id);
   if (access) db.prepare('UPDATE character_docs SET access = ? WHERE id = ?').run(access, doc.id);
@@ -154,7 +160,7 @@ function listCharacterDocs({ characterId, unsorted, kind, isAdmin, includeHidden
 
 function getCharacterDoc(id, { isAdmin } = {}) {
   const row = db.prepare(`
-    SELECT ${LIST_COLUMNS}, d.saved_text, d.message_text
+    SELECT ${LIST_COLUMNS}, d.saved_text, d.saved_html, d.message_text
     FROM character_docs d LEFT JOIN characters c ON c.id = d.character_id WHERE d.id = ?
   `).get(Number(id));
   if (!row || (row.hidden && !isAdmin)) return null;
@@ -194,8 +200,18 @@ function setDocsScanStatus(status) {
     .run(SCAN_KEY, JSON.stringify(status));
 }
 
+// Docs shared with anyone that have a text copy but no formatted one yet
+// (saved before formatting was kept): Grimbold fetches a few each scan.
+function listDocsWithoutFormatting(limit = 5) {
+  return db.prepare(`
+    SELECT id FROM character_docs WHERE access = 'public' AND saved_text IS NOT NULL AND saved_html IS NULL
+    ORDER BY id LIMIT ?
+  `).all(Number(limit) || 5).map(row => row.id);
+}
+
 module.exports = {
   DOC_KINDS: KINDS,
+  listDocsWithoutFormatting,
   extractDocLinks,
   docEmbedUrl: embedUrl,
   guessDocKind: guessKind,

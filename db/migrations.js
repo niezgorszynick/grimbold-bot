@@ -1206,6 +1206,15 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS npc_voice_messages_discord ON npc_voice_messages (discord_id, direction, id);
       `);
     }
+  },
+  {
+    // Chronicles keep the doc's formatting too (docHtml.js): saved_html is
+    // the cleaned HTML of Google's export, beside the plain saved_text.
+    version: 41,
+    up(db) {
+      const columns = db.prepare('PRAGMA table_info(character_docs)').all().map(column => column.name);
+      if (!columns.includes('saved_html')) db.exec('ALTER TABLE character_docs ADD COLUMN saved_html TEXT');
+    }
   }
 ];
 
