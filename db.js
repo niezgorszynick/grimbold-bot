@@ -40,6 +40,7 @@ module.exports = {
   ...require('./db/spellEffects'),
   ...require('./db/lineup'),
   ...require('./db/characterDocs'),
+  ...require('./db/glos'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,
   prepare: (sql) => db.prepare(sql),

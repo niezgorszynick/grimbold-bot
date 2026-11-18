@@ -133,14 +133,17 @@ app.listen(PORT, () => {
   console.log(`🌐 Health check web server & Admin Panel listening on port ${PORT}`);
 });
 
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
 
 // ─── Discord client ───────────────────────────────────────────────────────────
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  // DirectMessages (and the Channel partial, as DM channels are not cached):
+  // players' replies to Głos (glos.js).
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
+  partials: [Partials.Channel],
 });
 
 client.commands = new Collection();
@@ -159,6 +162,15 @@ require('./scheduleDiscord').setScheduleClient(client);
 require('./auctionNews').setAuctionNewsClient(client);
 // Login details DMed to players without a password (Players → Passwords & Roles).
 require('./loginInvites').setLoginInvitesClient(client);
+// Głos: one DM's private messages to players, and their replies (glos.js).
+require('./glos').setGlosClient(client);
+client.on('messageCreate', message => {
+  try {
+    require('./glos').handleDirectMessage(message);
+  } catch (error) {
+    console.warn('Could not keep a reply to Głos:', error.message);
+  }
+});
 // Resident artisans who deliver on their own days, announced in the shop channel.
 require('./artisanDeliveries').startArtisanDeliveries();
 

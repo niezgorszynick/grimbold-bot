@@ -1150,6 +1150,29 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS character_docs_character ON character_docs (character_id);
       `);
     }
+  },
+  {
+    // Głos (glos.js, db/glos.js): the messages one DM sends players as "The
+    // Voice" in Discord DMs, and what the players write back. direction 'out'
+    // = to the player, 'in' = their reply. status 'failed' keeps the reason.
+    version: 39,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS glos_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+          discord_id TEXT NOT NULL,
+          direction TEXT NOT NULL CHECK (direction IN ('out', 'in')),
+          text TEXT NOT NULL DEFAULT '',
+          image_url TEXT,
+          status TEXT NOT NULL DEFAULT 'sent',
+          error TEXT,
+          discord_message_id TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS glos_messages_discord ON glos_messages (discord_id, id);
+      `);
+    }
   }
 ];
 

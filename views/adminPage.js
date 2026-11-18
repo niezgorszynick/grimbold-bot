@@ -6,6 +6,7 @@
 const db = require('../db');
 const { getUserRoll, getDiscount } = require('../rollTracker');
 const { escapeHtml } = require('./helpers');
+const { isGlosOwner } = require('../auth');
 
 const TAB_RENDERERS = {
   'items': require('./tabs/items'),
@@ -24,6 +25,7 @@ const TAB_RENDERERS = {
   'map': require('./tabs/map'),
   'lineup': require('./tabs/lineup'),
   'chronicles': require('./tabs/chronicles'),
+  'glos': require('./tabs/glos'),
   'changelog': require('./tabs/changelog')
 };
 
@@ -31,6 +33,8 @@ module.exports = function renderAdminPage(req) {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
+  // Głos is one DM's alone: for everyone else the tab doesn't exist.
+  const glosOwner = isGlosOwner(currentUser);
   const playerAllowedTabs = ['items', 'players', 'adventures', 'sessions', 'map', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet', 'lineup', 'chronicles', 'changelog'];
   const tabLabels = {
     items: 'Shop Items',
@@ -49,7 +53,8 @@ module.exports = function renderAdminPage(req) {
     'character-sheet': 'Character Sheet',
     lineup: 'Lineup',
     chronicles: 'Chronicles',
-    changelog: 'Changelog'
+    changelog: 'Changelog',
+    ...(glosOwner ? { glos: 'Głos' } : {})
   };
   const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
   // The tabs in groups: a row of groups, and the current group's tabs under it.
@@ -58,11 +63,11 @@ module.exports = function renderAdminPage(req) {
     { label: 'Shop', tabs: ['items', 'auctions', 'catalog', 'restock', 'sales'] },
     { label: 'Characters', tabs: ['character-sheet', 'lineup', 'chronicles', 'players'] },
     { label: 'Adventures', tabs: ['adventures', 'sessions', 'map'] },
-    { label: 'DM Tools', tabs: ['npcs', 'monsters'] },
+    { label: 'DM Tools', tabs: ['npcs', 'monsters', ...(glosOwner ? ['glos'] : [])] },
     { label: 'Records', tabs: ['rolls', 'analytics'] }
   ];
   let currentTab = req.query.tab || 'items';
-  if (!isAdmin && !playerAllowedTabs.includes(currentTab)) {
+  if ((!isAdmin && !playerAllowedTabs.includes(currentTab)) || (currentTab === 'glos' && !glosOwner)) {
     currentTab = 'items';
   }
   const status = req.query.status;

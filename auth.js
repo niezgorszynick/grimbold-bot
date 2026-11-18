@@ -35,4 +35,15 @@ function isRootAdmin(user) {
   return Boolean(user && user.id === ROOT_ADMIN.id && user.role === 'admin');
 }
 
-module.exports = { ROOT_ADMIN, loadSessionUser, isAdmin, isRootAdmin };
+// Głos (glos.js) belongs to one DM: the admin whose Discord account this is
+// (override with GLOS_OWNER_DISCORD_ID). Nobody else, Root DM included, sees it.
+const DEFAULT_GLOS_OWNER = '210398055516602369';
+const glosOwnerDiscordId = () => String(process.env.GLOS_OWNER_DISCORD_ID || DEFAULT_GLOS_OWNER).trim();
+
+function isGlosOwner(user) {
+  if (!isAdmin(user) || !Number.isSafeInteger(user.id) || user.id <= 0) return false;
+  const player = db.prepare('SELECT discord_id, role FROM players WHERE id = ?').get(user.id);
+  return Boolean(player && player.role === 'admin' && String(player.discord_id) === glosOwnerDiscordId());
+}
+
+module.exports = { ROOT_ADMIN, loadSessionUser, isAdmin, isRootAdmin, isGlosOwner, glosOwnerDiscordId };
