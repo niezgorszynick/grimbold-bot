@@ -179,10 +179,10 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .sheet-identity { min-width: 0; flex: 1; }
 .sheet-identity h2 { margin: 0; color: #f2f3f5; }
 .sheet-identity > span { display: block; color: #949ba4; font-size: 13px; margin: 3px 0 12px; }
-.sheet-identity-fields { display: grid; grid-template-columns: 1.4fr repeat(4, minmax(120px, 1fr)); gap: 10px; }
+.sheet-identity-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .sheet-identity-fields label { display: grid; gap: 5px; min-width: 0; color: #949ba4; font-size: 12px; }
 .sheet-identity-fields input, .sheet-identity-fields select { width: 100%; min-width: 0; box-sizing: border-box; }
-.sheet-header-actions { display: flex; gap: 10px; align-items: center; }
+.sheet-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; align-items: center; max-width: 50%; }
 .btn-secondary { background: #4e5058; color: #fff; }
 .btn-success { background: #23a55a; color: #fff; font-weight: bold; }
 .sheet-message { min-height: 20px; margin: 0 0 10px; color: #23a55a; font-size: 13px; }
@@ -368,7 +368,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .spell-level-group[open] > summary { color: #dbdee1; }
 @media (max-width: 1000px) {
   .point-buy-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .sheet-identity-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sheet-identity-fields { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
 @media (max-width: 600px) {
   .sheet-attacks thead { display: none; }
@@ -424,7 +424,7 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 @media (max-width: 480px) {
   .analytics-breakdown { grid-template-columns: minmax(0, 1fr); }
   .sheet-header { flex-direction: column; }
-  .sheet-header-actions { width: 100%; }
+  .sheet-header-actions { width: 100%; max-width: none; }
   .sheet-header-actions > * { flex: 1; text-align: center; }
   .sheet-combat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sheet-combat-stats .sheet-inspiration { grid-column: 1 / -1; grid-auto-flow: column; justify-content: center; gap: 10px; }
