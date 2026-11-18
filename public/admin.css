@@ -1513,3 +1513,10 @@ button.sheet-hud-tile { cursor: pointer; }
 .chronicle-rich table { border-collapse: collapse; margin: 0.5em 0; max-width: 100%; }
 .chronicle-rich td, .chronicle-rich th { border: 1px solid #b9ae95; padding: 4px 8px; vertical-align: top; }
 .chronicle-rich hr { border: none; border-top: 1px solid #b9ae95; margin: 1em 0; }
+
+/* The voice bot panel on an NPC's voice page */
+.voice-bot { border: 1px solid #3f4147; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: grid; gap: 8px; }
+.voice-bot summary { cursor: pointer; }
+.voice-bot-head { display: flex; align-items: center; gap: 10px; }
+.voice-bot-warning { background: rgba(240, 178, 50, 0.12); border-left: 3px solid #f0b232; padding: 6px 10px; margin: 0; color: #f2e3c0; }
+.voice-bot input[type=text] { flex: 1; min-width: 140px; }

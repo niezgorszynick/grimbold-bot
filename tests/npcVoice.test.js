@@ -133,3 +133,52 @@ test('the preview shows Discord Markdown and escapes everything else', () => {
   assert.match(preview.render('```\n**not bold**\n```'), /<pre class="dp-codeblock">\*\*not bold\*\*<\/pre>/);
   assert.match(preview.render('[map](https://example.com/a)'), /<a class="dp-link" href="https:\/\/example.com\/a"[^>]*>map<\/a>/);
 });
+
+test('the voice bot: linked by the NPC\'s DM, sends as itself, replies come back, renames and re-avatars with Discord\'s limit', async () => {
+  const voiceBot = require('../voiceBot');
+  const sent = {};
+  const edits = [];
+  let refuse = null;
+  voiceBot.setVoiceBotClientForTests({
+    isReady: () => true,
+    user: {
+      id: 'vb', username: 'Ledger', globalName: null, displayAvatarURL: () => 'https://cdn/avatar.png',
+      edit: async changes => { if (refuse) throw refuse; edits.push(changes); }
+    },
+    users: { fetch: async id => ({ send: async payload => { sent[id] = payload; return { id: 'b1' }; } }) }
+  });
+
+  // Nobody's yet: the page offers it; another DM can't take it from Głos's DM later.
+  let page = await voice.voicePage({ npcId: glos, user: users.owner });
+  assert.deepEqual([page.voiceBot.configured, page.voiceBot.linkedHere, page.voiceBot.canManage], [true, false, true]);
+  await voice.manageVoiceBot({ npcId: glos, user: users.owner, action: 'link' });
+  await assert.rejects(voice.manageVoiceBot({ npcId: kevah, user: users.other, action: 'link' }), /another DM's NPC/);
+  await assert.rejects(voice.manageVoiceBot({ npcId: glos, user: users.other, action: 'rename', name: 'x' }), /NPC not found/);
+  page = await voice.voicePage({ npcId: kevah, user: users.other });
+  assert.equal(page.voiceBot.linkedTo, 'another NPC', 'a private NPC\'s name stays hidden');
+
+  // Głos's DMs now come from the bot, as plain text, not Grimbold's card.
+  const { results } = await voice.sendNpcVoice({ npcId: glos, user: users.owner, target: 'dm', playerIds: [listener], text: 'I see you.' });
+  assert.equal(results[0].ok, true);
+  assert.deepEqual(sent[discordOf(listener)], { content: 'I see you.', allowedMentions: { parse: [] } });
+  await assert.rejects(voice.sendNpcVoice({ npcId: glos, user: users.owner, target: 'dm', playerIds: [listener], text: 'x'.repeat(2001) }), /Too long/);
+
+  // A reply to the bot goes to Głos, through the bot; Grimbold's DMs are their own thread.
+  const dm = content => ({ id: 'r2', guildId: null, author: { id: discordOf(listener), bot: false }, content });
+  assert.equal(voice.handleBotDirectMessage(dm('Leave me alone')), true);
+  const last = db.getNpcVoiceMessages(glos).pop();
+  assert.deepEqual([last.direction, last.via, last.text], ['in', 'bot', 'Leave me alone']);
+
+  // Name and avatar from the panel; Discord's limit is said plainly.
+  await assert.rejects(voice.manageVoiceBot({ npcId: glos, user: users.owner, action: 'rename', name: 'x' }), /2 to 32/);
+  await voice.manageVoiceBot({ npcId: glos, user: users.owner, action: 'rename', name: 'Głos' });
+  assert.deepEqual(edits, [{ username: 'Głos' }]);
+  assert.ok(db.getVoiceBotSettings().renamedAt);
+  await assert.rejects(voice.manageVoiceBot({ npcId: glos, user: users.owner, action: 'avatar' }), /no portrait/);
+  refuse = Object.assign(new Error('You are changing your username or Discord Tag too fast. Try again later.'), { code: 50035 });
+  await assert.rejects(voice.manageVoiceBot({ npcId: glos, user: users.owner, action: 'rename', name: 'Szept' }), /changed too recently/);
+
+  // Unlinked, Głos's DMs are Grimbold's cards again.
+  await voice.manageVoiceBot({ npcId: glos, user: users.root, action: 'unlink' });
+  assert.equal(db.getVoiceBotSettings().npcId, null);
+});

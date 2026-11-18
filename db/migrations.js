@@ -1215,6 +1215,16 @@ const MIGRATIONS = [
       const columns = db.prepare('PRAGMA table_info(character_docs)').all().map(column => column.name);
       if (!columns.includes('saved_html')) db.exec('ALTER TABLE character_docs ADD COLUMN saved_html TEXT');
     }
+  },
+  {
+    // The voice bot (voiceBot.js): an NPC's own Discord bot sends its DMs.
+    // via: who delivered a DM ('grimbold' as a card, or 'bot'), so a reply
+    // goes to the NPC whose messenger it answers.
+    version: 42,
+    up(db) {
+      const columns = db.prepare('PRAGMA table_info(npc_voice_messages)').all().map(column => column.name);
+      if (!columns.includes('via')) db.exec("ALTER TABLE npc_voice_messages ADD COLUMN via TEXT NOT NULL DEFAULT 'grimbold'");
+    }
   }
 ];
 

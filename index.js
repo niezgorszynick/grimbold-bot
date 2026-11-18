@@ -164,6 +164,8 @@ require('./auctionNews').setAuctionNewsClient(client);
 require('./loginInvites').setLoginInvitesClient(client);
 // NPC voices: DMs to players as an NPC, and the players' replies (npcVoice.js).
 require('./npcVoice').setNpcVoiceClient(client);
+// An NPC's own bot for its DMs (Głos), if VOICE_BOT_TOKEN is set (voiceBot.js).
+require('./voiceBot').startVoiceBot();
 client.on('messageCreate', message => {
   try {
     require('./npcVoice').handleDirectMessage(message);

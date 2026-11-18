@@ -22,30 +22,31 @@ function getVoiceRecipients() {
   }));
 }
 
-function recordNpcVoice({ npcId, direction, target = 'dm', playerId = null, discordId = null, placeLabel = null, text = '', status = 'sent', error = null, discordMessageId = null, sentBy = null }) {
+function recordNpcVoice({ npcId, direction, target = 'dm', via = 'grimbold', playerId = null, discordId = null, placeLabel = null, text = '', status = 'sent', error = null, discordMessageId = null, sentBy = null }) {
   return Number(db.prepare(`
-    INSERT INTO npc_voice_messages (npc_id, direction, target, player_id, discord_id, place_label, text, status, error, discord_message_id, sent_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(Number(npcId), direction, target, playerId, discordId === null ? null : String(discordId), placeLabel, String(text), status, error, discordMessageId, sentBy).lastInsertRowid);
+    INSERT INTO npc_voice_messages (npc_id, direction, target, via, player_id, discord_id, place_label, text, status, error, discord_message_id, sent_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(Number(npcId), direction, target, via === 'bot' ? 'bot' : 'grimbold', playerId, discordId === null ? null : String(discordId), placeLabel, String(text), status, error, discordMessageId, sentBy).lastInsertRowid);
 }
 
 // One NPC's messages after an id, oldest first.
 function getNpcVoiceMessages(npcId, { afterId = 0 } = {}) {
   return db.prepare(`
-    SELECT m.id, m.direction, m.target, m.player_id, m.discord_id, m.place_label, m.text, m.status, m.error, m.created_at,
+    SELECT m.id, m.direction, m.target, m.via, m.player_id, m.discord_id, m.place_label, m.text, m.status, m.error, m.created_at,
            p.discord_tag
     FROM npc_voice_messages m LEFT JOIN players p ON p.id = m.player_id
     WHERE m.npc_id = ? AND m.id > ? ORDER BY m.id
   `).all(Number(npcId), Number(afterId) || 0);
 }
 
-// The NPC whose DM a player's reply answers: the last one that reached them.
-function lastNpcToDm(discordId) {
+// The NPC whose DM a player's reply answers: the last one that reached them
+// through the same messenger (via: 'grimbold' or 'bot').
+function lastNpcToDm(discordId, via = 'grimbold') {
   const row = db.prepare(`
     SELECT npc_id FROM npc_voice_messages
-    WHERE discord_id = ? AND direction = 'out' AND target = 'dm' AND status = 'sent'
+    WHERE discord_id = ? AND direction = 'out' AND target = 'dm' AND status = 'sent' AND via = ?
     ORDER BY id DESC LIMIT 1
-  `).get(String(discordId));
+  `).get(String(discordId), via === 'bot' ? 'bot' : 'grimbold');
   return row ? row.npc_id : null;
 }
 
@@ -54,4 +55,20 @@ function setNpcVoiceColor(npcId, color) {
   db.prepare('UPDATE npcs SET voice_color = ? WHERE id = ?').run(String(color).toLowerCase(), Number(npcId));
 }
 
-module.exports = { getVoiceRecipients, recordNpcVoice, getNpcVoiceMessages, lastNpcToDm, setNpcVoiceColor };
+// The voice bot's settings: { npcId (the NPC it speaks for), renamedAt, avatarAt }.
+const VOICE_BOT_KEY = 'voice_bot';
+function getVoiceBotSettings() {
+  const row = db.prepare('SELECT value FROM config WHERE key = ?').get(VOICE_BOT_KEY);
+  try {
+    return { npcId: null, renamedAt: null, avatarAt: null, ...(row ? JSON.parse(row.value) : {}) };
+  } catch {
+    return { npcId: null, renamedAt: null, avatarAt: null };
+  }
+}
+function setVoiceBotSettings(changes) {
+  const value = JSON.stringify({ ...getVoiceBotSettings(), ...changes });
+  db.prepare('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(VOICE_BOT_KEY, value);
+  return getVoiceBotSettings();
+}
+
+module.exports = { getVoiceRecipients, recordNpcVoice, getNpcVoiceMessages, lastNpcToDm, setNpcVoiceColor, getVoiceBotSettings, setVoiceBotSettings };

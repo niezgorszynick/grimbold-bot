@@ -454,6 +454,14 @@ router.post('/npcs/:id/voice', npcVoiceRoute(req => require('./npcVoice').sendNp
   color: req.body.color
 })));
 
+// The voice bot (voiceBot.js) for this NPC: link, unlink, rename, avatar.
+router.post('/npcs/:id/voice-bot', npcVoiceRoute(req => require('./npcVoice').manageVoiceBot({
+  npcId: req.params.id,
+  user: req.session.user,
+  action: req.body.action,
+  name: req.body.name
+})));
+
 router.post('/npcs/delete', (req, res) => {
   try {
     db.requireVisibleNpc(req.body.id, req.session.user);

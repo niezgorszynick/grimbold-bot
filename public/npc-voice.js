@@ -57,6 +57,11 @@
       return;
     }
     const { npc, bot, places, recipients, limits } = data;
+    // The NPC's own bot (voiceBot.js): its DMs come from that bot, as plain messages.
+    const vb = data.voiceBot || { configured: false };
+    const ownBot = Boolean(vb.configured && vb.linkedHere);
+    const dmLimit = ownBot ? limits.channel : limits.dm;
+    const dmSender = ownBot ? { name: vb.name || npc.name, avatarURL: vb.avatarURL } : bot;
     const messages = data.messages || [];
     let lastId = messages.reduce((max, message) => Math.max(max, message.id), 0);
 
@@ -93,7 +98,7 @@
         el('legend', {}, ['Who gets it ', allButton, ' ', noneButton]),
         boxes.length ? boxes.map(box => box.label) : el('p', { className: 'muted', text: 'No players with a Discord account yet.' })
       ]),
-      el('label', {}, ['Card colour ', color])
+      ownBot ? null : el('label', {}, ['Card colour ', color])
     ]);
 
     // ─── Text ───────────────────────────────────────────────────────────────
@@ -128,10 +133,20 @@
     function updatePreview() {
       const text = editor.markdown();
       const html = text ? window.DiscordPreview.render(text) : '<div class="dp-line dp-empty">Your message shows here as Discord will show it.</div>';
-      const limit = mode() === 'dm' ? limits.dm : limits.channel;
+      const limit = mode() === 'dm' ? dmLimit : limits.channel;
       counter.textContent = text.length + ' / ' + limit;
       counter.classList.toggle('is-over', text.length > limit);
-      if (mode() === 'dm') {
+      if (mode() === 'dm' && ownBot) {
+        const names = chosen().map(box => box.player.tag);
+        previewWhere.textContent = '✉️ In ' + (names.length ? names.join(', ') + (names.length === 1 ? "'s" : "'") : "a player's") + ' DMs, from ' + dmSender.name + ' itself' + (names.length > 1 ? ' (each gets their own)' : '');
+        previewBody.replaceChildren(el('div', { className: 'dp-message' }, [
+          avatar(dmSender.avatarURL, dmSender.name),
+          el('div', { className: 'dp-main' }, [
+            el('div', { className: 'dp-head' }, [el('span', { className: 'dp-name', text: dmSender.name }), el('span', { className: 'dp-badge', text: 'APP' }), el('span', { className: 'dp-time', text: clock() })]),
+            el('div', { className: 'dp-content', html })
+          ])
+        ]));
+      } else if (mode() === 'dm') {
         const names = chosen().map(box => box.player.tag);
         previewWhere.textContent = '✉️ In ' + (names.length ? names.join(', ') + (names.length === 1 ? "'s" : "'") : "a player's") + ' DMs, from ' + bot.name + (names.length > 1 ? ' (each gets their own)' : '');
         const embed = el('div', { className: 'dp-embed' }, [
@@ -205,11 +220,86 @@
     });
     editor.onSubmit(() => send.click());
 
+    // ─── The voice bot ──────────────────────────────────────────────────────
+    const WARNING = 'Discord allows about two name changes an hour, and avatar changes are limited too. ' +
+      'Every message this bot has ever sent, in every player\'s DMs, shows the new name and avatar from then on.';
+    const since = value => {
+      if (!value) return 'never from the panel';
+      const minutes = Math.round((Date.now() - Date.parse(value)) / 60000);
+      return minutes < 1 ? 'just now' : minutes < 120 ? minutes + ' min ago' : Math.round(minutes / 60) + ' h ago';
+    };
+
+    function botPanel() {
+      if (!vb.configured) return null;
+      const message = el('small', { className: 'muted', role: 'status' });
+      async function act(body, question) {
+        if (question && !window.confirm(question)) return;
+        message.textContent = 'Asking Discord…';
+        try {
+          const response = await fetch('/admin/npcs/' + npcId + '/voice-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Did not work.');
+          window.location.reload();
+        } catch (error) {
+          message.textContent = error.message;
+        }
+      }
+      const button = (text, className, onClick, extra) => {
+        const node = el('button', Object.assign({ type: 'button', className: 'btn btn-small ' + className, text }, extra || {}));
+        node.addEventListener('click', onClick);
+        return node;
+      };
+      const head = el('div', { className: 'voice-bot-head' }, [
+        avatar(vb.avatarURL, vb.name || '?'),
+        el('div', {}, [
+          el('strong', { text: vb.name || 'Voice bot' }),
+          el('div', { className: 'muted small', text: vb.ready ? 'Connected, invisible in the member list' : 'Not connected right now (is VOICE_BOT_TOKEN right?)' })
+        ])
+      ]);
+      const body = [head];
+      if (vb.linkedHere) {
+        body.push(el('p', { className: 'small', text: 'Speaks for ' + npc.name + ': ' + npc.name + '\'s DMs come from this bot as ordinary messages, and replies to it show up below.' }));
+        if (vb.canManage) {
+          const name = el('input', { type: 'text', maxlength: '32', value: npc.name, 'aria-label': 'New bot name' });
+          body.push(
+            el('p', { className: 'voice-bot-warning small', text: '⚠️ ' + WARNING }),
+            el('div', { className: 'vitals-actions' }, [
+              name,
+              button('Change name', 'btn-gold', () => act({ action: 'rename', name: name.value }, 'Rename the bot to “' + name.value.trim() + '”?\n\n' + WARNING)),
+              el('small', { className: 'muted', text: 'last changed ' + since(vb.renamedAt) })
+            ]),
+            el('div', { className: 'vitals-actions' }, [
+              button('Use ' + npc.name + '\'s portrait as its avatar', 'btn-gold', () => act({ action: 'avatar' }, 'Give the bot ' + npc.name + '\'s portrait as its avatar?\n\n' + WARNING), vb.hasPortrait ? {} : { disabled: true, title: 'Upload a portrait on the NPC form first' }),
+              el('small', { className: 'muted', text: 'last changed ' + since(vb.avatarAt) })
+            ]),
+            el('div', { className: 'vitals-actions' }, [
+              button('Stop speaking for ' + npc.name, 'btn-secondary', () => act({ action: 'unlink' }, npc.name + '\'s DMs will go back to Grimbold\'s cards. The bot keeps its name and avatar. Go ahead?'))
+            ])
+          );
+        }
+      } else {
+        body.push(el('p', { className: 'small', text: vb.linkedTo ? 'It speaks for ' + vb.linkedTo + '.' : 'It speaks for no NPC yet; until then ' + npc.name + '\'s DMs come as Grimbold\'s cards.' }));
+        if (vb.canManage) {
+          body.push(el('div', { className: 'vitals-actions' }, [
+            button('Let it speak for ' + npc.name, 'btn-gold', () => act({ action: 'link' }, vb.linkedTo
+              ? 'The bot stops speaking for ' + vb.linkedTo + ' and speaks for ' + npc.name + ' instead. It keeps its current name and avatar until you change them. Go ahead?'
+              : npc.name + '\'s DMs will come from this bot. Go ahead?'))
+          ]));
+        }
+      }
+      body.push(message);
+      return el('details', { className: 'voice-bot', open: vb.linkedHere ? null : true }, [
+        el('summary', {}, [el('strong', { text: '🤖 Voice bot' }), el('span', { className: 'muted small', text: vb.linkedHere ? ' · ' + (vb.name || '') + ' speaks for ' + npc.name : vb.linkedTo ? ' · speaks for ' + vb.linkedTo : ' · not in use' })]),
+        ...body
+      ]);
+    }
+
     app.replaceChildren(el('div', { className: 'voice-layout' }, [
       el('div', { className: 'voice-compose' }, [
+        botPanel(),
         el('div', { className: 'voice-modes', role: 'radiogroup', 'aria-label': 'Where' }, [
           el('label', {}, [modeChannel, ' 📢 In a channel']),
-          el('label', {}, [modeDm, ' ✉️ In players\' DMs'])
+          el('label', {}, [modeDm, ownBot ? ' ✉️ In players\' DMs (from ' + dmSender.name + ')' : ' ✉️ In players\' DMs'])
         ]),
         channelOptions,
         dmOptions,
