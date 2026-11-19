@@ -92,3 +92,9 @@ test('a Ravenloft background can trade its feat for a Dark Gift', () => {
   assert.equal(built.sheetData.originFeats[0].name, 'Aberrant Anatomy');
   assert.ok(built.sheetData.skillProficiencies.includes('Perception'));
 });
+
+test('a fixed-cantrip Origin feat taken later asks only for the ability, not a spell list', () => {
+  assert.deepEqual(rules.resolveOriginFeatChoice({ name: 'Arcane Eloquence', spellAbility: 'cha' }, {}).feat, { name: 'Arcane Eloquence', spellAbility: 'cha' });
+  assert.throws(() => rules.resolveOriginFeatChoice({ name: 'Arcane Eloquence' }, {}), /spellcasting ability for Arcane Eloquence/);
+  assert.throws(() => rules.resolveOriginFeatChoice({ name: 'Magic Initiate', spellAbility: 'int' }, {}), /spell list/);
+});

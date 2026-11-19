@@ -310,7 +310,9 @@ function resolveImprovement(improvement, context, { allowBoons }) {
   // Origin feats taken at a level-up use the same choices as at creation.
   if (ORIGIN_FEATS[name]) {
     const origin = ORIGIN_FEATS[name];
-    if (origin.grants.spells) {
+    // Magic Initiate picks a spell list; the book feats' fixed cantrips (Arcane
+    // Eloquence, the Dragonmarks) only need the ability, asked above.
+    if (origin.grants.spells && origin.spellLists) {
       if (!origin.spellLists.includes(request.spellList)) throw new Error(`Choose a spell list for ${name}.`);
       const owned = collectCharacterFeats(context.sheetData).filter(item => featName(item) === name);
       if (owned.some(item => item.spellList === request.spellList)) throw new Error(`${name} needs a different spell list each time.`);

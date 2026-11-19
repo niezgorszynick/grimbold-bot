@@ -582,11 +582,16 @@
           button('Choose again', () => { changed = true; renderChoices(); })]));
       } else if (origin) {
         const grants = origin.grants || {};
-        if (grants.spells) {
-          const list = selectOf(origin.spellLists || [], '-- Spell list --');
-          const ability = selectOf(['int', 'wis', 'cha'], '-- Spellcasting ability --', { int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' });
-          parts.push(field('Spell list', list), field('Spellcasting ability', ability));
+        // Magic Initiate picks a list and an ability; fixed-cantrip feats (Arcane
+        // Eloquence, the Dragonmarks) only the ability.
+        if (grants.spells && origin.spellLists) {
+          const list = selectOf(origin.spellLists, '-- Spell list --');
+          parts.push(field('Spell list', list));
           getters.spellList = () => list.value;
+        }
+        if (grants.spells && (origin.spellLists || grants.spells.chooseAbility)) {
+          const ability = selectOf(['int', 'wis', 'cha'], '-- Spellcasting ability --', { int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' });
+          parts.push(field('Spellcasting ability', ability));
           getters.spellAbility = () => ability.value;
         }
         if (grants.toolChoices) {

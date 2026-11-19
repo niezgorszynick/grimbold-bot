@@ -387,7 +387,8 @@
           getters.spellAbility = () => ability.value;
         }
         const origin = feat && rulesData.originFeats[feat.name];
-        if (origin && origin.grants.spells) {
+        // Magic Initiate: a spell list too (fixed-cantrip feats ask only the ability, above).
+        if (origin && origin.grants.spells && origin.spellLists) {
           const list = selectBox(origin.spellLists, { placeholder: '-- Spell list --' });
           const ability = selectBox(['int', 'wis', 'cha'], { placeholder: '-- Spellcasting ability --', labels: a => ABILITY_NAMES[a] });
           fields.push(field('Spell list', list), field('Spellcasting ability', ability));
