@@ -104,6 +104,6 @@ test('Soulknife: Psychic Blades in melee and thrown, with Vex and the bonus blad
   }
   const uses = Object.fromEntries(rules.classResources(character.classes, () => 10).map(resource => [resource.key, resource]));
   assert.deepEqual(uses.psionicDiceRogue.rolls.map(roll => roll.key), ['die', 'knack', 'whispers', 'teleport']);
-  assert.equal(uses.psychicWhispersFree.max, 1);
+  assert.equal(uses.psychicWhispersFree, undefined, 'the 2024 Psychic Whispers has no free use');
   assert.equal(rules.calculateCombat({ classes: [{ className: 'Rogue', subclassName: 'Thief', level: 9 }], sheetData: {} }).attacks.some(attack => attack.from === 'psychicBlade'), false);
 });

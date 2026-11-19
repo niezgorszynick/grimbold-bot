@@ -141,13 +141,10 @@ const RESOURCES = [
     ],
     text: ({ level, pb }) => [
       `Psi-Bolstered Knack: when you fail an ability check with a skill or tool you're proficient in, add a ${PSIONIC_DIE(level)}; the die is spent only if the check then succeeds.`,
-      `Psychic Whispers: Magic action, up to ${pb} creatures you can see within 60 ft. can speak telepathically with you for a ${PSIONIC_DIE(level)} of hours (the first use after a Long Rest is free).`,
+      `Psychic Whispers: Magic action, up to ${pb} creatures you can see; roll a ${PSIONIC_DIE(level)} (not spent): you and they can speak telepathically, within 1 mile, for that many hours.`,
       level >= 9 ? `Homing Strikes: a Psychic Blade misses, add a ${PSIONIC_DIE(level)} to the roll (spent only if it hits). Psychic Teleportation: Bonus Action, spend a die, throw a blade and teleport up to 10 × the roll in feet.` : '',
       'A die back on a Short Rest, all on a Long Rest.'
     ].filter(Boolean).join(' ') },
-  { key: 'psychicWhispersFree', name: 'Psychic Whispers (free use)', subclass: 'Soulknife', minLevel: 3, max: () => 1, recovery: 'long',
-    rolls: ({ level }) => [{ key: 'hours', label: 'Psychic Whispers: hours', formula: `1${PSIONIC_DIE(level)}` }],
-    text: () => 'The first Psychic Whispers after each Long Rest costs no Psionic Energy die.' },
   { key: 'psychicVeil', name: 'Psychic Veil', subclass: 'Soulknife', minLevel: 13, max: () => 1, recovery: 'long',
     text: () => 'Magic action: Invisible for 1 hour, until you deal damage or force a save. Spend a Psionic Energy die to use it again.' },
   { key: 'rendMind', name: 'Rend Mind', subclass: 'Soulknife', minLevel: 17, max: () => 1, recovery: 'long',
