@@ -89,3 +89,21 @@ test('limited uses follow the level and ability', () => {
   const arcana = usesOf('Cleric', 'Arcana Domain', 6).channelDivinityCleric;
   assert.ok(arcana.rolls.some(roll => roll.key === 'fortifying' && roll.formula === '2d8+6'));
 });
+
+test('Soulknife: Psychic Blades in melee and thrown, with Vex and the bonus blade; Psionic Power uses', () => {
+  const character = { classes: [{ className: 'Rogue', subclassName: 'Soulknife', level: 9 }], sheetData: { abilities: abilities({ dex: 18 }) } };
+  const blades = rules.calculateCombat(character).attacks.filter(attack => attack.from === 'psychicBlade');
+  assert.deepEqual(blades.map(attack => attack.name), ['Psychic Blade', 'Psychic Blade (thrown)']);
+  for (const blade of blades) {
+    assert.equal(blade.attackBonus, '+8');
+    assert.equal(blade.damage, '1d6+4 Psychic');
+    assert.equal(blade.offHand.damage, '1d4+4 Psychic');
+    assert.equal(blade.offHand.label, 'bonus blade');
+    assert.ok(blade.notes.some(note => /^Mastery: Vex/.test(note)));
+    assert.equal(blade.sneakAttack.dice, '5d6');
+  }
+  const uses = Object.fromEntries(rules.classResources(character.classes, () => 10).map(resource => [resource.key, resource]));
+  assert.deepEqual(uses.psionicDiceRogue.rolls.map(roll => roll.key), ['die', 'knack', 'whispers', 'teleport']);
+  assert.equal(uses.psychicWhispersFree.max, 1);
+  assert.equal(rules.calculateCombat({ classes: [{ className: 'Rogue', subclassName: 'Thief', level: 9 }], sheetData: {} }).attacks.some(attack => attack.from === 'psychicBlade'), false);
+});

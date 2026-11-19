@@ -203,7 +203,7 @@ function rollOptions(character) {
       const sneak = attack.sneakAttack && parseDamage(attack.sneakAttack.damage);
       if (sneak) add(`attack:${index}:sneak`, `${attack.name} damage + Sneak Attack (${sneak.type})`, sneak.formula, 'damage');
       const offHand = attack.offHand && parseDamage(attack.offHand.damage);
-      if (offHand) add(`attack:${index}:offhand`, `${attack.name} damage, off-hand (${offHand.type})`, offHand.formula, 'damage');
+      if (offHand) add(`attack:${index}:offhand`, `${attack.name} damage, ${attack.offHand.label || 'off-hand'} (${offHand.type})`, offHand.formula, 'damage');
     }
   });
   // Wild Shape: STR, DEX and CON (and what uses them) are the beast's now.

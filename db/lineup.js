@@ -31,7 +31,7 @@ function gearOf(row, sheet) {
     const combat = buildCharacterCombat(row, sheet);
     const armor = combat.armorClass.armor ? rules.identifyGear(combat.armorClass.armor) : null;
     const category = armor && armor.type === 'armor' ? String(armor.category || '').split(' ')[0].toLowerCase() : null;
-    const weapon = combat.attacks.find(attack => attack.weapon && !attack.needsType && attack.from !== 'unarmed');
+    const weapon = combat.attacks.find(attack => attack.weapon && !attack.needsType && attack.from !== 'unarmed' && attack.from !== 'psychicBlade');
     return {
       armor: ['light', 'medium', 'heavy'].includes(category) ? category : null,
       armorName: armor ? armor.name : null,

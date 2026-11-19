@@ -107,7 +107,7 @@
       }
       // The extra Light attack: its own damage link in the same row.
       if (attack.offHand) {
-        cell.push(' ', rollButton('attack:' + index + ':offhand', 'off-hand ' + String(attack.offHand.damage).split(' ')[0], attack.offHand.rule));
+        cell.push(' ', rollButton('attack:' + index + ':offhand', (attack.offHand.label || 'off-hand') + ' ' + String(attack.offHand.damage).split(' ')[0], attack.offHand.rule));
       }
       return cell;
     };

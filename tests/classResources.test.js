@@ -70,7 +70,7 @@ test('feature dice: Second Wind, Bardic Inspiration, Superiority, Psionic, Heali
   assert.deepEqual(rollsOf({ className: 'Fighter', subclassName: 'Battle Master', level: 10 }, {}, 'secondWind'), { heal: '1d10+10' });
   assert.deepEqual(rollsOf({ className: 'Fighter', subclassName: 'Battle Master', level: 10 }, {}, 'superiorityDice'), { die: '1d10' });
   assert.deepEqual(rollsOf({ className: 'Fighter', subclassName: 'Psi Warrior', level: 5 }, {}, 'psionicDiceFighter'), { die: '1d8' });
-  assert.deepEqual(rollsOf({ className: 'Rogue', subclassName: 'Soulknife', level: 3 }, {}, 'psionicDiceRogue'), { die: '1d6' });
+  assert.deepEqual(rollsOf({ className: 'Rogue', subclassName: 'Soulknife', level: 3 }, {}, 'psionicDiceRogue'), { die: '1d6', knack: '1d6', whispers: '1d6' });
   assert.deepEqual(rollsOf({ className: 'Bard', subclassName: 'College of Lore', level: 5 }, { cha: 16 }, 'bardicInspiration'), { die: '1d8' });
   assert.deepEqual(rollsOf({ className: 'Warlock', subclassName: 'Celestial Patron', level: 3 }, { cha: 16 }, 'healingLight'),
     { heal1: '1d6', heal2: '2d6', heal3: '3d6' });

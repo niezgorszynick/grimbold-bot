@@ -612,6 +612,7 @@ function calculateCombat(character) {
       notes: ['Weapon type not set yet (e.g. Longsword): the DM chooses it under Magic Items.']
     });
   });
+  attacks.push(...psychicBlades(ctx, armorClass));
   attacks.push(unarmedStrike(ctx, armorClass, weapons.length > 0));
   // Warlocks: the conjured pact weapon first, Eldritch Blast after the weapons.
   const pact = pactWeaponPiece(ctx.sheetData);
@@ -622,6 +623,32 @@ function calculateCombat(character) {
   const hitDice = buffDiceText(ctx.buffs.attackDice);
   if (hitDice) attacks.forEach(entry => { if (!entry.needsType) entry.hitDice = hitDice; });
   return { armorClass, attacks };
+}
+
+// ─── Soulknife ──────
+
+// Psychic Blades (Soulknife 3): a Simple melee weapon with Finesse and Thrown
+// (60/120 ft.), 1d6 Psychic, the Vex mastery; after attacking with one, a
+// Bonus Action attack with a second blade for 1d4. Two rows: in melee and thrown.
+const PSYCHIC_BLADE = {
+  type: 'weapon', name: 'Psychic Blade', category: 'Simple', kind: 'Melee', damage: '1d6', damageType: 'Psychic',
+  properties: ['Finesse', 'Thrown'], mastery: 'Vex', versatile: null, range: '60/120', ammunition: null
+};
+function psychicBlades(ctx, armorState) {
+  const row = ctx.classes.find(item => item.subclassName === 'Soulknife' && item.level >= 3);
+  if (!row) return [];
+  const blade = (name, gear) => weaponAttack({ gear, name, from: 'psychicBlade' }, ctx, armorState);
+  return [['Psychic Blade', 'melee, reach 5 ft.'], ['Psychic Blade (thrown)', 'thrown, range 60/120 ft.']].map(([name, how]) => {
+    const attack = blade(name, PSYCHIC_BLADE);
+    const second = blade(name, { ...PSYCHIC_BLADE, damage: '1d4' });
+    attack.weapon = 'Soulknife';
+    attack.notes = attack.notes.filter(note => !/^Mastery:/.test(note));
+    attack.notes.splice(1, 0, how, 'Mastery: Vex (Advantage on your next attack against the target)', 'Vanishes after the attack; needs a free hand');
+    if (row.level >= 9) attack.notes.push('Homing Strikes: on a miss, add a Psionic Energy die (spent only if it hits)');
+    if (row.level >= 17) attack.notes.push('Rend Mind: with Sneak Attack, WIS save or Stunned for 1 minute');
+    attack.offHand = { damage: second.damage, label: 'bonus blade', rule: 'Bonus Action, right after attacking with a Psychic Blade: a second blade, 1d4 Psychic (Vex too).' };
+    return attack;
+  });
 }
 
 // ─── Warlock ──────────────────────────────────────────────────────────────
