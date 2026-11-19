@@ -169,8 +169,8 @@ const RESOURCES = [
     rolls: ({ level }) => [{ key: 'die', label: 'Superiority die', formula: `1d${level >= 18 ? 12 : level >= 10 ? 10 : 8}` }],
     text: ({ level }) => `d${level >= 18 ? 12 : level >= 10 ? 10 : 8}s for your maneuvers.` },
   { key: 'psionicDiceFighter', name: 'Psionic Energy Dice', subclass: 'Psi Warrior', minLevel: 3, max: ({ level }) => PSIONIC_DICE(level), recovery: 'shortOne',
-    rolls: ({ level }) => [{ key: 'die', label: 'Psionic Energy die', formula: `1${PSIONIC_DIE(level)}` }],
-    text: ({ level }) => `${PSIONIC_DIE(level)}s for Protective Field, Psionic Strike and Telekinetic Movement.` },
+    rolls: ({ level, mods }) => [{ key: 'die', label: 'Psionic Energy die', formula: `1${PSIONIC_DIE(level)}` }, { key: 'strike', label: 'Psionic Strike (Force) / Protective Field', formula: `1${PSIONIC_DIE(level)}${signed(mods.int)}` }],
+    text: ({ level, mods, pb }) => `Protective Field: Reaction, reduce damage to you or a creature within 30 ft. by a ${PSIONIC_DIE(level)} + INT. Psionic Strike: once per turn after a weapon hit within 30 ft., a ${PSIONIC_DIE(level)} + INT Force damage.` + (level >= 7 ? ` Telekinetic Thrust: STR save (DC ${8 + mods.int + pb}) or Prone or moved 10 ft.` : '') + ' A die back on a Short Rest, all on a Long Rest.' },
   // Monk: what a beginner needs on one card — what the points buy at this
   // level, and the Martial Arts die. Martial Arts and Deflect Attacks have no
   // uses (info: true), only their text and dice.
@@ -265,6 +265,78 @@ const RESOURCES = [
   { key: 'darkOnesOwnLuck', name: "Dark One's Own Luck", subclass: 'Fiend Patron', minLevel: 6, max: modMin1('cha'), recovery: 'long',
     rolls: () => [{ key: 'die', label: "Dark One's Own Luck", formula: '1d10' }],
     text: () => 'Add a d10 to an ability check or saving throw.' },
+  // PHB 2024 subclasses, levels 6–20 and the uses the book counts.
+  { key: 'knowYourEnemy', name: 'Know Your Enemy', subclass: 'Battle Master', minLevel: 7, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action: learn the Immunities, Resistances and Vulnerabilities of a creature within 30 ft. A Superiority Die restores it.' },
+  { key: 'telekineticMovement', name: 'Telekinetic Movement', subclass: 'Psi Warrior', minLevel: 3, max: () => 1, recovery: 'short',
+    text: ({ level }) => 'Magic action: move a Large or smaller loose object or a willing creature up to 30 ft. A Psionic Energy Die restores it.' +
+      (level >= 7 ? ' Psi-Powered Leap: Bonus Action, Fly Speed twice your Speed this turn (once per Short Rest, or a die).' : '') +
+      (level >= 10 ? ' Guarded Mind: Resistance to Psychic; spend a die at the start of your turn to end Charmed and Frightened.' : '') },
+  { key: 'bulwarkOfForce', name: 'Bulwark of Force', subclass: 'Psi Warrior', minLevel: 15, max: () => 1, recovery: 'long',
+    text: ({ mods }) => 'Bonus Action: up to ' + Math.max(1, mods.int) + ' creatures within 30 ft. (you included) have Half Cover for 1 minute. A Psionic Energy Die restores it.' },
+  { key: 'telekineticMaster', name: 'Telekinetic Master', subclass: 'Psi Warrior', minLevel: 18, max: () => 1, recovery: 'long',
+    text: () => 'Cast Telekinesis without a slot or components (INT); a weapon attack as a Bonus Action each turn while concentrating. A Psionic Energy Die restores it.' },
+  { key: 'elementalBurst', name: 'Elemental Burst', subclass: 'Warrior of the Elements', minLevel: 6, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'burst', label: 'Elemental Burst (DEX save)', formula: '3' + MARTIAL_ARTS_DIE(level) }],
+    text: ({ level }) => 'Magic action and 2 Focus Points: a 20-ft. Sphere within 120 ft., DEX save, three Martial Arts dice of Acid, Cold, Fire, Lightning or Thunder (half on a success).' +
+      (level >= 11 ? ' Stride of the Elements: Fly and Swim Speed while attuned.' : '') },
+  { key: 'gloriousDefense', name: 'Glorious Defense', subclass: 'Oath of Glory', minLevel: 15, max: modMin1('cha'), recovery: 'long',
+    text: ({ mods }) => 'Reaction when you or a creature within 10 ft. is hit: +' + Math.max(1, mods.cha) + ' AC against it; if it misses, attack the attacker.' },
+  { key: 'livingLegend', name: 'Living Legend', subclass: 'Oath of Glory', minLevel: 20, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action, 1 minute: Advantage on Charisma checks, reroll a failed save as a Reaction, a missed weapon attack hits once per turn. A level 5 slot restores it.' },
+  { key: 'undyingSentinel', name: 'Undying Sentinel', subclass: 'Oath of the Ancients', minLevel: 15, max: () => 1, recovery: 'long',
+    text: ({ level }) => 'Dropping to 0 HP (not killed outright): drop to 1 HP instead and regain ' + 3 * level + ' HP.' },
+  { key: 'elderChampion', name: 'Elder Champion', subclass: 'Oath of the Ancients', minLevel: 20, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action, 1 minute: enemies in your aura have Disadvantage on saves against your spells and Channel Divinity, you regain 10 HP each turn, action spells take a Bonus Action. A level 5 slot restores it.' },
+  { key: 'avengingAngel', name: 'Avenging Angel', subclass: 'Oath of Vengeance', minLevel: 20, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action, 10 minutes: Fly 60 ft. (hover); enemies starting their turn in your aura make a WIS save or are Frightened (attacks against them have Advantage). A level 5 slot restores it.' },
+  { key: 'dreadfulStrike', name: 'Dreadful Strike', subclass: 'Gloom Stalker', minLevel: 3, max: modMin1('wis'), recovery: 'long',
+    rolls: ({ level }) => [{ key: 'psychic', label: 'Dreadful Strike (Psychic)', formula: level >= 11 ? '2d8' : '2d6' }],
+    text: ({ level, mods }) => 'Once per turn on a weapon hit: +' + (level >= 11 ? '2d8' : '2d6') + ' Psychic. Initiative +' + Math.max(0, mods.wis) + ' (WIS), +10 ft. Speed on your first turn.' +
+      (level >= 11 ? ' Stalker\'s Flurry: also another attack nearby (Sudden Strike) or Frightened in 10 ft. (Mass Fear, WIS save).' : '') },
+  { key: 'shadowyDodge', name: 'Shadowy Dodge', subclass: 'Gloom Stalker', minLevel: 15, max: () => 0, info: true,
+    text: () => 'Reaction when a creature attacks you: Disadvantage on the roll, then teleport up to 30 ft.' },
+  { key: 'primalCompanion', name: 'Primal Companion', subclass: 'Beast Master', minLevel: 3, max: () => 0, info: true,
+    text: ({ level }) => 'Your beast (Land, Sea or Sky) acts on your turn: Dodge, or an action when you command it (Bonus Action), or the Beast\'s Strike in place of one of your attacks. A spell slot revives it within an hour.' +
+      (level >= 7 ? ' Exceptional Training: also Dash, Disengage, Dodge or Help as its Bonus Action; Force damage if you like.' : '') +
+      (level >= 11 ? ' Bestial Fury: two Beast\'s Strikes, +Hunter\'s Mark damage (Force) once per turn.' : '') +
+      (level >= 15 ? ' Share Spells: spells on yourself also affect it within 30 ft.' : '') },
+  { key: 'spellThief', name: 'Spell Thief', subclass: 'Arcane Trickster', minLevel: 17, max: () => 1, recovery: 'long',
+    text: () => 'Reaction after a spell targets you: INT save against your spell save DC, or you negate it and have it prepared for 8 hours.' },
+  { key: 'assassinate', name: 'Assassinate', subclass: 'Assassin', minLevel: 3, max: () => 0, info: true,
+    text: ({ level }) => 'Advantage on Initiative; in the first round, Advantage against creatures that haven\'t acted, and a Sneak Attack deals +' + level + ' damage.' +
+      (level >= 13 ? ' Envenom Weapons: Poison (Cunning Strike) adds 2d6 Poison, ignoring Resistance.' : '') +
+      (level >= 17 ? ' Death Strike: a first-round Sneak Attack doubles its damage on a failed CON save.' : '') },
+  { key: 'tidesOfChaos', name: 'Tides of Chaos', subclass: 'Wild Magic Sorcery', minLevel: 3, max: () => 1, recovery: 'long',
+    rolls: ({ level }) => [
+      { key: 'check', label: 'Wild Magic Surge check (a 20 surges)', formula: '1d20' },
+      { key: 'surge', label: 'Wild Magic Surge table', formula: '1d100' },
+      ...(level >= 6 ? [{ key: 'bend', label: 'Bend Luck', formula: '1d4' }] : [])
+    ],
+    text: ({ level }) => 'Advantage on one D20 Test; it comes back when you cast a Sorcerer spell with a slot (which then surges) or after a Long Rest.' +
+      (level >= 6 ? ' Bend Luck: Reaction and 1 Sorcery Point, ±1d4 to another creature\'s d20.' : '') +
+      (level >= 14 ? ' Controlled Chaos: roll the surge table twice and pick.' : '') },
+  { key: 'tamedSurge', name: 'Tamed Surge', subclass: 'Wild Magic Sorcery', minLevel: 18, max: () => 1, recovery: 'long',
+    text: () => 'After a Sorcerer spell with a slot: choose a Wild Magic Surge effect (not the last row) instead of rolling.' },
+  { key: 'beguilingDefenses', name: 'Beguiling Defenses', subclass: 'Archfey Patron', minLevel: 10, max: () => 1, recovery: 'long',
+    text: () => 'Reaction when you are hit: halve the damage; WIS save or the attacker takes that much Psychic. A Pact Magic slot restores it.' },
+  { key: 'searingVengeance', name: 'Searing Vengeance', subclass: 'Celestial Patron', minLevel: 14, max: () => 1, recovery: 'long',
+    rolls: ({ mods }) => [{ key: 'radiant', label: 'Searing Vengeance (Radiant)', formula: '2d8' + signed(mods.cha) }],
+    text: () => 'When you or an ally within 60 ft. is about to make a Death Saving Throw: it regains half its HP and stands; creatures of your choice within 30 ft. take 2d8 + CHA Radiant and are Blinded until the end of the turn.' },
+  { key: 'clairvoyantCombatant', name: 'Clairvoyant Combatant', subclass: 'Great Old One Patron', minLevel: 6, max: () => 1, recovery: 'short',
+    text: () => 'With Awakened Mind: WIS save or the creature has Disadvantage attacking you and you have Advantage attacking it. A Pact Magic slot restores it.' },
+  { key: 'arcaneWard', name: 'Arcane Ward', subclass: 'Abjurer', minLevel: 3, max: () => 1, recovery: 'long',
+    text: ({ level, mods }) => 'Cast an Abjuration spell with a slot: a ward with ' + Math.max(0, 2 * level + mods.int) + ' HP absorbs your damage until your Long Rest; it regains twice the slot level per Abjuration spell (or a Bonus Action and a slot).' +
+      (level >= 6 ? ' Projected Ward: Reaction, it absorbs damage for a creature within 30 ft.' : '') },
+  { key: 'portent', name: 'Portent', subclass: 'Diviner', minLevel: 3, max: ({ level }) => (level >= 14 ? 3 : 2), recovery: 'long',
+    rolls: () => [{ key: 'roll', label: 'Portent (foretelling roll)', formula: '1d20' }],
+    text: () => 'Roll the foretelling d20s after a Long Rest and note them; replace a D20 Test of yours or a creature you can see with one (once per turn).' },
+  { key: 'thirdEye', name: 'The Third Eye', subclass: 'Diviner', minLevel: 10, max: () => 1, recovery: 'short',
+    text: () => 'Bonus Action until your next rest: Darkvision 120 ft., read any language, or cast See Invisibility without a slot.' },
+  { key: 'phantasmalCreatures', name: 'Phantasmal Creatures', subclass: 'Illusionist', minLevel: 6, max: () => 1, recovery: 'long',
+    text: () => 'Cast Summon Beast or Summon Fey as Illusion without a slot (half HP); each once per Long Rest.' },
+  { key: 'illusorySelf', name: 'Illusory Self', subclass: 'Illusionist', minLevel: 10, max: () => 1, recovery: 'short',
+    text: () => 'Reaction when you are hit: the attack misses. A level 2+ slot restores it.' },
   { key: 'arcaneRecovery', name: 'Arcane Recovery', className: 'Wizard', minLevel: 1, max: () => 1, recovery: 'long',
     text: ({ level }) => `After a Short Rest, recover spell slots totalling up to ${Math.ceil(level / 2)} levels (none of level 6+).` },
   // Arcana Unleashed

@@ -583,6 +583,11 @@ function initiativeOf(character) {
   const advantage = [];
   if (ctx.classes.some(row => row.className === 'Fighter' && row.subclassName === 'Champion' && row.level >= 3)) advantage.push('Remarkable Athlete');
   if (ctx.levelOf('Barbarian') >= 7) advantage.push('Feral Instinct');
+  if (ctx.classes.some(row => row.subclassName === 'Assassin' && row.level >= 3)) advantage.push('Assassinate');
+  // Gloom Stalker (Dread Ambusher): WIS modifier on Initiative.
+  if (ctx.classes.some(row => row.subclassName === 'Gloom Stalker' && row.level >= 3) && ctx.mods.wis > 0) {
+    parts.push({ label: 'Dread Ambusher', value: ctx.mods.wis });
+  }
   return { total: parts.reduce((sum, part) => sum + part.value, 0), parts, advantage };
 }
 

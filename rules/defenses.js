@@ -114,6 +114,14 @@ function subclassDefenses(classes, sheetData) {
     if (row.subclassName === 'Circle of the Stars' && row.level >= 14) {
       list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Full of Stars', { when: 'in Starry Form', activeWhen: 'starryForm' }));
     }
+    if (row.subclassName === 'Psi Warrior' && row.level >= 10) list.push(entry('resistance', 'Psychic', 'Guarded Mind'));
+    if (row.subclassName === 'Warrior of Shadow' && row.level >= 3) list.push(entry('sense', 'Darkvision 60 ft. (or +60 ft.)', 'Shadow Arts'));
+    if (row.subclassName === 'Gloom Stalker' && row.level >= 3) list.push(entry('sense', 'Darkvision 60 ft. (or +60 ft.)', 'Umbral Sight'));
+    if (row.subclassName === 'Oath of the Ancients' && row.level >= 7) list.push(entry('resistance', 'Necrotic, Psychic and Radiant', 'Aura of Warding', { when: 'in your Aura of Protection' }));
+    if (row.subclassName === 'Archfey Patron' && row.level >= 10) list.push(entry('condition', 'Charmed', 'Beguiling Defenses'));
+    if (row.subclassName === 'Celestial Patron' && row.level >= 6) list.push(entry('resistance', 'Radiant', 'Radiant Soul'));
+    if (row.subclassName === 'Great Old One Patron' && row.level >= 10) list.push(entry('resistance', 'Psychic', 'Thought Shield'));
+    if (row.subclassName === 'Abjurer' && row.level >= 14) list.push(entry('resistance', 'Damage of spells', 'Spell Resistance'), entry('advantage', 'Saves against spells', 'Spell Resistance'));
     if (row.subclassName === 'War Domain' && row.level >= 17) list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Avatar of Battle'));
     if (row.subclassName === 'Circle of the Land' && row.level >= 10) {
       const ward = { Arid: 'Fire', Polar: 'Cold', Temperate: 'Lightning', Tropical: 'Poison' }[chosenLand(sheetData)];

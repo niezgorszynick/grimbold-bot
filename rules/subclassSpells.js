@@ -32,7 +32,8 @@ const SUBCLASS_SPELLS = {
   'Archfey Patron': [[3, ['Calm Emotions', 'Faerie Fire', 'Misty Step', 'Phantasmal Force', 'Sleep']], [5, ['Blink', 'Plant Growth']], [7, ['Dominate Beast', 'Greater Invisibility']], [9, ['Dominate Person', 'Seeming']]],
   'Celestial Patron': [[3, ['Aid', 'Cure Wounds', 'Guiding Bolt', 'Lesser Restoration', 'Light', 'Sacred Flame']], [5, ['Daylight', 'Revivify']], [7, ['Guardian of Faith', 'Wall of Fire']], [9, ['Greater Restoration', 'Summon Celestial']]],
   'Fiend Patron': [[3, ['Burning Hands', 'Command', 'Scorching Ray', 'Suggestion']], [5, ['Fireball', 'Stinking Cloud']], [7, ['Fire Shield', 'Wall of Fire']], [9, ['Geas', 'Insect Plague']]],
-  'Great Old One Patron': [[3, ['Detect Thoughts', 'Dissonant Whispers', 'Phantasmal Force', "Tasha's Hideous Laughter"]], [5, ['Clairvoyance', 'Hunger of Hadar']], [7, ['Confusion', 'Summon Aberration']], [9, ['Modify Memory', 'Telekinesis']]],
+  // Eldritch Hex (10): Hex always prepared.
+  'Great Old One Patron': [[3, ['Detect Thoughts', 'Dissonant Whispers', 'Phantasmal Force', "Tasha's Hideous Laughter"]], [5, ['Clairvoyance', 'Hunger of Hadar']], [7, ['Confusion', 'Summon Aberration']], [9, ['Modify Memory', 'Telekinesis']], [10, ['Hex']]],
   // Sorcerer
   'Aberrant Sorcery': [[3, ['Arms of Hadar', 'Calm Emotions', 'Detect Thoughts', 'Dissonant Whispers', 'Mind Sliver']], [5, ['Hunger of Hadar', 'Sending']], [7, ["Evard's Black Tentacles", 'Summon Aberration']], [9, ["Rary's Telepathic Bond", 'Telekinesis']]],
   'Clockwork Sorcery': [[3, ['Aid', 'Alarm', 'Lesser Restoration', 'Protection from Evil and Good']], [5, ['Dispel Magic', 'Protection from Energy']], [7, ['Freedom of Movement', 'Summon Construct']], [9, ['Greater Restoration', 'Wall of Force']]],
@@ -51,6 +52,9 @@ const SUBCLASS_SPELLS = {
   'Shadow Sorcery': [[3, ['Bane', 'Darkness', 'Inflict Wounds', 'Pass without Trace']], [5, ['Hunger of Hadar', 'Nondetection']], [7, ['Greater Invisibility', 'Phantasmal Killer']], [9, ['Contagion', 'Creation']]],
   'Undead Patron': [[3, ['Bane', 'Blindness/Deafness', 'Phantasmal Force', 'Ray of Sickness']], [5, ['Speak with Dead', 'Summon Undead']], [7, ['Greater Invisibility', 'Phantasmal Killer']], [9, ['Antilife Shell', 'Cloudkill']]],
   Necromancer: [[6, ['Animate Dead']]],
+  // PHB Wizards: Spell Breaker (Abjurer 10), Improved Illusions and Phantasmal Creatures (Illusionist 3, 6).
+  Abjurer: [[10, ['Counterspell', 'Dispel Magic']]],
+  Illusionist: [[3, ['Minor Illusion']], [6, ['Summon Beast', 'Summon Fey']]],
   Transmuter: [[3, ['Alter Self']], [10, ['Polymorph']]],
   // Artificer (Eberron: Forge of the Artificer; Reanimator: Ravenloft: The Horrors Within)
   Alchemist: [[3, ['Healing Word', 'Ray of Sickness']], [5, ['Flaming Sphere', "Melf's Acid Arrow"]], [9, ['Gaseous Form', 'Mass Healing Word']], [13, ['Death Ward', 'Vitriolic Sphere']], [17, ['Cloudkill', 'Raise Dead']]],

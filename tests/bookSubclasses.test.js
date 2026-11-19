@@ -121,3 +121,16 @@ test('Barbarian subclasses: Rage-scaled dice, the Zealot pool, Wild Heart ritual
   const defenses = rules.characterDefenses({ classes: [{ className: 'Barbarian', subclassName: 'Path of the Berserker', level: 6 }], species: 'Human', sheetData: {} });
   assert.ok(defenses.some(item => item.source === 'Mindless Rage' && item.when === 'while raging'));
 });
+
+test('PHB subclasses, Fighter to Wizard: uses, dice, defenses and initiative', () => {
+  const uses = (className, subclassName, level) => Object.fromEntries(rules.classResources([{ className, subclassName, level }], () => 16).map(resource => [resource.key, resource]));
+  assert.equal(uses('Fighter', 'Psi Warrior', 5).psionicDiceFighter.rolls.find(roll => roll.key === 'strike').formula, '1d8+3');
+  assert.equal(uses('Ranger', 'Gloom Stalker', 11).dreadfulStrike.rolls[0].formula, '2d8');
+  assert.equal(uses('Wizard', 'Diviner', 14).portent.max, 3);
+  assert.equal(uses('Paladin', 'Oath of Glory', 15).gloriousDefense.max, 3);
+  assert.deepEqual(rules.subclassSpellsFor({ subclassName: 'Abjurer', level: 10 }), ['Counterspell', 'Dispel Magic']);
+  const defenses = rules.characterDefenses({ classes: [{ className: 'Warlock', subclassName: 'Great Old One Patron', level: 10 }], species: 'Human', sheetData: {} });
+  assert.ok(defenses.some(item => item.text === 'Psychic' && item.source === 'Thought Shield'));
+  const initiative = rules.initiativeOf({ classes: [{ className: 'Rogue', subclassName: 'Assassin', level: 3 }], sheetData: {} });
+  assert.ok(initiative.advantage.includes('Assassinate'));
+});
