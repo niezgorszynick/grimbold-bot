@@ -122,6 +122,10 @@ function subclassDefenses(classes, sheetData) {
     if (row.subclassName === 'Celestial Patron' && row.level >= 6) list.push(entry('resistance', 'Radiant', 'Radiant Soul'));
     if (row.subclassName === 'Great Old One Patron' && row.level >= 10) list.push(entry('resistance', 'Psychic', 'Thought Shield'));
     if (row.subclassName === 'Abjurer' && row.level >= 14) list.push(entry('resistance', 'Damage of spells', 'Spell Resistance'), entry('advantage', 'Saves against spells', 'Spell Resistance'));
+    if (row.subclassName === 'Fey Wanderer' && row.level >= 7) list.push(entry('advantage', 'Saves against Charmed and Frightened', 'Beguiling Twist'));
+    if (row.subclassName === 'Aberrant Sorcery' && row.level >= 6) {
+      list.push(entry('resistance', 'Psychic', 'Psychic Defenses'), entry('advantage', 'Saves against Charmed and Frightened', 'Psychic Defenses'));
+    }
     if (row.subclassName === 'War Domain' && row.level >= 17) list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Avatar of Battle'));
     if (row.subclassName === 'Circle of the Land' && row.level >= 10) {
       const ward = { Arid: 'Fire', Polar: 'Cold', Temperate: 'Lightning', Tropical: 'Poison' }[chosenLand(sheetData)];

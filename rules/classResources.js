@@ -337,6 +337,41 @@ const RESOURCES = [
     text: () => 'Cast Summon Beast or Summon Fey as Illusion without a slot (half HP); each once per Long Rest.' },
   { key: 'illusorySelf', name: 'Illusory Self', subclass: 'Illusionist', minLevel: 10, max: () => 1, recovery: 'short',
     text: () => 'Reaction when you are hit: the attack misses. A level 2+ slot restores it.' },
+  { key: 'handsOfMercy', name: 'Hand of Harm / Hand of Healing', subclass: 'Warrior of Mercy', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level, mods }) => [
+      { key: 'harm', label: 'Hand of Harm (Necrotic)', formula: '1' + MARTIAL_ARTS_DIE(level) + signed(mods.wis) },
+      { key: 'heal', label: 'Hand of Healing', formula: '1' + MARTIAL_ARTS_DIE(level) + signed(mods.wis) }
+    ],
+    text: ({ level }) => '1 Focus Point each. Hand of Harm: once per turn on an Unarmed Strike hit, extra Necrotic. Hand of Healing: Magic action, heal a creature you touch (or in place of a Flurry of Blows strike, free).' +
+      (level >= 6 ? ' Physician\'s Touch: Harm also Poisons until your next turn; Healing also ends Blinded, Deafened, Paralyzed, Poisoned or Stunned.' : '') },
+  { key: 'flurryOfHealingAndHarm', name: 'Flurry of Healing and Harm', subclass: 'Warrior of Mercy', minLevel: 11, max: modMin1('wis'), recovery: 'long',
+    text: () => 'With Flurry of Blows: every strike can be a free Hand of Healing, and Hand of Harm costs no Focus Point (once per turn).' },
+  { key: 'handOfUltimateMercy', name: 'Hand of Ultimate Mercy', subclass: 'Warrior of Mercy', minLevel: 17, max: () => 1, recovery: 'long',
+    rolls: ({ mods }) => [{ key: 'revive', label: 'Hand of Ultimate Mercy (HP)', formula: '4d10' + signed(mods.wis) }],
+    text: () => 'Magic action and 5 Focus Points: a creature dead for up to 24 hours returns to life with 4d10 + WIS HP, cured of Blinded, Deafened, Paralyzed, Poisoned and Stunned.' },
+  { key: 'feyDreadfulStrikes', name: 'Dreadful Strikes', subclass: 'Fey Wanderer', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'psychic', label: 'Dreadful Strikes (Psychic)', formula: level >= 11 ? '1d6' : '1d4' }],
+    text: ({ level }) => 'Once per turn per target, a weapon hit deals +' + (level >= 11 ? '1d6' : '1d4') + ' Psychic.' +
+      (level >= 7 ? ' Beguiling Twist: Reaction when a creature within 120 ft. resists Charmed or Frightened: another creature makes a WIS save or is Charmed or Frightened for 1 minute.' : '') },
+  { key: 'feyReinforcements', name: 'Fey Reinforcements: Summon Fey', subclass: 'Fey Wanderer', minLevel: 11, max: () => 1, recovery: 'long',
+    text: () => 'Cast Summon Fey without a slot or Material component; optionally without Concentration for 1 minute.' },
+  { key: 'mistyWanderer', name: 'Misty Wanderer', subclass: 'Fey Wanderer', minLevel: 15, max: modMin1('wis'), recovery: 'long',
+    text: () => 'Cast Misty Step without a slot, taking a willing creature within 5 ft. along.' },
+  { key: 'telepathicSpeech', name: 'Telepathic Speech', subclass: 'Aberrant Sorcery', minLevel: 3, max: () => 0, info: true,
+    text: ({ level, mods }) => 'Bonus Action: telepathy with a creature within 30 ft., up to ' + Math.max(1, mods.cha) + ' mile(s) apart, for ' + level + ' minutes.' +
+      (level >= 6 ? ' Psionic Sorcery: cast your Psionic Spells with Sorcery Points equal to their level, without V, S or ordinary M.' : '') +
+      (level >= 14 ? ' Revelation in Flesh: Bonus Action, 1+ Sorcery Points, one benefit each for 10 minutes (swim and breathe water, fly, see Invisible, squeeze through 1 inch).' : '') },
+  { key: 'warpingImplosion', name: 'Warping Implosion', subclass: 'Aberrant Sorcery', minLevel: 18, max: () => 1, recovery: 'long',
+    rolls: () => [{ key: 'force', label: 'Warping Implosion (Force, STR save)', formula: '3d10' }],
+    text: () => 'Magic action: teleport up to 120 ft.; creatures within 30 ft. of where you were make a STR save, 3d10 Force and pulled in (half, not pulled, on a success). 5 Sorcery Points restore it.' },
+  { key: 'restoreBalance', name: 'Restore Balance', subclass: 'Clockwork Sorcery', minLevel: 3, max: modMin1('cha'), recovery: 'long',
+    rolls: ({ level }) => (level >= 6 ? [1, 2, 3, 4, 5].map(dice => ({ key: 'ward' + dice, label: 'Bastion of Law, ' + dice + ' d8' + (dice > 1 ? 's' : ''), formula: dice + 'd8' })) : []),
+    text: ({ level }) => 'Reaction: a d20 roll within 60 ft. with Advantage or Disadvantage is rolled straight.' +
+      (level >= 6 ? ' Bastion of Law: Magic action, 1–5 Sorcery Points make a ward of that many d8s on a creature within 30 ft.; it spends dice to reduce damage.' : '') },
+  { key: 'tranceOfOrder', name: 'Trance of Order', subclass: 'Clockwork Sorcery', minLevel: 14, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action, 1 minute: attacks against you can\'t have Advantage, and your d20 rolls of 9 or lower count as 10. 5 Sorcery Points restore it.' },
+  { key: 'clockworkCavalcade', name: 'Clockwork Cavalcade', subclass: 'Clockwork Sorcery', minLevel: 18, max: () => 1, recovery: 'long',
+    text: () => 'Magic action, a 30-ft. Cube: heal up to 100 HP shared out, repair objects, end spells of level 6 and lower. 7 Sorcery Points restore it.' },
   { key: 'arcaneRecovery', name: 'Arcane Recovery', className: 'Wizard', minLevel: 1, max: () => 1, recovery: 'long',
     text: ({ level }) => `After a Short Rest, recover spell slots totalling up to ${Math.ceil(level / 2)} levels (none of level 6+).` },
   // Arcana Unleashed
