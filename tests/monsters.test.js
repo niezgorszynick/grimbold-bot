@@ -77,3 +77,21 @@ test('the Monsters tab is for DMs: list, statblock and a new NPC from it', () =>
   const asPlayer = renderAdminPage({ session: { user: player }, query: { tab: 'monsters' } });
   assert.doesNotMatch(asPlayer, /class="statblock|monster-table/);
 });
+
+test('the NPC form previews its statblock: a stats endpoint and a script that parses', () => {
+  const admin = { id: 0, discord_tag: 'admin', role: 'admin' };
+  const form = renderAdminPage({ session: { user: admin }, query: { tab: 'npcs', new_npc: '1' } });
+  assert.match(form, /id="npc-base-preview"/);
+  assert.match(form, /<option value="Practice Gazer">Practice Gazer · CR /, 'the suggestion shows the name');
+  const script = form.split('<script>').slice(1).map(part => part.split('</script>')[0]).find(part => part.includes('npc-base-preview'));
+  assert.doesNotThrow(() => new Function(script), 'the preview script is valid JavaScript');
+
+  const router = require('../server');
+  const layer = router.stack.find(entry => entry.route && entry.route.path === '/monsters/stats');
+  const handler = layer.route.stack[layer.route.stack.length - 1].handle;
+  let body = null;
+  handler({ query: { name: 'Practice Gazer' }, session: { user: admin } }, { status: () => ({ json: value => { body = value; } }), json: value => { body = value; } });
+  assert.equal(body.armorClass, 16);
+  assert.equal(body.hitPoints, 90);
+  assert.equal(body.abilities.str, 12);
+});

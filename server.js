@@ -622,6 +622,14 @@ router.get('/monsters/statblock', requireAdmin, (req, res) => {
   return res.send(require('./views/tabs/monsters').monsterPanel(monster, req.session.user));
 });
 
+// The numbers of a statblock, for the NPC form to show what it will fill in (DMs only).
+router.get('/monsters/stats', requireAdmin, (req, res) => {
+  const monster = require('./rules').getMonster(req.query.name);
+  if (!monster) return res.status(404).json({ error: 'No such monster.' });
+  const { name, crText, typeText, armorClass, hitPoints, speed, abilities, sourceName } = monster;
+  return res.json({ name, crText, typeText, armorClass, hitPoints, speed, abilities, sourceName });
+});
+
 // ─── GET DASHBOARD ROUTE ──────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {

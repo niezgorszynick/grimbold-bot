@@ -225,7 +225,8 @@ function npcForm(npc, adventures, owners, currentUserId, startMonster) {
           <input name="base_monster" list="npc-monster-list" maxlength="100" placeholder="e.g. Mage, Bandit Captain (optional)" value="${escapeHtml(stats.baseMonster ? stats.baseMonster.name : '')}">
         </label>
         ${monsters.length ? `<datalist id="npc-monster-list">${monsters.filter(monster => !monster.summon).map(monster => `<option value="${escapeHtml(monster.name)}">${escapeHtml(monster.name)} · CR ${escapeHtml(monster.crText)} ${escapeHtml(monster.typeText)}${monster.sourceCode && monster.sourceCode !== 'XMM' ? ' · ' + escapeHtml(monster.sourceCode) : ''}</option>`).join('')}</datalist>` : ''}
-        <p class="muted small">Stats you leave empty are taken from the statblock when you save. DMs see the full statblock from the NPC's card.</p>
+        <div id="npc-base-preview" class="npc-base-preview" hidden></div>
+        <p class="muted small">Stats you leave empty are taken from the statblock when you save (shown greyed in the empty fields). DMs see the full statblock from the NPC's card.</p>
         <div class="npc-form-grid">
           <label>AC<input name="armor_class" type="number" min="0" max="40" value="${stat('armorClass')}"></label>
           <label>Max HP<input name="hp_max" type="number" min="1" max="5000" value="${stat('hpMax')}"></label>
@@ -243,6 +244,67 @@ function npcForm(npc, adventures, owners, currentUserId, startMonster) {
         </div>
       </form>
       ${filesHtml(npc)}
+    <script>
+      // "Based on a statblock": show what the chosen statblock brings, and its
+      // numbers as placeholders in the empty Stats fields (what saving fills in).
+      (() => {
+        const input = document.querySelector('input[name="base_monster"]');
+        const preview = document.getElementById('npc-base-preview');
+        if (!input || !preview) return;
+        const form = input.form;
+        const field = name => form.querySelector('[name="' + name + '"]');
+        const defaults = {};
+        ['armor_class', 'hp_max', 'speed', 'str', 'dex', 'con', 'int', 'wis', 'cha'].forEach(name => { defaults[name] = field(name) ? field(name).placeholder : ''; });
+        const known = name => [...document.querySelectorAll('#npc-monster-list option')].some(option => option.value === name);
+        const el = (tag, props, children) => { const node = Object.assign(document.createElement(tag), props || {}); (children || []).forEach(child => node.append(child)); return node; };
+        let current = '';
+        const reset = () => {
+          Object.entries(defaults).forEach(([name, value]) => { if (field(name)) field(name).placeholder = value; });
+          preview.hidden = true;
+          preview.replaceChildren();
+        };
+        async function show(name) {
+          if (name === current) return;
+          current = name;
+          if (!name || !known(name)) return reset();
+          let stats;
+          try {
+            const response = await fetch('/admin/monsters/stats?name=' + encodeURIComponent(name));
+            if (!response.ok) return reset();
+            stats = await response.json();
+          } catch { return reset(); }
+          if (current !== name) return;
+          const set = (fieldName, value) => { if (field(fieldName) && value !== undefined && value !== null && value !== '') field(fieldName).placeholder = String(value); };
+          set('armor_class', stats.armorClass);
+          set('hp_max', stats.hitPoints);
+          set('speed', stats.speed);
+          ['str', 'dex', 'con', 'int', 'wis', 'cha'].forEach(ability => set(ability, (stats.abilities || {})[ability]));
+          const scores = ['str', 'dex', 'con', 'int', 'wis', 'cha'].map(ability => ability.toUpperCase() + ' ' + ((stats.abilities || {})[ability] ?? '—')).join(' · ');
+          const full = el('details', { className: 'npc-base-full' }, [el('summary', { textContent: 'Show the full statblock' })]);
+          full.addEventListener('toggle', async () => {
+            if (!full.open || full.dataset.loaded) return;
+            full.dataset.loaded = '1';
+            try {
+              const response = await fetch('/admin/monsters/statblock?name=' + encodeURIComponent(name));
+              const box = el('div', { className: 'npc-base-statblock' });
+              box.innerHTML = response.ok ? await response.text() : '<p class="muted">Statblock not found.</p>';
+              box.querySelectorAll('.monster-panel-actions').forEach(node => node.remove());
+              full.append(box);
+            } catch { full.append(el('p', { className: 'muted', textContent: 'Could not load the statblock.' })); }
+          });
+          preview.replaceChildren(
+            el('p', {}, [el('strong', { textContent: stats.name }), ' · CR ' + stats.crText + ' ' + stats.typeText + (stats.sourceName ? ' · ' + stats.sourceName : '')]),
+            el('p', { className: 'small' }, ['AC ' + stats.armorClass + ' · HP ' + stats.hitPoints + ' · Speed ' + (stats.speed || '—')]),
+            el('p', { className: 'small muted' }, [scores]),
+            full
+          );
+          preview.hidden = false;
+        }
+        input.addEventListener('input', () => show(input.value.trim()));
+        input.addEventListener('change', () => show(input.value.trim()));
+        show(input.value.trim());
+      })();
+    </script>
       ${npc ? `
         <form method="POST" action="/admin/npcs/delete" data-name="${escapeHtml(npc.name)}" onsubmit="return confirm('Delete ' + this.dataset.name + ' for good? Their adventure history goes too.');" class="npc-delete">
           <input type="hidden" name="id" value="${npc.id}">
