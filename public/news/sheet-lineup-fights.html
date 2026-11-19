@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-12">
+<title>A Sheet You Can Play From, the Lineup &amp; Calmer Fights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 12 November 2026</span>
+    <h1>A Sheet You Can Play From, the Lineup &amp; Calmer Fights</h1>
+    <p class="lede">The character sheet opens ready for play and shows less at once, a new Lineup tab puts characters side by side by height, big fights fit on one screen with Owlbear tokens that stay matched, and DMs earn the same XP as their players.</p>
+  </header>
+
+  <section>
+    <h2>For everyone: the character sheet</h2>
+
+    <h3>👁 View and ✏️ Edit</h3>
+    <ul>
+      <li>The sheet opens in <strong>View</strong>: rolling, hit points, rests, spell slots, casting and items all work, but the build (name, species and class, ability scores, skill choices, appearance, notes) is shown rather than edited, so a stray click changes nothing.</li>
+      <li><strong>✏️ Edit</strong> at the top shows everything as before. Your browser remembers which you used last.</li>
+    </ul>
+
+    <h3>🖥 Wide screens</h3>
+    <ul>
+      <li>On a big screen the sheet has <strong>three columns</strong>: abilities, saves and skills on the left; combat, hit points, attacks and equipment in the middle; features, magic items and spells on the right. Smaller screens and phones keep the layout they had.</li>
+      <li><strong>▥ Slim</strong> next to Edit switches to two narrower columns; <strong>▦ Wide</strong> brings back three.</li>
+    </ul>
+
+    <h3>ⓘ Help when you want it</h3>
+    <ul>
+      <li>The small print ("Tick a box to spend a use…", what a resource does, how a rule works) is hidden. Click the <strong>ⓘ</strong> next to a heading to read it; click again to hide it.</li>
+      <li>Your max HP breakdown is in the tooltip when you hover your hit points.</li>
+    </ul>
+
+    <h3>❤️ Hit Points and 🎒 Resources</h3>
+    <ul>
+      <li><strong>Hit Points</strong> is its own card: your HP, the bar, exhaustion and active spell effects. Damage, healing and temporary HP sit under the bar; <strong>× Close</strong> tucks them away (your browser remembers).</li>
+      <li><strong>Resources</strong> holds hit dice and rests, class feature uses and spell slots, side by side when there is room.</li>
+    </ul>
+
+    <h3>👀 Senses</h3>
+    <ul>
+      <li>The <strong>Senses</strong> strip, above Armor Class, shows <strong>Passive Perception, Investigation and Insight</strong> (what you notice without rolling), senses like Darkvision, and your resistances, immunities and similar defences.</li>
+    </ul>
+
+    <h3>📜 Features at a glance</h3>
+    <ul>
+      <li>Class, subclass and species features are small chips grouped by where they come from. Species traits, and class and subclass features as their text gets added, open on click to show their rules.</li>
+      <li>Tables and bullet lists in spell, item and feature text are laid out as tables and lists.</li>
+    </ul>
+
+    <h3>🎲 Initiative</h3>
+    <ul>
+      <li>Click <strong>anywhere on the Initiative box</strong> to roll it, not just the small die.</li>
+    </ul>
+
+    <h3>Smaller things</h3>
+    <ul>
+      <li>In View mode, use boxes (slots, feature uses) are quiet dots, and roll links lose their underline.</li>
+      <li>Adding a magic item is folded into <strong>＋ Add a magic item</strong> until you need it.</li>
+      <li><strong>Reset Character</strong> opens the creator in place of the sheet; Cancel brings the sheet back.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>For everyone: the Lineup</h2>
+    <ul>
+      <li><strong>📏 Lineup tab:</strong> pick characters (your own, a running adventure's party, or everyone) and see them on a chart in centimetres and feet, shortest to tallest.</li>
+      <li><strong>The outlines</strong> are drawn from your character: a staff for wizards, an axe for barbarians, a bow for rangers; horns and a tail for tieflings, pointed ears for elves, a halo for aasimar, a beard for dwarves.</li>
+      <li><strong>What you have on shows:</strong> plate, mail, furs or leather from the armour you wear (or a robe), a shield on your arm, and the weapon in your hand, from a rapier to a halberd.</li>
+      <li><strong>Shaggy hair</strong> joins bald, short, medium and long.</li>
+      <li><strong>To appear in it,</strong> fill in your character sheet's <strong>Appearance → Height</strong> (176 cm, 1.76 m or 5′9″ all work) and choose a <strong>Build</strong> (masculine, feminine or neutral) and a <strong>Hair length</strong>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>For everyone: the adventure table and the panel</h2>
+    <ul>
+      <li><strong>🗂 Cards you can move:</strong> drag a card by its <strong>⠿</strong> handle to put it where you want: party members, NPCs and creatures. It works on touch screens too. The order is kept for that adventure in your browser; <strong>↺ Original order</strong> puts it back.</li>
+      <li><strong>☰ The party in lines:</strong> the party has its own <strong>View: Auto / ☰ Lines / ▦ Cards</strong>. In lines, each member shows initiative (a 🎲 to roll it), HP, AC and a waiting Concentration save; click a name for the full card.</li>
+      <li>The panel's tabs are grouped: <strong>Shop, Characters, Adventures, DM Tools, Records</strong>, with the group's tabs in a row underneath. The changelog is <strong>What's new</strong>, by your name.</li>
+      <li><strong>After login</strong> you land on What's new. If you followed a link to a sheet or tab and had to log in first, you go straight there instead.</li>
+      <li><strong>Rolls History</strong> shows the latest 10 rolls; <strong>Show 10 more</strong> or <strong>Show all</strong> for the rest.</li>
+      <li>In the Players tab, a character's name opens their sheet, and portraits sit beside the names.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+      <h2>Running fights</h2>
+
+      <h3>Many creatures</h3>
+      <ul>
+        <li>From five creatures, a fight shows <strong>one line each</strong>: initiative, name, HP, AC, damage and healing. Click a name for its full card (statblock and dice); ▴ folds it back.</li>
+        <li><strong>Auto / ☰ Lines / ▦ Cards</strong> chooses for yourself.</li>
+        <li><strong>+ Add to the fight</strong> sits at the top of the fight now, for reinforcements.</li>
+      </ul>
+
+      <h3>🦉 Owlbear tokens</h3>
+      <ul>
+        <li>In the Dice window's encounter list, <strong>pick each creature's token</strong> from the tokens on the map. Each token goes to one creature. Linked tokens (🔗) keep working whatever they are called: no more matching names letter by letter.</li>
+        <li><strong>+ Add selected tokens:</strong> select tokens on the map and add them to the fight in one go. Party members, NPCs and monsters are recognised by their names ("Goblin Warrior 3" is a Goblin Warrior) and linked at once.</li>
+        <li>A party member's token stays linked to their character, so their initiative rolls find it in later fights too.</li>
+        <li><strong>Initiative goes into Owlbear's tracker by itself:</strong> players' rolls, your monster rolls, typed numbers and reinforcements, within a few seconds. A number you change in Owlbear's tracker stays until it changes in Grimbold.</li>
+        <li>Reload the Owlbear room once to get the new version.</li>
+      </ul>
+
+      <h3>⭐ DM rewards</h3>
+      <ul>
+        <li>The DM now earns <strong>the adventure's XP</strong>, like the players, and at least 1 even when the party gets 0. It goes to one of the DM's characters or is banked as DM points (one per XP).</li>
+        <li>Adventures finished before 12 November got only 1: their DMs received the rest automatically.</li>
+        <li>Editing or deleting an adventure moves or takes back exactly what its DM got.</li>
+      </ul>
+
+      <h2>Characters and players</h2>
+      <ul>
+        <li><strong>🛡 DM settings</strong> moved from the Players tab to the foot of each character sheet (in Edit): owner, XP and level override, alive or dead, the Discord thread, multiclass levels and the adventures log. Name, species, class and purse are edited on the sheet itself.</li>
+        <li>The <strong>✏️</strong> by a player's name in the Players tab opens an <strong>Edit Player</strong> window for their Discord name and ID, for when an ID was entered wrong. The Discord ID column is gone from the roster.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>
