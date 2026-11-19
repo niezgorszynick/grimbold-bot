@@ -10,6 +10,7 @@
 // vitals state that switches it on (buildVitalsView sets `active`).
 
 const { featName, featGrants } = require('./feats');
+const { chosenLand } = require('./subclassSpells');
 
 const entry = (kind, text, source, extra = {}) => ({ kind, text, source, when: null, ...extra });
 
@@ -94,7 +95,7 @@ function speciesDefenses(species, sheetData) {
   return list;
 }
 
-function subclassDefenses(classes) {
+function subclassDefenses(classes, sheetData) {
   const list = [];
   for (const row of classes || []) {
     if (row.subclassName === 'Pestilence Domain' && row.level >= 3) {
@@ -112,6 +113,15 @@ function subclassDefenses(classes) {
     }
     if (row.subclassName === 'Circle of the Stars' && row.level >= 14) {
       list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Full of Stars', { when: 'in Starry Form', activeWhen: 'starryForm' }));
+    }
+    if (row.subclassName === 'War Domain' && row.level >= 17) list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Avatar of Battle'));
+    if (row.subclassName === 'Circle of the Land' && row.level >= 10) {
+      const ward = { Arid: 'Fire', Polar: 'Cold', Temperate: 'Lightning', Tropical: 'Poison' }[chosenLand(sheetData)];
+      list.push(entry('condition', 'Poisoned', "Nature's Ward"));
+      if (ward) list.push(entry('resistance', ward, "Nature's Ward"));
+    }
+    if (row.subclassName === 'Circle of the Sea' && row.level >= 10) {
+      list.push(entry('resistance', 'Cold, Lightning and Thunder', 'Stormborn', { when: 'while Wrath of the Sea is active' }));
     }
     if (row.subclassName === 'Path of the Berserker' && row.level >= 6) {
       list.push(entry('condition', 'Charmed and Frightened', 'Mindless Rage', { when: 'while raging' }));
@@ -162,7 +172,7 @@ function featDefenses(feats) {
 // { classes: [{ className, subclassName, level }], species, sheetData, feats }
 // → entries, with duplicates (same kind, text and condition) merged.
 function characterDefenses({ classes, species, sheetData, feats = [] }) {
-  const all = [...speciesDefenses(species, sheetData), ...subclassDefenses(classes), ...featDefenses(feats)];
+  const all = [...speciesDefenses(species, sheetData), ...subclassDefenses(classes, sheetData), ...featDefenses(feats)];
   const merged = new Map();
   for (const item of all) {
     const key = `${item.kind}|${item.text}|${item.when || ''}`;

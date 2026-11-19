@@ -28,6 +28,7 @@ const PSIONIC_DICE = byLevel([[3, 4], [5, 6], [9, 8], [13, 10], [17, 12]]);
 const PSIONIC_DIE = dieAtLevel([[3, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
 const MARTIAL_ARTS_DIE = level => `d${table('Monk', 'martialArtsDie')(level)}`;
 const RAGE_DAMAGE = level => table('Barbarian', 'rageDamage')(level);
+const LAND_DICE = byLevel([[3, 2], [10, 3], [14, 4]]);
 const BARDIC_DIE = level => table('Bard', 'bardicInspirationDie')(level);
 const ARCANE_SHOT_DIE = dieAtLevel([[3, 'd6'], [10, 'd8'], [15, 'd10'], [18, 'd12']]);
 // Phantom: half the Sneak Attack dice (round up).
@@ -103,11 +104,21 @@ const RESOURCES = [
       ...(subclass === 'Arcana Domain' ? [{ key: 'fortifying', label: 'Fortifying Spell: temporary HP', formula: `2d8+${level}` }, { key: 'tenacious', label: 'Tenacious Spell: subtract from the save', formula: '1d6' }] : [])
     ],
     text: ({ level, subclass }) => `Divine Spark (${level >= 18 ? 4 : level >= 13 ? 3 : level >= 7 ? 2 : 1}d8 + WIS: heal, or Necrotic/Radiant damage with a CON save), Turn Undead` +
-      ({ 'Life Domain': ', Preserve Life', 'Light Domain': ', Radiance of the Dawn', 'Pestilence Domain': ', Plague Blessing (5-ft. Emanation, CON save or 1 Exhaustion level)', 'Arcana Domain': ', Modify Magic (Fortifying Spell: 2d8 + Cleric level temporary HP; Tenacious Spell: a target that saved subtracts 1d6 from its first save against the spell)', 'Grave Domain': ', Path to the Grave (Bonus Action: a creature within 30 ft. has Disadvantage on attacks and saves; end it on a hit for + Cleric level Necrotic or Radiant damage)', 'Trickery Domain': ', Invoke Duplicity', 'War Domain': ', Guided Strike (+10 to a missed attack roll)' }[subclass] || '') + '. Save DC = your Cleric spell save DC.' },
+      ({ 'Life Domain': ', Preserve Life', 'Light Domain': ', Radiance of the Dawn', 'Pestilence Domain': ', Plague Blessing (5-ft. Emanation, CON save or 1 Exhaustion level)', 'Arcana Domain': ', Modify Magic (Fortifying Spell: 2d8 + Cleric level temporary HP; Tenacious Spell: a target that saved subtracts 1d6 from its first save against the spell)', 'Grave Domain': ', Path to the Grave (Bonus Action: a creature within 30 ft. has Disadvantage on attacks and saves; end it on a hit for + Cleric level Necrotic or Radiant damage)', 'Trickery Domain': ', Invoke Duplicity', 'War Domain': level >= 6 ? ", Guided Strike (+10 to a missed attack roll), War God's Blessing (Shield of Faith or Spiritual Weapon without a slot or Concentration)" : ', Guided Strike (+10 to a missed attack roll)' }[subclass] || '') + '. Save DC = your Cleric spell save DC.' },
   { key: 'warPriest', name: 'War Priest', subclass: 'War Domain', minLevel: 3, max: modMin1('wis'), recovery: 'short',
     text: () => 'Bonus Action: make one attack with a weapon or an Unarmed Strike.' },
-  { key: 'wardingFlare', name: 'Warding Flare', subclass: 'Light Domain', minLevel: 3, max: modMin1('wis'), recovery: 'long',
-    text: () => 'Reaction: impose Disadvantage on an attack roll against you or a creature within 30 ft.' },
+  // Improved Warding Flare (6): back on a Short Rest, and temporary HP for the target.
+  { key: 'wardingFlare', name: 'Warding Flare', subclass: 'Light Domain', minLevel: 3, max: modMin1('wis'),
+    recovery: ({ level }) => (level >= 6 ? 'short' : 'long'),
+    rolls: ({ level, mods }) => (level >= 6 ? [{ key: 'thp', label: 'Improved Warding Flare: temporary HP', formula: `2d6${signed(mods.wis)}` }] : []),
+    text: ({ level }) => 'Reaction: impose Disadvantage on an attack roll made by a creature you can see within 30 ft.' +
+      (level >= 6 ? ' The attack\'s target gains 2d6 + WIS temporary HP.' : '') },
+  { key: 'coronaOfLight', name: 'Corona of Light', subclass: 'Light Domain', minLevel: 17, max: modMin1('wis'), recovery: 'long',
+    text: () => 'Magic action, 1 minute: sunlight 60 ft.; enemies in it have Disadvantage on saves against Radiance of the Dawn and Fire or Radiant spells.' },
+  { key: 'blessingOfTheTrickster', name: 'Blessing of the Trickster', subclass: 'Trickery Domain', minLevel: 3, max: () => 0, info: true,
+    text: ({ level }) => 'Magic action: you or a willing creature within 30 ft. has Advantage on Stealth checks until your next Long Rest.' +
+      (level >= 6 ? " Trickster's Transposition: swap places with your Invoke Duplicity illusion when you create or move it." : '') +
+      (level >= 17 ? ' Improved Duplicity: you and allies have Advantage against creatures within 5 ft. of the illusion; when it ends, a creature within 5 ft. of it regains ' + level + ' HP.' : '') },
   { key: 'virulentBurst', name: 'Virulent Burst', subclass: 'Pestilence Domain', minLevel: 6, max: modMin1('wis'), recovery: 'long',
     rolls: () => [{ key: 'toxic', label: 'Toxic Infection (Necrotic or Poison)', formula: '3d6' }],
     text: () => 'Reaction when an enemy within 60 ft. drops to 0 HP: plague bursts from it (10-ft. Emanation, 20 ft. if it had Exhaustion). CON save or Incapacitated (Speed 0) until the end of its next turn, or 3d6 Necrotic or Poison damage.' },
@@ -117,6 +128,23 @@ const RESOURCES = [
     text: () => 'Magic action: cast a Cleric spell of level 5 or lower without a slot or Material components.' },
   { key: 'wildShape', name: 'Wild Shape', className: 'Druid', minLevel: 2, max: ({ level }) => table('Druid', 'wildShape')(level), recovery: 'shortOne',
     text: () => 'Bonus Action: take a Beast form you have learned. Also fuels Wild Companion and Circle features.' },
+  // Druid circles (PHB 2024)
+  { key: 'landsAid', name: "Land's Aid", subclass: 'Circle of the Land', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'harm', label: "Land's Aid (Necrotic, CON save)", formula: `${LAND_DICE(level)}d6` }, { key: 'heal', label: "Land's Aid (heal)", formula: `${LAND_DICE(level)}d6` }],
+    text: ({ level }) => `Magic action and a Wild Shape use: a 10-ft. Sphere within 60 ft., creatures of your choice take ${LAND_DICE(level)}d6 Necrotic (CON save for half) and one creature regains ${LAND_DICE(level)}d6 HP.` +
+      (level >= 14 ? " Nature's Sanctuary: a Wild Shape use, a 15-ft. Cube of trees within 120 ft. for 1 minute (Half Cover, your Nature's Ward resistance for allies)." : '') },
+  { key: 'naturalRecovery', name: 'Natural Recovery', subclass: 'Circle of the Land', minLevel: 6, max: () => 1, recovery: 'long',
+    text: ({ level }) => `Cast a level 1+ Circle spell without a slot (once per Long Rest); and once per Long Rest, after a Short Rest, recover spell slots totalling up to ${Math.ceil(level / 2)} levels (none of level 6+).` },
+  { key: 'moonlightStep', name: 'Moonlight Step', subclass: 'Circle of the Moon', minLevel: 10, max: modMin1('wis'), recovery: 'long',
+    rolls: ({ level }) => (level >= 14 ? [{ key: 'lunar', label: 'Improved Lunar Radiance (Radiant)', formula: '2d10' }] : []),
+    text: ({ level }) => 'Bonus Action: teleport up to 30 ft. and have Advantage on your next attack this turn. A level 2+ slot restores a use.' +
+      (level >= 14 ? ' Lunar Form: +2d10 Radiant once per turn with a Wild Shape attack; take a willing creature within 10 ft. along.' : '') },
+  { key: 'wrathOfTheSea', name: 'Wrath of the Sea', subclass: 'Circle of the Sea', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ mods }) => [{ key: 'cold', label: 'Wrath of the Sea (Cold, CON save)', formula: `${Math.max(1, mods.wis)}d6` }],
+    text: ({ level, mods }) => `Bonus Action and a Wild Shape use: a ${level >= 6 ? 10 : 5}-ft. Emanation of ocean spray for 10 minutes. When you make it and as a Bonus Action later, a creature in it makes a CON save or takes ${Math.max(1, mods.wis)}d6 Cold and is pushed 15 ft.` +
+      (level >= 6 ? ' Aquatic Affinity: Swim Speed equal to your Speed.' : '') +
+      (level >= 10 ? ' Stormborn: while it is active, Fly Speed and Resistance to Cold, Lightning and Thunder.' : '') +
+      (level >= 14 ? ' Oceanic Gift: put it on a willing creature within 60 ft. (or on both of you for two uses).' : '') },
   { key: 'starMap', name: 'Star Map: Guiding Bolt', subclass: 'Circle of the Stars', minLevel: 3, max: modMin1('wis'), recovery: 'long',
     text: () => 'Cast Guiding Bolt without a spell slot.' },
   { key: 'cosmicOmen', name: 'Cosmic Omen', subclass: 'Circle of the Stars', minLevel: 6, max: modMin1('wis'), recovery: 'long',
