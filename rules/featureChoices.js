@@ -112,11 +112,56 @@ const SUBCLASS_FEATURES = {
   Assassin: { 3: [{ name: "Assassin's Tools", kind: 'grant', tools: ['Disguise Kit', "Poisoner's Kit"] }] },
   // Diabolical Gift: Infernal, or another language if you already know it.
   'Hell Knight': { 3: [{ name: "Devil's Tongue", kind: 'grant', languages: ['Infernal'], orLanguage: true }] },
+  // Arcana Unleashed
+  'Arcana Domain': {
+    3: [{ name: 'Student of Arcana (Skill)', kind: 'skills', count: 1, options: () => [...new Set(['Arcana', ...classSkills('Cleric')])] }]
+  },
+  // The cantrip is cast with Intelligence (rules/spellbook.js reads the choice).
+  'Arcane Archer': {
+    3: [
+      { name: 'Arcane Archer Lore', kind: 'grant', skills: ['Arcana', 'Nature'] },
+      {
+        name: 'Arcane Archer Lore (Cantrip)',
+        kind: 'option',
+        options: {
+          Druidcraft: { text: 'Druidcraft, cast with Intelligence.' },
+          Prestidigitation: { text: 'Prestidigitation, cast with Intelligence.' }
+        }
+      }
+    ]
+  },
+  // Which Cleric domain's spells the vestige gives (rules/subclassSpells.js).
+  'Vestige Patron': {
+    3: [{
+      name: 'Vestige Spells',
+      kind: 'option',
+      options: {
+        Life: { text: 'Aid, Bless, Cure Wounds, Lesser Restoration; later Mass Healing Word, Revivify, Aura of Life, Death Ward, Greater Restoration, Mass Cure Wounds.' },
+        Light: { text: 'Burning Hands, Faerie Fire, Scorching Ray, See Invisibility; later Daylight, Fireball, Arcane Eye, Wall of Fire, Flame Strike, Scrying.' },
+        Trickery: { text: 'Charm Person, Disguise Self, Invisibility, Pass without Trace; later Hypnotic Pattern, Nondetection, Confusion, Dimension Door, Dominate Person, Modify Memory.' },
+        War: { text: 'Guiding Bolt, Magic Weapon, Shield of Faith, Spiritual Weapon; later Crusader\'s Mantle, Spirit Guardians, Fire Shield, Freedom of Movement, Hold Monster, Steel Wind Strike.' }
+      }
+    }]
+  },
+  // The bonus applies to the chosen skill only.
+  Enchanter: {
+    3: [{ name: 'Enchanting Conversationalist', kind: 'skills', count: 1, options: ['Deception', 'Intimidation', 'Persuasion'], checkBonus: { ability: 'int', chosenSkills: true } }]
+  },
+  // Ravenloft: The Horrors Within
+  'College of Spirits': { 3: [{ name: 'Channeler (Spiritual Focus)', kind: 'grant', tools: ['Playing Cards'] }] },
+  // Artificer subclasses (Eberron: Forge of the Artificer). A tool the character
+  // already has is swapped for another Artisan's Tools (not tracked here).
   Armorer: { 3: [{ name: 'Tools of the Trade', kind: 'grant', armor: ['Heavy armor'], tools: ["Smith's Tools"] }] },
-  'Battle Smith': { 3: [{ name: 'Tools of the Trade', kind: 'grant', weapons: ['Martial weapons'], tools: ["Smith's Tools"] }] },
-  Alchemist: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Alchemist's Supplies"] }] },
-  Artillerist: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Woodcarver's Tools"] }] },
-  Cartographer: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Cartographer's Tools"] }] }
+  'Battle Smith': {
+    3: [
+      { name: 'Tools of the Trade', kind: 'grant', tools: ["Smith's Tools"] },
+      { name: 'Battle Ready', kind: 'grant', weapons: ['Martial weapons'] }
+    ]
+  },
+  Alchemist: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Alchemist's Supplies", 'Herbalism Kit'] }] },
+  Artillerist: { 3: [{ name: 'Tools of the Trade', kind: 'grant', weapons: ['Martial Ranged weapons'], tools: ["Woodcarver's Tools"] }] },
+  Cartographer: { 3: [{ name: 'Tools of the Trade', kind: 'grant', tools: ["Calligrapher's Supplies", "Cartographer's Tools"] }] },
+  Reanimator: { 3: [{ name: "Reanimator's Skill Set", kind: 'grant', tools: ["Alchemist's Supplies"] }] }
 };
 
 // A feature as the client sees it: plain data, options resolved to lists.
@@ -318,7 +363,8 @@ function featureCheckBonuses(sheetData, scoreOf) {
     const bonus = raw.kind === 'option' ? (raw.options[entry.value] || {}).checkBonus : raw.checkBonus;
     if (!bonus) continue;
     const value = Math.max(1, abilityModifier(scoreOf(bonus.ability)));
-    (bonus.skills || []).forEach(skill => { result.skills[skill] = Math.max(result.skills[skill] || 0, value); });
+    const skills = bonus.chosenSkills ? (Array.isArray(entry.value) ? entry.value : [entry.value]).filter(Boolean) : (bonus.skills || []);
+    skills.forEach(skill => { result.skills[skill] = Math.max(result.skills[skill] || 0, value); });
     (bonus.checks || []).filter(ability => ABILITIES.includes(ability)).forEach(ability => {
       result.checks[ability] = Math.max(result.checks[ability] || 0, value);
     });

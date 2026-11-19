@@ -1,5 +1,6 @@
-// rules/subclasses.js — Subclasses per class (2024 PHB, plus supplements for Artificer,
-// and the Unearthed Arcana 2026 "Villainous Options" playtest subclasses).
+// rules/subclasses.js — Subclasses per class (2024 PHB; Eberron: Forge of the
+// Artificer; Arcana Unleashed; Ravenloft: The Horrors Within; and the Unearthed
+// Arcana 2026 "Villainous Options" playtest subclasses).
 
 const DND_CLASSES_AND_SUBCLASSES = {
   'Artificer': [
@@ -20,9 +21,12 @@ const DND_CLASSES_AND_SUBCLASSES = {
     'College of Dance',
     'College of Glamour',
     'College of Lore',
+    'College of Spirits',
     'College of Valor'
   ],
   'Cleric': [
+    'Arcana Domain',
+    'Grave Domain',
     'Life Domain',
     'Light Domain',
     'Pestilence Domain',
@@ -37,6 +41,7 @@ const DND_CLASSES_AND_SUBCLASSES = {
     'Circle of the Titan'
   ],
   'Fighter': [
+    'Arcane Archer',
     'Battle Master',
     'Champion',
     'Eldritch Knight',
@@ -47,6 +52,7 @@ const DND_CLASSES_AND_SUBCLASSES = {
     'Warrior of Mercy',
     'Warrior of Shadow',
     'Warrior of the Elements',
+    'Warrior of the Mystic Arts',
     'Warrior of the Open Hand'
   ],
   'Paladin': [
@@ -59,11 +65,13 @@ const DND_CLASSES_AND_SUBCLASSES = {
     'Beast Master',
     'Fey Wanderer',
     'Gloom Stalker',
+    'Hollow Warden',
     'Hunter'
   ],
   'Rogue': [
     'Arcane Trickster',
     'Assassin',
+    'Phantom',
     'Soulknife',
     'Thief'
   ],
@@ -72,19 +80,26 @@ const DND_CLASSES_AND_SUBCLASSES = {
     'Clockwork Sorcery',
     'Demonic Sorcery',
     'Draconic Sorcery',
+    'Shadow Sorcery',
     'Wild Magic Sorcery'
   ],
   'Warlock': [
     'Archfey Patron',
     'Celestial Patron',
     'Fiend Patron',
-    'Great Old One Patron'
+    'Great Old One Patron',
+    'Undead Patron',
+    'Vestige Patron'
   ],
   'Wizard': [
     'Abjurer',
+    'Conjurer',
     'Diviner',
+    'Enchanter',
     'Evoker',
-    'Illusionist'
+    'Illusionist',
+    'Necromancer',
+    'Transmuter'
   ]
 };
 

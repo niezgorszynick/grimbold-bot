@@ -94,7 +94,16 @@ function resolveOriginFeat(feat, choices, source, proficiencies) {
   const resolved = { name: feat.name, source };
   const featChoices = choices && typeof choices === 'object' ? choices : {};
 
-  if (data.grants.spells) {
+  // Book feats with spells (Arcane Artist, the Dragonmarks, ...): only the ability
+  // is chosen, unless the feat fixes it (Aberrant Dragonmark: Constitution).
+  if (data.grants.spells && !data.spellLists) {
+    if (data.grants.spells.chooseAbility) {
+      if (!SPELL_ABILITIES.includes(featChoices.spellAbility)) {
+        throw new Error(`Choose Intelligence, Wisdom or Charisma as the spellcasting ability for ${feat.name}.`);
+      }
+      resolved.spellAbility = featChoices.spellAbility;
+    }
+  } else if (data.grants.spells) {
     const spellList = feat.spellList || featChoices.spellList;
     if (!data.spellLists.includes(spellList)) {
       throw new Error(`Choose a spell list for ${feat.name}: ${data.spellLists.join(', ')}.`);
@@ -110,6 +119,11 @@ function resolveOriginFeat(feat, choices, source, proficiencies) {
     const tools = pickFrom(`tools for ${feat.name}`, featChoices.picks, count, categoryOptions(category));
     proficiencies.addTools(tools, `${feat.name} feat`, { allowDuplicates: false });
     resolved.tools = tools;
+  }
+  // Aberrant Anatomy: Perception (its Expertise is in the feat text).
+  if (data.grants.skills) {
+    proficiencies.addSkills(data.grants.skills, `${feat.name} feat`);
+    resolved.skills = data.grants.skills;
   }
   if (data.grants.skillOrToolChoices) {
     const allowed = [...SKILL_NAMES, ...TOOL_CATEGORIES.any];
@@ -177,10 +191,12 @@ function buildStartingCharacter(input) {
   let speciesOption = null;
   let speciesSpellAbility = null;
   if (speciesOptionRule) {
-    if (!speciesOptionRule.options.includes(request.speciesOption)) {
+    // A single option (Khoravar's Friends) needs no pick.
+    const pickedOption = speciesOptionRule.options.length === 1 && !request.speciesOption ? speciesOptionRule.options[0] : request.speciesOption;
+    if (!speciesOptionRule.options.includes(pickedOption)) {
       throw new Error(`Choose your ${speciesOptionRule.label}.`);
     }
-    speciesOption = request.speciesOption;
+    speciesOption = pickedOption;
     if (speciesOptionRule.spellAbilityChoice) {
       if (!SPELL_ABILITIES.includes(request.speciesSpellAbility)) {
         throw new Error(`Choose Intelligence, Wisdom or Charisma as the spellcasting ability for your ${speciesOptionRule.label}.`);
@@ -314,7 +330,9 @@ function buildStartingCharacter(input) {
     modifiers: abilities.modifiers,
     armorTraining: classData.armorTraining,
     classNames: [className],
-    armoredBonus: fightingStyles.reduce((sum, style) => sum + (featGrants(style).armoredAcBonus || 0), 0)
+    armoredBonus: fightingStyles.reduce((sum, style) => sum + (featGrants(style).armoredAcBonus || 0), 0),
+    bonus: speciesData.acBonus || 0,
+    bonusSource: species
   });
 
   const classFeatures = steps.flatMap(step =>
@@ -380,7 +398,10 @@ function buildStartingCharacter(input) {
     modifiers: abilities.modifiers,
     armorTraining: withFeatures.armorTraining,
     classNames: [className],
-    armoredBonus: fightingStyles.reduce((sum, style) => sum + (featGrants(style).armoredAcBonus || 0), 0)
+    armoredBonus: fightingStyles.reduce((sum, style) => sum + (featGrants(style).armoredAcBonus || 0), 0),
+    // Warforged: Integrated Protection.
+    bonus: speciesData.acBonus || 0,
+    bonusSource: species
   });
   withFeatures.armorClass = trainedArmor.ac;
   withFeatures.armorClassSource = trainedArmor.source;

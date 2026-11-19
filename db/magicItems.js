@@ -119,7 +119,7 @@ function buildView(character, sheetData, isAdmin) {
     // Who a healing potion can go to: the character and their party in a running adventure.
     potionTargets: items.some(item => item.healing) ? buffTargets(character.id) : [],
     attuned: items.filter(item => item.attuned).length,
-    attunementLimit: rules.ATTUNEMENT_LIMIT,
+    attunementLimit: rules.attunementLimit(owner),
     effects: {
       scores: Object.entries(totals.changes).map(([ability, change]) => ({
         ability, name: ABILITY_NAMES[ability], from: change.from, to: change.to, items: change.items

@@ -6,7 +6,28 @@ const { ALL_CLASSES } = require('./classes');
 
 const CLASS_NAMES = Object.keys(ALL_CLASSES);
 // Subclasses that cast from another class's list.
-const SUBCLASS_SPELL_LISTS = { 'Eldritch Knight': 'Wizard', 'Arcane Trickster': 'Wizard' };
+const SUBCLASS_SPELL_LISTS = { 'Eldritch Knight': 'Wizard', 'Arcane Trickster': 'Wizard', 'Warrior of the Mystic Arts': 'Sorcerer' };
+
+// Class lists that spells.md doesn't carry. The Artificer list of Eberron: Forge
+// of the Artificer isn't in the book export, so this is the Tasha's Cauldron list
+// (spells missing from spells.md are skipped): check it against the book.
+const EXTRA_CLASS_SPELLS = {
+  Artificer: [
+    'Acid Splash', 'Booming Blade', 'Create Bonfire', 'Dancing Lights', 'Fire Bolt', 'Frostbite', 'Green-Flame Blade', 'Guidance', 'Light',
+    'Lightning Lure', 'Mage Hand', 'Magic Stone', 'Mending', 'Message', 'Poison Spray', 'Prestidigitation', 'Ray of Frost', 'Resistance',
+    'Shocking Grasp', 'Spare the Dying', 'Sword Burst', 'Thorn Whip', 'Thunderclap',
+    'Absorb Elements', 'Alarm', 'Catapult', 'Cure Wounds', 'Detect Magic', 'Disguise Self', 'Expeditious Retreat', 'Faerie Fire', 'False Life',
+    'Feather Fall', 'Grease', 'Identify', 'Jump', 'Longstrider', 'Purify Food and Drink', 'Sanctuary', 'Snare', "Tasha's Caustic Brew",
+    'Aid', 'Alter Self', 'Arcane Lock', 'Blur', 'Continual Flame', 'Darkvision', 'Enhance Ability', 'Enlarge/Reduce', 'Heat Metal',
+    'Homunculus Servant', 'Invisibility', 'Lesser Restoration', 'Levitate', 'Magic Mouth', 'Magic Weapon', 'Protection from Poison',
+    'Pyrotechnics', 'Rope Trick', 'See Invisibility', 'Skywrite', 'Spider Climb', 'Web',
+    'Blink', 'Catnap', 'Create Food and Water', 'Dispel Magic', 'Elemental Weapon', 'Flame Arrows', 'Fly', 'Glyph of Warding', 'Haste',
+    'Intellect Fortress', 'Protection from Energy', 'Revivify', 'Tiny Servant', 'Water Breathing', 'Water Walk',
+    'Arcane Eye', 'Elemental Bane', 'Fabricate', 'Freedom of Movement', "Leomund's Secret Chest", "Mordenkainen's Faithful Hound",
+    "Mordenkainen's Private Sanctum", "Otiluke's Resilient Sphere", 'Stone Shape', 'Stoneskin', 'Summon Construct',
+    'Animate Objects', "Bigby's Hand", 'Creation', 'Greater Restoration', 'Skill Empowerment', 'Transmute Rock', 'Wall of Stone'
+  ]
+};
 
 function parseLevel(text) {
   if (/cantrip/i.test(text)) return 0;
@@ -62,6 +83,9 @@ function extractParagraph(description, label) {
 function normalizeSpell(entry) {
   const fields = entry.fields || {};
   const { classes, other } = parseClasses(fields.classes);
+  for (const [className, names] of Object.entries(EXTRA_CLASS_SPELLS)) {
+    if (names.includes(entry.name) && !classes.includes(className)) classes.push(className);
+  }
   const higher = extractParagraph(entry.description || '', 'Using a Higher-Level Spell Slot');
   const upgrade = extractParagraph(higher.description, 'Cantrip Upgrade');
   const castingTime = fields.castingTime || '';

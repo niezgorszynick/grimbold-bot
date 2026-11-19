@@ -45,7 +45,7 @@ const CHANGE_RULES = {
   Cleric: 'longRestAll', Druid: 'longRestAll', Wizard: 'longRestAll', Artificer: 'longRestAll',
   Paladin: 'longRestOne', Ranger: 'longRestOne',
   Bard: 'levelUpOne', Sorcerer: 'levelUpOne', Warlock: 'levelUpOne',
-  'Eldritch Knight': 'levelUpOne', 'Arcane Trickster': 'levelUpOne'
+  'Eldritch Knight': 'levelUpOne', 'Arcane Trickster': 'levelUpOne', 'Warrior of the Mystic Arts': 'levelUpOne'
 };
 const WIZARD_STARTING_SPELLBOOK = 6;
 const WIZARD_SPELLS_PER_LEVEL = 2;
@@ -62,7 +62,10 @@ const SPECIES_SPELLS = {
   'Gnome:Rock Gnome': { spells: [[1, 'Mending'], [1, 'Prestidigitation']] },
   'Tiefling:Abyssal': { spells: [[1, 'Poison Spray'], [3, 'Ray of Sickness'], [5, 'Hold Person']] },
   'Tiefling:Chthonic': { spells: [[1, 'Chill Touch'], [3, 'False Life'], [5, 'Ray of Enfeeblement']] },
-  'Tiefling:Infernal': { spells: [[1, 'Fire Bolt'], [3, 'Hellish Rebuke'], [5, 'Darkness']] }
+  'Tiefling:Infernal': { spells: [[1, 'Fire Bolt'], [3, 'Hellish Rebuke'], [5, 'Darkness']] },
+  // Eberron: Forge of the Artificer; Ravenloft: The Horrors Within
+  'Khoravar:Friends': { spells: [[1, 'Friends']] },
+  'Hexblood:Disguise Self and Hex': { spells: [[1, 'Disguise Self'], [1, 'Hex']] }
 };
 
 const emptyState = () => ({ classes: {}, feats: {}, changes: {}, concentration: null, freeCastsUsed: {} });
@@ -157,9 +160,21 @@ function getSpellSources(character) {
     // Fey-Touched, Shadow-Touched, Telepathic, Telekinetic, Ritual Caster, and
     // the Path of Villainy feats (Death Knight spells cost a Death Point instead
     // of a slot; Lich Ascension casts Fear free WIS/INT/CHA-modifier times).
+    // Book feats (rules/bookFeats.js): spells from character level 3 (later), by
+    // spell slot level (the Adepts), cantrips picked from a class list, and the
+    // Dragonmarks' Spells of the Mark (prepared with Potent Dragonmark).
     const spells = featGrants(feat).spells;
     if (!spells || sources.some(source => source.key === name)) continue;
     const choose = spells.choose || null;
+    const cantripChoice = spells.cantripChoice || null;
+    const maxSlot = Math.max(0, ...sources.filter(source => source.kind === 'class').map(source => source.maxSpellLevel || 0));
+    const later = (spells.later || []).filter(([level]) => totalLevel >= level).flatMap(([, names]) => names);
+    const bySlot = (spells.bySlotLevel || []).filter(([level]) => maxSlot >= level).map(([, spell]) => spell);
+    const ownsPotent = collectCharacterFeats(sheetData).some(other => featName(other) === 'Potent Dragonmark');
+    const markPrepared = ownsPotent && spells.markList
+      ? spells.markList.filter(spell => ((findSpell(spell) || {}).level || 0) <= maxSlot)
+      : [];
+    const pickList = (choose && choose.list) || (cantripChoice && cantripChoice.lists.length === 1 ? cantripChoice.lists[0] : 'any');
     const ability = spells.ability || feat.spellAbility || feat.ability || 'int';
     const numbers = castingNumbers(ability);
     const costly = spells.cost ? (spells.fixed || []) : [];
@@ -167,16 +182,18 @@ function getSpellSources(character) {
       kind: 'feat',
       key: name,
       label: name,
-      list: 'any',
+      list: pickList,
       filter: choose ? { schools: choose.schools || null, ritual: Boolean(choose.ritual) } : null,
       ...numbers,
       // Undead Grasp: another cantrip when Chill Touch was already known.
-      alwaysPrepared: [...(feat.cantrip ? [feat.cantrip] : (spells.cantrips || [])), ...(spells.fixed || [])],
-      cantripLimit: 0,
+      alwaysPrepared: [...new Set([...(feat.cantrip ? [feat.cantrip] : (spells.cantrips || [])), ...(spells.fixed || []), ...later, ...bySlot, ...markPrepared])],
+      cantripLimit: cantripChoice ? cantripChoice.count : 0,
       preparedLimit: choose ? (choose.count === 'proficiency' ? pb : choose.count) : 0,
       maxSpellLevel: choose ? choose.level : 0,
       minSpellLevel: choose ? choose.level : 0,
-      changeRule: 'never',
+      // Arcane Warrior: one cantrip replaced on each level.
+      changeRule: name === 'Arcane Warrior' ? 'featLevelUp' : 'never',
+      ...(spells.markList ? { markList: spells.markList } : {}),
       freeEach: spells.freeEach === 'abilityMod' ? Math.max(1, numbers.attackBonus - pb) : (spells.freeEach || 0),
       ...(costly.length ? {
         freeUsesBySpell: Object.fromEntries(costly.map(spell => [spell, 'atWill'])),
@@ -217,6 +234,31 @@ function getSpellSources(character) {
     }
     if (row.subclassName === 'Warrior of the Elements') {
       sources.push({ kind: 'subclass', key: 'Manipulate Elements', label: 'Manipulate Elements (Warrior of the Elements)', ...castingNumbers('wis'), alwaysPrepared: ['Elementalism'] });
+    }
+  }
+
+  // Arcana Unleashed: Arcana Domain (Student of Arcana: two Wizard cantrips, one
+  // swapped on each Cleric level; Magical Mastery at 17: one Wizard spell each of
+  // levels 6–9, always prepared, one replaced on a Cleric level) and the Arcane
+  // Archer's Druidcraft or Prestidigitation, cast with Intelligence.
+  for (const row of classes) {
+    if (row.subclassName === 'Arcana Domain' && row.level >= 3) {
+      sources.push({
+        kind: 'feat', key: 'Student of Arcana', label: 'Student of Arcana (Wizard cantrips)', list: 'Wizard', ...castingNumbers('wis'),
+        cantripLimit: 2, preparedLimit: 0, maxSpellLevel: 0, changeRule: 'classLevelCantrip', swapClass: 'Cleric'
+      });
+      if (row.level >= 17) {
+        sources.push({
+          kind: 'feat', key: 'Magical Mastery', label: 'Magical Mastery (Wizard spells, one each of levels 6–9)', list: 'Wizard', ...castingNumbers('wis'),
+          cantripLimit: 0, preparedLimit: 4, minSpellLevel: 6, maxSpellLevel: 9, changeRule: 'featLevelUp'
+        });
+      }
+    }
+    if (row.subclassName === 'Arcane Archer' && row.level >= 3) {
+      const cantrip = (((sheetData.featureChoices || {})['Arcane Archer:3:Arcane Archer Lore (Cantrip)']) || {}).value;
+      if (cantrip) {
+        sources.push({ kind: 'subclass', key: 'Arcane Archer Lore', label: 'Arcane Archer Lore', ...castingNumbers('int'), alwaysPrepared: [cantrip] });
+      }
     }
   }
 
@@ -272,6 +314,11 @@ function getSpellSources(character) {
       alwaysPrepared: data.spells.filter(([level]) => totalLevel >= level).map(([, spell]) => spell),
       freeUses: data.freeUses === 'proficiency' ? pb : 1
     });
+  }
+  // Spells of the Mark (Dragonmark feats) join every class spell list.
+  const markSpells = [...new Set(sources.flatMap(source => source.markList || []))];
+  if (markSpells.length) {
+    for (const source of sources) if (source.kind === 'class') source.extraSpells = markSpells;
   }
   // Magic items: e.g. Robe of the Archmagi for every source, Rod of the Pact
   // Keeper for Warlock spells only.
@@ -340,7 +387,7 @@ function requireSpell(name, source, { cantrip }, catalog) {
   const spell = findSpell(name, catalog);
   if (!spell) throw new Error(`Unknown spell "${name}".`);
   // 'any' means any class's spell list (feats, Pact of the Tome).
-  if (source.list !== 'any' && !spell.classes.includes(source.list)) {
+  if (source.list !== 'any' && !spell.classes.includes(source.list) && !(source.extraSpells || []).includes(spell.name)) {
     throw new Error(`${spell.name} is not on the ${source.list} spell list.`);
   }
   if (cantrip && spell.level !== 0) throw new Error(`${spell.name} is not a cantrip.`);

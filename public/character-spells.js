@@ -414,7 +414,7 @@
     // High Elf's Detect Magic) aren't picked: they're on the sheet already.
     const elsewhere = source.preparedElsewhere || [];
     const fixedNames = [...(source.alwaysPrepared || []), ...elsewhere.map(entry => entry.name)];
-    const all = Object.values(catalog).filter(spell => (source.list === 'any' || spell.classes.includes(source.list)) &&
+    const all = Object.values(catalog).filter(spell => (source.list === 'any' || spell.classes.includes(source.list) || (source.extraSpells || []).includes(spell.name)) &&
       !fixedNames.includes(spell.name));
     const pending = draft && draft.key === source.key ? draft : null;
     const fitsFilter = spell => (!filter.ritual || spell.ritual) && (!filter.schools || filter.schools.includes(spell.school));

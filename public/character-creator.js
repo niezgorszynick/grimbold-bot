@@ -322,8 +322,8 @@
       const parts = [];
       const getters = {};
       if (!feat) return { element: el('div'), value: () => ({}) };
-      if (feat.grants.spells) {
-        if (!fixedSpellList) {
+      if (feat.grants.spells && (feat.spellLists || feat.grants.spells.chooseAbility)) {
+        if (!fixedSpellList && feat.spellLists) {
           const list = selectBox(feat.spellLists, { placeholder: '-- Spell list --', value: previous.spellList });
           parts.push(field('Spell list', list));
           getters.spellList = () => list.value;
@@ -429,7 +429,7 @@
       }
       const option = R.speciesOptions[name];
       if (option) {
-        widgets.speciesOption = selectBox(option.options, { placeholder: '-- Choose --', value: previous.option });
+        widgets.speciesOption = selectBox(option.options, { placeholder: '-- Choose --', value: previous.option || (option.options.length === 1 ? option.options[0] : undefined) });
         parts.push(field(option.label, widgets.speciesOption));
         if (option.spellAbilityChoice) {
           widgets.speciesAbility = selectBox(SPELL_ABILITIES, { placeholder: '-- Ability --', value: previous.ability, labels: a => ABILITY_NAMES[a] });

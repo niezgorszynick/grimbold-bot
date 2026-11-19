@@ -38,7 +38,25 @@ const SUBCLASS_SPELLS = {
   'Draconic Sorcery': [[3, ['Alter Self', 'Chromatic Orb', 'Command', "Dragon's Breath"]], [5, ['Fear', 'Fly']], [7, ['Arcane Eye', 'Charm Monster']], [9, ['Legend Lore', 'Summon Dragon']]],
   // Ranger
   'Fey Wanderer': [[3, ['Charm Person']], [5, ['Misty Step']], [9, ['Summon Fey']], [13, ['Dimension Door']], [17, ['Mislead']]],
-  'Gloom Stalker': [[3, ['Disguise Self']], [5, ['Rope Trick']], [9, ['Fear']], [13, ['Greater Invisibility']], [17, ['Seeming']]]
+  'Gloom Stalker': [[3, ['Disguise Self']], [5, ['Rope Trick']], [9, ['Fear']], [13, ['Greater Invisibility']], [17, ['Seeming']]],
+  // Arcana Unleashed (Arcana Domain; Necromancer Undead Thralls, Transmuter
+  // Wondrous Alteration and Shape-Shifter) and Ravenloft: The Horrors Within.
+  'Arcana Domain': [[3, ['Detect Magic', 'Magic Missile', 'Magic Weapon', "Nystul's Magic Aura"]], [5, ['Counterspell', 'Dispel Magic']], [7, ['Arcane Eye', "Leomund's Secret Chest"]], [9, ["Bigby's Hand", 'Teleportation Circle']]],
+  'Grave Domain': [[3, ['Detect Evil and Good', 'False Life', 'Gentle Repose', 'Ray of Enfeeblement', 'Spare the Dying']], [5, ['Revivify', 'Vampiric Touch']], [7, ['Blight', 'Death Ward']], [9, ['Dispel Evil and Good', 'Raise Dead']]],
+  // Channeler: Guidance; Spiritual Manifestation: Spirit Guardians.
+  'College of Spirits': [[3, ['Guidance']], [6, ['Spirit Guardians']]],
+  'Hollow Warden': [[3, ['Wrathful Smite']], [5, ['Alter Self']], [9, ['Phantom Steed']], [13, ['Dominate Beast']], [17, ['Steel Wind Strike']]],
+  'Shadow Sorcery': [[3, ['Bane', 'Darkness', 'Inflict Wounds', 'Pass without Trace']], [5, ['Hunger of Hadar', 'Nondetection']], [7, ['Greater Invisibility', 'Phantasmal Killer']], [9, ['Contagion', 'Creation']]],
+  'Undead Patron': [[3, ['Bane', 'Blindness/Deafness', 'Phantasmal Force', 'Ray of Sickness']], [5, ['Speak with Dead', 'Summon Undead']], [7, ['Greater Invisibility', 'Phantasmal Killer']], [9, ['Antilife Shell', 'Cloudkill']]],
+  Necromancer: [[6, ['Animate Dead']]],
+  Transmuter: [[3, ['Alter Self']], [10, ['Polymorph']]],
+  // Artificer (Eberron: Forge of the Artificer; Reanimator: Ravenloft: The Horrors Within)
+  Alchemist: [[3, ['Healing Word', 'Ray of Sickness']], [5, ['Flaming Sphere', "Melf's Acid Arrow"]], [9, ['Gaseous Form', 'Mass Healing Word']], [13, ['Death Ward', 'Vitriolic Sphere']], [17, ['Cloudkill', 'Raise Dead']]],
+  Armorer: [[3, ['Magic Missile', 'Thunderwave']], [5, ['Mirror Image', 'Shatter']], [9, ['Hypnotic Pattern', 'Lightning Bolt']], [13, ['Fire Shield', 'Greater Invisibility']], [17, ['Passwall', 'Wall of Force']]],
+  Artillerist: [[3, ['Shield', 'Thunderwave']], [5, ['Scorching Ray', 'Shatter']], [9, ['Fireball', 'Wind Wall']], [13, ['Ice Storm', 'Wall of Fire']], [17, ['Cone of Cold', 'Wall of Force']]],
+  'Battle Smith': [[3, ['Heroism', 'Shield']], [5, ['Shining Smite', 'Warding Bond']], [9, ['Aura of Vitality', 'Conjure Barrage']], [13, ['Aura of Purity', 'Fire Shield']], [17, ['Banishing Smite', 'Mass Cure Wounds']]],
+  Cartographer: [[3, ['Faerie Fire', 'Guiding Bolt', 'Healing Word']], [5, ['Locate Object', 'Mind Spike']], [9, ['Call Lightning', 'Clairvoyance']], [13, ['Banishment', 'Locate Creature']], [17, ['Scrying', 'Teleportation Circle']]],
+  Reanimator: [[3, ['False Life', 'Spare the Dying', 'Witch Bolt']], [5, ['Blindness/Deafness', 'Enhance Ability']], [9, ['Animate Dead', 'Lightning Bolt']], [13, ['Blight', 'Death Ward']], [17, ['Antilife Shell', 'Raise Dead']]]
 };
 
 // Circle of the Land: the land chosen with the "Circle Spells (Land)" feature choice.
@@ -50,12 +68,21 @@ const LAND_SPELLS = {
   Tropical: [[3, ['Acid Splash', 'Ray of Sickness', 'Web']], [5, ['Stinking Cloud']], [7, ['Polymorph']], [9, ['Insect Plague']]]
 };
 
+// Vestige Patron (Arcana Unleashed): the Cleric domain chosen with "Vestige
+// Spells" gives its Domain Spells at the same Warlock levels.
+const VESTIGE_CHOICE_ID = 'Vestige Patron:3:Vestige Spells';
+const VESTIGE_DOMAINS = ['Life Domain', 'Light Domain', 'Trickery Domain', 'War Domain'];
+
 // The always-prepared spells of one class row: { className, subclassName, level }.
 function subclassSpellsFor(row, sheetData) {
   let table = SUBCLASS_SPELLS[row.subclassName];
   if (row.subclassName === 'Circle of the Land') {
     const land = (((sheetData || {}).featureChoices || {})[LAND_CHOICE_ID] || {}).value;
     table = LAND_SPELLS[land];
+  }
+  if (row.subclassName === 'Vestige Patron') {
+    const domain = (((sheetData || {}).featureChoices || {})[VESTIGE_CHOICE_ID] || {}).value;
+    table = VESTIGE_DOMAINS.includes(`${domain} Domain`) ? SUBCLASS_SPELLS[`${domain} Domain`] : null;
   }
   if (!table) return [];
   return table.filter(([level]) => row.level >= level).flatMap(([, spells]) => spells);

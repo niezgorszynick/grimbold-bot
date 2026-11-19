@@ -239,6 +239,8 @@ function isProficient(weapon, proficiencies) {
   return proficiencies.some(entry => {
     const text = lower(entry);
     if (text === `${lower(weapon.category)} weapons`) return true;
+    // "Martial Ranged weapons" (Artillerist), "Simple Melee weapons", ...
+    if (text === `${lower(weapon.category)} ${lower(weapon.kind)} weapons`) return true;
     if (text === lower(weapon.name) || text === `${lower(weapon.name)}s`) return true;
     if (weapon.category === 'Martial' && text.startsWith('martial weapons with the')) {
       return (/finesse/.test(text) && weapon.properties.includes('Finesse')) || (/light/.test(text) && weapon.properties.includes('Light'));
@@ -716,6 +718,7 @@ function validateAcAdjustment(value) {
 }
 
 module.exports = {
+  isProficient,
   PACT_WEAPONS,
   PACT_DAMAGE_TYPES,
   validatePactWeapon,

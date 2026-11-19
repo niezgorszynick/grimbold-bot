@@ -27,6 +27,9 @@ const dieAtLevel = steps => level => steps.filter(([at]) => level >= at).reduce(
 const PSIONIC_DICE = byLevel([[3, 4], [5, 6], [9, 8], [13, 10], [17, 12]]);
 const PSIONIC_DIE = dieAtLevel([[3, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
 const MARTIAL_ARTS_DIE = level => `d${table('Monk', 'martialArtsDie')(level)}`;
+const ARCANE_SHOT_DIE = dieAtLevel([[3, 'd6'], [10, 'd8'], [15, 'd10'], [18, 'd12']]);
+// Phantom: half the Sneak Attack dice (round up).
+const WAIL_DICE = level => Math.ceil(table('Rogue', 'sneakAttackDice')(level) / 2);
 
 // className (and subclass) → features. max({ level, mods, pb }) gives the uses.
 const RESOURCES = [
@@ -40,10 +43,11 @@ const RESOURCES = [
     rolls: ({ level, mods, subclass }) => [
       { key: 'spark', label: 'Divine Spark (heal, Necrotic or Radiant)', formula: `${level >= 18 ? 4 : level >= 13 ? 3 : level >= 7 ? 2 : 1}d8${signed(mods.wis)}` },
       ...(level >= 5 ? [{ key: 'sear', label: 'Sear Undead (Radiant)', formula: `${Math.max(1, mods.wis)}d8` }] : []),
-      ...(subclass === 'Light Domain' ? [{ key: 'dawn', label: 'Radiance of the Dawn (Radiant)', formula: `2d10+${level}` }] : [])
+      ...(subclass === 'Light Domain' ? [{ key: 'dawn', label: 'Radiance of the Dawn (Radiant)', formula: `2d10+${level}` }] : []),
+      ...(subclass === 'Arcana Domain' ? [{ key: 'fortifying', label: 'Fortifying Spell: temporary HP', formula: `2d8+${level}` }, { key: 'tenacious', label: 'Tenacious Spell: subtract from the save', formula: '1d6' }] : [])
     ],
     text: ({ level, subclass }) => `Divine Spark (${level >= 18 ? 4 : level >= 13 ? 3 : level >= 7 ? 2 : 1}d8 + WIS: heal, or Necrotic/Radiant damage with a CON save), Turn Undead` +
-      ({ 'Life Domain': ', Preserve Life', 'Light Domain': ', Radiance of the Dawn', 'Pestilence Domain': ', Plague Blessing (5-ft. Emanation, CON save or 1 Exhaustion level)', 'Trickery Domain': ', Invoke Duplicity', 'War Domain': ', Guided Strike (+10 to a missed attack roll)' }[subclass] || '') + '. Save DC = your Cleric spell save DC.' },
+      ({ 'Life Domain': ', Preserve Life', 'Light Domain': ', Radiance of the Dawn', 'Pestilence Domain': ', Plague Blessing (5-ft. Emanation, CON save or 1 Exhaustion level)', 'Arcana Domain': ', Modify Magic (Fortifying Spell: 2d8 + Cleric level temporary HP; Tenacious Spell: a target that saved subtracts 1d6 from its first save against the spell)', 'Grave Domain': ', Path to the Grave (Bonus Action: a creature within 30 ft. has Disadvantage on attacks and saves; end it on a hit for + Cleric level Necrotic or Radiant damage)', 'Trickery Domain': ', Invoke Duplicity', 'War Domain': ', Guided Strike (+10 to a missed attack roll)' }[subclass] || '') + '. Save DC = your Cleric spell save DC.' },
   { key: 'warPriest', name: 'War Priest', subclass: 'War Domain', minLevel: 3, max: modMin1('wis'), recovery: 'short',
     text: () => 'Bonus Action: make one attack with a weapon or an Unarmed Strike.' },
   { key: 'wardingFlare', name: 'Warding Flare', subclass: 'Light Domain', minLevel: 3, max: modMin1('wis'), recovery: 'long',
@@ -163,7 +167,121 @@ const RESOURCES = [
     rolls: () => [{ key: 'die', label: "Dark One's Own Luck", formula: '1d10' }],
     text: () => 'Add a d10 to an ability check or saving throw.' },
   { key: 'arcaneRecovery', name: 'Arcane Recovery', className: 'Wizard', minLevel: 1, max: () => 1, recovery: 'long',
-    text: ({ level }) => `After a Short Rest, recover spell slots totalling up to ${Math.ceil(level / 2)} levels (none of level 6+).` }
+    text: ({ level }) => `After a Short Rest, recover spell slots totalling up to ${Math.ceil(level / 2)} levels (none of level 6+).` },
+  // Arcana Unleashed
+  { key: 'dispellingRecovery', name: 'Dispelling Recovery', subclass: 'Arcana Domain', minLevel: 6, max: () => 1, recovery: 'short',
+    text: () => 'Right after a spell with a slot heals a creature or ends a condition: cast Dispel Magic without a slot. A Channel Divinity use restores it.' },
+  { key: 'arcaneShot', name: 'Arcane Shot', subclass: 'Arcane Archer', minLevel: 3, max: modMin1('int'), recovery: 'short',
+    rolls: ({ level }) => {
+      const die = ARCANE_SHOT_DIE(level);
+      return [{ key: 'one', label: `Arcane Shot, one ${die}`, formula: `1${die}` }, { key: 'two', label: `Arcane Shot, two ${die}`, formula: `2${die}` }];
+    },
+    text: ({ level, mods, pb }) => `Once per turn, on a hit with a weapon with the Ammunition property: apply an Arcane Shot option you know (${byLevel([[3, 2], [7, 3], [10, 4], [15, 5], [18, 6]])(level)} known). Arcane Shot Die ${ARCANE_SHOT_DIE(level)}; save DC ${8 + mods.int + pb}.${level >= 10 ? ' Ever-Ready Shot: one use back when you roll Initiative.' : ''}` },
+  { key: 'magicalAmmunition', name: 'Magical Ammunition', subclass: 'Arcane Archer', minLevel: 7, max: () => 1, recovery: 'short',
+    text: () => 'Magic action: Darkening (15-ft. shadows, -5 Perception), Unlocking (opens one lock nearby) or Vine (120-ft. climbable vine) ammunition. A Second Wind use restores it.' },
+  { key: 'divinePower', name: 'Divine Power (Vestige)', subclass: 'Vestige Patron', minLevel: 3, max: () => 1,
+    recovery: ({ level }) => (level >= 6 ? 'short' : 'long'),
+    rolls: ({ mods }) => [{ key: 'heal', label: 'Healing Touch (Celestial vestige)', formula: `2d8${signed(mods.cha)}` }],
+    text: ({ level }) => "The vestige's Bonus Action: Cursed Invocation (Undead), Fiendish Swap (Fiend) or Healing Touch (Celestial)." + (level >= 6 ? ' Also back with Magical Cunning.' : '') },
+  { key: 'vestigeRecovery', name: 'Vestige Recovery', subclass: 'Vestige Patron', minLevel: 10, max: () => 1, recovery: 'long',
+    text: () => 'Reaction and a Pact Magic slot when the vestige would drop to 0 HP: it returns to full HP and teleports up to 30 ft.' },
+  { key: 'semblanceOfLife', name: 'Semblance of Life', subclass: 'Vestige Patron', minLevel: 14, max: () => 1, recovery: 'long',
+    text: ({ level }) => `Magic action: the vestige becomes a Celestial, Fiendish or Undead Spirit (spell level ${Math.min(9, Math.floor(level / 2))}) for 1 hour.` },
+  { key: 'benignTransposition', name: 'Benign Transposition', subclass: 'Conjurer', minLevel: 3, max: modMin1('int'), recovery: 'long',
+    text: ({ level }) => `Bonus Action: teleport up to ${level >= 6 ? 60 : 30} ft., or swap places with a willing Medium or smaller creature.${level >= 6 ? ' A level 3+ spell slot restores one use.' : ''}` },
+  { key: 'splinteredSummons', name: 'Splintered Summons', subclass: 'Conjurer', minLevel: 14, max: () => 1, recovery: 'long',
+    text: () => 'A Conjuration spell with a slot that summons a spirit summons two, each with half the HP. A level 5+ slot restores it.' },
+  { key: 'hypnoticPresence', name: 'Hypnotic Presence', subclass: 'Enchanter', minLevel: 3, max: modMin1('int'), recovery: 'long',
+    text: () => 'Magic action: a creature within 10 ft. makes a WIS save or is Charmed (Incapacitated, Speed 0) for 1 minute, until it is more than 10 ft. away or takes damage.' },
+  // "a number of times equal to your Intelligence modifier" (no minimum in the book).
+  { key: 'splitEnchantment', name: 'Split Enchantment', subclass: 'Enchanter', minLevel: 6, max: ({ mods }) => Math.max(0, mods.int), recovery: 'long',
+    text: () => 'An Enchantment spell with a slot that targets more creatures when upcast counts as one level higher.' },
+  { key: 'instinctiveCharm', name: 'Instinctive Charm', subclass: 'Enchanter', minLevel: 10, max: () => 1, recovery: 'long',
+    text: () => 'Reaction when a creature within 30 ft. hits you: WIS save or the attack misses and hits another creature in range. Casting an Enchantment spell with a slot restores it.' },
+  { key: 'undeadThralls', name: 'Undead Thralls: Animate Dead', subclass: 'Necromancer', minLevel: 6, max: () => 1, recovery: 'long',
+    text: () => 'Cast Animate Dead without a spell slot (one level higher if you like).' },
+  { key: 'bolsterUndead', name: 'Bolster Undead', subclass: 'Necromancer', minLevel: 14, max: () => 1, recovery: 'long',
+    text: ({ level }) => `Bonus Action: your Undead within 60 ft. gain ${level} temporary HP.` },
+  { key: 'wondrousAlteration', name: 'Wondrous Alteration: Alter Self', subclass: 'Transmuter', minLevel: 3, max: () => 1, recovery: 'long',
+    text: () => 'Cast Alter Self without a spell slot, with an extra benefit for each option.' },
+  { key: 'empoweredTransmutation', name: 'Empowered Transmutation', subclass: 'Transmuter', minLevel: 6, max: modMin1('int'), recovery: 'long',
+    text: () => 'A Transmutation spell with a slot that makes no attack roll and forces no save counts as one level higher.' },
+  { key: 'shapeShifter', name: 'Shape-Shifter: Polymorph', subclass: 'Transmuter', minLevel: 10, max: () => 1, recovery: 'long',
+    text: () => 'Cast Polymorph without a spell slot; on yourself you keep your mind, INT, WIS, CHA, proficiencies and features (once per Long Rest).' },
+  // Ravenloft: The Horrors Within
+  { key: 'spiritualManifestation', name: 'Spiritual Manifestation: Spirit Guardians', subclass: 'College of Spirits', minLevel: 6, max: () => 1, recovery: 'long',
+    rolls: () => [{ key: 'power', label: 'Power from Beyond', formula: '1d6' }],
+    text: () => 'Cast Spirit Guardians without a spell slot. Once per Short Rest, you and allies in it have Half Cover.' },
+  { key: 'sentinelAtDeathsDoor', name: "Sentinel at Death's Door", subclass: 'Grave Domain', minLevel: 6, max: modMin1('wis'), recovery: 'long',
+    text: () => "Reaction when you or a Bloodied creature within 60 ft. is hit: halve the damage; a Critical Hit's extra effects are canceled." },
+  { key: 'keeperOfSouls', name: 'Keeper of Souls', subclass: 'Grave Domain', minLevel: 17, max: () => 1, recovery: 'short',
+    text: ({ level }) => `When an enemy dies within 60 ft.: you or a creature within 60 ft. regains ${2 * level} HP. A level 6+ slot restores it.` },
+  { key: 'persistentWrath', name: 'Persistent Wrath', subclass: 'Hollow Warden', minLevel: 15, max: () => 1, recovery: 'long',
+    text: ({ level }) => `Dropping to 0 HP while transformed: your HP become ${2 * level} instead. A level 4+ slot restores it.` },
+  { key: 'wailsFromTheGrave', name: 'Wails from the Grave', subclass: 'Phantom', minLevel: 3, max: modMin1('dex'), recovery: 'long',
+    rolls: ({ level }) => [{ key: 'wail', label: 'Wails from the Grave (Necrotic)', formula: `${WAIL_DICE(level)}d6` }],
+    text: ({ level }) => `Right after Sneak Attack: a second creature within 30 ft. of the first takes ${WAIL_DICE(level)}d6 Necrotic.${level >= 9 ? ` Soul trinkets: up to ${level >= 17 ? 4 : level >= 13 ? 3 : 2}; destroy one for a free use.` : ''}${level >= 17 ? " Death's Lament: both creatures take it." : ''}` },
+  { key: 'voiceOfDeath', name: 'Voice of Death: Speak with Dead', subclass: 'Phantom', minLevel: 9, max: () => 1, recovery: 'short',
+    text: () => 'Cast Speak with Dead without a slot or components (DEX), on a corpse or one of your soul trinkets.' },
+  { key: 'ghostWalk', name: 'Ghost Walk', subclass: 'Phantom', minLevel: 13, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action, 10 minutes: Fly 10 ft. (hover), attacks against you have Disadvantage, move through creatures and objects. Destroying a soul trinket restores it.' },
+  { key: 'strengthOfTheGrave', name: 'Strength of the Grave', subclass: 'Shadow Sorcery', minLevel: 3, max: () => 1, recovery: 'long',
+    text: ({ level, mods }) => `Dropping to 0 HP (not killed outright): CHA save, DC 5 + the damage; on a success your HP become ${Math.max(0, mods.cha + level)}.` },
+  { key: 'umbralForm', name: 'Umbral Form', subclass: 'Shadow Sorcery', minLevel: 18, max: () => 1, recovery: 'long',
+    text: () => 'With Innate Sorcery: move through creatures and objects, Resistance to all damage but Force and Radiant. 6 Sorcery Points restore it.' },
+  { key: 'formOfDread', name: 'Form of Dread', subclass: 'Undead Patron', minLevel: 3, max: modMin1('cha'), recovery: 'long',
+    rolls: ({ level }) => [{ key: 'thp', label: 'Facsimile of Life: temporary HP', formula: `1d10+${level}` }],
+    text: ({ level }) => `Bonus Action, 1 minute: 1d10 + ${level} temporary HP, immune to Frightened; once per turn a hit forces a WIS save or Frightened.${level >= 14 ? ' Superior Dread: Resistance to Bludgeoning, Piercing and Slashing, Fly Speed, move through creatures and objects.' : ''}` },
+  { key: 'unholyResuscitation', name: 'Unholy Resuscitation', subclass: 'Undead Patron', minLevel: 10, max: () => 1, recovery: 'short',
+    rolls: ({ mods }) => [{ key: 'burst', label: 'Unholy Resuscitation (Necrotic, CON save)', formula: `2d10${signed(mods.cha)}` }],
+    text: ({ level }) => `Dropping to 0 HP (not killed outright): creatures of your choice within 30 ft. take 2d10 + CHA Necrotic (CON save for half); your HP become ${2 * level} and you gain 1 Exhaustion level.` },
+  // Artificer (Eberron: Forge of the Artificer; Reanimator from Ravenloft: The Horrors Within)
+  { key: 'tinkersMagic', name: "Tinker's Magic", className: 'Artificer', minLevel: 1, max: modMin1('int'), recovery: 'long',
+    text: () => "Magic action with Tinker's Tools: create a mundane item from the list (rope, torch, crowbar, caltrops, ...) within 5 ft. It vanishes at your next Long Rest." },
+  // Level 14 Refreshed Genius: one use back on a Short Rest; level 20 Magical Guidance: all of them (while attuned to a magic item).
+  { key: 'flashOfGenius', name: 'Flash of Genius', className: 'Artificer', minLevel: 7, max: modMin1('int'),
+    recovery: ({ level }) => (level >= 20 ? 'short' : level >= 14 ? 'shortOne' : 'long'),
+    text: ({ mods, level }) => `Reaction when you or a creature within 30 ft. fails an ability check or saving throw: add +${Math.max(1, mods.int)} to the roll.` +
+      (level >= 20 ? ' All uses back on a Short Rest while you are attuned to a magic item.' : level >= 14 ? ' One use back on a Short Rest.' : '') },
+  { key: 'experimentalElixir', name: 'Experimental Elixirs', subclass: 'Alchemist', minLevel: 3, max: ({ level }) => byLevel([[3, 2], [5, 3], [9, 4], [15, 5]])(level), recovery: 'long',
+    rolls: ({ level, mods }) => [
+      { key: 'effect', label: 'Experimental Elixir effect', formula: '1d6' },
+      { key: 'healing', label: 'Elixir of Healing', formula: `${level >= 15 ? 4 : level >= 9 ? 3 : 2}d8${signed(mods.int)}` }
+    ],
+    text: ({ level }) => `Made at the end of a Long Rest (roll each on the table; more for a spell slot, chosen). Bonus Action to drink or give one: ` +
+      `1 Healing (${level >= 15 ? 4 : level >= 9 ? 3 : 2}d8 + INT), 2 Swiftness (+${level >= 15 ? 20 : level >= 9 ? 15 : 10} ft. Speed, 1 hour), ` +
+      `3 Resilience (+1 AC, ${level >= 15 ? '8 hours' : level >= 9 ? '1 hour' : '10 minutes'}), 4 Boldness (+1d4 to attacks and saves, ${level >= 15 ? '1 hour' : level >= 9 ? '10 minutes' : '1 minute'}), ` +
+      `5 Flight (Fly ${level >= 15 ? 30 : level >= 9 ? 20 : 10} ft., 10 minutes), 6 your choice.` },
+  { key: 'restorativeReagents', name: 'Restorative Reagents', subclass: 'Alchemist', minLevel: 9, max: modMin1('int'), recovery: 'long',
+    text: () => "Cast Lesser Restoration without a spell slot, using Alchemist's Supplies as the focus." },
+  { key: 'conjuredCauldron', name: 'Conjured Cauldron', subclass: 'Alchemist', minLevel: 15, max: () => 1, recovery: 'long',
+    text: () => "Cast Tasha's Bubbling Cauldron without a spell slot or Material components, using Alchemist's Supplies as the focus." },
+  { key: 'armorModel', name: 'Armor Model (Giant Stature / Infiltrator flight)', subclass: 'Armorer', minLevel: 3, max: modMin1('int'), recovery: 'long',
+    text: ({ level }) => 'Dreadnaught: Bonus Action, Giant Stature for 1 minute (Large, +5 ft. reach' + (level >= 15 ? '; or +10 ft. and Large or Huge, Advantage on STR checks and saves' : '') + ').' +
+      (level >= 15 ? ' Guardian: Reaction when a creature ends its turn within 30 ft., STR save or pulled 25 ft. toward you (then a melee attack). Infiltrator: Bonus Action, Fly Speed twice your Speed this turn.' : '') +
+      ' The uses belong to the model you wear.' },
+  { key: 'eldritchCannon', name: 'Eldritch Cannon', subclass: 'Artillerist', minLevel: 3, max: () => 1, recovery: 'long',
+    rolls: ({ level }) => (level >= 9 ? [{ key: 'detonate', label: 'Detonate (Force, DEX save)', formula: '3d10' }] : []),
+    text: ({ level }) => `Magic action with Smith's or Woodcarver's Tools: a Small or Tiny cannon within 5 ft. for 1 hour. Another one costs a spell slot.` +
+      (level >= 15 ? ' You can have two cannons at once.' : '') },
+  { key: 'arcaneJolt', name: 'Arcane Jolt', subclass: 'Battle Smith', minLevel: 9, max: modMin1('int'), recovery: 'long',
+    rolls: ({ level }) => [
+      { key: 'damage', label: 'Arcane Jolt (Force)', formula: `${level >= 15 ? 4 : 2}d6` },
+      { key: 'heal', label: 'Arcane Jolt (heal)', formula: `${level >= 15 ? 4 : 2}d6` }
+    ],
+    text: ({ level }) => `Once per turn, when you hit with a magic weapon or your Steel Defender hits: +${level >= 15 ? 4 : 2}d6 Force damage, or heal a creature within 30 ft. of the target for ${level >= 15 ? 4 : 2}d6.` },
+  { key: 'illuminatedCartography', name: 'Illuminated Cartography', subclass: 'Cartographer', minLevel: 3, max: modMin1('int'), recovery: 'long',
+    text: () => 'Cast Faerie Fire without a spell slot.' },
+  { key: 'unerringPath', name: 'Unerring Path', subclass: 'Cartographer', minLevel: 15, max: () => 1, recovery: 'long',
+    text: () => 'While you hold one of your Adventurer\'s Atlas maps: cast Find the Path without a spell slot, preparation or components.' },
+  // "a number of times equal to your Intelligence modifier" (no minimum in the book).
+  { key: 'joltToLife', name: 'Jolt to Life', subclass: 'Reanimator', minLevel: 3, max: ({ mods }) => Math.max(0, mods.int), recovery: 'long',
+    rolls: ({ level }) => [{ key: 'damage', label: 'Jolt to Life (Lightning, DEX save)', formula: `${level >= 17 ? 4 : level >= 11 ? 3 : 2}d4` }],
+    text: ({ level }) => `Spare the Dying revives the target with ${level} HP; creatures of your choice within 10 ft. of it take ${level >= 17 ? 4 : level >= 11 ? 3 : 2}d4 Lightning (DEX save for half).` },
+  { key: 'reanimatedCompanion', name: 'Reanimated Companion', subclass: 'Reanimator', minLevel: 3, max: () => 1, recovery: 'long',
+    text: () => 'Magic action with Tinker\'s or other Artisan\'s Tools: create your companion (it lasts until your next Long Rest). Another one costs a spell slot.' },
+  { key: 'facilitatedRevival', name: 'Facilitated Revival', subclass: 'Reanimator', minLevel: 15, max: () => 1, recovery: 'long',
+    text: () => 'Cast Raise Dead without a spell slot or Material components, using Tinker\'s or other Artisan\'s Tools as the focus.' }
 ];
 
 // classRows: [{ className, subclassName, level }]; scoreOf(ability) gives the score.

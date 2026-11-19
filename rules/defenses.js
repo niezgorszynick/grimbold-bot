@@ -9,7 +9,7 @@
 // ("while in Starry Form") or null when it always applies; `activeWhen` names a
 // vitals state that switches it on (buildVitalsView sets `active`).
 
-const { featName } = require('./feats');
+const { featName, featGrants } = require('./feats');
 
 const entry = (kind, text, source, extra = {}) => ({ kind, text, source, when: null, ...extra });
 
@@ -52,6 +52,42 @@ function speciesDefenses(species, sheetData) {
       darkvision(60);
       break;
     }
+    // Eberron: Forge of the Artificer
+    case 'Changeling':
+      list.push(entry('type', 'Fey', 'Changeling'));
+      break;
+    case 'Kalashtar':
+      list.push(entry('type', 'Aberration', 'Kalashtar'), entry('resistance', 'Psychic', 'Mental Discipline'),
+        entry('advantage', 'Wisdom and Charisma saves', 'Dual Mind'), entry('sense', 'Telepathy (10 ft. × your level)', 'Mind Link'),
+        entry('note', "Can't be targeted by the Dream spell", 'Severed from Dreams'));
+      break;
+    case 'Khoravar':
+      darkvision(60);
+      list.push(entry('advantage', 'Saves against Charmed', 'Fey Ancestry'));
+      break;
+    case 'Shifter':
+      darkvision(60);
+      break;
+    case 'Warforged':
+      list.push(entry('type', 'Construct', 'Warforged'), entry('resistance', 'Poison', 'Construct Resilience'),
+        entry('advantage', 'Saves against Poisoned', 'Construct Resilience'), entry('immunity', 'Magical sleep', "Sentry's Rest"));
+      break;
+    // Ravenloft: The Horrors Within
+    case 'Dhampir':
+      darkvision(60);
+      list.push(entry('resistance', 'Necrotic', 'Trace of Undeath'), entry('note', 'Climb Speed equal to your Speed', 'Spider Climb'));
+      break;
+    case 'Hexblood':
+      darkvision(60);
+      list.push(entry('type', 'Fey', 'Hexblood'));
+      break;
+    case 'Lupin':
+      darkvision(60);
+      break;
+    case 'Reborn':
+      if (['Cold', 'Necrotic', 'Poison'].includes(option)) list.push(entry('resistance', option, 'Strange Endurance'));
+      list.push(entry('advantage', 'Death Saving Throws', 'Escaped Death'), entry('immunity', 'Magical sleep', 'Everlasting'));
+      break;
     default:
       break;
   }
@@ -77,6 +113,23 @@ function subclassDefenses(classes) {
     if (row.subclassName === 'Circle of the Stars' && row.level >= 14) {
       list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Full of Stars', { when: 'in Starry Form', activeWhen: 'starryForm' }));
     }
+    // Eberron: Forge of the Artificer; Arcana Unleashed; Ravenloft: The Horrors Within
+    if (row.subclassName === 'Alchemist' && row.level >= 15) {
+      list.push(entry('resistance', 'Acid', 'Chemical Mastery'), entry('resistance', 'Poison', 'Chemical Mastery'), entry('condition', 'Poisoned', 'Chemical Mastery'));
+    }
+    if (row.subclassName === 'Necromancer' && row.level >= 3) list.push(entry('resistance', 'Necrotic', 'Necromancy Spellbook'));
+    if (row.subclassName === 'Shadow Sorcery' && row.level >= 3) {
+      list.push(entry('sense', 'Darkvision 120 ft. (through your own spells\' Darkness)', 'Eyes of the Dark'), entry('sense', 'Blindsight 10 ft.', 'Eyes of the Dark'));
+      if (row.level >= 18) list.push(entry('resistance', 'All damage except Force and Radiant', 'Umbral Form', { when: 'in Umbral Form' }));
+    }
+    if (row.subclassName === 'Undead Patron') {
+      if (row.level >= 3) list.push(entry('condition', 'Frightened', 'Form of Dread', { when: 'in Form of Dread' }));
+      if (row.level >= 6) list.push(entry('immunity', 'Magical sleep', 'Undead Endurance'), entry('note', 'No Exhaustion from dehydration, malnutrition or suffocation', 'Undead Endurance'));
+      if (row.level >= 10) list.push(entry('resistance', 'Necrotic', 'Necrotic Resilience'), entry('immunity', 'Necrotic', 'Necrotic Resilience', { when: 'in Form of Dread' }));
+      if (row.level >= 14) list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Superior Dread', { when: 'in Form of Dread' }));
+    }
+    if (row.subclassName === 'Hollow Warden' && row.level >= 15) list.push(entry('condition', 'Exhaustion', 'Timeless'));
+    if (row.subclassName === 'Phantom' && row.level >= 9) list.push(entry('advantage', 'Death Saving Throws and Constitution saves (with a soul trinket)', 'Life Essence'));
   }
   return list;
 }
@@ -89,6 +142,11 @@ function featDefenses(feats) {
     list.push(entry('type', 'Undead', feat), entry('resistance', 'Necrotic', feat), entry('resistance', 'Poison', feat),
       entry('note', 'No Exhaustion from dehydration, malnutrition or suffocation', `Path of the ${path}`));
   }
+  // Book feats (rules/bookFeats.js): Mark of Storm's Lightning, Aberrant Anatomy's Blindsight.
+  for (const name of names) {
+    for (const type of featGrants(name).resistances || []) list.push(entry('resistance', type, name));
+  }
+  if (names.has('Aberrant Anatomy')) list.push(entry('sense', 'Blindsight 15 ft.', 'Aberrant Anatomy'));
   return list;
 }
 

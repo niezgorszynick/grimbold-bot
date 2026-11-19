@@ -28,7 +28,8 @@ test('parses the spells.md format: bold fields, description section, separators'
   assert.equal(aid.level, 2);
   assert.equal(aid.ritual, true);
   assert.equal(aid.concentration, true);
-  assert.deepEqual(aid.classes, ['Bard', 'Warlock']);
+  // Aid is on the Artificer list too (EXTRA_CLASS_SPELLS).
+  assert.deepEqual(aid.classes, ['Bard', 'Warlock', 'Artificer']);
   assert.deepEqual(aid.otherClasses, ['Psion']);
   assert.equal(aid.description, 'First paragraph.');
   assert.equal(aid.higherLevels, 'More per level.');

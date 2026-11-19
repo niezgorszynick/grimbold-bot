@@ -10,7 +10,7 @@ simply treated as empty.
 ## Book text stays out of Git
 
 Text copied from the D&D books can't be published, and this repository is public.
-`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md`, `monsters.md`, `classes.md` and `subclasses.md` are listed in
+`spells.md`, `feats.md`, `invocations.md`, `magic_items.md`, `beasts.md`, `monsters.md`, `classes.md`, `subclasses.md` and `species.md` are listed in
 `.gitignore`: keep them locally and copy them to the server yourself (for example
 `scp rules/content/magic_items.md vps:/var/www/grimbold-bot/rules/content/`).
 Add other book-text files to `.gitignore` the same way.
@@ -25,6 +25,16 @@ or says "No description available."
 sections. On the sheet, a feature chip with text opens on click; headings without text are
 ignored. `node scripts/content-template.js` writes `classes.template.md` and
 `subclasses.template.md` (also off Git) with every heading to fill in.
+
+`species.md` does the same for species traits: `## Elf` with `### Darkvision` sections, shown on the
+sheet's species chips instead of the short summaries in `rules/species.js`.
+
+`node scripts/import-book.js class|subclass|species <book.md> <Name>...` copies class, subclass and species
+text from a book exported to Markdown (5etools style) into these files, replacing an entry
+of the same name (`--class Artificer` for a subclass, `--source "Book"` for its source line). It also
+takes `feat`, `item`, `items <Section>` (every `#### Item` in it) and `monsters` (every quoted stat block).
+`node scripts/import-books.js <books folder>` runs every import used for these files, so they can be rebuilt
+from a new export; statblocks from other books carry a `**Source**:` line the Monsters tab filters by.
 
 Tables in any of these files are Markdown tables (`| Potion | HP Regained |` lines with a
 `|---|---|` row under the header); text pasted from a PDF often loses the cell breaks.

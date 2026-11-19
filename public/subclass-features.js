@@ -10,7 +10,7 @@
   fetch('/api/characters/' + characterId + '/subclass-features')
     .then(response => (response.ok ? response.json() : {}))
     .then(result => {
-      window.sheetFeatureTexts = { classes: result.classes || [], subclasses: result.subclasses || [] };
+      window.sheetFeatureTexts = { classes: result.classes || [], subclasses: result.subclasses || [], species: result.species || null };
       document.dispatchEvent(new CustomEvent('sheet-feature-texts'));
     })
     .catch(() => {});

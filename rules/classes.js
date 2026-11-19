@@ -414,8 +414,8 @@ const RAW_CLASSES = {
   }
 };
 
-// Artificer (Eberron: Forge of the Artificer). Feature names and tables should be
-// checked against the book text when it is added to rules/content/classes.md.
+// Artificer (Eberron: Forge of the Artificer), checked against the book: feature
+// names and levels, cantrips (2, 3 at 10, 4 at 14), half-caster prepared spells.
 const RAW_SUPPLEMENTAL_CLASSES = {
   Artificer: {
     hitDie: 8,
@@ -447,8 +447,7 @@ const RAW_SUPPLEMENTAL_CLASSES = {
       14: ['Advanced Artifice'],
       18: ['Magic Item Master'],
       20: ['Soul of Artifice']
-    },
-    needsVerification: true
+    }
   }
 };
 
@@ -464,6 +463,14 @@ const SUBCLASS_SPELLCASTING = {
     progression: 'third',
     ability: 'int',
     cantrips: byLevel({ 3: 3, 10: 4 }),
+    prepared: byLevel({ 3: 3, 4: 4, 7: 5, 8: 6, 10: 7, 11: 8, 13: 9, 14: 10, 16: 11, 19: 12, 20: 13 })
+  },
+  // Arcana Unleashed: Sorcerer spells cast with Wisdom; the book's table follows
+  // the Eldritch Knight's prepared spells (5 at Monk level 7).
+  'Warrior of the Mystic Arts': {
+    progression: 'third',
+    ability: 'wis',
+    cantrips: byLevel({ 3: 2, 10: 3 }),
     prepared: byLevel({ 3: 3, 4: 4, 7: 5, 8: 6, 10: 7, 11: 8, 13: 9, 14: 10, 16: 11, 19: 12, 20: 13 })
   }
 };

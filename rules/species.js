@@ -1,4 +1,6 @@
-// rules/species.js — The 10 species from the 2024 Player's Handbook.
+// rules/species.js — The 10 species from the 2024 Player's Handbook, plus those of
+// Eberron: Forge of the Artificer and Ravenloft: The Horrors Within. Trait texts
+// here are short summaries; the book text comes from rules/content/species.md.
 
 const DND_SPECIES_DATA = {
   Aasimar: {
@@ -55,7 +57,8 @@ const DND_SPECIES_DATA = {
     size: 'Small', speed: 30, traits: [
       { name: 'Brave', description: 'You have advantage on saves to avoid or end the Frightened condition on yourself.' },
       { name: 'Halfling Nimbleness', description: 'You can move through the space of a creature that is larger than you.' },
-      { name: 'Lucky', description: 'When you roll a 1 on a d20 Test, you can reroll the die; you must use the new roll.' }
+      { name: 'Luck', description: 'When you roll a 1 on a d20 Test, you can reroll the die; you must use the new roll.' },
+      { name: 'Naturally Stealthy', description: 'You can take the Hide action even when you are obscured only by a creature at least one size larger than you.' }
     ]
   },
   Human: {
@@ -79,6 +82,87 @@ const DND_SPECIES_DATA = {
       { name: 'Fiendish Legacy', description: 'Choose an Abyssal, Chthonic, or Infernal legacy that grants spells as you gain character levels.' },
       { name: 'Otherworldly Presence', description: 'You know the Thaumaturgy cantrip; Charisma is your spellcasting ability for it.' }
     ]
+  },
+  // Eberron: Forge of the Artificer
+  Changeling: {
+    size: 'Medium or Small', speed: 30, creatureType: 'Fey', traits: [
+      { name: 'Changeling Instincts', description: 'Proficiency in two of Deception, Insight, Intimidation, Performance and Persuasion.' },
+      { name: 'Shape-Shifter', description: 'As an action, change your appearance, voice and size (Medium or Small); Advantage on Charisma checks while shape-shifted.' }
+    ],
+    skillChoiceCount: 2,
+    skillChoiceOptions: ['Deception', 'Insight', 'Intimidation', 'Performance', 'Persuasion']
+  },
+  Kalashtar: {
+    size: 'Medium', speed: 30, creatureType: 'Aberration', traits: [
+      { name: 'Dual Mind', description: 'Advantage on Wisdom and Charisma saving throws.' },
+      { name: 'Mental Discipline', description: 'Resistance to Psychic damage.' },
+      { name: 'Mind Link', description: 'Telepathy out to 10 feet times your level; a Magic action lets the creature answer you telepathically for 1 hour.' },
+      { name: 'Severed from Dreams', description: "The Dream spell can't target you. After each Long Rest, gain proficiency in one skill until the next Long Rest." }
+    ]
+  },
+  Khoravar: {
+    size: 'Medium or Small', speed: 30, traits: [
+      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
+      { name: 'Fey Ancestry', description: 'Advantage on saves to avoid or end the Charmed condition.' },
+      { name: 'Fey Gift', description: 'You know Friends; after a Long Rest you can swap it for a Cleric, Druid or Wizard cantrip (INT, WIS or CHA).' },
+      { name: 'Lethargy Resilience', description: 'Turn a failed save against Unconscious into a success; then wait 1d4 Long Rests.' },
+      { name: 'Skill Versatility', description: 'Proficiency in one skill or tool, which you can change after a Long Rest.' }
+    ],
+    skillChoiceCount: 1
+  },
+  Shifter: {
+    size: 'Medium or Small', speed: 30, traits: [
+      { name: 'Bestial Instincts', description: 'Proficiency in Acrobatics, Athletics, Intimidation or Survival.' },
+      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
+      { name: 'Shifting', description: 'Bonus Action, 1 minute: a bestial form with 2 × Proficiency Bonus Temporary Hit Points and the benefit of your shifter type. Proficiency Bonus uses per Long Rest.' }
+    ],
+    skillChoiceCount: 1,
+    skillChoiceOptions: ['Acrobatics', 'Athletics', 'Intimidation', 'Survival']
+  },
+  Warforged: {
+    size: 'Medium or Small', speed: 30, creatureType: 'Construct', acBonus: 1, traits: [
+      { name: 'Construct Resilience', description: 'Resistance to Poison damage; Advantage on saves to avoid or end Poisoned.' },
+      { name: 'Integrated Protection', description: "+1 to your Armor Class; your armor can't be removed against your will." },
+      { name: "Sentry's Rest", description: "You don't need to sleep and magic can't put you to sleep; a Long Rest takes 6 hours of inactivity." },
+      { name: 'Specialized Design', description: 'Proficiency in one skill and one tool of your choice.' },
+      { name: 'Tireless', description: "No Exhaustion from dehydration, malnutrition or suffocation." }
+    ],
+    skillChoiceCount: 1
+  },
+  // Ravenloft: The Horrors Within
+  Dhampir: {
+    size: 'Medium or Small', speed: 35, climbSpeed: true, traits: [
+      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
+      { name: 'Spider Climb', description: 'A Climb Speed equal to your Speed; from level 3, walls and ceilings with your hands free.' },
+      { name: 'Trace of Undeath', description: 'Resistance to Necrotic damage.' },
+      { name: 'Vampiric Bite', description: 'Unarmed Strike bite: 1d4 + CON Piercing. Proficiency Bonus times per Long Rest, heal that much or add it to your next check or attack.' }
+    ]
+  },
+  Hexblood: {
+    size: 'Medium or Small', speed: 30, creatureType: 'Fey', traits: [
+      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
+      { name: 'Eerie Token', description: 'Bonus Action, once per Long Rest: a token for sending messages to its holder and seeing and hearing through it, within 10 miles.' },
+      { name: 'Hex Magic', description: 'Disguise Self and Hex always prepared, each once per Long Rest without a slot (INT, WIS or CHA).' }
+    ]
+  },
+  Lupin: {
+    size: 'Medium or Small', speed: 30, traits: [
+      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
+      { name: 'Feral Pounce', description: 'Unarmed Strikes deal Slashing damage; once per turn in the Attack action, use both Damage and Shove.' },
+      { name: 'Howl', description: 'Bonus Action: creatures of your choice within 15 ft. make a WIS save (DC 8 + CON + PB) or have Disadvantage on attacks and saves. Proficiency Bonus uses per Long Rest.' },
+      { name: 'Werewolf Instincts', description: 'Proficiency in Perception, Stealth or Survival.' }
+    ],
+    skillChoiceCount: 1,
+    skillChoiceOptions: ['Perception', 'Stealth', 'Survival']
+  },
+  Reborn: {
+    size: 'Medium or Small', speed: 30, traits: [
+      { name: 'Escaped Death', description: 'Advantage on Death Saving Throws.' },
+      { name: 'Everlasting', description: "No Exhaustion from dehydration, malnutrition or suffocation; no sleep needed, and magic can't put you to sleep. A Long Rest takes 4 hours." },
+      { name: 'Knowledge from a Past Life', description: 'Proficiency in one skill. Proficiency Bonus times per Long Rest, add 1d6 to a failed ability check.' },
+      { name: 'Strange Endurance', description: 'Resistance to Cold, Necrotic or Poison damage (your choice).' }
+    ],
+    skillChoiceCount: 1
   }
 };
 const DND_SPECIES = Object.keys(DND_SPECIES_DATA);
@@ -97,7 +181,12 @@ const SPECIES_OPTIONS = {
     label: 'Giant Ancestry',
     options: ["Cloud's Jaunt", "Fire's Burn", "Frost's Chill", "Hill's Tumble", "Stone's Endurance", "Storm's Thunder"]
   },
-  Tiefling: { label: 'Fiendish Legacy', options: ['Abyssal', 'Chthonic', 'Infernal'], spellAbilityChoice: true }
+  Tiefling: { label: 'Fiendish Legacy', options: ['Abyssal', 'Chthonic', 'Infernal'], spellAbilityChoice: true },
+  // A single option: only the spellcasting ability is really chosen.
+  Khoravar: { label: 'Fey Gift', options: ['Friends'], spellAbilityChoice: true },
+  Shifter: { label: 'Shifter Type', options: ['Beasthide', 'Longtooth', 'Swiftstride', 'Wildhunt'] },
+  Hexblood: { label: 'Hex Magic', options: ['Disguise Self and Hex'], spellAbilityChoice: true },
+  Reborn: { label: 'Strange Endurance', options: ['Cold', 'Necrotic', 'Poison'] }
 };
 
 // Species whose size is "Medium or Small" let the player choose.
@@ -117,4 +206,13 @@ function speciesSpeed(species, option) {
   return (DND_SPECIES_DATA[species] || {}).speed || 30;
 }
 
-module.exports = { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, LINEAGE_SPEED, speciesSpeed, sizeOptions };
+// The book text of a species' traits from rules/content/species.md ("## Elf" with
+// "### Darkvision" sections), by trait name, plus its description. {} without it.
+function speciesTraitTexts(speciesName) {
+  const { loadContent } = require('./content');
+  const entry = loadContent('species')[speciesName];
+  if (!entry) return { description: '', traits: {} };
+  return { description: entry.description || '', traits: Object.fromEntries(Object.entries(entry.sections).filter(([, text]) => text)) };
+}
+
+module.exports = { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, LINEAGE_SPEED, speciesSpeed, sizeOptions, speciesTraitTexts };

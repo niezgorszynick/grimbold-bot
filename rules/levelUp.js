@@ -90,7 +90,7 @@ function featIneligibility(name, { classes, sheetData, scores, totalLevel }) {
   const boon = EPIC_BOONS[name];
   const style = FIGHTING_STYLE_FEATS[name];
   if (!origin && !general && !boon && !style) return 'Unknown feat.';
-  const repeatable = (origin && origin.repeatable) || (general && general.repeatable);
+  const repeatable = (origin && origin.repeatable) || (general && general.repeatable) || (boon && boon.repeatable);
   if (owned.includes(name) && !repeatable) return 'Already taken.';
   if (style && !hasFightingStyleFeature(classes)) return 'Requires the Fighting Style feature.';
   if (boon && totalLevel < EPIC_BOON_LEVEL_REQUIREMENT) return `Requires level ${EPIC_BOON_LEVEL_REQUIREMENT}.`;
@@ -108,6 +108,11 @@ function featIneligibility(name, { classes, sheetData, scores, totalLevel }) {
   if (prerequisite.weaponMastery && !classes.some(row => ((getClass(row.className) || {}).features || {})[1]?.includes('Weapon Mastery'))) {
     return 'Requires the Weapon Mastery feature.';
   }
+  // Eberron: one Dragonmark feat per character; Potent Dragonmark needs any of them.
+  if (origin && origin.category === 'Dragonmark' && owned.some(feat => (ORIGIN_FEATS[feat] || {}).category === 'Dragonmark')) {
+    return 'You already have a Dragonmark feat.';
+  }
+  if (prerequisite.anyFeat && !prerequisite.anyFeat.some(feat => owned.includes(feat))) return 'Requires a Dragonmark feat.';
   const missing = (prerequisite.feats || []).find(feat => !owned.includes(feat));
   if (missing) return `Requires the ${missing} feat.`;
   if (prerequisite.pathFeats) {
@@ -552,6 +557,7 @@ function revertLastLevel(state) {
 }
 
 module.exports = {
+  featIneligibility,
   collectCharacterFeats,
   resolveFightingStyle,
   resolveOriginFeatChoice,

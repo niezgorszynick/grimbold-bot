@@ -1,4 +1,5 @@
-// rules/backgrounds.js — The 16 backgrounds from the 2024 Player's Handbook.
+// rules/backgrounds.js — The 16 backgrounds from the 2024 Player's Handbook, plus
+// those of Arcana Unleashed, Eberron and Ravenloft (rules/bookBackgrounds.js).
 //
 // Each background grants: three abilities to boost (+2/+1 or +1/+1/+1, max 20),
 // an Origin feat, two skill proficiencies, one tool proficiency, and a choice
@@ -8,6 +9,7 @@
 // An equipment entry with { fromToolChoice: true } is the tool picked for the proficiency.
 
 const { normalizeItems } = require('./util');
+const { BOOK_BACKGROUNDS } = require('./bookBackgrounds');
 
 const BACKGROUND_GOLD_OPTION = 50;
 
@@ -126,7 +128,7 @@ const RAW_BACKGROUNDS = {
   }
 };
 
-const BACKGROUNDS = Object.fromEntries(Object.entries(RAW_BACKGROUNDS).map(([name, background]) => [
+const BACKGROUNDS = Object.fromEntries(Object.entries({ ...RAW_BACKGROUNDS, ...BOOK_BACKGROUNDS }).map(([name, background]) => [
   name,
   {
     ...background,

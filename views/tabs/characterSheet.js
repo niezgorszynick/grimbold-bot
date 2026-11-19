@@ -827,7 +827,8 @@ module.exports = function renderCharacterSheetTab(ctx) {
           const groups = [
             group(classSelect.value || 'Class', [...featureNames, ...extraClassFeatures].map(name => chip(name, textOf(name), 'class:' + name))),
             group('Subclass', subclassChips),
-            group(speciesSelect.value || 'Species', (speciesData.traits || []).map(trait => chip(trait.name, trait.description, 'species:' + trait.name)))
+            // Book text (species.md) for the saved species; the summary otherwise.
+            group(speciesSelect.value || 'Species', (speciesData.traits || []).map(trait => chip(trait.name, (texts.species && texts.species.name === speciesSelect.value && texts.species.traits[trait.name]) || trait.description, 'species:' + trait.name)))
           ].filter(Boolean);
           autoFeatures.replaceChildren(...groups);
           if (!groups.length) {

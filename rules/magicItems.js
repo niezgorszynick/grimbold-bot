@@ -15,6 +15,14 @@ const RARITIES = ['Common', 'Uncommon', 'Rare', 'Very Rare', 'Legendary', 'Artif
 const PRICE_GP = { Common: 100, Uncommon: 400, Rare: 4000, 'Very Rare': 40000, Legendary: 200000 };
 const ATTUNEMENT_LIMIT = 3;
 
+// Artificers attune to more items: 4 at level 10 (Magic Item Adept), 5 at 14
+// (Advanced Artifice), 6 at 18 (Magic Item Master). character.classes: [{ className, level }].
+function attunementLimit(character) {
+  const artificer = ((character && character.classes) || []).find(row => row.className === 'Artificer');
+  const level = artificer ? artificer.level : 0;
+  return level >= 18 ? 6 : level >= 14 ? 5 : level >= 10 ? 4 : ATTUNEMENT_LIMIT;
+}
+
 // Items whose rarity is "Rarity Varies" (or split oddly in the source):
 // [variant label, rarity, effects]. Labels follow the item's own table.
 const VARIANT_TABLES = {
@@ -427,8 +435,9 @@ function changeMagicItem(character, action, params = {}, catalog = getMagicItemC
     const reason = attunementIneligibility(item, character);
     if (reason) throw new Error(reason);
     const attuned = list.filter(other => other.attuned).length;
-    if (attuned >= ATTUNEMENT_LIMIT) {
-      throw new Error(`You can be attuned to no more than ${ATTUNEMENT_LIMIT} magic items at a time. End an attunement first.`);
+    const limit = attunementLimit(character);
+    if (attuned >= limit) {
+      throw new Error(`You can be attuned to no more than ${limit} magic items at a time. End an attunement first.`);
     }
     entry.attuned = true;
     entry.equipped = true;
@@ -578,6 +587,7 @@ module.exports = {
   MAGIC_ITEM_RARITIES: RARITIES,
   MAGIC_ITEM_PRICE_GP: PRICE_GP,
   ATTUNEMENT_LIMIT,
+  attunementLimit,
   normalizeMagicItem,
   getMagicItemCatalog,
   matchMagicItem,

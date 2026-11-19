@@ -1,7 +1,10 @@
 // rules/feats.js — Origin feats (2024 PHB) with the mechanical grants the engine applies.
 //
 // Also general feats and Epic Boons for Ability Score Improvement levels. Descriptive
-// text comes from rules/content/feats.md once it is provided.
+// text comes from rules/content/feats.md once it is provided. Feats from the other
+// books (Arcana Unleashed, Eberron, Ravenloft) are in rules/bookFeats.js.
+
+const { BOOK_ORIGIN_FEATS, BOOK_GENERAL_FEATS, BOOK_FIGHTING_STYLE_FEATS, BOOK_EPIC_BOONS, DRAGONMARK_FEATS } = require('./bookFeats');
 
 const ORIGIN_FEATS = {
   Alert: {
@@ -45,7 +48,8 @@ const ORIGIN_FEATS = {
   Tough: {
     repeatable: false,
     grants: { hpPerLevel: 2 }
-  }
+  },
+  ...BOOK_ORIGIN_FEATS
 };
 
 const ORIGIN_FEAT_NAMES = Object.keys(ORIGIN_FEATS);
@@ -126,7 +130,8 @@ const GENERAL_FEATS = {
   Telepathic: { abilityIncrease: MENTAL, grants: { spells: { fixed: ['Detect Thoughts'], freeEach: 1 } } },
   'War Caster': { prerequisite: { spellcasting: true }, abilityIncrease: MENTAL },
   'Weapon Master': { abilityIncrease: STR_DEX },
-  ...PATH_FEATS()
+  ...PATH_FEATS(),
+  ...BOOK_GENERAL_FEATS
 };
 
 // Paths of Villainy (Unearthed Arcana 2026: Villainous Options): an Initiate
@@ -183,7 +188,8 @@ const FIGHTING_STYLE_FEATS = {
   Protection: {},
   'Thrown Weapon Fighting': {},
   'Two-Weapon Fighting': {},
-  'Unarmed Fighting': {}
+  'Unarmed Fighting': {},
+  ...BOOK_FIGHTING_STYLE_FEATS
 };
 const FIGHTING_STYLE_NAMES = Object.keys(FIGHTING_STYLE_FEATS);
 
@@ -222,7 +228,8 @@ const EPIC_BOONS = {
   'Boon of Speed': { abilityIncrease: 'any' },
   'Boon of Spell Recall': { abilityIncrease: MENTAL, prerequisite: { spellcasting: true } },
   'Boon of the Night Spirit': { abilityIncrease: 'any' },
-  'Boon of Truesight': { abilityIncrease: 'any' }
+  'Boon of Truesight': { abilityIncrease: 'any' },
+  ...BOOK_EPIC_BOONS
 };
 const EPIC_BOON_LEVEL_REQUIREMENT = 19;
 
@@ -267,6 +274,7 @@ function hpFlatFromFeats(feats = []) {
 }
 
 module.exports = {
+  DRAGONMARK_FEATS,
   ORIGIN_FEATS,
   ORIGIN_FEAT_NAMES,
   GENERAL_FEATS,

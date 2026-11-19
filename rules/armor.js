@@ -19,8 +19,9 @@ const SHIELD_BONUS = 2;
 
 // Picks the best AC the character can get from the items they carry.
 // itemNames: names in the inventory; armorTraining: e.g. ['Light armor', 'Shields'].
-// armoredBonus: extra AC while wearing armor (the Defense Fighting Style).
-function calculateArmorClass({ itemNames, modifiers, armorTraining, classNames = [], armoredBonus = 0 }) {
+// armoredBonus: extra AC while wearing armor (the Defense Fighting Style);
+// bonus: extra AC always (Warforged's Integrated Protection), named by bonusSource.
+function calculateArmorClass({ itemNames, modifiers, armorTraining, classNames = [], armoredBonus = 0, bonus = 0, bonusSource = '' }) {
   const trained = category => armorTraining.includes(category);
   const hasShield = itemNames.includes('Shield') && trained('Shields');
   const options = [{ ac: 10 + modifiers.dex, source: 'Unarmored', allowsShield: true }];
@@ -42,7 +43,8 @@ function calculateArmorClass({ itemNames, modifiers, armorTraining, classNames =
     const shield = hasShield && option.allowsShield;
     return { ac: option.ac + (shield ? SHIELD_BONUS : 0), source: shield ? `${option.source} + Shield` : option.source };
   });
-  return withShield.reduce((best, option) => (option.ac > best.ac ? option : best));
+  const best = withShield.reduce((top, option) => (option.ac > top.ac ? option : top));
+  return bonus ? { ac: best.ac + bonus, source: `${best.source} + ${bonusSource || 'bonus'}` } : best;
 }
 
 module.exports = { ARMOR, SHIELD_BONUS, calculateArmorClass };

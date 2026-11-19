@@ -4,9 +4,9 @@ const rules = require('../rules');
 
 const scores = overrides => ({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...overrides });
 
-test('all 16 PHB 2024 backgrounds are complete', () => {
+test('all backgrounds are complete: 16 from the PHB 2024 and 31 from the other books', () => {
   const names = Object.keys(rules.BACKGROUNDS);
-  assert.equal(names.length, 16);
+  assert.equal(names.length, 47);
   for (const [name, background] of Object.entries(rules.BACKGROUNDS)) {
     assert.equal(background.abilityBoosts.length, 3, name);
     assert.ok(background.abilityBoosts.every(ability => rules.ABILITIES.includes(ability)), name);

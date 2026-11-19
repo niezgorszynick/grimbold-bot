@@ -19,6 +19,12 @@ const { parseFeature, parseCr, formatCr } = require('./wildShape');
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 const CREATURE_TYPES = ['Aberration', 'Beast', 'Celestial', 'Construct', 'Dragon', 'Elemental', 'Fey', 'Fiend', 'Giant', 'Humanoid', 'Monstrosity', 'Ooze', 'Plant', 'Undead'];
 const SIZES = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+// monsters.md entries from other books, by their "**Source**:" footer.
+const BOOK_SOURCES = {
+  'Ravenloft: The Horrors Within': { sourceCode: 'RHW', sourceName: 'Ravenloft: The Horrors Within' },
+  'Arcana Unleashed': { sourceCode: 'AU', sourceName: 'Arcana Unleashed' },
+  'Eberron: Forge of the Artificer': { sourceCode: 'EFA', sourceName: 'Eberron: Forge of the Artificer' }
+};
 const SECTION_KEYS = { Traits: 'traits', Actions: 'actions', 'Bonus actions': 'bonusActions', 'Bonus Actions': 'bonusActions', Reactions: 'reactions', 'Legendary actions': 'legendaryActions', 'Legendary Actions': 'legendaryActions' };
 
 // 2024 XP by Challenge Rating (used when the statblock gives none).
@@ -179,9 +185,9 @@ function parseMonster(entry) {
     habitat: footer.habitat || '',
     treasure: footer.treasure || '',
     source: footer.source || '',
-    // For the source filter: monsters.md is the Monster Manual (2024).
-    sourceCode: 'XMM',
-    sourceName: 'Monster Manual (2024)'
+    // For the source filter: monsters.md is the Monster Manual (2024), plus the
+    // statblocks scripts/import-book.js adds from other books (their Source line).
+    ...(BOOK_SOURCES[footer.source] || { sourceCode: 'XMM', sourceName: 'Monster Manual (2024)' })
   };
   for (const [section, body] of Object.entries(entry.sections || {})) {
     const key = SECTION_KEYS[section];
