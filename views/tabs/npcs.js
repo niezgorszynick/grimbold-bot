@@ -224,7 +224,7 @@ function npcForm(npc, adventures, owners, currentUserId, startMonster) {
         <label>Based on a statblock${monsters.length ? '' : ' <span class="muted small">(no monster list on this server)</span>'}
           <input name="base_monster" list="npc-monster-list" maxlength="100" placeholder="e.g. Mage, Bandit Captain (optional)" value="${escapeHtml(stats.baseMonster ? stats.baseMonster.name : '')}">
         </label>
-        ${monsters.length ? `<datalist id="npc-monster-list">${monsters.filter(monster => !monster.summon).map(monster => `<option value="${escapeHtml(monster.name)}">CR ${escapeHtml(monster.crText)} ${escapeHtml(monster.typeText)}</option>`).join('')}</datalist>` : ''}
+        ${monsters.length ? `<datalist id="npc-monster-list">${monsters.filter(monster => !monster.summon).map(monster => `<option value="${escapeHtml(monster.name)}">${escapeHtml(monster.name)} · CR ${escapeHtml(monster.crText)} ${escapeHtml(monster.typeText)}${monster.sourceCode && monster.sourceCode !== 'XMM' ? ' · ' + escapeHtml(monster.sourceCode) : ''}</option>`).join('')}</datalist>` : ''}
         <p class="muted small">Stats you leave empty are taken from the statblock when you save. DMs see the full statblock from the NPC's card.</p>
         <div class="npc-form-grid">
           <label>AC<input name="armor_class" type="number" min="0" max="40" value="${stat('armorClass')}"></label>

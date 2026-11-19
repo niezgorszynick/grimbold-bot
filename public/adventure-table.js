@@ -535,7 +535,7 @@
       monsterListLoading = true;
       api('/monsters').then(result => {
         monsterList = result.monsters;
-        list.replaceChildren(...monsterList.map(monster => el('option', { value: monster.name, text: 'CR ' + monster.crText + ' · ' + thousands(monster.xp) + ' XP · ' + monster.typeText })));
+        list.replaceChildren(...monsterList.map(monster => el('option', { value: monster.name, text: monster.name + ' · CR ' + monster.crText + ' · ' + thousands(monster.xp) + ' XP · ' + monster.typeText })));
       }).catch(error => {
         monsterListLoading = false;
         message = 'Monster list: ' + error.message;

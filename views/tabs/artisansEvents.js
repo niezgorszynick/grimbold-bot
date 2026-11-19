@@ -256,7 +256,7 @@ function renderArtisansAndEvents(req, cfg) {
         </table>` : '<p class="muted">No events yet.</p>'}
       ${eventForm(editing, travellers, shortages)}
     </div>
-    <datalist id="restock-catalog">${catalog.map(item => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.category)} · ${escapeHtml(item.gp)} gp</option>`).join('')}</datalist>
+    <datalist id="restock-catalog">${catalog.map(item => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)} · ${escapeHtml(item.category)} · ${escapeHtml(item.gp)} gp</option>`).join('')}</datalist>
     <script>
       (() => {
         // Picking a catalog item fills an artisan's item form, or adds a line to a merchant's goods.
