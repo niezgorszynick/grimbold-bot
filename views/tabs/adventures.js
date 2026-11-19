@@ -194,7 +194,7 @@ module.exports = function renderAdventuresTab(ctx) {
             <p style="font-size: 13px; color: #949ba4; margin-top: -5px; margin-bottom: 14px;">
               ${editingAdventure
                 ? 'Updating this adventure adjusts participant XP and the DM reward.'
-                : 'Finalizing an adventure awards XP to all selected characters and grants +1 DM Point to the host.'}
+                : 'Finalizing an adventure awards XP to all selected characters, and the same XP (at least 1) to the host DM.'}
             </p>
 
             <form method="POST" action="${adventureFormAction}">
@@ -208,7 +208,7 @@ module.exports = function renderAdventuresTab(ctx) {
                 <div>
                   <label>Dungeon Master (Host):</label><br>
                   <select name="dm_player_id" style="width: 100%; margin-top: 4px;">
-                    <option value="">-- No DM Point awarded --</option>
+                    <option value="">-- No DM reward --</option>
                 ${allPlayers.map(p => `<option value="${p.id}" ${editingAdventure && Number(p.id) === Number(editingAdventure.dm_player_id) ? 'selected' : ''}>${escapeHtml(p.discord_tag)}</option>`).join('')}
                   </select>
                 </div>
@@ -271,7 +271,7 @@ module.exports = function renderAdventuresTab(ctx) {
             <li><strong>Level 4 &rarr; Level 5:</strong> Requires <strong>4 Completed Adventures</strong> (7 total XP).</li>
             <li><strong>Level 5+ Progression:</strong> Requires <strong>4 Completed Adventures</strong> per subsequent level.</li>
           </ul>
-          <p><strong>• Dungeon Master Bonus:</strong> The DM earns the same XP as the party (at least 1): straight to one of their characters, or banked as DM points (one per XP), assignable to any of their own characters in the <em>Players</em> tab as +1 XP each.</p>
+          <p><strong>• Dungeon Master Bonus:</strong> The DM earns the same XP as the party (at least 1): when the adventure is recorded in the <em>Adventures</em> tab, it goes straight to one of the DM's characters, or is banked as DM points (one per XP).</p>
         </div>
       </div>
     </div>
