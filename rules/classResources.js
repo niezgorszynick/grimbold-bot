@@ -27,6 +27,7 @@ const dieAtLevel = steps => level => steps.filter(([at]) => level >= at).reduce(
 const PSIONIC_DICE = byLevel([[3, 4], [5, 6], [9, 8], [13, 10], [17, 12]]);
 const PSIONIC_DIE = dieAtLevel([[3, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
 const MARTIAL_ARTS_DIE = level => `d${table('Monk', 'martialArtsDie')(level)}`;
+const RAGE_DAMAGE = level => table('Barbarian', 'rageDamage')(level);
 const ARCANE_SHOT_DIE = dieAtLevel([[3, 'd6'], [10, 'd8'], [15, 'd10'], [18, 'd12']]);
 // Phantom: half the Sneak Attack dice (round up).
 const WAIL_DICE = level => Math.ceil(table('Rogue', 'sneakAttackDice')(level) / 2);
@@ -35,6 +36,39 @@ const WAIL_DICE = level => Math.ceil(table('Rogue', 'sneakAttackDice')(level) / 
 const RESOURCES = [
   { key: 'rage', name: 'Rage', className: 'Barbarian', minLevel: 1, max: ({ level }) => table('Barbarian', 'rages')(level), recovery: 'shortOne',
     text: ({ level }) => `Bonus Action, 10 minutes. +${atLevel(getClass('Barbarian').resources.rageDamage, level)} damage with Strength attacks; Resistance to Bludgeoning, Piercing and Slashing damage.` },
+  // Barbarian subclasses (PHB 2024). Dice that scale with the Rage Damage bonus.
+  { key: 'frenzy', name: 'Frenzy', subclass: 'Path of the Berserker', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'extra', label: 'Frenzy (extra damage)', formula: `${RAGE_DAMAGE(level)}d6` }],
+    text: ({ level }) => `Reckless Attack while raging: the first target you hit on your turn with a Strength attack takes an extra ${RAGE_DAMAGE(level)}d6 of the weapon's type.` +
+      (level >= 6 ? ' Mindless Rage: immune to Charmed and Frightened while raging.' : '') +
+      (level >= 10 ? ' Retaliation: Reaction, a melee attack against a creature within 5 ft. that damages you.' : '') },
+  { key: 'intimidatingPresence', name: 'Intimidating Presence', subclass: 'Path of the Berserker', minLevel: 14, max: () => 1, recovery: 'long',
+    text: ({ mods, pb }) => `Bonus Action: creatures of your choice within 30 ft. make a WIS save (DC ${8 + mods.str + pb}) or are Frightened for 1 minute (save at the end of each turn). A use of Rage restores it.` },
+  { key: 'rageOfTheWilds', name: 'Rage of the Wilds', subclass: 'Path of the Wild Heart', minLevel: 3, max: () => 0, info: true,
+    text: ({ level }) => [
+      'Each Rage, choose: Bear (Resistance to all damage but Force, Necrotic, Psychic and Radiant), Eagle (Disengage and Dash with the Bonus Action, and as a Bonus Action while raging) or Wolf (allies have Advantage on attacks against your enemies within 5 ft. of you).',
+      level >= 6 ? 'Aspect of the Wilds, changed after a Long Rest: Owl (Darkvision 60 ft., or +60 ft.), Panther (Climb Speed) or Salmon (Swim Speed).' : '',
+      level >= 14 ? 'Power of the Wilds, each Rage: Falcon (Fly Speed without armor), Lion (enemies within 5 ft. have Disadvantage attacking others) or Ram (knock a Large or smaller creature Prone on a melee hit).' : ''
+    ].filter(Boolean).join(' ') },
+  { key: 'vitalityOfTheTree', name: 'Vitality of the Tree', subclass: 'Path of the World Tree', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'life', label: 'Life-Giving Force (temporary HP)', formula: `${RAGE_DAMAGE(level)}d6` }],
+    text: ({ level, mods, pb }) => [
+      `Vitality Surge: ${level} temporary HP when you Rage. Life-Giving Force: at the start of each of your turns while raging, another creature within 10 ft. gains ${RAGE_DAMAGE(level)}d6 temporary HP (gone when the Rage ends).`,
+      level >= 6 ? `Branches of the Tree: Reaction when a creature starts its turn within 30 ft. while you rage: STR save (DC ${8 + mods.str + pb}) or it is pulled next to you, Speed 0 this turn.` : '',
+      level >= 10 ? 'Battering Roots: +10 ft. reach on your turn with Heavy or Versatile melee weapons, and Push or Topple on top of their mastery.' : '',
+      level >= 14 ? 'Travel along the Tree: teleport 60 ft. when you Rage and as a Bonus Action while raging; once per Rage, 150 ft. with up to six willing creatures.' : ''
+    ].filter(Boolean).join(' ') },
+  { key: 'divineFury', name: 'Divine Fury', subclass: 'Path of the Zealot', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'extra', label: 'Divine Fury (Necrotic or Radiant)', formula: `1d6+${Math.floor(level / 2)}` }],
+    text: ({ level }) => `While raging, the first creature you hit on each of your turns takes an extra 1d6 + ${Math.floor(level / 2)} Necrotic or Radiant damage.` +
+      (level >= 6 ? ` Fanatical Focus: once per Rage, reroll a failed save with +${RAGE_DAMAGE(level)}.` : '') },
+  { key: 'warriorOfTheGods', name: 'Warrior of the Gods (d12 pool)', subclass: 'Path of the Zealot', minLevel: 3, max: ({ level }) => byLevel([[3, 4], [6, 5], [12, 6], [17, 7]])(level), recovery: 'long', pool: true,
+    rolls: ({ level }) => Array.from({ length: byLevel([[3, 4], [6, 5], [12, 6], [17, 7]])(level) }, (_, index) => ({ key: `heal${index + 1}`, label: `Warrior of the Gods, ${index + 1} ${index ? 'dice' : 'die'}`, formula: `${index + 1}d12` })),
+    text: () => 'Bonus Action: spend dice from the pool and regain that many d12s of Hit Points.' },
+  { key: 'zealousPresence', name: 'Zealous Presence', subclass: 'Path of the Zealot', minLevel: 10, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action: up to ten other creatures within 60 ft. have Advantage on attacks and saves until the start of your next turn. A use of Rage restores it.' },
+  { key: 'rageOfTheGods', name: 'Rage of the Gods', subclass: 'Path of the Zealot', minLevel: 14, max: () => 1, recovery: 'long',
+    text: ({ level }) => `When you Rage, 1 minute as a divine warrior: Fly Speed (hover), Resistance to Necrotic, Psychic and Radiant; Reaction and a use of Rage when a creature within 30 ft. would drop to 0 HP: it has ${level} HP instead.` },
   { key: 'bardicInspiration', name: 'Bardic Inspiration', className: 'Bard', minLevel: 1, max: modMin1('cha'),
     rolls: ({ level }) => [{ key: 'die', label: 'Bardic Inspiration die', formula: `1d${atLevel(getClass('Bard').resources.bardicInspirationDie, level)}` }],
     recovery: ({ level }) => (level >= 5 ? 'short' : 'long'),

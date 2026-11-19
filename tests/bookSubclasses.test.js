@@ -107,3 +107,17 @@ test('Soulknife: Psychic Blades in melee and thrown, with Vex and the bonus blad
   assert.equal(uses.psychicWhispersFree, undefined, 'the 2024 Psychic Whispers has no free use');
   assert.equal(rules.calculateCombat({ classes: [{ className: 'Rogue', subclassName: 'Thief', level: 9 }], sheetData: {} }).attacks.some(attack => attack.from === 'psychicBlade'), false);
 });
+
+test('Barbarian subclasses: Rage-scaled dice, the Zealot pool, Wild Heart rituals, defenses while raging', () => {
+  const uses = (subclassName, level) => Object.fromEntries(rules.classResources([{ className: 'Barbarian', subclassName, level }], ability => (ability === 'str' ? 18 : 10)).map(resource => [resource.key, resource]));
+  assert.equal(uses('Path of the Berserker', 9).frenzy.rolls[0].formula, '3d6', 'Rage Damage +3 at level 9');
+  assert.equal(uses('Path of the Berserker', 14).intimidatingPresence.max, 1);
+  assert.equal(uses('Path of the World Tree', 3).vitalityOfTheTree.rolls[0].formula, '2d6');
+  const zealot = uses('Path of the Zealot', 6);
+  assert.equal(zealot.warriorOfTheGods.max, 5);
+  assert.equal(zealot.divineFury.rolls[0].formula, '1d6+3');
+  const sources = rules.getSpellSources({ classes: [{ className: 'Barbarian', subclassName: 'Path of the Wild Heart', level: 3 }], sheetData: {} });
+  assert.deepEqual(sources.find(source => source.key === 'Animal Speaker').alwaysPrepared, ['Beast Sense', 'Speak with Animals']);
+  const defenses = rules.characterDefenses({ classes: [{ className: 'Barbarian', subclassName: 'Path of the Berserker', level: 6 }], species: 'Human', sheetData: {} });
+  assert.ok(defenses.some(item => item.source === 'Mindless Rage' && item.when === 'while raging'));
+});

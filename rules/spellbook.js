@@ -262,6 +262,16 @@ function getSpellSources(character) {
     }
   }
 
+  // Path of the Wild Heart: Beast Sense and Speak with Animals (Commune with
+  // Nature at 10), cast only as Rituals, with Wisdom.
+  for (const row of classes) {
+    if (row.subclassName !== 'Path of the Wild Heart' || row.level < 3) continue;
+    sources.push({
+      kind: 'subclass', key: 'Animal Speaker', label: 'Animal Speaker (Rituals only)', ...castingNumbers('wis'),
+      alwaysPrepared: ['Beast Sense', 'Speak with Animals', ...(row.level >= 10 ? ['Commune with Nature'] : [])], ritualOnly: true
+    });
+  }
+
   // Warlock invocations: spells cast without a slot, and the Book of Shadows.
   const invocations = readInvocations(sheetData);
   if (invocations.length) {

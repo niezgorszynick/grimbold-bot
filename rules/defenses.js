@@ -113,6 +113,15 @@ function subclassDefenses(classes) {
     if (row.subclassName === 'Circle of the Stars' && row.level >= 14) {
       list.push(entry('resistance', 'Bludgeoning, Piercing and Slashing', 'Full of Stars', { when: 'in Starry Form', activeWhen: 'starryForm' }));
     }
+    if (row.subclassName === 'Path of the Berserker' && row.level >= 6) {
+      list.push(entry('condition', 'Charmed and Frightened', 'Mindless Rage', { when: 'while raging' }));
+    }
+    if (row.subclassName === 'Path of the Zealot' && row.level >= 14) {
+      list.push(entry('resistance', 'Necrotic, Psychic and Radiant', 'Rage of the Gods', { when: 'in the divine warrior form' }));
+    }
+    if (row.subclassName === 'Path of the Wild Heart' && row.level >= 3) {
+      list.push(entry('resistance', 'All damage except Force, Necrotic, Psychic and Radiant', 'Rage of the Wilds (Bear)', { when: 'raging with the Bear option' }));
+    }
     // Eberron: Forge of the Artificer; Arcana Unleashed; Ravenloft: The Horrors Within
     if (row.subclassName === 'Alchemist' && row.level >= 15) {
       list.push(entry('resistance', 'Acid', 'Chemical Mastery'), entry('resistance', 'Poison', 'Chemical Mastery'), entry('condition', 'Poisoned', 'Chemical Mastery'));
