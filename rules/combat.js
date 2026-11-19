@@ -543,10 +543,14 @@ function unarmedStrike(ctx, armorState, holdsWeapon) {
   const { mods, pb, feats, levelOf } = ctx;
   const monkLevel = levelOf('Monk');
   const martialArts = monkLevel >= 1 && !armorState.armor && !armorState.shield;
-  const ability = martialArts && mods.dex > mods.str ? 'dex' : 'str';
+  // College of Dance (Dazzling Footwork): DEX, and the Bardic Inspiration die, with no armor or Shield.
+  const danceRow = ctx.classes.find(row => row.subclassName === 'College of Dance' && row.level >= 3);
+  const dance = danceRow && !armorState.armor && !armorState.shield ? `1d${atLevel(getClass('Bard').resources.bardicInspirationDie, ctx.levelOf('Bard'))}` : null;
+  const ability = (martialArts || dance) && mods.dex > mods.str ? 'dex' : 'str';
   const mod = mods[ability];
   const options = [{ die: '1', label: null }];
   if (martialArts) options.push({ die: martialArtsDie(monkLevel), label: 'Martial Arts' });
+  if (dance) options.push({ die: dance, label: 'Bardic Damage' });
   if (feats.has('Tavern Brawler')) options.push({ die: '1d4', label: 'Tavern Brawler' });
   if (feats.has('Unarmed Fighting')) {
     options.push({ die: holdsWeapon || armorState.shield ? '1d6' : '1d8', label: 'Unarmed Fighting' });

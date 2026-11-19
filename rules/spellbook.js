@@ -262,6 +262,19 @@ function getSpellSources(character) {
     }
   }
 
+  // College of Lore (6): Magical Discoveries, two spells from the Cleric, Druid or
+  // Wizard lists, always prepared and cast with the Bard's slots; one may be
+  // replaced on each level. (The book also allows cantrips; here they are level 1+.)
+  for (const row of classes) {
+    if (row.subclassName !== 'College of Lore' || row.level < 6) continue;
+    const bard = sources.find(source => source.kind === 'class' && source.key === 'Bard');
+    sources.push({
+      kind: 'feat', key: 'Magical Discoveries', label: 'Magical Discoveries (Cleric, Druid or Wizard spells)', list: 'any',
+      filter: { classes: ['Cleric', 'Druid', 'Wizard'] }, ...castingNumbers('cha'),
+      cantripLimit: 0, preparedLimit: 2, minSpellLevel: 1, maxSpellLevel: bard ? bard.maxSpellLevel : 1, changeRule: 'featLevelUp'
+    });
+  }
+
   // Path of the Wild Heart: Beast Sense and Speak with Animals (Commune with
   // Nature at 10), cast only as Rituals, with Wisdom.
   for (const row of classes) {
@@ -402,6 +415,9 @@ function requireSpell(name, source, { cantrip }, catalog) {
   }
   if (cantrip && spell.level !== 0) throw new Error(`${spell.name} is not a cantrip.`);
   const filter = source.filter || {};
+  if (filter.classes && !filter.classes.some(name => spell.classes.includes(name))) {
+    throw new Error(`${spell.name} must be on the ${filter.classes.join(', ').replace(/, ([^,]*)$/, ' or $1')} spell list.`);
+  }
   if (!cantrip && filter.ritual && !spell.ritual) throw new Error(`${spell.name} doesn't have the Ritual tag.`);
   if (!cantrip && filter.schools && !filter.schools.includes(spell.school)) {
     throw new Error(`${spell.name} must be from the ${filter.schools.join(' or ')} school.`);

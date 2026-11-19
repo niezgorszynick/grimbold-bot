@@ -28,6 +28,7 @@ const PSIONIC_DICE = byLevel([[3, 4], [5, 6], [9, 8], [13, 10], [17, 12]]);
 const PSIONIC_DIE = dieAtLevel([[3, 'd6'], [5, 'd8'], [11, 'd10'], [17, 'd12']]);
 const MARTIAL_ARTS_DIE = level => `d${table('Monk', 'martialArtsDie')(level)}`;
 const RAGE_DAMAGE = level => table('Barbarian', 'rageDamage')(level);
+const BARDIC_DIE = level => table('Bard', 'bardicInspirationDie')(level);
 const ARCANE_SHOT_DIE = dieAtLevel([[3, 'd6'], [10, 'd8'], [15, 'd10'], [18, 'd12']]);
 // Phantom: half the Sneak Attack dice (round up).
 const WAIL_DICE = level => Math.ceil(table('Rogue', 'sneakAttackDice')(level) / 2);
@@ -69,6 +70,27 @@ const RESOURCES = [
     text: () => 'Bonus Action: up to ten other creatures within 60 ft. have Advantage on attacks and saves until the start of your next turn. A use of Rage restores it.' },
   { key: 'rageOfTheGods', name: 'Rage of the Gods', subclass: 'Path of the Zealot', minLevel: 14, max: () => 1, recovery: 'long',
     text: ({ level }) => `When you Rage, 1 minute as a divine warrior: Fly Speed (hover), Resistance to Necrotic, Psychic and Radiant; Reaction and a use of Rage when a creature within 30 ft. would drop to 0 HP: it has ${level} HP instead.` },
+  // Bard subclasses (PHB 2024)
+  { key: 'danceInfo', name: 'Dazzling Footwork', subclass: 'College of Dance', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => (level >= 6 ? [{ key: 'tandem', label: 'Tandem Footwork: Initiative bonus', formula: `1d${BARDIC_DIE(level)}` }] : []),
+    text: ({ level }) => 'No armor or Shield: AC 10 + DEX + CHA, Unarmed Strikes with DEX for d' + BARDIC_DIE(level) + ' + DEX (the die is not spent), and an Unarmed Strike with any action that spends Bardic Inspiration.' +
+      (level >= 6 ? ' Inspiring Movement: Reaction and a use, half your Speed, and an ally moves too. Tandem Footwork: a use when you roll Initiative, you and allies within 30 ft. add the die.' : '') +
+      (level >= 14 ? ' Leading Evasion: no damage on a successful DEX save for half, half on a failure; share it with creatures within 5 ft.' : '') },
+  { key: 'beguilingMagic', name: 'Beguiling Magic', subclass: 'College of Glamour', minLevel: 3, max: () => 1, recovery: 'long',
+    rolls: ({ level }) => [{ key: 'mantle', label: 'Mantle of Inspiration: die (×2 temporary HP)', formula: `1d${BARDIC_DIE(level)}` }],
+    text: ({ mods }) => `After an Enchantment or Illusion spell with a slot: a creature within 60 ft. makes a WIS save or is Charmed or Frightened for 1 minute. A use of Bardic Inspiration restores it. Mantle of Inspiration: Bonus Action and a use, up to ${Math.max(1, mods.cha)} creatures gain twice the die in temporary HP and move.` },
+  { key: 'mantleOfMajesty', name: 'Mantle of Majesty', subclass: 'College of Glamour', minLevel: 6, max: () => 1, recovery: 'long',
+    text: () => 'Bonus Action: cast Command without a slot, and again as a Bonus Action for 1 minute (Concentration); creatures you charm fail the save. A level 3+ slot restores it.' },
+  { key: 'unbreakableMajesty', name: 'Unbreakable Majesty', subclass: 'College of Glamour', minLevel: 14, max: () => 1, recovery: 'short',
+    text: () => 'Bonus Action, 1 minute: the first time a creature hits you on a turn, it makes a CHA save or misses.' },
+  { key: 'cuttingWords', name: 'Cutting Words', subclass: 'College of Lore', minLevel: 3, max: () => 0, info: true,
+    rolls: ({ level }) => [{ key: 'die', label: 'Cutting Words / Peerless Skill', formula: `1d${BARDIC_DIE(level)}` }],
+    text: ({ level }) => 'Reaction and a use of Bardic Inspiration: subtract the die from a damage roll, or a successful check or attack, of a creature within 60 ft.' +
+      (level >= 14 ? ' Peerless Skill: add the die to your own failed check or attack (the use is spent only if it then succeeds).' : '') },
+  { key: 'combatInspiration', name: 'Combat Inspiration', subclass: 'College of Valor', minLevel: 3, max: () => 0, info: true,
+    text: ({ level }) => 'Your Bardic Inspiration can also add to AC against a hit (Reaction) or to the damage of a hit.' +
+      (level >= 6 ? ' Extra Attack: two attacks, one may be a cantrip with a casting time of an action.' : '') +
+      (level >= 14 ? ' Battle Magic: after an action spell, a weapon attack as a Bonus Action.' : '') },
   { key: 'bardicInspiration', name: 'Bardic Inspiration', className: 'Bard', minLevel: 1, max: modMin1('cha'),
     rolls: ({ level }) => [{ key: 'die', label: 'Bardic Inspiration die', formula: `1d${atLevel(getClass('Bard').resources.bardicInspirationDie, level)}` }],
     recovery: ({ level }) => (level >= 5 ? 'short' : 'long'),

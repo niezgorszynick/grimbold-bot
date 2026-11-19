@@ -8,6 +8,8 @@
 // chose (a feature choice, see rules/featureChoices.js).
 
 const SUBCLASS_SPELLS = {
+  // Bard
+  'College of Glamour': [[3, ['Charm Person', 'Mirror Image']], [6, ['Command']]],
   // Cleric
   'Life Domain': [[3, ['Aid', 'Bless', 'Cure Wounds', 'Lesser Restoration']], [5, ['Mass Healing Word', 'Revivify']], [7, ['Aura of Life', 'Death Ward']], [9, ['Greater Restoration', 'Mass Cure Wounds']]],
   'Light Domain': [[3, ['Burning Hands', 'Faerie Fire', 'Scorching Ray', 'See Invisibility']], [5, ['Daylight', 'Fireball']], [7, ['Arcane Eye', 'Wall of Fire']], [9, ['Flame Strike', 'Scrying']]],

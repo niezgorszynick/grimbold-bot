@@ -417,7 +417,8 @@
     const all = Object.values(catalog).filter(spell => (source.list === 'any' || spell.classes.includes(source.list) || (source.extraSpells || []).includes(spell.name)) &&
       !fixedNames.includes(spell.name));
     const pending = draft && draft.key === source.key ? draft : null;
-    const fitsFilter = spell => (!filter.ritual || spell.ritual) && (!filter.schools || filter.schools.includes(spell.school));
+    const fitsFilter = spell => (!filter.ritual || spell.ritual) && (!filter.schools || filter.schools.includes(spell.school)) &&
+      (!filter.classes || filter.classes.some(name => spell.classes.includes(name)));
     const bookNames = source.spellbook ? source.spellbook.map(entry => entry.name) : null;
     const search = el('input', { type: 'search', placeholder: 'Search spells…', 'aria-label': 'Search spells' });
     const groups = [];
