@@ -52,14 +52,16 @@
     dismissed: name => name + ' slips into its pocket dimension.',
     recalled: name => name + ' is back.',
     released: name => name + ' is gone for good (until you cast Find Familiar again).',
-    vanished: name => name + ' drops to 0 HP and disappears.'
+    vanished: name => name + ' drops to 0 HP and disappears.',
+    petSet: () => 'Pet saved.',
+    petRemoved: () => 'Pet removed.'
   };
 
   async function act(payload, success) {
     try {
       const result = await request('POST', payload);
       view = result.familiar;
-      const name = view.name || 'Your familiar';
+      const name = view.name || (view.form ? view.form : 'Your familiar');
       const events = (result.events || []).map(event => EVENTS[event] ? EVENTS[event](name) : '').filter(Boolean);
       message = events.join(' ') || success || '';
       isError = false;
@@ -220,15 +222,54 @@
     return el('div', { className: 'familiar-admin muted' }, tools);
   }
 
+  // A pet for show: name, creature and description; admins add and change it.
+  let editingPet = false;
+  function petSection() {
+    const pet = view.pet;
+    if (!pet && !view.canGrant) return null;
+    if (view.canGrant && (editingPet || !pet)) {
+      if (!pet && !editingPet) {
+        return el('div', { className: 'familiar-admin muted' }, [
+          el('button', { type: 'button', className: 'btn btn-small', text: '+ Add a pet (for show, no stats)', onclick: () => { editingPet = true; render(); } })
+        ]);
+      }
+      const name = el('input', { type: 'text', maxlength: '60', placeholder: 'Name', value: pet ? pet.name : '', 'aria-label': 'Pet name' });
+      const creature = el('input', { type: 'text', maxlength: '60', placeholder: 'Creature (e.g. Ostrich)', value: pet ? pet.creature : '', 'aria-label': 'Creature' });
+      const description = el('textarea', { rows: '2', maxlength: '500', placeholder: 'Description (optional)', 'aria-label': 'Pet description' });
+      description.value = pet ? pet.description : '';
+      return el('div', { className: 'spell-picker familiar-cast familiar-pet-editor' }, [
+        el('h5', { text: 'Pet' }),
+        el('div', { className: 'familiar-cast-row' }, [name, creature]),
+        description,
+        el('div', { className: 'vitals-actions' }, [
+          el('button', { type: 'button', className: 'btn btn-small btn-green', text: 'Save pet', onclick: () => { editingPet = false; act({ action: 'setPet', name: name.value, creature: creature.value, description: description.value }); } }),
+          el('button', { type: 'button', className: 'link-button small', text: 'Cancel', onclick: () => { editingPet = false; render(); } })
+        ])
+      ]);
+    }
+    return el('div', { className: 'party-familiar party-pet' }, [
+      el('strong', { text: '🐾 ' + pet.name }),
+      el('span', { className: 'muted small', text: (pet.creature && pet.creature !== pet.name ? ' ' + pet.creature + ',' : '') + ' pet (no stats, stays out of fights)' }),
+      pet.description ? el('p', { className: 'small', text: pet.description }) : null,
+      view.canGrant ? el('span', { className: 'vitals-actions' }, [
+        el('button', { type: 'button', className: 'link-button small', text: 'Edit', onclick: () => { editingPet = true; render(); } }),
+        el('button', { type: 'button', className: 'link-button small', text: 'Remove', onclick: () => { if (window.confirm('Remove ' + pet.name + '?')) act({ action: 'removePet' }); } })
+      ]) : null
+    ]);
+  }
+
   function render() {
-    if (!view || (!view.available && !view.canGrant)) {
+    if (!view || (!view.available && !view.canGrant && !view.pet)) {
       root.hidden = true;
       return;
     }
     root.hidden = false;
     const status = message ? el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', text: message }) : null;
     if (!view.available) {
-      body.replaceChildren(...[el('p', { className: 'muted small', text: 'No Find Familiar on this character.' }), adminTools(), status].filter(Boolean));
+      body.replaceChildren(...[
+        view.canGrant || !view.pet ? el('p', { className: 'muted small', text: 'No Find Familiar on this character.' }) : null,
+        petSection(), adminTools(), status
+      ].filter(Boolean));
       return;
     }
     const parts = [el('p', { className: 'muted small', text: 'From ' + view.rules.ways.join(', ') + (view.rules.spellcasting ? ' · ' + view.rules.spellcasting.label + ' DC ' + view.rules.spellcasting.saveDc : '') })];
@@ -258,7 +299,7 @@
       (block.notes || []).forEach(note => parts.push(el('p', { className: 'muted small', text: '⚠ ' + note })));
       parts.push(statBlock(block));
     }
-    parts.push(adminTools(), status);
+    parts.push(petSection(), adminTools(), status);
     body.replaceChildren(...parts.filter(Boolean));
   }
 

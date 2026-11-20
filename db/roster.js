@@ -8,7 +8,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { buildCharacterCombat } = require('./combat');
 const { activeWildShape, starryFormState } = require('./wildShape');
-const { familiarState } = require('./familiars');
+const { familiarState, petOf } = require('./familiars');
 const { characterPortraitUrl } = require('./characterPortraits');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
@@ -117,6 +117,8 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
     wildShape: null,
     starryForm: null,
     cosmicOmen: null,
+    // A pet for show (no stats): name, creature, description.
+    pet: attempt(() => petOf(character.id)),
     // The familiar (shown under its owner on the table), unless it is gone.
     familiar: attempt(() => {
       const state = familiarState(character, sheetData);

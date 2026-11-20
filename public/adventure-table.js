@@ -392,6 +392,11 @@
       ]),
       flags.length ? el('div', { className: 'party-flags' }, flags) : null,
       familiarLine(member),
+      member.pet ? el('div', { className: 'party-familiar party-pet', title: member.pet.description || null }, [
+        el('strong', { text: '🐾 ' + member.pet.name }),
+        el('span', { className: 'muted small', text: (member.pet.creature && member.pet.creature !== member.pet.name ? ' ' + member.pet.creature + ',' : '') + ' pet' }),
+        member.pet.description ? el('div', { className: 'muted small', text: member.pet.description }) : null
+      ]) : null,
       member.saves ? el('div', { className: 'party-line' }, [
         el('span', { className: 'party-label', text: 'Saves' }),
         ...ABILITIES.map(ability => el('span', { className: 'party-save' }, [el('small', { text: ability.toUpperCase() + ' ' }), rollIf('save:' + ability, signed(member.saves[ability]), ability.toUpperCase() + ' save')]))

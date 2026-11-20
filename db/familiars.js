@@ -7,6 +7,10 @@
 //
 // Casting Find Familiar (action 'summon') doesn't spend a spell slot here:
 // the hour-long ritual or the free cast is the player's to note.
+//
+// A pet (kind 'pet') is a companion for show, given by an admin: a name, what
+// creature it is (form, free text: "Ostrich") and a description (options).
+// No stat block, no HP, never in a fight. One per character, beside a familiar.
 
 'use strict';
 
@@ -20,7 +24,9 @@ const STATUSES = ['active', 'dismissed', 'gone'];
 // What the DM of an adventure the character is in may do from the table.
 const DM_ACTIONS = ['damage', 'heal', 'tempHp', 'setHp', 'dismiss', 'recall'];
 const OWNER_ACTIONS = ['summon', 'update', 'dismiss', 'recall', 'release', 'damage', 'heal', 'tempHp', 'setHp'];
-const ADMIN_ACTIONS = ['grant', 'anyForm'];
+const ADMIN_ACTIONS = ['grant', 'anyForm', 'setPet', 'removePet'];
+const PET = 'pet';
+const MAX_PET_TEXT = 500;
 
 function readSheet(raw) {
   try {
@@ -103,17 +109,26 @@ function isAdventureDm(character, user) {
   `).get(character.id, Number(user && user.id)));
 }
 
+// The character's pet, or null: { name, creature, description }.
+function petOf(characterId) {
+  const row = db.prepare('SELECT * FROM companions WHERE character_id = ? AND kind = ?').get(Number(characterId), PET);
+  if (!row) return null;
+  return { id: row.id, name: row.name || row.form, creature: row.form || '', description: readOptions(row.options).description || '' };
+}
+
 function view(character, user) {
   const sheetData = readSheet(character.sheet_data);
   const state = familiarState(character, sheetData);
   const isAdmin = Boolean(user && user.role === 'admin');
   const row = companionRow(character.id);
+  const pet = petOf(character.id);
   if (!state) {
     // The DM can still grant one.
-    return { available: false, canGrant: isAdmin, dmGranted: Boolean(row && row.dm_granted) };
+    return { available: false, canGrant: isAdmin, dmGranted: Boolean(row && row.dm_granted), pet };
   }
   return {
     available: true,
+    pet,
     ...state,
     canGrant: isAdmin,
     canEdit: isAdmin || character.player_id === Number(user && user.id),
@@ -186,8 +201,23 @@ function changeCharacterFamiliar({ id, user, change = {} }) {
     if (![...OWNER_ACTIONS, ...ADMIN_ACTIONS].includes(action)) throw new Error('Unknown familiar action.');
     if (!allowed) throw new Error('Forbidden.');
 
-    const row = ensureRow(character.id);
     const events = [];
+    // A pet: set (name, creature, description) or removed. Admins only.
+    if (action === 'setPet') {
+      const name = cleanName(change.name);
+      const creature = cleanName(change.creature);
+      if (!name && !creature) throw new Error('Give the pet a name or say what creature it is.');
+      const description = String(change.description || '').trim().slice(0, MAX_PET_TEXT);
+      db.prepare('INSERT OR IGNORE INTO companions (character_id, kind, status) VALUES (?, ?, ?)').run(character.id, PET, 'active');
+      db.prepare("UPDATE companions SET name = ?, form = ?, options = ?, updated_at = CURRENT_TIMESTAMP WHERE character_id = ? AND kind = ?")
+        .run(name, creature, JSON.stringify({ description }), character.id, PET);
+      return { familiar: view(character, user), events: ['petSet'] };
+    }
+    if (action === 'removePet') {
+      db.prepare('DELETE FROM companions WHERE character_id = ? AND kind = ?').run(character.id, PET);
+      return { familiar: view(character, user), events: ['petRemoved'] };
+    }
+    const row = ensureRow(character.id);
     if (action === 'grant' || action === 'anyForm') {
       update(row.id, action === 'grant' ? { dm_granted: change.on ? 1 : 0 } : { any_form: change.on ? 1 : 0 });
       return { familiar: view(character, user), events };
@@ -276,6 +306,7 @@ function familiarForCombat(companionId) {
 }
 
 module.exports = {
+  petOf,
   familiarState,
   activeFamiliar,
   getCharacterFamiliar,

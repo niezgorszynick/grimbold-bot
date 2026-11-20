@@ -135,3 +135,19 @@ test('a Wild Companion familiar leaves at a Long Rest', () => {
   assert.equal(db.familiarAfterLongRest(db.getCharacterById(druid)), true);
   assert.equal(db.getCharacterFamiliar({ id: druid, user }).status, 'gone');
 });
+
+test('a pet for show: an admin gives it, it has no stats and stays out of fights', () => {
+  const playerId = createPlayer();
+  const user = { id: playerId, role: 'player' };
+  const admin = { id: createPlayer('admin'), role: 'admin' };
+  const fighter = addCharacter(playerId, 'Dunstan', 'Fighter', 3);
+  assert.throws(() => db.changeCharacterFamiliar({ id: fighter, user, change: { action: 'setPet', name: 'Gertrude', creature: 'Ostrich' } }), /Forbidden/);
+  assert.throws(() => db.changeCharacterFamiliar({ id: fighter, user: admin, change: { action: 'setPet' } }), /name or say what creature/);
+  db.changeCharacterFamiliar({ id: fighter, user: admin, change: { action: 'setPet', name: 'Gertrude', creature: 'Ostrich', description: 'Pecks at buttons.' } });
+  const view = db.getCharacterFamiliar({ id: fighter, user });
+  assert.equal(view.available, false, 'a pet is not a familiar');
+  assert.deepEqual({ ...view.pet, id: undefined }, { id: undefined, name: 'Gertrude', creature: 'Ostrich', description: 'Pecks at buttons.' });
+  assert.equal([...db.rollBreakdowns({ characterId: fighter, user })].some(option => option.id.startsWith('familiar:')), false, 'no dice');
+  db.changeCharacterFamiliar({ id: fighter, user: admin, change: { action: 'removePet' } });
+  assert.equal(db.getCharacterFamiliar({ id: fighter, user }).pet, null);
+});
