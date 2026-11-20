@@ -1493,6 +1493,8 @@ router.get('/rules/creation', (req, res) => {
     skills: rules.SKILL_NAMES,
     languages: rules.STANDARD_LANGUAGES.filter(language => language !== 'Common'),
     languageChoices: rules.STARTING_LANGUAGE_CHOICES,
+    // Rare languages a lineage may take at creation ({ 'Elf:Drow': ['Undercommon'] }).
+    lineageLanguages: rules.LINEAGE_LANGUAGES,
     classes,
     subclasses: rules.DND_CLASSES_AND_SUBCLASSES,
     backgrounds: rules.BACKGROUNDS,

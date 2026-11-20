@@ -5,7 +5,7 @@
 // Error with a player-facing message on the first invalid choice.
 
 const { ABILITIES, SKILL_NAMES, proficiencyBonus, findCanonical } = require('./util');
-const { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, speciesSpeed, sizeOptions } = require('./species');
+const { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, speciesSpeed, sizeOptions, lineageLanguages } = require('./species');
 const { DND_CLASSES_AND_SUBCLASSES } = require('./subclasses');
 const { ALL_CLASSES } = require('./classes');
 const { BACKGROUNDS } = require('./backgrounds');
@@ -192,7 +192,8 @@ function buildStartingCharacter(input) {
   let speciesSpellAbility = null;
   if (speciesOptionRule) {
     // A single option (Khoravar's Friends) needs no pick.
-    const pickedOption = speciesOptionRule.options.length === 1 && !request.speciesOption ? speciesOptionRule.options[0] : request.speciesOption;
+    // An optional one (a Halfling's kithkin heritage) defaults to the first.
+    const pickedOption = (speciesOptionRule.options.length === 1 || speciesOptionRule.optional) && !request.speciesOption ? speciesOptionRule.options[0] : request.speciesOption;
     if (!speciesOptionRule.options.includes(pickedOption)) {
       throw new Error(`Choose your ${speciesOptionRule.label}.`);
     }
@@ -285,12 +286,12 @@ function buildStartingCharacter(input) {
     fightingStyles.push({ name: request.fightingStyle, source: className });
   }
 
-  // Languages: Common plus two standard languages.
+  // Languages: Common plus two standard languages (a Drow may take Undercommon).
   const languages = pickFrom(
     'languages',
     request.languages,
     STARTING_LANGUAGE_CHOICES,
-    STANDARD_LANGUAGES.filter(language => language !== 'Common')
+    [...STANDARD_LANGUAGES.filter(language => language !== 'Common'), ...lineageLanguages(species, speciesOption)]
   );
 
   // Starting equipment: class package and background package (or gold).

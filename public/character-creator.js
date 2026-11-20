@@ -157,8 +157,18 @@
 
     // ── Languages ──
     const languageSection = section('4. Languages', 'You know Common plus ' + R.languageChoices + ' standard languages of your choice.');
-    widgets.languages = checkboxGroup(R.languages, R.languageChoices, { label: 'Languages' });
-    languageSection.body.append(widgets.languages.element);
+    const languageBox = el('div');
+    languageSection.body.append(languageBox);
+    // A lineage can add a rare language to the list (a Drow may take Undercommon).
+    function renderLanguages() {
+      const key = speciesSelect.value + ':' + (widgets.speciesOption ? widgets.speciesOption.value : '');
+      const extra = (R.lineageLanguages || {})[key] || [];
+      const choices = R.languages.concat(extra);
+      const previous = widgets.languages ? widgets.languages.value().filter(language => choices.includes(language)) : [];
+      widgets.languages = checkboxGroup(choices, R.languageChoices, { label: 'Languages', previous });
+      languageBox.replaceChildren(widgets.languages.element);
+    }
+    renderLanguages();
 
     // ── Ability scores ──
     const abilitySection = section('5. Ability Scores', 'Your background increases one score by 2 and another by 1, or three scores by 1, whichever generation method you use. No score can exceed 20.');
@@ -429,7 +439,8 @@
       }
       const option = R.speciesOptions[name];
       if (option) {
-        widgets.speciesOption = selectBox(option.options, { placeholder: '-- Choose --', value: previous.option || (option.options.length === 1 ? option.options[0] : undefined) });
+        widgets.speciesOption = selectBox(option.options, { placeholder: '-- Choose --', value: previous.option || (option.options.length === 1 || option.optional ? option.options[0] : undefined) });
+        widgets.speciesOption.addEventListener('change', renderLanguages);
         parts.push(field(option.label, widgets.speciesOption));
         if (option.spellAbilityChoice) {
           widgets.speciesAbility = selectBox(SPELL_ABILITIES, { placeholder: '-- Ability --', value: previous.ability, labels: a => ABILITY_NAMES[a] });
@@ -443,6 +454,7 @@
       }
       speciesChoicesBox.replaceChildren(...(parts.length ? [el('div', { className: 'character-editor-fields' }, parts.filter(p => p.tagName === 'LABEL')), ...parts.filter(p => p.tagName !== 'LABEL')] : []));
       renderVersatile();
+      renderLanguages();
     }
 
     function renderVersatile() {

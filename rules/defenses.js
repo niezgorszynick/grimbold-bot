@@ -34,15 +34,16 @@ function speciesDefenses(species, sheetData) {
       darkvision(120);
       break;
     case 'Elf':
-      darkvision(option === 'Drow' ? 120 : 60);
+      darkvision(option === 'Drow' || option === 'Shadowmoor Elf' ? 120 : 60);
       list.push(entry('advantage', 'Saves against Charmed', 'Fey Ancestry'), entry('immunity', 'Magical sleep', 'Trance'));
       break;
     case 'Gnome':
       darkvision(60);
-      list.push(entry('advantage', 'INT, WIS and CHA saves against magic', 'Gnomish Cunning'));
+      list.push(entry('advantage', 'INT, WIS and CHA saves', 'Gnomish Cunning'));
       break;
     case 'Halfling':
       list.push(entry('advantage', 'Saves against Frightened', 'Brave'));
+      if (option === 'Shadowmoor Kithkin') darkvision(120);
       break;
     case 'Orc':
       darkvision(120);

@@ -149,6 +149,8 @@ function rollOptions(character) {
     });
     add(`save:${ability}`, `${name} save`, d20(mod(ability) + (saves.includes(ability) ? pb : 0) + items.saves + save.value + buffs.saves) + saveExtra, 'save', {
       ...save,
+      // Gnomish Cunning: Advantage on INT, WIS and CHA saves.
+      ...(character.race === 'Gnome' && ['int', 'wis', 'cha'].includes(ability) ? { advantage: [...(save.advantage || []), 'Gnomish Cunning'] } : {}),
       extraDice: saveExtra.replace(/^\+/, '') || null,
       parts: parts({ label: ability.toUpperCase(), value: mod(ability), keep: true }, { label: 'Proficiency', value: saves.includes(ability) ? pb : 0 },
         { label: 'Magic items', value: items.saves }, { label: 'Item bonuses', value: save.value }, { label: 'Spells', value: buffs.saves })

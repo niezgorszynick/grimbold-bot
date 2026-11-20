@@ -277,7 +277,7 @@ function sheetValues(character, user) {
   set(FIELDS.background, sheetData.background);
   set(FIELDS.className, classes.length > 1 ? classes.map(row => `${row.className} ${row.level}`).join(' / ') : classes[0].className);
   set(FIELDS.subclass, classes.map(row => row.subclassName).filter(Boolean).join(' / '));
-  set(FIELDS.species, sheetData.speciesOption ? `${character.race} (${sheetData.speciesOption})` : character.race);
+  set(FIELDS.species, sheetData.speciesOption && sheetData.speciesOption !== character.race ? `${character.race} (${sheetData.speciesOption})` : character.race);
   set(FIELDS.level, String(level));
   set(FIELDS.xp, String(character.xp || 0));
 

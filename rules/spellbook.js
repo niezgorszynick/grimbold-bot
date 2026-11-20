@@ -54,10 +54,14 @@ const COPY_COST_GP_PER_LEVEL = 50;
 // Species spells: [character level, spell]; level 1 entries are cantrips.
 const SPECIES_SPELLS = {
   Aasimar: { ability: 'cha', spells: [[1, 'Light']] },
-  Tiefling: { ability: 'cha', spells: [[1, 'Thaumaturgy']] },
+  // Otherworldly Presence: with the Fiendish Legacy's spellcasting ability.
+  Tiefling: { spells: [[1, 'Thaumaturgy']] },
   'Elf:Drow': { spells: [[1, 'Dancing Lights'], [3, 'Faerie Fire'], [5, 'Darkness']] },
   'Elf:High Elf': { spells: [[1, 'Prestidigitation'], [3, 'Detect Magic'], [5, 'Misty Step']] },
   'Elf:Wood Elf': { spells: [[1, 'Druidcraft'], [3, 'Longstrider'], [5, 'Pass without Trace']] },
+  // Lorwyn: First Light
+  'Elf:Lorwyn Elf': { spells: [[1, 'Thorn Whip'], [3, 'Command'], [5, 'Silence']] },
+  'Elf:Shadowmoor Elf': { spells: [[1, 'Starry Wisp'], [3, 'Heroism'], [5, 'Gentle Repose']] },
   'Gnome:Forest Gnome': { spells: [[1, 'Minor Illusion'], [1, 'Speak with Animals']], freeUses: 'proficiency' },
   'Gnome:Rock Gnome': { spells: [[1, 'Mending'], [1, 'Prestidigitation']] },
   'Tiefling:Abyssal': { spells: [[1, 'Poison Spray'], [3, 'Ray of Sickness'], [5, 'Hold Person']] },

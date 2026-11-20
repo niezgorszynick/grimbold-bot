@@ -353,6 +353,8 @@ function getMissingSpeciesChoice({ id, player_id, is_admin }) {
   const rule = rules.SPECIES_OPTIONS[character.race];
   if (!rule) return null;
   const sheetData = readSheetData(character.sheet_data);
+  // An optional heritage (kithkin) is never asked for.
+  if (rule.optional && !rule.spellAbilityChoice) return null;
   const needsOption = !rule.options.includes(sheetData.speciesOption);
   const needsAbility = Boolean(rule.spellAbilityChoice) && !['int', 'wis', 'cha'].includes(sheetData.speciesSpellAbility);
   if (!needsOption && !needsAbility) return null;

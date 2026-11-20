@@ -569,6 +569,63 @@ function featResources(feats, classRows, scoreOf) {
   return result;
 }
 
+// Uses (and dice) that come from the species (2024 PHB), by character level:
+// Healing Hands and Celestial Revelation, Breath Weapon and Draconic Flight,
+// Stonecunning, Giant Ancestry and Large Form, Adrenaline Rush and
+// Relentless Endurance. option: the lineage / ancestry (sheetData.speciesOption).
+// Same shape as classResources.
+function speciesResources(species, option, classRows, scoreOf) {
+  const level = Math.max(1, (classRows || []).reduce((sum, row) => sum + row.level, 0));
+  const pb = proficiencyBonus(level);
+  const mod = ability => abilityModifier(scoreOf(ability));
+  const add = (key, name, max, recovery, text, rolls = []) => ({ key, name, source: species, max, recovery, pool: false, text, rolls });
+  const result = [];
+  if (species === 'Aasimar') {
+    result.push(add('healingHands', 'Healing Hands', 1, 'long', `Magic action: touch a creature; it regains ${pb}d4 HP.`,
+      [{ key: 'heal', label: 'Healing Hands (heal)', formula: `${pb}d4` }]));
+    if (level >= 3) {
+      result.push(add('celestialRevelation', 'Celestial Revelation', 1, 'long',
+        `Bonus Action, 1 minute: Heavenly Wings (Fly Speed equal to your Speed), Inner Radiance (Bright Light 10 ft.; at the end of each of your turns, creatures within 10 ft. take ${pb} Radiant) or ` +
+        `Necrotic Shroud (creatures other than allies within 10 ft.: CHA save, DC ${8 + mod('cha') + pb}, or Frightened until the end of your next turn). ` +
+        `Once on each of your turns, one target of your attack or spell takes +${pb} damage (Radiant; Necrotic with the Shroud).`));
+    }
+  }
+  if (species === 'Dragonborn') {
+    const type = (String(option || '').match(/\((\w+)\)/) || [])[1] || 'your ancestry\'s';
+    const dice = level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1;
+    result.push(add('breathWeapon', 'Breath Weapon', pb, 'long',
+      `In place of one attack of the Attack action: a 15-ft. Cone or a 30-ft. Line 5 ft. wide. DEX save (DC ${8 + mod('con') + pb}): ${dice}d10 ${type} damage, half on a success.`,
+      [{ key: 'damage', label: `Breath Weapon (${type}, DEX save)`, formula: `${dice}d10` }]));
+    if (level >= 5) {
+      result.push(add('draconicFlight', 'Draconic Flight', 1, 'long',
+        'Bonus Action: spectral wings for 10 minutes (until you retract them or are Incapacitated); a Fly Speed equal to your Speed.'));
+    }
+  }
+  if (species === 'Dwarf') {
+    result.push(add('stonecunning', 'Stonecunning', pb, 'long', 'Bonus Action: Tremorsense 60 ft. for 10 minutes while on or touching stone.'));
+  }
+  if (species === 'Goliath') {
+    const boons = {
+      "Cloud's Jaunt": ['Bonus Action: teleport up to 30 ft. to an unoccupied space you can see.'],
+      "Fire's Burn": ['When you hit with an attack roll and deal damage: +1d10 Fire damage.', { key: 'fire', label: "Fire's Burn (Fire)", formula: '1d10' }],
+      "Frost's Chill": ['When you hit with an attack roll and deal damage: +1d6 Cold damage and the target\'s Speed drops by 10 ft. until the start of your next turn.', { key: 'cold', label: "Frost's Chill (Cold)", formula: '1d6' }],
+      "Hill's Tumble": ['When you hit a Large or smaller creature with an attack roll and deal damage: it falls Prone.'],
+      "Stone's Endurance": [`Reaction when you take damage: reduce it by 1d12 ${mod('con') >= 0 ? '+' : '−'} ${Math.abs(mod('con'))}.`, { key: 'reduce', label: "Stone's Endurance (damage reduced)", formula: `1d12${mod('con') ? (mod('con') > 0 ? '+' : '') + mod('con') : ''}` }],
+      "Storm's Thunder": ['Reaction when a creature within 60 ft. damages you: it takes 1d8 Thunder damage.', { key: 'thunder', label: "Storm's Thunder (Thunder)", formula: '1d8' }]
+    };
+    const boon = boons[option];
+    if (boon) result.push(add('giantAncestry', option, pb, 'long', boon[0], boon[1] ? [boon[1]] : []));
+    if (level >= 5) {
+      result.push(add('largeForm', 'Large Form', 1, 'long', 'Bonus Action, if there is room: Large for 10 minutes, with Advantage on Strength checks and +10 ft. Speed.'));
+    }
+  }
+  if (species === 'Orc') {
+    result.push(add('adrenalineRush', 'Adrenaline Rush', pb, 'short', `Dash as a Bonus Action and gain ${pb} Temporary Hit Points.`));
+    result.push(add('relentlessEndurance', 'Relentless Endurance', 1, 'long', 'When you drop to 0 HP but aren\'t killed outright: drop to 1 HP instead.'));
+  }
+  return result;
+}
+
 // Uses spent after a rest. used: { key: count }; kind: 'short' | 'long'.
 function recoverResources(used, resources, kind) {
   const next = {};
@@ -582,4 +639,4 @@ function recoverResources(used, resources, kind) {
   return next;
 }
 
-module.exports = { CLASS_RESOURCES: RESOURCES, classResources, featResources, recoverResources };
+module.exports = { CLASS_RESOURCES: RESOURCES, classResources, featResources, speciesResources, recoverResources };

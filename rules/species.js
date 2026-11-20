@@ -9,15 +9,16 @@ const DND_SPECIES_DATA = {
       { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
       { name: 'Healing Hands', description: 'Once per Long Rest, touch a creature to restore Hit Points by rolling a number of d4s equal to your Proficiency Bonus.' },
       { name: 'Light Bearer', description: 'You know the Light cantrip; Charisma is your spellcasting ability for it.' },
-      { name: 'Celestial Revelation', description: 'Once per Long Rest, reveal your celestial nature for 1 minute, choosing an option that grants wings, radiant energy, or a frightening aura.' }
+      { name: 'Celestial Revelation', description: 'From character level 3, once per Long Rest: transform for 1 minute as a Bonus Action (Heavenly Wings, Inner Radiance or Necrotic Shroud); once on each of your turns, one target takes extra damage equal to your Proficiency Bonus.' }
     ]
   },
   Dragonborn: {
     size: 'Medium', speed: 30, traits: [
       { name: 'Draconic Ancestry', description: 'Choose a dragon ancestry; it determines the damage type and shape of your Breath Weapon.' },
-      { name: 'Breath Weapon', description: 'Exhale damaging energy in a cone or line. Uses scale with your Proficiency Bonus and return after a Long Rest.' },
+      { name: 'Breath Weapon', description: 'Replace one attack of the Attack action with a 15-ft. Cone or 30-ft. Line: DEX save (DC 8 + CON + Proficiency Bonus), 1d10 damage of your ancestry\'s type (half on a success), 2d10 at level 5, 3d10 at 11, 4d10 at 17. Proficiency Bonus uses per Long Rest.' },
       { name: 'Damage Resistance', description: 'You resist the damage type associated with your draconic ancestry.' },
-      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' }
+      { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
+      { name: 'Draconic Flight', description: 'From character level 5, once per Long Rest: a Bonus Action gives you spectral wings and a Fly Speed equal to your Speed for 10 minutes.' }
     ]
   },
   Dwarf: {
@@ -31,7 +32,7 @@ const DND_SPECIES_DATA = {
   Elf: {
     size: 'Medium', speed: 30, traits: [
       { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
-      { name: 'Elven Lineage', description: 'Choose a lineage—Drow, High Elf, or Wood Elf—which grants spells as you gain character levels.' },
+      { name: 'Elven Lineage', description: 'Choose a lineage (Drow, High Elf, Wood Elf, or the Lorwyn and Shadowmoor elves of Lorwyn: First Light), which grants a cantrip and a spell at character levels 3 and 5, each castable once per Long Rest without a slot.' },
       { name: 'Fey Ancestry', description: 'You have advantage on saves to avoid or end the Charmed condition on yourself.' },
       { name: 'Keen Senses', description: 'You have proficiency in the Insight, Perception, or Survival skill.' },
       { name: 'Trance', description: 'You do not need to sleep, and magic cannot put you to sleep. Meditation lets you finish a Long Rest in 4 hours.' }
@@ -42,23 +43,24 @@ const DND_SPECIES_DATA = {
   Gnome: {
     size: 'Small', speed: 30, traits: [
       { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
-      { name: 'Gnomish Cunning', description: 'You have advantage on Intelligence, Wisdom, and Charisma saves against magical effects.' },
+      { name: 'Gnomish Cunning', description: 'You have Advantage on Intelligence, Wisdom, and Charisma saving throws.' },
       { name: 'Gnomish Lineage', description: 'Choose a lineage—Forest Gnome or Rock Gnome—which grants magical abilities.' }
     ]
   },
   Goliath: {
     size: 'Medium', speed: 35, traits: [
-      { name: 'Giant Ancestry', description: 'Choose a giant type to gain a special ability, such as teleporting, dealing elemental damage, or reducing incoming damage.' },
-      { name: 'Large Form', description: 'As a Bonus Action, become Large for 10 minutes if space allows; your Speed increases by 10 feet. Uses scale with your Proficiency Bonus and return after a Long Rest.' },
+      { name: 'Giant Ancestry', description: 'Choose a giant\'s boon (Cloud\'s Jaunt, Fire\'s Burn, Frost\'s Chill, Hill\'s Tumble, Stone\'s Endurance or Storm\'s Thunder), usable Proficiency Bonus times per Long Rest.' },
+      { name: 'Large Form', description: 'From character level 5, once per Long Rest: a Bonus Action makes you Large for 10 minutes if there is room, with Advantage on Strength checks and +10 ft. Speed.' },
       { name: 'Powerful Build', description: 'You have advantage on checks to end the Grappled condition, and count as one size larger when determining carrying capacity.' }
     ]
   },
   Halfling: {
     size: 'Small', speed: 30, traits: [
       { name: 'Brave', description: 'You have advantage on saves to avoid or end the Frightened condition on yourself.' },
-      { name: 'Halfling Nimbleness', description: 'You can move through the space of a creature that is larger than you.' },
+      { name: 'Halfling Nimbleness', description: 'You can move through the space of a creature a size larger than you, but you can\'t stop there.' },
       { name: 'Luck', description: 'When you roll a 1 on a d20 Test, you can reroll the die; you must use the new roll.' },
-      { name: 'Naturally Stealthy', description: 'You can take the Hide action even when you are obscured only by a creature at least one size larger than you.' }
+      { name: 'Naturally Stealthy', description: 'You can take the Hide action even when you are obscured only by a creature at least one size larger than you.' },
+      { name: 'Kithkin', description: 'Kithkin of Lorwyn: First Light use the Halfling traits; Shadowmoor kithkin have Darkvision 120 ft. (choose it as your heritage).' }
     ]
   },
   Human: {
@@ -71,7 +73,7 @@ const DND_SPECIES_DATA = {
   },
   Orc: {
     size: 'Medium', speed: 30, traits: [
-      { name: 'Adrenaline Rush', description: 'As a Bonus Action, move up to your Speed and gain Temporary Hit Points. Uses scale with your Proficiency Bonus and return after a Short or Long Rest.' },
+      { name: 'Adrenaline Rush', description: 'Dash as a Bonus Action and gain Temporary Hit Points equal to your Proficiency Bonus. Proficiency Bonus uses per Short or Long Rest.' },
       { name: 'Darkvision', description: 'You can see in darkness up to 120 feet, though only in shades of gray.' },
       { name: 'Relentless Endurance', description: 'When reduced to 0 Hit Points but not killed outright, drop to 1 Hit Point instead. Once per Long Rest.' }
     ]
@@ -79,8 +81,8 @@ const DND_SPECIES_DATA = {
   Tiefling: {
     size: 'Medium or Small', speed: 30, traits: [
       { name: 'Darkvision', description: 'You can see in darkness up to 60 feet, though only in shades of gray.' },
-      { name: 'Fiendish Legacy', description: 'Choose an Abyssal, Chthonic, or Infernal legacy that grants spells as you gain character levels.' },
-      { name: 'Otherworldly Presence', description: 'You know the Thaumaturgy cantrip; Charisma is your spellcasting ability for it.' }
+      { name: 'Fiendish Legacy', description: 'Choose an Abyssal, Chthonic, or Infernal legacy: a damage Resistance, a cantrip, and a spell at character levels 3 and 5, each castable once per Long Rest without a slot.' },
+      { name: 'Otherworldly Presence', description: 'You know the Thaumaturgy cantrip, cast with your Fiendish Legacy\'s spellcasting ability.' }
     ]
   },
   // Eberron: Forge of the Artificer
@@ -175,7 +177,9 @@ const SPECIES_OPTIONS = {
     options: ['Black (Acid)', 'Blue (Lightning)', 'Brass (Fire)', 'Bronze (Lightning)', 'Copper (Acid)',
       'Gold (Fire)', 'Green (Poison)', 'Red (Fire)', 'Silver (Cold)', 'White (Cold)']
   },
-  Elf: { label: 'Elven Lineage', options: ['Drow', 'High Elf', 'Wood Elf'], spellAbilityChoice: true },
+  Elf: { label: 'Elven Lineage', options: ['Drow', 'High Elf', 'Wood Elf', 'Lorwyn Elf', 'Shadowmoor Elf'], spellAbilityChoice: true },
+  // Lorwyn: First Light. Optional: a plain Halfling needn't pick.
+  Halfling: { label: 'Heritage', options: ['Halfling', 'Lorwyn Kithkin', 'Shadowmoor Kithkin'], optional: true },
   Gnome: { label: 'Gnomish Lineage', options: ['Forest Gnome', 'Rock Gnome'], spellAbilityChoice: true },
   Goliath: {
     label: 'Giant Ancestry',
@@ -194,6 +198,14 @@ function sizeOptions(speciesName) {
   const species = DND_SPECIES_DATA[speciesName];
   if (!species) return [];
   return species.size === 'Medium or Small' ? ['Medium', 'Small'] : [species.size];
+}
+
+// Rare languages a lineage may take among its starting languages.
+const LINEAGE_LANGUAGES = { 'Elf:Drow': ['Undercommon'] };
+
+// The languages a species and lineage may pick at creation beyond the standard ones.
+function lineageLanguages(species, option) {
+  return LINEAGE_LANGUAGES[`${species}:${option}`] || [];
 }
 
 // Lineages that change the species' Speed (Wood Elf: Speed 35 ft.).
@@ -215,4 +227,4 @@ function speciesTraitTexts(speciesName) {
   return { description: entry.description || '', traits: Object.fromEntries(Object.entries(entry.sections).filter(([, text]) => text)) };
 }
 
-module.exports = { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, LINEAGE_SPEED, speciesSpeed, sizeOptions, speciesTraitTexts };
+module.exports = { DND_SPECIES_DATA, DND_SPECIES, SPECIES_OPTIONS, LINEAGE_SPEED, LINEAGE_LANGUAGES, lineageLanguages, speciesSpeed, sizeOptions, speciesTraitTexts };

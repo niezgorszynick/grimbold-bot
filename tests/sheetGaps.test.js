@@ -34,7 +34,7 @@ test('an older character without a lineage gets asked for one, and its spells fo
   const id = addCharacter(owner, { race: 'Elf', sheet: { abilities: { int: { score: 14 } } } });
   const asOwner = { id, player_id: owner, is_admin: false };
   assert.deepEqual(db.getMissingSpeciesChoice(asOwner), {
-    species: 'Elf', label: 'Elven Lineage', options: ['Drow', 'High Elf', 'Wood Elf'], current: null, spellAbilityChoice: true
+    species: 'Elf', label: 'Elven Lineage', options: ['Drow', 'High Elf', 'Wood Elf', 'Lorwyn Elf', 'Shadowmoor Elf'], current: null, spellAbilityChoice: true
   });
   assert.throws(() => db.chooseSpeciesOption({ ...asOwner, choice: { option: 'Moon Elf', spellAbility: 'int' } }), /Elven Lineage/);
   assert.throws(() => db.chooseSpeciesOption({ ...asOwner, choice: { option: 'High Elf' } }), /Intelligence, Wisdom or Charisma/);
