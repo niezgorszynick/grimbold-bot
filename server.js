@@ -75,6 +75,7 @@ const ADMIN_ASSETS = {
   'sheet-help.js': path.join(__dirname, 'public', 'sheet-help.js'),
   'character-proficiencies.js': path.join(__dirname, 'public', 'character-proficiencies.js'),
   'character-wild-shape.js': path.join(__dirname, 'public', 'character-wild-shape.js'),
+  'character-familiar.js': path.join(__dirname, 'public', 'character-familiar.js'),
   'auctions.js': path.join(__dirname, 'public', 'auctions.js'),
   'character-speak.js': path.join(__dirname, 'public', 'character-speak.js'),
   'discord-editor.js': path.join(__dirname, 'public', 'discord-editor.js'),

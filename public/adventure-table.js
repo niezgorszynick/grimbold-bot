@@ -258,6 +258,71 @@
     ]);
   }
 
+  // A party member's familiar, under them: HP, AC, initiative (rolled from the
+  // owner's dice: its own row in the fight), and the DM's HP buttons.
+  async function changeFamiliar(member, payload, success) {
+    try {
+      const response = await fetch('/api/characters/' + member.id + '/familiar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not change the familiar.');
+      const familiar = result.familiar;
+      message = (result.events || []).includes('vanished')
+        ? familiar.name + ' drops to 0 HP and disappears.'
+        : success + (familiar.hp ? ' ' + familiar.name + ': ' + familiar.hp.current + ' / ' + familiar.hp.max + ' HP.' : '');
+      isError = false;
+    } catch (error) {
+      message = member.name + "'s familiar: " + error.message;
+      isError = true;
+    }
+    await load();
+  }
+
+  function familiarLine(member) {
+    const familiar = member.familiar;
+    if (!familiar) return null;
+    const hp = familiar.hp;
+    const here = familiar.status === 'active';
+    const fighter = runningCombatants().find(combatant => combatant.companionId === familiar.id);
+    const running = runningEncounter();
+    const manage = data.canManage && data.adventure.status === 'active';
+    let actions = null;
+    if (manage && here) {
+      const amount = el('input', { type: 'number', min: '1', max: '1000', inputmode: 'numeric', placeholder: 'HP', 'aria-label': 'Amount for ' + familiar.name });
+      const change = action => {
+        const value = Number(amount.value);
+        if (!Number.isInteger(value) || value <= 0) { message = 'Enter a positive whole number for ' + familiar.name + ' first.'; isError = true; render(); return; }
+        changeFamiliar(member, { action, amount: value }, familiar.name + ' ' + { damage: 'takes ' + value + ' damage.', heal: 'heals ' + value + ' HP.', tempHp: 'gains ' + value + ' temporary HP.' }[action]);
+      };
+      amount.addEventListener('keydown', event => { if (event.key === 'Enter') change('damage'); });
+      actions = el('div', { className: 'party-hp-actions' }, [
+        amount,
+        button('Damage', () => change('damage'), 'btn btn-small btn-red'),
+        button('Heal', () => change('heal'), 'btn btn-small btn-green'),
+        button('Temp HP', () => change('tempHp'))
+      ]);
+    }
+    return el('div', { className: 'party-familiar' + (fighter ? ' in-encounter' : '') }, [
+      el('div', {}, [
+        el('strong', { text: '🐾 ' + familiar.name }),
+        el('span', { className: 'muted small', text: ' ' + (familiar.name !== familiar.form ? familiar.form + ', ' : '') + familiar.creatureType + ' familiar' }),
+        here ? null : el('span', { className: 'tag', text: 'dismissed' })
+      ]),
+      here ? el('div', { className: 'party-stats' }, [
+        stat('HP', hp.current + '/' + hp.max + (hp.temp ? ' +' + hp.temp : ''), 'Hit Points'),
+        stat('AC', familiar.armorClass, 'Armor Class'),
+        stat('Init', fighter && fighter.initiative !== null && fighter.initiative !== undefined ? String(fighter.initiative) : signed(familiar.initiative), 'Its own initiative (rolling it puts it in the fight)', 'familiar:initiative'),
+        stat('Speed', familiar.speed.split(',')[0]),
+        stat('PP', familiar.passivePerception, 'Passive Perception')
+      ]) : null,
+      actions,
+      manage && here && running && !fighter && secretsOpen()
+        ? button('⚔ Add ' + familiar.name + ' to the fight', () => act('/encounters/' + running.id + '/add', { familiarOf: member.id }, familiar.name + ' joins ' + running.name + '.'), 'btn btn-small btn-red')
+        : null
+    ]);
+  }
+
   function memberCardFor(member, compact = false) {
     const classes = member.classes.map(row => row.className + ' ' + row.level + (row.subclassName ? ' (' + row.subclassName + ')' : '')).join(' / ');
     const flags = [];
@@ -326,6 +391,7 @@
         stat('Prof', signed(member.proficiencyBonus), 'Proficiency Bonus')
       ]),
       flags.length ? el('div', { className: 'party-flags' }, flags) : null,
+      familiarLine(member),
       member.saves ? el('div', { className: 'party-line' }, [
         el('span', { className: 'party-label', text: 'Saves' }),
         ...ABILITIES.map(ability => el('span', { className: 'party-save' }, [el('small', { text: ability.toUpperCase() + ' ' }), rollIf('save:' + ability, signed(member.saves[ability]), ability.toUpperCase() + ' save')]))

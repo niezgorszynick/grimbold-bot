@@ -36,6 +36,7 @@ module.exports = {
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),
   ...require('./db/wildShape'),
+  ...require('./db/familiars'),
   ...require('./db/characterPdf'),
   ...require('./db/spellEffects'),
   ...require('./db/lineup'),

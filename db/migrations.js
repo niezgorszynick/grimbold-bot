@@ -1225,6 +1225,46 @@ const MIGRATIONS = [
       const columns = db.prepare('PRAGMA table_info(npc_voice_messages)').all().map(column => column.name);
       if (!columns.includes('via')) db.exec("ALTER TABLE npc_voice_messages ADD COLUMN via TEXT NOT NULL DEFAULT 'grimbold'");
     }
+  },
+  {
+    // Familiars (db/familiars.js), and later other companions (Steel Defender,
+    // Primal Companion, Homunculus) by kind. form: the monster catalog name;
+    // creature_type: Celestial, Fey or Fiend; status: active, dismissed (in
+    // its pocket dimension) or gone (0 HP or dismissed forever, until Find
+    // Familiar is cast again). dm_granted: the DM gave a familiar to someone
+    // without Find Familiar; any_form: the DM allows any catalog statblock.
+    // options: JSON of feat choices (elemental / otherworldly damage type,
+    // Chain Master's fly or swim). A fight's row for one: encounter_combatants.companion_id.
+    version: 43,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS companions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL DEFAULT 'familiar',
+          name TEXT,
+          form TEXT,
+          creature_type TEXT,
+          hp_current INTEGER,
+          hp_temp INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'gone',
+          dm_granted INTEGER NOT NULL DEFAULT 0,
+          any_form INTEGER NOT NULL DEFAULT 0,
+          options TEXT NOT NULL DEFAULT '{}',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (character_id, kind)
+        );
+        CREATE TRIGGER IF NOT EXISTS change_log_companion_insert AFTER INSERT ON companions
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', NEW.character_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_companion_update AFTER UPDATE ON companions
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', NEW.character_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_companion_delete AFTER DELETE ON companions
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('character', OLD.character_id); END;
+      `);
+      const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
+      if (!columns.has('companion_id')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN companion_id INTEGER REFERENCES companions(id) ON DELETE CASCADE');
+    }
   }
 ];
 

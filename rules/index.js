@@ -29,6 +29,7 @@ module.exports = {
   ...require('./levelUp'),
   ...require('./classResources'),
   ...require('./wildShape'),
+  ...require('./familiars'),
   ...require('./effects'),
   ...require('./buffs'),
   ...require('./defenses'),

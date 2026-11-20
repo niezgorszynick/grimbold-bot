@@ -13,6 +13,7 @@
 const { db } = require('./connection');
 const rules = require('../rules');
 const { npcCondition, canSeeNpc } = require('./npcs');
+const { familiarForCombat, changeFamiliarHpById } = require('./familiars');
 
 // db/activeAdventures.js uses this module for the table; required late.
 const adventures = () => require('./activeAdventures');
@@ -62,13 +63,20 @@ function customMonsterOf(id, data, basedOn) {
   }
 }
 
+// A party member's familiar in the fight (db/familiars.js), or null.
+const familiarOfRow = row => (row.companion_id ? familiarForCombat(row.companion_id) : null);
+
 // The monster a combatant fights with: its homebrew statblock, or the catalog's.
 function monsterOfRow(row) {
+  if (row.companion_id) {
+    const familiar = familiarOfRow(row);
+    return familiar ? familiar.block : null;
+  }
   if (row.statblock_id) return customMonsterOf(row.statblock_id, row.statblock_data, row.statblock_based_on);
   return row.monster_name ? rules.getMonster(row.monster_name) : null;
 }
 // The key the table looks a combatant's statblock up by.
-const statblockKey = row => (row.statblock_id ? `custom:${row.statblock_id}` : row.monster_name || row.npc_base || null);
+const statblockKey = row => (row.companion_id ? `familiar:${row.companion_id}` : row.statblock_id ? `custom:${row.statblock_id}` : row.monster_name || row.npc_base || null);
 
 function loadCombatant(adventure, combatantId) {
   const row = db.prepare(`${COMBATANT_QUERY} JOIN encounters e ON e.id = ec.encounter_id WHERE ec.id = ? AND e.adventure_id = ?`)
@@ -79,13 +87,17 @@ function loadCombatant(adventure, combatantId) {
 
 // What a combatant rolls with: its monster, the NPC's base statblock, or the NPC's scores.
 function rollSource(row) {
-  if (row.monster_name || row.statblock_id) return monsterOfRow(row);
+  if (row.monster_name || row.statblock_id || row.companion_id) return monsterOfRow(row);
   const base = row.npc_base ? rules.getMonster(row.npc_base) : null;
   return base || { abilities: readAbilities(row.npc_abilities) };
 }
 
 function hpOf(row) {
   if (row.character_id) return { max: null, current: null, temp: 0 };
+  if (row.companion_id) {
+    const familiar = familiarOfRow(row);
+    return familiar && familiar.hp ? familiar.hp : { max: null, current: null, temp: 0 };
+  }
   return row.npc_id
     ? { max: row.npc_hp_max, current: row.npc_hp_current, temp: row.npc_hp_temp || 0 }
     : { max: row.hp_max, current: row.hp_current, temp: row.hp_temp || 0 };
@@ -94,6 +106,10 @@ function hpOf(row) {
 // "Goblin 2" when there are several; the NPC's name for an NPC.
 function defaultLabel(row, counts) {
   if (row.character_id) return row.character_name;
+  if (row.companion_id) {
+    const familiar = familiarOfRow(row);
+    return familiar ? familiar.name : 'Familiar';
+  }
   if (row.npc_id) return row.npc_name;
   return counts[row.monster_name] > 1 ? `${row.monster_name} ${row.number}` : row.monster_name;
 }
@@ -105,9 +121,22 @@ function combatantView(row, counts, secret) {
   const label = row.name || defaultLabel(row, counts);
   const hp = hpOf(row);
   const condition = npcCondition({ hp_max: hp.max, hp_current: hp.current });
-  const kind = row.character_id ? 'pc' : row.npc_id ? 'npc' : 'monster';
-  const view = { id: row.id, kind, label, condition, npcId: row.npc_id || null, characterId: row.character_id || null };
+  const kind = row.character_id ? 'pc' : row.companion_id ? 'familiar' : row.npc_id ? 'npc' : 'monster';
+  const familiar = row.companion_id ? familiarOfRow(row) : null;
+  const view = {
+    id: row.id, kind, label, condition, npcId: row.npc_id || null, characterId: row.character_id || null,
+    // A familiar: whose it is (its HP and dice are on their sheet too).
+    ...(familiar ? { companionId: row.companion_id, ownerId: familiar.characterId, owner: familiar.characterName } : {})
+  };
   if (!secret) return view;
+  if (familiar) {
+    return {
+      ...view, monster: statblockKey(row), homebrewId: null, customName: null, defaultLabel: label, statblockFound: true,
+      armorClass: familiar.block.armorClass, hpMax: familiar.hp.max, hpCurrent: familiar.hp.current, hpTemp: familiar.hp.temp,
+      initiative: row.initiative, initiativeBonus: familiar.block.initiative, xp: 0,
+      crText: null, form: familiar.form, creatureType: familiar.creatureType
+    };
+  }
   // A party member: their numbers are on their own card at the table.
   if (row.character_id) {
     return { ...view, monster: null, customName: null, defaultLabel: label, statblockFound: false, armorClass: null, hpMax: null, hpCurrent: null, hpTemp: 0, initiative: row.initiative, initiativeBonus: null, xp: 0, crText: null };
@@ -164,6 +193,11 @@ function encounterView(encounter, rows, secret, budget) {
   };
 }
 
+// A familiar's block in the shape of a catalog statblock (rules/familiars.js).
+function familiarStatblock(block) {
+  return { ...block, crText: `${block.crText} · familiar`, hitPoints: block.hpMax, hitPointsText: String(block.hpMax) };
+}
+
 // A statblock for the table, with its dice ([{ id, label, formula, kind }]).
 function statblockWithRolls(monster) {
   return { ...monster, rolls: [...rules.creatureRollOptions(monster).values()] };
@@ -195,7 +229,7 @@ function encountersForTable({ adventureId, secret, manage, partyLevels }) {
       const key = statblockKey(row);
       if (!key || statblocks[key]) continue;
       const monster = row.npc_id ? rules.getMonster(row.npc_base) : monsterOfRow(row);
-      if (monster) statblocks[key] = statblockWithRolls(monster);
+      if (monster) statblocks[key] = statblockWithRolls(row.companion_id ? familiarStatblock(monster) : monster);
     }
   }
   return {
@@ -402,9 +436,18 @@ function addEncounterCharacters({ adventureId, user, encounterId, characterId })
   const already = new Set(db.prepare('SELECT character_id FROM encounter_combatants WHERE encounter_id = ? AND character_id IS NOT NULL').all(encounter.id).map(row => row.character_id));
   const missing = wanted.filter(id => !already.has(id));
   if (!missing.length) throw new Error(characterId ? 'That character is already in this encounter.' : 'The whole party is already in this encounter.');
-  roomFor(encounter, missing.length);
+  // The whole party: their familiars come along (one by one, the DM adds them).
+  const fighting = new Set(db.prepare('SELECT companion_id FROM encounter_combatants WHERE encounter_id = ? AND companion_id IS NOT NULL').all(encounter.id).map(row => row.companion_id));
+  const familiars = characterId === undefined || characterId === null
+    ? activeFamiliarsOf(missing).filter(familiar => !fighting.has(familiar.companionId))
+    : [];
+  roomFor(encounter, missing.length + familiars.length);
   const insert = db.prepare('INSERT INTO encounter_combatants (encounter_id, character_id) VALUES (?, ?)');
-  db.transaction(() => missing.forEach(id => insert.run(encounter.id, id)))();
+  const insertFamiliar = db.prepare('INSERT INTO encounter_combatants (encounter_id, companion_id) VALUES (?, ?)');
+  db.transaction(() => {
+    missing.forEach(id => insert.run(encounter.id, id));
+    familiars.forEach(familiar => insertFamiliar.run(encounter.id, familiar.companionId));
+  })();
   return table(adventure, user);
 }
 
@@ -422,6 +465,45 @@ function recordInitiativeRoll(characterId, total) {
     else db.prepare('INSERT INTO encounter_combatants (encounter_id, character_id, initiative) VALUES (?, ?, ?)').run(encounter.id, Number(characterId), total);
   }
   return encounters.length;
+}
+
+// A familiar's initiative roll (from its owner's sheet or card): its own row
+// in each running encounter of the adventures its owner is in.
+function recordFamiliarInitiative(companionId, characterId, total) {
+  const encounters = db.prepare(`
+    SELECT e.id FROM encounters e JOIN adventures a ON a.id = e.adventure_id
+    JOIN adventure_party ap ON ap.adventure_id = a.id AND ap.character_id = ?
+    WHERE e.status = 'running' AND a.status = 'active'
+  `).all(Number(characterId));
+  for (const encounter of encounters) {
+    const row = db.prepare('SELECT id FROM encounter_combatants WHERE encounter_id = ? AND companion_id = ?').get(encounter.id, Number(companionId));
+    if (row) db.prepare('UPDATE encounter_combatants SET initiative = ? WHERE id = ?').run(total, row.id);
+    else db.prepare('INSERT INTO encounter_combatants (encounter_id, companion_id, initiative) VALUES (?, ?, ?)').run(encounter.id, Number(companionId), total);
+  }
+  return encounters.length;
+}
+
+// The familiars (here, not dismissed) of these characters: [{ companionId, characterId, name }].
+function activeFamiliarsOf(characterIds) {
+  if (!characterIds.length) return [];
+  return db.prepare(`SELECT id, character_id, name, form FROM companions WHERE kind = 'familiar' AND status = 'active' AND form IS NOT NULL
+    AND character_id IN (${characterIds.map(() => '?').join(',')})`).all(...characterIds)
+    .map(row => ({ companionId: row.id, characterId: row.character_id, name: row.name || row.form }));
+}
+
+// The DM adds a party member's familiar to the fight: { characterId }.
+function addEncounterFamiliar({ adventureId, user, encounterId, characterId }) {
+  const adventure = secretAdventure(adventureId, user);
+  const encounter = openEncounter(adventure, encounterId);
+  if (!partyOf(adventure).includes(Number(characterId))) throw new Error("Only party members' familiars can join the encounter.");
+  const [familiar] = activeFamiliarsOf([Number(characterId)]);
+  if (!familiar) throw new Error('That character has no familiar here (summoned and not dismissed).');
+  if (db.prepare('SELECT 1 FROM encounter_combatants WHERE encounter_id = ? AND companion_id = ?').get(encounter.id, familiar.companionId)) {
+    throw new Error(`${familiar.name} is already in this encounter.`);
+  }
+  roomFor(encounter, 1);
+  db.prepare('INSERT INTO encounter_combatants (encounter_id, companion_id) VALUES (?, ?)').run(encounter.id, familiar.companionId);
+  return table(adventure, user);
 }
 
 function removeCombatant({ adventureId, user, combatantId }) {
@@ -555,6 +637,12 @@ function changeCombatantHp({ adventureId, user, combatantId, action, amount }) {
   if (row.character_id) throw new Error(`Change ${row.character_name}'s HP on their card.`);
   const value = Number(amount);
   if (!Number.isInteger(value) || value < 0 || value > 10000) throw new Error('Enter a whole number from 0 to 10000.');
+  // A familiar's HP are its own (on its owner's sheet); at 0 it leaves the fight.
+  if (row.companion_id) {
+    if (!['damage', 'heal', 'tempHp'].includes(action)) throw new Error('Unknown action.');
+    changeFamiliarHpById(row.companion_id, action, value);
+    return table(adventure, user);
+  }
   const hp = hpOf(row);
   if (!Number.isInteger(hp.max)) throw new Error(`${row.npc_name || row.monster_name} has no Hit Points set.`);
   const next = applyHp(hp, action, value);
@@ -581,6 +669,7 @@ function updateCombatant({ adventureId, user, combatantId, name, armorClass, hpM
   const encounter = loadEncounter(adventure, row.encounter_id);
   if (encounter.status === 'done') throw new Error(`"${encounter.name}" is over.`);
   if (row.character_id) throw new Error(`Change ${row.character_name} on their character sheet.`);
+  if (row.companion_id) throw new Error("Change the familiar on its owner's character sheet.");
   const newName = name === undefined ? row.name : (String(name || '').replace(/\s+/g, ' ').trim() || null);
   if (newName && newName.length > MAX_NAME) throw new Error(`Names can be ${MAX_NAME} characters at most.`);
   const ac = optionalNumber(armorClass, 0, 40, 'AC');
@@ -614,6 +703,7 @@ function rollForCombatant({ adventureId, user, combatantId, request = {} }) {
   const row = loadCombatant(adventure, combatantId);
   if (row.character_id) throw new Error(`${row.character_name} rolls on their own sheet.`);
   const source = rollSource(row);
+  if (!source && row.companion_id) throw new Error('That familiar is gone.');
   if (!source) throw new Error(`${row.monster_name} is not in the monster list on this server.`);
   const option = rules.creatureRollOptions(source).get(String(request.roll || ''));
   if (!option) throw new Error('That roll is not on this statblock.');
@@ -726,7 +816,7 @@ function getVttEncounters({ key }) {
           label: combatant.label,
           // "Goblin Warrior" for "Goblin Warrior 2": tokens are often named after the monster.
           // A character's token may carry only their first name.
-          baseName: combatant.kind === 'pc' ? combatant.label.split(' ')[0]
+          baseName: combatant.kind === 'pc' || combatant.kind === 'familiar' ? combatant.label.split(' ')[0]
             : combatant.kind === 'monster' && !combatant.customName ? combatant.label.replace(/ \d+$/, '') : combatant.label,
           kind: combatant.kind,
           initiative: combatant.initiative ?? null,
@@ -773,6 +863,14 @@ function addTokensToEncounter({ key, encounterId, tokens }) {
       if (character) {
         const row = existing('character_id')(character.id) || (addEncounterCharacters({ adventureId: adventure.id, user, encounterId: encounter.id, characterId: character.id }), { id: newest() });
         added.push({ tokenId: token.id, combatantId: row.id, characterId: character.id, label: character.name });
+        continue;
+      }
+      // A party member's familiar, by its name.
+      const familiar = activeFamiliarsOf(party.map(entry => entry.id)).find(entry => plain(entry.name) === name);
+      if (familiar) {
+        const row = existing('companion_id')(familiar.companionId) ||
+          (addEncounterFamiliar({ adventureId: adventure.id, user, encounterId: encounter.id, characterId: familiar.characterId }), { id: newest() });
+        added.push({ tokenId: token.id, combatantId: row.id, characterId: null, label: familiar.name });
         continue;
       }
       const npc = db.prepare('SELECT id, name, private, owner_player_id FROM npcs WHERE lower(trim(name)) = ?').all(name).find(row => canSeeNpc(row, user));
@@ -840,6 +938,8 @@ module.exports = {
   getVttMonsterRolls,
   addEncounterCharacters,
   recordInitiativeRoll,
+  recordFamiliarInitiative,
+  addEncounterFamiliar,
   runEncounter,
   endEncounter,
   pauseEncounter,

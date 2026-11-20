@@ -17,7 +17,7 @@
   const GROUPS = [
     { key: 'abilities', label: 'Abilities, Saves & Senses', icon: '💪', sections: ['abilities', 'saves', 'senses'], extra: ['.sheet-combat-stats', '#cs_ac_details', '#cs_inspiration_text'] },
     { key: 'skills', label: 'Skills', icon: '🎯', sections: ['skills'] },
-    { key: 'vitals', label: 'Hit Points, Rests & Resources', icon: '❤️', sections: ['vitals', 'resources', 'wildShape'] },
+    { key: 'vitals', label: 'Hit Points, Rests & Resources', icon: '❤️', sections: ['vitals', 'resources', 'wildShape', 'familiar'] },
     { key: 'attacks', label: 'Actions & Attacks', icon: '⚔️', sections: ['attacks'] },
     { key: 'spells', label: 'Spells', icon: '✨', sections: ['spells'] },
     { key: 'inventory', label: 'Inventory & Magic Items', icon: '🎒', sections: ['equipment', 'magicItems'] },

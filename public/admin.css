@@ -573,6 +573,12 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .beast-form-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .beast-active { padding: 6px 10px; border-radius: 6px; background: rgba(35, 165, 90, 0.15); border: 1px solid #23a55a; }
 .beast-block { margin-top: 8px; }
+.familiar-cast-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.familiar-cast-row select, .familiar-cast-row input { max-width: 100%; }
+.familiar-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.familiar-hp { margin: 6px 0; }
+.familiar-admin { display: grid; gap: 4px; margin-top: 10px; padding-top: 6px; border-top: 1px solid #3f4147; }
+.party-familiar { margin-top: 6px; padding: 6px 8px; border-left: 3px solid #9d6ef0; border-radius: 4px; background: #1e1f22; }
 .beast-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; margin: 6px 0; }
 .beast-stats > div { display: grid; gap: 2px; padding: 4px 6px; border-radius: 4px; background: #1e1f22; text-align: center; }
 .beast-stats small { color: #b5bac1; }

@@ -397,6 +397,29 @@ router.post('/characters/:id/wild-shape', (req, res) => {
   }
 });
 
+// The familiar: its form, HP, and what the character's rules allow.
+router.get('/characters/:id/familiar', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    return res.json(db.getCharacterFamiliar({ id: req.params.id, user }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
+// { action: 'summon' | 'update' | 'dismiss' | 'recall' | 'release' | 'damage' | 'heal' | 'tempHp' | 'setHp' | 'grant' | 'anyForm', ... }
+router.post('/characters/:id/familiar', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    return res.json(db.changeCharacterFamiliar({ id: req.params.id, user, change: body }));
+  } catch (error) {
+    return res.status(magicItemErrorStatus(error.message)).json({ error: error.message });
+  }
+});
+
 // Class choices the character hasn't made yet (Divine Order, Expertise, ...).
 router.get('/characters/:id/feature-choices', (req, res) => {
   const user = getSessionApiUser(req);
@@ -1074,6 +1097,7 @@ router.post('/adventures/:id/encounters/:encounterId/delete', encounterRoute(({ 
 // { monster, count }, { npcId }, { characterId } or { party: true }
 router.post('/adventures/:id/encounters/:encounterId/add', encounterRoute(({ adventureId, user, body, encounterId }) => {
   if (body.npcId) return db.addEncounterNpc({ adventureId, user, encounterId, npcId: body.npcId });
+  if (body.familiarOf) return db.addEncounterFamiliar({ adventureId, user, encounterId, characterId: body.familiarOf });
   if (body.characterId || body.party) return db.addEncounterCharacters({ adventureId, user, encounterId, characterId: body.party ? null : body.characterId });
   return db.addEncounterMonster({ adventureId, user, encounterId, monster: body.monster, statblockId: body.statblockId || null, count: body.count });
 }));
@@ -1427,6 +1451,8 @@ router.post('/characters/:id/vitals', (req, res) => {
         ...sheetData, ...outcome.vitals, hpMax: outcome.hpMax, spellcasting: spellEffects.spellcasting, magicItems: itemEffects.magicItems
       }, body.action);
       db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), characterId);
+      // Wild Companion's familiar leaves at a Long Rest.
+      if (body.action === 'longRest') db.familiarAfterLongRest(character);
       // Concentration lost (0 HP): the spells it held on others end too.
       db.pruneSpellEffects();
       return {

@@ -8,6 +8,7 @@ const { db } = require('./connection');
 const rules = require('../rules');
 const { buildCharacterCombat } = require('./combat');
 const { activeWildShape, starryFormState } = require('./wildShape');
+const { familiarState } = require('./familiars');
 const { characterPortraitUrl } = require('./characterPortraits');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
@@ -115,7 +116,17 @@ function snapshot(character, storedClasses, { detail = false } = {}) {
       .filter(attack => !attack.needsType).slice(0, 4).map(({ needsType, ...attack }) => ({ ...attack, roll: `attack:${attack.index}` })) : [],
     wildShape: null,
     starryForm: null,
-    cosmicOmen: null
+    cosmicOmen: null,
+    // The familiar (shown under its owner on the table), unless it is gone.
+    familiar: attempt(() => {
+      const state = familiarState(character, sheetData);
+      if (!state || !state.block || state.status === 'gone') return null;
+      return {
+        id: state.id, name: state.name, form: state.form, creatureType: state.creatureType, status: state.status,
+        hp: state.hp, armorClass: state.block.armorClass, initiative: state.block.initiative, speed: state.block.speed,
+        passivePerception: 10 + ((state.block.skills || {}).Perception ?? rules.abilityModifier(state.block.abilities.wis || 10))
+      };
+    })
   };
   // Circle of the Stars: the constellation (and the Archer's arrow), the omen.
   const starry = attempt(() => starryFormState(character, sheetData));

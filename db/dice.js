@@ -11,6 +11,7 @@ const rules = require('../rules');
 const { getCharacterClasses } = require('./characters');
 const { buildCharacterCombat } = require('./combat');
 const { activeWildShape, starryFormState } = require('./wildShape');
+const { activeFamiliar } = require('./familiars');
 const { withActiveSpellEffects } = require('./spellEffects');
 
 const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
@@ -237,6 +238,21 @@ function rollOptions(character) {
     if (starry.active === 'Chalice') add('starry:chalice:heal', 'Starry Form: Chalice healing', chalice.healing, 'damage');
     if (starry.cosmicOmen) add('omen:d6', `Cosmic Omen (${starry.cosmicOmen === 'weal' ? 'Weal: add' : 'Woe: subtract'})`, '1d6', 'damage');
   }
+  // The familiar, while it is here: its own checks, saves and initiative (and
+  // attacks only with Pact of the Chain). Its initiative goes to its own row
+  // in the fight (option.companionId).
+  const familiar = activeFamiliar(character, sheetData);
+  if (familiar) {
+    const name = familiar.name;
+    for (const option of rules.creatureRollOptions(familiar.block).values()) {
+      const attackRoll = option.id.startsWith('actions:') || option.id.startsWith('bonusActions:') || option.id.startsWith('reactions:');
+      if (attackRoll && !familiar.block.canAttack) continue;
+      add(`familiar:${option.id}`, `${name}: ${option.label}`.slice(0, MAX_LABEL), option.formula, option.kind, { companionId: familiar.id });
+    }
+    for (const entry of familiar.block.reactions) {
+      if (entry.roll) add(entry.roll.id, `${name}: ${entry.name.replace(/ \(.*\)$/, '')} (${entry.roll.type})`.slice(0, MAX_LABEL), entry.roll.formula, 'damage');
+    }
+  }
   // Dice of limited-use features (Infernal Wound, Hellfire Orb, Soul Siphon, ...).
   try {
     const context = rules.deriveVitalsContext({ species: character.race, sheetData, classRows: classes });
@@ -397,7 +413,9 @@ function rollForCharacter({ characterId, user, request = {} }) {
     }
   }
   // Initiative during a running encounter: the fight's turn order gets it.
-  if (option.kind === 'initiative') {
+  if (option.kind === 'initiative' && option.companionId) {
+    require('./encounters').recordFamiliarInitiative(option.companionId, character.id, result.total);
+  } else if (option.kind === 'initiative') {
     require('./encounters').recordInitiativeRoll(character.id, result.total);
     // A running skill challenge's turn order too.
     require('./skillChallenges').recordChallengeInitiative(character.id, result.total);

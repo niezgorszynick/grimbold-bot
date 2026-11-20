@@ -24,7 +24,8 @@
     { id: 'cs_purse', refresh: () => window.refreshCharacterPurse, editors: null },
     { id: 'cs_attacks_auto', refresh: () => window.refreshCharacterCombat, editors: null },
     { id: 'cs_proficiencies', refresh: () => window.refreshCharacterProficiencies, editors: '.prof-editor' },
-    { id: 'cs_wild_shape', refresh: () => window.refreshCharacterWildShape, editors: null }
+    { id: 'cs_wild_shape', refresh: () => window.refreshCharacterWildShape, editors: null },
+    { id: 'cs_familiar', refresh: () => window.refreshCharacterFamiliar, editors: '.familiar-cast' }
   ];
 
   function busy(section) {
