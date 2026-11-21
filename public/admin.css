@@ -578,6 +578,21 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .familiar-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
 .familiar-hp { margin: 6px 0; }
 .familiar-admin { display: grid; gap: 4px; margin-top: 10px; padding-top: 6px; border-top: 1px solid #3f4147; }
+.party-trackers { margin-top: 6px; padding: 6px 8px; border-left: 3px solid #f0b232; border-radius: 4px; background: #1e1f22; font-size: 12px; }
+.party-trackers-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.tracker-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.tracker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.tracker-count { display: inline-flex; align-items: center; gap: 4px; }
+.tracker-comment { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.tracker-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.tracker-form { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; }
+.tracker-form input { min-width: 0; }
+.tracker-name-input { flex: 1 1 160px; }
+.tracker-comment-input { flex: 2 1 200px; }
+.tracker-form-count { display: inline-flex; align-items: center; gap: 2px; }
+.tracker-count-input { width: 4.5em; }
+.tracker-form-buttons { display: inline-flex; gap: 4px; }
+.tracker-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .party-familiar { margin-top: 6px; padding: 6px 8px; border-left: 3px solid #9d6ef0; border-radius: 4px; background: #1e1f22; }
 .beast-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; margin: 6px 0; }
 .beast-stats > div { display: grid; gap: 2px; padding: 4px 6px; border-radius: 4px; background: #1e1f22; text-align: center; }

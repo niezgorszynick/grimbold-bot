@@ -1265,6 +1265,44 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(encounter_combatants)').all().map(column => column.name));
       if (!columns.has('companion_id')) db.exec('ALTER TABLE encounter_combatants ADD COLUMN companion_id INTEGER REFERENCES companions(id) ON DELETE CASCADE');
     }
+  },
+  {
+    // Resources the DM tracks on the adventure table (db/trackers.js): for a
+    // party member (character_id) or a notable NPC (npc_id), a name, a short
+    // comment and an optional count (current of max). The adventure's DM and
+    // the Root DM only.
+    version: 44,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS adventure_trackers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER NOT NULL REFERENCES adventures(id) ON DELETE CASCADE,
+          character_id INTEGER REFERENCES characters(id) ON DELETE CASCADE,
+          npc_id INTEGER REFERENCES npcs(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          comment TEXT NOT NULL DEFAULT '',
+          current INTEGER,
+          max INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS adventure_trackers_adventure ON adventure_trackers (adventure_id);
+        CREATE TRIGGER IF NOT EXISTS change_log_tracker_insert AFTER INSERT ON adventure_trackers
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_tracker_update AFTER UPDATE ON adventure_trackers
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', NEW.adventure_id); END;
+        CREATE TRIGGER IF NOT EXISTS change_log_tracker_delete AFTER DELETE ON adventure_trackers
+          BEGIN INSERT INTO change_log (kind, ref_id) VALUES ('adventure', OLD.adventure_id); END;
+      `);
+    }
+  },
+  {
+    // Trackers for a monster in an encounter too: combatant_id (each Goblin
+    // its own); gone with the combatant or the encounter.
+    version: 45,
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(adventure_trackers)').all().map(column => column.name));
+      if (!columns.has('combatant_id')) db.exec('ALTER TABLE adventure_trackers ADD COLUMN combatant_id INTEGER REFERENCES encounter_combatants(id) ON DELETE CASCADE');
+    }
   }
 ];
 

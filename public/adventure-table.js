@@ -254,6 +254,7 @@
         '⚠ Conc. DC ' + member.concentrationSave + ' ',
         canRollFor() ? el('button', { type: 'button', className: 'roll-link', 'data-roll': 'concentration', title: 'Roll the Constitution save', text: '🎲' }) : null
       ]) : member.concentration ? el('span', { className: 'tag gold', title: 'Concentrating', text: '◎ ' + member.concentration }) : null,
+      trackerTags({ characterId: member.id }),
       data.canManage && data.adventure.status === 'active' && hp && member.status === 'alive' ? hpActions(member) : null
     ]);
   }
@@ -407,6 +408,7 @@
         el('span', { className: 'party-label', text: 'Features' }),
         member.resources.map(resource => resource.name + ' ' + resource.left + '/' + resource.max).join(' · ')
       ]) : null,
+      trackerBlock({ characterId: member.id }, member.name),
       member.hitDice.length ? el('div', { className: 'party-line' }, [
         el('span', { className: 'party-label', text: 'Hit Dice' }),
         member.hitDice.map(dice => (dice.total - dice.spent) + '/' + dice.total + ' ' + dice.die).join(', ')
@@ -419,6 +421,118 @@
         ])))
       ]) : null
     ]);
+  }
+
+  // ─── Tracked resources (the DM's own notes) ────────────────────────────────
+  // Per party member, NPC or monster in a fight: a name, a short comment and, if it counts
+  // something, how many are left. The adventure's DM and the Root DM only.
+  // trackerForm: the open add/edit form { key, trackerId?, name, comment, current, max },
+  // kept here so a reload keeps what was typed.
+  let trackerForm = null;
+  const trackerKey = target => (target.characterId ? 'c:' + target.characterId : target.combatantId ? 'm:' + target.combatantId : 'n:' + target.npcId);
+  const trackersOf = target => (data.trackers || []).filter(tracker => (target.characterId ? tracker.characterId === target.characterId
+    : target.combatantId ? tracker.combatantId === target.combatantId : tracker.npcId === target.npcId));
+  // A creature in the fight: a monster's own trackers, an NPC's the NPC's.
+  const combatantTarget = combatant => (combatant.kind === 'npc' && combatant.npcId ? { npcId: combatant.npcId } : combatant.kind === 'monster' ? { combatantId: combatant.id } : null);
+  const trackerCount = tracker => (tracker.current === null && tracker.max === null ? null : (tracker.current ?? 0) + (tracker.max !== null ? '/' + tracker.max : ''));
+
+  function trackerFormNode(target, label) {
+    const form = trackerForm;
+    const field = (prop, attrs) => {
+      const input = el('input', Object.assign({ value: form[prop] === null || form[prop] === undefined ? '' : String(form[prop]) }, attrs));
+      input.addEventListener('input', () => { form[prop] = input.value; });
+      return input;
+    };
+    const name = field('name', { type: 'text', maxlength: '60', placeholder: 'Resource, e.g. Legendary Resistance', 'aria-label': 'Resource name for ' + label, className: 'tracker-name-input' });
+    const current = field('current', { type: 'number', min: '0', max: '999', inputmode: 'numeric', placeholder: 'Left', 'aria-label': 'How many are left', className: 'tracker-count-input', title: 'How many are left (empty: no count)' });
+    const max = field('max', { type: 'number', min: '0', max: '999', inputmode: 'numeric', placeholder: 'Max', 'aria-label': 'Out of how many', className: 'tracker-count-input', title: 'Out of how many (empty: no maximum)' });
+    const comment = field('comment', { type: 'text', maxlength: '200', placeholder: 'Short comment (optional)', 'aria-label': 'Comment', className: 'tracker-comment-input' });
+    const cancel = () => { trackerForm = null; render(); };
+    const node = el('form', { className: 'tracker-form' }, [
+      name, el('span', { className: 'tracker-form-count' }, [current, el('span', { className: 'muted', text: '/' }), max]), comment,
+      el('span', { className: 'tracker-form-buttons' }, [
+        el('button', { type: 'submit', className: 'btn btn-small', text: form.trackerId ? 'Save' : 'Track' }),
+        button('Cancel', cancel, 'btn btn-small btn-secondary')
+      ])
+    ]);
+    node.addEventListener('keydown', event => { if (event.key === 'Escape') cancel(); });
+    node.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!String(form.name || '').trim()) { message = 'Give the resource a name first.'; isError = true; render(); return; }
+      const body = { name: form.name, comment: form.comment, current: form.current, max: form.max };
+      const result = form.trackerId
+        ? await act('/trackers/' + form.trackerId, body, 'Saved ' + form.name.trim() + ' for ' + label + '.')
+        : await act('/trackers', Object.assign(body, target), 'Tracking ' + form.name.trim() + ' for ' + label + '.');
+      if (result && trackerForm === form) { trackerForm = null; render(); }
+    });
+    if (form.focus) {
+      form.focus = false;
+      setTimeout(() => name.focus(), 0);
+    }
+    return node;
+  }
+
+  function trackerRow(tracker, target, label) {
+    const manage = secretsOpen();
+    const count = trackerCount(tracker);
+    const step = by => act('/trackers/' + tracker.id, { step: by }, result => {
+      const after = (result.trackers || []).find(row => row.id === tracker.id);
+      return after ? label + ': ' + after.name + ' ' + trackerCount(after) + '.' : '';
+    });
+    return el('li', { className: 'tracker' }, [
+      el('strong', { text: tracker.name }),
+      count !== null ? el('span', { className: 'tracker-count' }, [
+        manage ? button('−', () => step(-1), 'btn btn-small btn-secondary', { title: 'One fewer', 'aria-label': 'One fewer ' + tracker.name, disabled: tracker.current === 0 }) : null,
+        el('span', { className: 'tag' + (tracker.current === 0 ? ' red' : ''), text: count }),
+        manage ? button('+', () => step(1), 'btn btn-small btn-secondary', { title: 'One more', 'aria-label': 'One more ' + tracker.name, disabled: tracker.max !== null && tracker.current >= tracker.max }) : null
+      ]) : null,
+      tracker.comment ? el('span', { className: 'muted small tracker-comment', text: tracker.comment }) : null,
+      manage ? el('span', { className: 'tracker-actions' }, [
+        button('✎', () => {
+          trackerForm = { key: trackerKey(target), trackerId: tracker.id, name: tracker.name, comment: tracker.comment, current: tracker.current, max: tracker.max, focus: true };
+          render();
+        }, 'link-button small', { title: 'Edit', 'aria-label': 'Edit ' + tracker.name }),
+        button('✕', () => {
+          if (window.confirm('Stop tracking ' + tracker.name + ' for ' + label + '?')) act('/trackers/' + tracker.id + '/delete', {}, 'Stopped tracking ' + tracker.name + ' for ' + label + '.');
+        }, 'link-button small', { title: 'Stop tracking', 'aria-label': 'Stop tracking ' + tracker.name })
+      ]) : null
+    ]);
+  }
+
+  // target: { characterId }, { npcId } or { combatantId }; label: whose they are.
+  function trackerBlock(target, label) {
+    if (!target || !data.canSeeSecrets) return null;
+    const manage = secretsOpen();
+    const list = trackersOf(target);
+    if (!list.length && !manage) return null;
+    const key = trackerKey(target);
+    const formHere = manage && trackerForm && trackerForm.key === key;
+    return el('div', { className: 'party-trackers' }, [
+      el('div', { className: 'party-trackers-head' }, [
+        el('span', { className: 'party-label', text: '📌 Tracked' }),
+        el('span', { className: 'muted small', title: "Only this adventure's DM and the Root DM see these", text: 'DM only' }),
+        manage && !formHere ? button('+ Track', () => {
+          trackerForm = { key, name: '', comment: '', current: '', max: '', focus: true };
+          render();
+        }, 'link-button small', { title: 'Track a resource for ' + label }) : null
+      ]),
+      list.length ? el('ul', { className: 'tracker-list' }, list.map(tracker => (formHere && trackerForm.trackerId === tracker.id
+        ? el('li', {}, trackerFormNode(target, label))
+        : trackerRow(tracker, target, label)))) : null,
+      formHere && !trackerForm.trackerId ? trackerFormNode(target, label) : null
+    ]);
+  }
+
+  // On one-line rows: just the names and counts (the full card edits them).
+  function trackerTags(target) {
+    if (!target || !data.canSeeSecrets) return null;
+    const list = trackersOf(target);
+    if (!list.length) return null;
+    return el('span', { className: 'tracker-tags' }, list.map(tracker => el('span', {
+      className: 'tag' + (tracker.current === 0 ? ' red' : ''),
+      title: tracker.name + (tracker.comment ? ': ' + tracker.comment : '') + ' (DM only)',
+      text: '📌 ' + tracker.name + (trackerCount(tracker) !== null ? ' ' + trackerCount(tracker) : '')
+    })));
   }
 
   // ─── Managing the adventure ────────────────────────────────────────────────
@@ -539,7 +653,8 @@
         el('span', { className: 'party-label', text: 'Scores' }),
         abilities.map(ability => ability.toUpperCase() + ' ' + stats.abilities[ability].score + ' (' + signed(stats.abilities[ability].modifier) + ')').join(' · ')
       ]) : null,
-      npc.personality ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Personality' }), npc.personality]) : null
+      npc.personality ? el('div', { className: 'party-line' }, [el('span', { className: 'party-label', text: 'Personality' }), npc.personality]) : null,
+      trackerBlock({ npcId: npc.id }, npc.name)
     ]);
   }
 
@@ -1072,6 +1187,7 @@
           el('span', { className: 'vitals-bar' }, el('span', { style: 'width:' + Math.round(ratio * 100) + '%; background:' + (state === 'ok' ? '#23a55a' : state === 'hurt' ? '#f0b232' : '#f23f43') }))
         ]) : el('span', { className: 'muted small', text: 'HP ?' }),
         el('span', { className: 'encounter-row-ac', title: 'Armor Class', text: 'AC ' + (combatant.armorClass ?? '—') }),
+        trackerTags(combatantTarget(combatant)),
         actions,
         button('✕', () => { if (window.confirm('Take ' + combatant.label + ' out of the fight?')) act('/combatants/' + combatant.id + '/remove', {}, combatant.label + ' left the fight.'); },
           'btn btn-small btn-secondary', { title: 'Remove from the encounter', 'aria-label': 'Remove ' + combatant.label })
@@ -1108,6 +1224,7 @@
         stat('AC', combatant.armorClass ?? '—', 'Armor Class'),
         statblock ? stat('Speed', statblock.speed.split(',')[0]) : null
       ].filter(Boolean)),
+      trackerBlock(combatantTarget(combatant), combatant.label),
       statblockPart
     ]);
   }

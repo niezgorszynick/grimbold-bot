@@ -232,6 +232,8 @@ function getAdventureTable({ adventureId, user, now = new Date() }) {
     challenges: require('./skillChallenges').challengesForTable({
       adventureId: adventure.id, secret: access.secret, manage: access.manage, viewerId: Number(user && user.id) || 0
     }),
+    // Resources the DM tracks for party members and NPCs: the DM and the Root DM only.
+    trackers: require('./trackers').trackersForTable({ adventureId: adventure.id, secret: access.secret }),
     // The party's latest rolls; private ones only for the DM (and the roller).
     rolls: getRecentRolls({ characterIds: ids, limit: 25, showPrivate: access.secret, viewerId: Number(user && user.id) || null }),
     // Monster rolls: all for the DM (hidden ones to reveal), the revealed ones for the party.

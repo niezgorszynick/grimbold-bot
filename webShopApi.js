@@ -954,6 +954,15 @@ router.post('/adventures/:id/npcs', adventureRoute(({ adventureId, user, body })
 router.post('/adventures/:id/npcs/:npcId/hp', (req, res) => adventureRoute(({ adventureId, user, body }) =>
   db.changeNpcHp({ adventureId, user, npcId: req.params.npcId, action: body.action, amount: body.amount }))(req, res));
 
+// Resources the DM tracks on the table (DM and Root DM only):
+// { characterId | npcId | combatantId, name, comment, current, max }; changes: any of those or { step: ±1 }.
+router.post('/adventures/:id/trackers', adventureRoute(({ adventureId, user, body }) =>
+  db.addTracker({ adventureId, user, characterId: body.characterId, npcId: body.npcId, combatantId: body.combatantId, name: body.name, comment: body.comment, current: body.current, max: body.max })));
+router.post('/adventures/:id/trackers/:trackerId', (req, res) => adventureRoute(({ adventureId, user, body }) =>
+  db.updateTracker({ adventureId, user, trackerId: req.params.trackerId, changes: body }))(req, res));
+router.post('/adventures/:id/trackers/:trackerId/delete', (req, res) => adventureRoute(({ adventureId, user }) =>
+  db.deleteTracker({ adventureId, user, trackerId: req.params.trackerId }))(req, res));
+
 // Server-Sent Events: a message whenever a party member, the party or the
 // adventure changes, so the table reloads at once instead of waiting to poll.
 // data: { characters: [ids], adventure: bool, rolls: bool }

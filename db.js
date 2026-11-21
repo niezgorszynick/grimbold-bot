@@ -32,6 +32,7 @@ module.exports = {
   ...require('./db/schedule'),
   ...require('./db/worldMap'),
   ...require('./db/skillChallenges'),
+  ...require('./db/trackers'),
   ...require('./db/npcFiles'),
   ...require('./db/characterPortraits'),
   ...require('./db/proficiencies'),
