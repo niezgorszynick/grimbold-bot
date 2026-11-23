@@ -20,6 +20,7 @@ const { getSpellSlots } = require('./spellcasting');
 const { collectCharacterFeats } = require('./feats');
 const { effectiveAbilityScore } = require('./magicItems');
 const { classResources, featResources, speciesResources, recoverResources } = require('./classResources');
+const { itemPropertyResources } = require('./itemProperties');
 const { characterDefenses } = require('./defenses');
 const { wildShapeRules, knownForms, starryFormRules, CONSTELLATIONS, titanFormRules, TITAN_FORMS } = require('./wildShape');
 const { EFFECTS, EFFECT_KEYS, availableEffects } = require('./effects');
@@ -415,7 +416,9 @@ function deriveVitalsContext({ species, sheetData, classRows }) {
     resources: [
       ...classResources(classRows, ability => abilityScore(sheetData, ability)),
       ...featResources(feats, classRows, ability => abilityScore(sheetData, ability)),
-      ...speciesResources(species, (sheetData || {}).speciesOption, classRows, ability => abilityScore(sheetData, ability))
+      ...speciesResources(species, (sheetData || {}).speciesOption, classRows, ability => abilityScore(sheetData, ability)),
+      // Custom item properties with uses (a Sylvan Talon's Secret Message, once per dawn).
+      ...itemPropertyResources(sheetData)
     ],
     // Wild Shape: limits by druid level, and the forms learned.
     wildShape: (() => {

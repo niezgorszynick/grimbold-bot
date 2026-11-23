@@ -109,13 +109,14 @@ function listGifts({ limit = 100 } = {}) {
 }
 
 // Puts an equipment row (a copy, put away) on a sheet: stacks with a plain
-// row of the same item, otherwise a row of its own (nickname, weapon stats
-// and bonuses go with it).
+// row of the same item, otherwise a row of its own (nickname, weapon stats,
+// bonuses and properties go with it).
 function receiveInventoryRow(sheetData, row, quantity) {
   const inventory = (Array.isArray(sheetData.inventory) ? sheetData.inventory : []).map(entry => ({ ...entry }));
-  const plain = !row.nickname && !row.weapon && !(Array.isArray(row.bonuses) && row.bonuses.length);
-  const stack = plain && inventory.find(entry => entry && entry.name && !entry.nickname && !entry.weapon &&
-    !(Array.isArray(entry.bonuses) && entry.bonuses.length) &&
+  const special = entry => Boolean(entry.nickname || entry.weapon || (Array.isArray(entry.bonuses) && entry.bonuses.length) ||
+    (Array.isArray(entry.properties) && entry.properties.length));
+  const plain = !special(row);
+  const stack = plain && inventory.find(entry => entry && entry.name && !special(entry) &&
     entry.name.toLowerCase() === row.name.toLowerCase() && (entry.description || '') === (row.description || '') &&
     // Gear the giver couldn't sell stays apart from gear the recipient can.
     rules.sameSaleStatus(entry, row));

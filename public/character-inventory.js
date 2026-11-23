@@ -131,6 +131,8 @@
       if (window.applyItemBonuses) window.applyItemBonuses(view.itemBonuses);
       // Coins from Grimbold go into the purse.
       if (body.action === 'sell' && window.refreshCharacterPurse) window.refreshCharacterPurse();
+      // Properties with uses are on the Resources card; a removed item takes its own away.
+      if (['setProperties', 'remove', 'rename'].includes(body.action) && window.refreshCharacterVitals) window.refreshCharacterVitals();
       return true;
     } catch (error) {
       message = error.message;
@@ -149,6 +151,54 @@
       input,
       button('Save name', () => save(input.value.trim())),
       current ? button('Clear', () => save(''), 'btn btn-small btn-secondary') : null
+    ]);
+  }
+
+  // Custom properties: what the item does, written out, and how often if it
+  // has uses (those are on the Resources card too). Editing one fills the form.
+  const RECOVERY = { dawn: 'at dawn', long: 'on a Long Rest', short: 'on a Short Rest' };
+  const editingProperty = new Map();
+  function propertyEditor(item, key) {
+    const current = item.properties.map(({ id, name, text, uses }) => ({ id, name, text, uses }));
+    const save = list => act({ action: 'setProperties', index: item.index, name: item.name, properties: list });
+    const editing = editingProperty.get(key);
+    const start = editing ? current.find(property => property.id === editing) || {} : {};
+    const name = el('input', { type: 'text', maxlength: '60', value: start.name || '', placeholder: 'Name, e.g. Secret Message', 'aria-label': 'Property name' });
+    const text = el('textarea', { rows: '3', maxlength: '1000', placeholder: 'What it does, e.g. As a Magic action, you can use the weapon to cast Message.', 'aria-label': 'What the property does' });
+    text.value = start.text || '';
+    const limited = el('input', { type: 'checkbox' });
+    limited.checked = Boolean(start.uses);
+    const max = el('input', { type: 'number', min: '1', max: '20', value: String(start.uses ? start.uses.max : 1), className: 'inventory-qty', 'aria-label': 'Uses' });
+    const recovery = el('select', { 'aria-label': 'Uses come back' });
+    Object.entries(RECOVERY).forEach(([value, label]) => recovery.add(new Option('back ' + label, value)));
+    recovery.value = start.uses ? start.uses.recovery : 'dawn';
+    const sync = () => { max.disabled = recovery.disabled = !limited.checked; };
+    limited.addEventListener('change', sync);
+    sync();
+    const submit = () => {
+      if (!name.value.trim() && !text.value.trim()) return;
+      const property = { id: start.id, name: name.value.trim(), text: text.value.trim(), uses: limited.checked ? { max: Number(max.value) || 1, recovery: recovery.value } : null };
+      editingProperty.delete(key);
+      save(start.id ? current.map(entry => (entry.id === start.id ? property : entry)) : [...current, property]);
+    };
+    return el('div', { className: 'item-properties' }, [
+      el('h5', { text: 'Properties' }),
+      item.properties.length ? el('ul', { className: 'item-property-list' }, item.properties.map(property => el('li', {}, [
+        el('p', {}, [el('strong', { text: property.name + '. ' }), property.text]),
+        property.uses ? el('p', { className: 'muted small', text: property.usesText + ' · ' + (property.uses.max - property.used) + ' left (tick them off on the Resources card)' }) : null,
+        el('span', { className: 'vitals-actions' }, [
+          button('Edit', () => { editingProperty.set(key, property.id); render(); }, 'btn btn-small btn-secondary'),
+          button('Remove', () => { if (window.confirm('Remove ' + property.name + ' from ' + (item.nickname || item.name) + '?')) save(current.filter(entry => entry.id !== property.id)); }, 'btn btn-small btn-secondary')
+        ])
+      ]))) : el('p', { className: 'muted small', text: 'Anything this item does that the sheet doesn\'t know: an attached talon, a blessing, a curse.' }),
+      el('div', { className: 'item-property-form' }, [
+        name, text,
+        el('label', { className: 'creator-check' }, [limited, ' Limited uses: ', max, recovery]),
+        el('span', { className: 'vitals-actions' }, [
+          button(start.id ? 'Save property' : '+ Add property', submit),
+          start.id ? button('Cancel', () => { editingProperty.delete(key); render(); }, 'btn btn-small btn-secondary') : null
+        ])
+      ])
     ]);
   }
 
@@ -207,6 +257,12 @@
           title: item.bonuses.map(bonus => bonus.text).join('; ') + (item.bonusesActive ? '' : ' (not in use)'),
           text: item.bonuses[0].text + (item.bonuses.length > 1 ? ' +' + (item.bonuses.length - 1) : '')
         }) : null,
+        // Its properties at a glance.
+        item.properties.length ? el('span', {
+          className: 'tag item-property-tag',
+          title: item.properties.map(property => property.name + (property.usesText ? ' (' + property.usesText + ')' : '') + ': ' + property.text).join(' · '),
+          text: '✨ ' + item.properties[0].name + (item.properties.length > 1 ? ' +' + (item.properties.length - 1) : '')
+        }) : null,
         el('span', { className: 'inventory-controls' }, [wear, el('label', { className: 'inventory-have muted small' }, ['have ', quantity]), sell, giftButton(key, item.nickname || item.name), remove])
       ]),
       selling === key && canSell ? sellForm(item, key) : null,
@@ -220,6 +276,7 @@
           : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' })),
         item.sale && !canSell && item.sale.reason ? el('p', { className: 'muted small', text: '🪙 ' + item.sale.reason }) : null,
         item.source === 'custom' ? weaponEditor(item) : null,
+        propertyEditor(item, key),
         bonusEditor(item),
         nicknameField(item.nickname, nickname => act({ action: 'rename', index: item.index, name: item.name, nickname }))])
         : null

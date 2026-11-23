@@ -89,6 +89,12 @@ function buildView(sheetData, isAdmin, sale = { roll: null, discountPercent: 0 }
         // Custom bonuses (rules/itemBonuses.js) and whether they apply now.
         bonuses: Array.isArray(row.bonuses) ? row.bonuses.map(bonus => ({ ...bonus, text: rules.describeItemBonus(bonus) })) : [],
         bonusesActive: row.bonusesActive !== false,
+        // Custom properties (rules/itemProperties.js), with the uses spent.
+        properties: Array.isArray(row.properties) ? row.properties.map(property => ({
+          ...property,
+          usesText: rules.describeItemPropertyUses(property.uses),
+          used: property.uses ? Math.min(property.uses.max, Number(((sheetData.resourcesUsed || {})[`itemProp:${property.id}`])) || 0) : 0
+        })) : [],
         quantity: Number.isSafeInteger(row.quantity) && row.quantity > 0 ? row.quantity : 1,
         source: row.source || '',
         category: row.category || (known ? known.category : ''),
@@ -125,6 +131,7 @@ function getCharacterInventory({ id, player_id, is_admin }) {
 //       | wear { index, name, worn } (armor, shields and weapons)
 //       | rename { index, name, nickname } | setWeapon { index, name, weapon | null } (custom items)
 //       | setBonuses { index, name, bonuses } | useBonuses { index, name, active }
+//       | setProperties { index, name, properties } (custom properties, rules/itemProperties.js)
 //       | sell { index, name, quantity } (to Grimbold, see rules/gearSales.js)
 // add with weapon stats (custom items): see rules/customWeapons.js.
 // `name` with update/remove guards against a list changed in another tab.
@@ -168,7 +175,10 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         const added = { name, quantity, source };
         // The DM's additions (loot) can be sold; a player's own can't.
         if (source === 'catalog' && is_admin) added.addedBy = 'dm';
-        const existing = customWeapon || bonuses.length ? null : inventory.find(row => !row.nickname && !row.weapon && row.name.toLowerCase() === name.toLowerCase() &&
+        // Not onto an item made special by hand (bonuses, properties: a Rapier with a Sylvan Talon).
+        const existing = customWeapon || bonuses.length ? null : inventory.find(row => !row.nickname && !row.weapon &&
+          !(Array.isArray(row.bonuses) && row.bonuses.length) && !(Array.isArray(row.properties) && row.properties.length) &&
+          row.name.toLowerCase() === name.toLowerCase() &&
           (row.description || '') === description && rules.sameSaleStatus(row, added));
         if (existing) {
           existing.quantity = Math.min(MAX_QUANTITY, (Number(existing.quantity) || 1) + quantity);
@@ -235,6 +245,20 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
         message = row.bonusesActive ? `${row.name} is in use: its bonuses apply.` : `${row.name} is put away: its bonuses don't apply.`;
       }
       nextSheet = { ...sheetData, inventory };
+    } else if (action === 'setProperties') {
+      // What the item does, written out (a Sylvan Talon's Fey speech and Secret Message).
+      const index = Number(params.index);
+      const row = Number.isSafeInteger(index) ? inventory[index] : null;
+      if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+      const properties = rules.validateItemProperties(params.properties);
+      if (properties.length) row.properties = properties;
+      else delete row.properties;
+      // Uses of a property taken away are forgotten.
+      const kept = new Set(inventory.flatMap(other => (other.properties || []).map(property => `itemProp:${property.id}`)));
+      const resourcesUsed = Object.fromEntries(Object.entries(sheetData.resourcesUsed || {})
+        .filter(([key]) => !key.startsWith('itemProp:') || kept.has(key)));
+      nextSheet = { ...sheetData, inventory, resourcesUsed };
+      message = properties.length ? `${row.nickname || row.name}: properties saved.` : `${row.nickname || row.name} has no properties now.`;
     } else if (action === 'rename') {
       // A nickname ("Ambassador") for the sheet only; the item stays what it is. Empty clears it.
       const index = Number(params.index);

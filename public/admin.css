@@ -1633,3 +1633,14 @@ button.sheet-hud-tile { cursor: pointer; }
 .spell-grant-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .spell-grant-form input { flex: 1 1 200px; min-width: 0; }
 .spell-grant-list { margin: 8px 0; padding-left: 1.2em; display: grid; gap: 4px; }
+
+/* Custom item properties (public/character-inventory.js propertyEditor). */
+.item-property-tag { background: rgba(178, 107, 255, 0.18); border-color: rgba(178, 107, 255, 0.6); color: #e2d2ff; }
+.item-properties { margin: 10px 0; }
+.item-properties h5 { margin: 0 0 6px; }
+.item-property-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.item-property-list li { padding: 8px 10px; border-left: 3px solid #b26bff; background: rgba(178, 107, 255, 0.08); border-radius: 0 6px 6px 0; }
+.item-property-list p { margin: 0 0 4px; white-space: pre-wrap; }
+.item-property-form { display: grid; gap: 6px; }
+.item-property-form textarea { width: 100%; min-height: 60px; }
+.item-property-form .creator-check { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

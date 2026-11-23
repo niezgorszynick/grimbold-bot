@@ -43,6 +43,7 @@ module.exports = {
   ...require('./shopCatalog'),
   ...require('./gearSales'),
   ...require('./itemBonuses'),
+  ...require('./itemProperties'),
   ...require('./vitals'),
   ...require('./content')
 };
