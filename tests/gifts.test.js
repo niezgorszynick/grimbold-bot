@@ -121,3 +121,43 @@ test('the purchase receipt counts every class level of a multiclass character', 
   const result = shop.purchaseItem({ itemName: 'Receipt Candle', characterId: kael, playerId: ola, buyerTag: 'ola' });
   assert.deepEqual([result.character.level, result.character.class], [5, 'Fighter 3 / Wizard 2']);
 });
+
+test('a DM buys at the counter as a Notable NPC: a gift, the shop price, no purse, the same stock and ledger', () => {
+  const dmId = createPlayer('admin');
+  const otherDm = createPlayer('admin');
+  const ola = createPlayer();
+  const dm = { id: dmId, role: 'admin', discord_tag: 'dm' };
+  const brin = addCharacter(ola, 'Brin', { goldCp: 5 });
+  const npc = Number(db.prepare("INSERT INTO npcs (name) VALUES ('Mistrz Głos')").run().lastInsertRowid);
+  const secret = Number(db.prepare("INSERT INTO npcs (name, private, owner_player_id) VALUES ('Szept', 1, ?)").run(otherDm).lastInsertRowid);
+  const dead = Number(db.prepare("INSERT INTO npcs (name, status) VALUES ('Old Bones', 'dead')").run().lastInsertRowid);
+  db.addItem({ name: 'NPC Lantern', category: 'Gear', price: 2000, stock: 2, description: 'A brass lantern.' });
+
+  assert.deepEqual(db.listNpcBuyers(dm).map(entry => entry.name), ['Mistrz Głos'], "not another DM's private NPC, nor the dead");
+  assert.throws(() => shop.purchaseAsNpc({ itemName: 'NPC Lantern', npcId: npc, user: { id: ola, role: 'player' }, giftToCharacterId: brin }), /Only a DM/);
+  assert.throws(() => shop.purchaseAsNpc({ itemName: 'NPC Lantern', npcId: secret, user: dm, giftToCharacterId: brin }), /Choose an NPC/);
+  assert.throws(() => shop.purchaseAsNpc({ itemName: 'NPC Lantern', npcId: dead, user: dm, giftToCharacterId: brin }), /dead/);
+  assert.throws(() => shop.purchaseAsNpc({ itemName: 'NPC Lantern', npcId: npc, user: dm }), /Choose who the gift is for/);
+  assert.throws(() => shop.purchaseAsNpc({ itemName: 'NPC Lantern', npcId: npc, user: dm, giftToCharacterId: brin, quantity: 3 }), /Only 2 left/);
+
+  const result = shop.purchaseAsNpc({ itemName: 'NPC Lantern', npcId: npc, user: dm, giftToCharacterId: brin, quantity: 2, giftNote: 'Za odwagę.' });
+  assert.equal(result.totalCostCp, 4000, 'the shop price, however poor anyone is');
+  assert.equal(db.getCharacterById(brin).gold_cp, 5, 'no purse touched');
+  assert.equal(db.prepare('SELECT stock FROM items WHERE name = ?').get('NPC Lantern').stock, 0);
+  assert.deepEqual(sheetOf(brin).inventory, [{ name: 'NPC Lantern', quantity: 2, source: 'gift' }], 'given gear, so it can be sold back');
+  const sale = db.prepare('SELECT * FROM sales WHERE item_name = ?').get('NPC Lantern');
+  assert.match(sale.buyer_tag, /^Mistrz Głos \(NPC, by tester\d+\)$/, "the DM's account in the ledger");
+  assert.deepEqual([sale.character_id, sale.gift_to_character_id, sale.total_paid], [null, brin, 4000]);
+  assert.deepEqual([result.gift.from.name, result.gift.from.npcId, result.gift.from.id, result.gift.to.name, result.gift.note], ['Mistrz Głos', npc, null, 'Brin', 'Za odwagę.']);
+  assert.match(threads.giftMessages(result.gift).recipient.text, /parcel from Mistrz Głos/);
+  assert.ok(db.listGifts().some(gift => gift.from.name === 'Mistrz Głos'), 'in the ledger');
+
+  db.prepare('DELETE FROM npcs WHERE id = ?').run(npc);
+  assert.equal(db.getGift(result.gift.id).from.name, 'Mistrz Głos', 'the name stays when the NPC is gone');
+
+  const page = require('../views/adminPage')({ session: { user: dm }, query: { tab: 'items' } });
+  assert.match(page, /id="shopPurchaseAs"/);
+  const vm = require('vm');
+  for (const [, code] of page.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+  assert.doesNotMatch(require('../views/adminPage')({ session: { user: { id: ola, role: 'player', discord_tag: 'ola' } }, query: { tab: 'items' } }), /id="shopPurchaseAs"/);
+});

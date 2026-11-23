@@ -187,10 +187,21 @@ module.exports = function renderItemsTab(ctx) {
           Your Price: <strong id="shopPurchasePrice"></strong> each (<span id="shopPurchaseDiscount"></span>)<br>
           Available Stock: <strong id="shopPurchaseStock"></strong>
         </p>
+        ${isAdmin ? `<label for="shopPurchaseAs">Buy as</label>
+        <select id="shopPurchaseAs" style="width: 100%; margin: 8px 0 12px;">
+          <option value="character">One of my characters</option>
+          <option value="npc">🎭 A Notable NPC (a gift; NPCs have all the gold they need)</option>
+        </select>
+        <div id="shopPurchaseNpcRow" hidden>
+          <label for="shopPurchaseNpc">Which NPC</label>
+          <select id="shopPurchaseNpc" style="width: 100%; margin: 8px 0 12px;"><option value="">Loading NPCs...</option></select>
+        </div>` : ''}
+        <div id="shopPurchaseCharacterRow">
         <label for="shopPurchaseCharacter">Choose a character</label>
         <select id="shopPurchaseCharacter" style="width: 100%; margin: 8px 0 12px;">
           <option value="">Loading characters...</option>
         </select>
+        </div>
         <label for="shopPurchaseGift">🎁 A gift for… <span class="muted small">(optional: your character pays, theirs gets it)</span></label>
         <select id="shopPurchaseGift" style="width: 100%; margin: 8px 0 6px;">
           <option value="">No one: it's for my character</option>
@@ -295,6 +306,46 @@ module.exports = function renderItemsTab(ctx) {
       const shopPurchaseGiftNote = document.getElementById('shopPurchaseGiftNote');
       let selectedShopItemName = '';
       let giftRecipients = null;
+      // DMs buy as a Notable NPC: no purse, the shop's own price, always a gift.
+      const shopPurchaseAs = document.getElementById('shopPurchaseAs');
+      const shopPurchaseNpc = document.getElementById('shopPurchaseNpc');
+      let npcBuyers = null;
+      let shopPrices = { base: '', yours: '', discount: '' };
+      const buyingAsNpc = () => Boolean(shopPurchaseAs && shopPurchaseAs.value === 'npc');
+      async function fillNpcBuyers() {
+        if (!shopPurchaseNpc) return;
+        try {
+          if (!npcBuyers) {
+            const response = await fetch('/api/shop/npc-buyers');
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load the NPCs.');
+            npcBuyers = data.npcs;
+          }
+          shopPurchaseNpc.replaceChildren(new Option(npcBuyers.length ? 'Choose an NPC' : 'No Notable NPCs yet', ''));
+          npcBuyers.forEach(npc => shopPurchaseNpc.add(new Option(npc.name + (npc.private ? ' (private)' : ''), npc.id)));
+        } catch (error) {
+          shopPurchaseNpc.replaceChildren(new Option('NPCs unavailable right now', ''));
+        }
+      }
+      function showBuyer() {
+        const npc = buyingAsNpc();
+        document.getElementById('shopPurchaseCharacterRow').hidden = npc;
+        const npcRow = document.getElementById('shopPurchaseNpcRow');
+        if (npcRow) npcRow.hidden = !npc;
+        // An NPC pays the shop's own price: no weekly roll.
+        document.getElementById('shopPurchasePrice').textContent = npc ? shopPrices.base : shopPrices.yours;
+        document.getElementById('shopPurchaseDiscount').textContent = npc ? 'no weekly roll' : shopPrices.discount;
+        const noOne = shopPurchaseGift.querySelector('option[value=""]');
+        if (noOne) noOne.textContent = npc ? 'Choose who gets it' : "No one: it's for my character";
+        shopPurchaseConfirm.textContent = npc ? 'Buy as a gift from the NPC' : shopPurchaseGift.value ? 'Buy as a gift' : 'Confirm Purchase';
+        if (npc) {
+          fillNpcBuyers();
+          shopPurchaseConfirm.disabled = false;
+        } else {
+          shopPurchaseConfirm.disabled = shopPurchaseCharacter.options.length < 2;
+        }
+      }
+      if (shopPurchaseAs) shopPurchaseAs.addEventListener('change', showBuyer);
 
       // Every living character, grouped by player, for "a gift for".
       async function fillGiftRecipients() {
@@ -323,11 +374,13 @@ module.exports = function renderItemsTab(ctx) {
       }
       shopPurchaseGift.addEventListener('change', () => {
         shopPurchaseGiftNote.hidden = !shopPurchaseGift.value;
-        shopPurchaseConfirm.textContent = shopPurchaseGift.value ? 'Buy as a gift' : 'Confirm Purchase';
+        shopPurchaseConfirm.textContent = buyingAsNpc() ? 'Buy as a gift from the NPC' : shopPurchaseGift.value ? 'Buy as a gift' : 'Confirm Purchase';
       });
 
       async function openShopPurchaseModal(itemName, price, finalPrice, discount, stock) {
         selectedShopItemName = itemName;
+        shopPrices = { base: price, yours: finalPrice, discount };
+        if (shopPurchaseAs) shopPurchaseAs.value = 'character';
         document.getElementById('shopPurchaseItem').textContent = itemName;
         document.getElementById('shopPurchaseBasePrice').textContent = price;
         document.getElementById('shopPurchasePrice').textContent = finalPrice;
@@ -366,7 +419,7 @@ module.exports = function renderItemsTab(ctx) {
           shopPurchaseCharacter.replaceChildren(new Option('Characters unavailable', ''));
           shopPurchaseFeedback.textContent = error.message;
         } finally {
-          shopPurchaseConfirm.disabled = shopPurchaseCharacter.options.length < 2;
+          showBuyer();
         }
       }
 
@@ -455,6 +508,30 @@ module.exports = function renderItemsTab(ctx) {
         shopPurchaseModal.hidden = true;
       });
       shopPurchaseConfirm.addEventListener('click', async () => {
+        if (buyingAsNpc()) {
+          const quantity = Number(document.getElementById('shopPurchaseQuantity').value);
+          if (!shopPurchaseNpc.value || !shopPurchaseGift.value || !Number.isSafeInteger(quantity) || quantity < 1) {
+            shopPurchaseFeedback.textContent = 'Choose the NPC, who gets the gift, and a valid quantity.';
+            return;
+          }
+          shopPurchaseConfirm.disabled = true;
+          shopPurchaseFeedback.textContent = 'Grimbold wraps it up...';
+          try {
+            const response = await fetch('/api/shop/buy-as-npc', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ itemName: selectedShopItemName, npcId: Number(shopPurchaseNpc.value), quantity, giftToCharacterId: Number(shopPurchaseGift.value), giftNote: shopPurchaseGiftNote.value })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Purchase failed.');
+            shopPurchaseFeedback.textContent = '🎁 ' + data.transaction.npc.name + ' bought it for ' + data.transaction.gift.to.name + ' (' + data.transaction.totalCostFormatted + '). Refreshing...';
+            window.setTimeout(() => window.location.reload(), 900);
+          } catch (error) {
+            shopPurchaseFeedback.textContent = error.message;
+            shopPurchaseConfirm.disabled = false;
+          }
+          return;
+        }
         const characterId = shopPurchaseCharacter.value;
         const quantity = Number(document.getElementById('shopPurchaseQuantity').value);
         if (!characterId || !Number.isSafeInteger(quantity) || quantity < 1) {

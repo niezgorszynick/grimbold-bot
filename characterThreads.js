@@ -238,7 +238,7 @@ function announceGift(gift) {
   if (!gift) return Promise.resolve({ ok: false, reason: 'No gift.' });
   const messages = giftMessages(gift);
   const posts = [postToCharacterThread(gift.to.id, messages.recipient)];
-  if (gift.kind !== 'shop') posts.unshift(postToCharacterThread(gift.from.id, messages.giver));
+  if (gift.kind !== 'shop' && gift.from.id) posts.unshift(postToCharacterThread(gift.from.id, messages.giver));
   return Promise.all(posts)
     .then(results => {
       const failed = results.find(result => !result.ok);

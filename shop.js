@@ -162,6 +162,65 @@ function purchaseItem({ itemName, quantity = 1, characterId, playerId, buyerTag,
   })();
 }
 
+// A DM buys at Grimbold's as a Notable NPC, as a gift for a character: the
+// same shelf, stock, reservations and ledger as any purchase, at the shop's
+// own price (an NPC has no weekly roll). NPCs have all the gold they need, so
+// no purse is touched or shown. user: the DM; npcId: an NPC they can see.
+function purchaseAsNpc({ itemName, quantity = 1, npcId, user, giftToCharacterId, giftNote = '' }) {
+  const qty = Number(quantity);
+  if (!Number.isSafeInteger(qty) || qty <= 0) throw new PurchaseError('Invalid quantity.');
+  if (!user || user.role !== 'admin') throw new PurchaseError('Only a DM buys as an NPC.');
+  return db.transaction(() => {
+    let npc;
+    let recipient;
+    let note;
+    try {
+      npc = db.requireVisibleNpc(npcId, user);
+      recipient = db.loadGiftRecipient(giftToCharacterId, null);
+      note = db.cleanGiftNote(giftNote);
+    } catch (error) {
+      throw new PurchaseError(error.message === 'NPC not found.' ? 'Choose an NPC.' : error.message);
+    }
+    if (npc.status === 'dead') throw new PurchaseError(`${npc.name} is dead and shops no more.`);
+    const item = db.prepare('SELECT * FROM items WHERE name = ? COLLATE NOCASE AND is_active = 1').get(String(itemName || '').trim());
+    if (!item) throw new PurchaseError('Item is not available in the shop.');
+    if (item.stock !== null && item.stock < qty) throw new PurchaseError(`Insufficient stock. Only ${item.stock} left.`);
+    const totalCostCp = item.price * qty;
+    if (!Number.isSafeInteger(totalCostCp)) throw new PurchaseError('Purchase amount is too large.');
+
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(addToSheet(recipient.sheet_data, item.name, qty, 'gift'), recipient.id);
+    if (item.stock !== null) db.prepare('UPDATE items SET stock = stock - ? WHERE id = ?').run(qty, item.id);
+    // The last one went to the NPC: Grimbold refunds whoever had reserved it.
+    let refunded = null;
+    const othersReservation = item.stock !== null && item.stock - qty <= 0 ? db.activeReservationOfItem(item.id) : null;
+    if (othersReservation) refunded = db.endReservation(othersReservation, 'refunded', { refund: true, reason: `Deposit refunded: ${item.name} was sold to someone else` });
+    const dm = Number(user.id) > 0 ? db.prepare('SELECT discord_id, discord_tag FROM players WHERE id = ?').get(Number(user.id)) : null;
+    const dmTag = dm ? dm.discord_tag : (user.discord_tag || 'admin');
+    db.prepare(`
+      INSERT INTO sales (
+        item_name, category, quantity, buyer_tag, buyer_id,
+        base_price, discount_percent, final_price, total_paid, character_id, gift_to_character_id
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?)
+    `).run(item.name, item.category, qty, `${npc.name} (NPC, by ${dmTag})`, dm ? String(dm.discord_id) : '', item.price, item.price, totalCostCp, recipient.id);
+    const gift = db.recordGift({
+      fromNpc: { id: npc.id, name: npc.name }, toId: recipient.id, itemName: item.name, quantity: qty, kind: 'shop', note,
+      givenBy: Number(user.id), costCp: totalCostCp
+    });
+    return {
+      item,
+      npc: { id: npc.id, name: npc.name },
+      refundedReservation: refunded,
+      quantity: qty,
+      basePriceCp: item.price,
+      discountPercent: 0,
+      finalUnitPriceCp: item.price,
+      totalCostCp,
+      remainingStock: item.stock !== null ? item.stock - qty : null,
+      gift
+    };
+  })();
+}
+
 // Reserves a shelf item for one of the player's characters: a 10% deposit
 // of their own price now (it comes off the price when they buy), and the item
 // stays through the next two restocks (db/reservations.js).
@@ -189,4 +248,4 @@ function reserveItem({ itemName, characterId, playerId, buyerDiscordId }) {
   })();
 }
 
-module.exports = { PurchaseError, quoteItem, getShoppingCharacters, findPlayerByDiscordId, purchaseItem, reserveItem };
+module.exports = { PurchaseError, quoteItem, getShoppingCharacters, findPlayerByDiscordId, purchaseItem, purchaseAsNpc, reserveItem };

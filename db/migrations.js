@@ -1450,6 +1450,37 @@ const MIGRATIONS = [
       db.prepare("INSERT INTO config (key, value) VALUES ('spell_granters', ?) ON CONFLICT(key) DO NOTHING")
         .run(JSON.stringify(['210398055516602369']));
     }
+  },
+  {
+    // Gifts from Notable NPCs (a DM buys at Grimbold's as the NPC, shop.js):
+    // from_character_id may be empty, from_npc_id says who, from_name keeps
+    // the NPC's name for the ledger even if the NPC is deleted.
+    version: 54,
+    foreignKeysOff: true,
+    up(db) {
+      db.exec(`
+        CREATE TABLE gifts_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          from_character_id INTEGER REFERENCES characters(id) ON DELETE CASCADE,
+          from_npc_id INTEGER REFERENCES npcs(id) ON DELETE SET NULL,
+          from_name TEXT,
+          to_character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          item_name TEXT NOT NULL,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          kind TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          given_by_player_id INTEGER,
+          cost_cp INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO gifts_new (id, from_character_id, to_character_id, item_name, quantity, kind, note, given_by_player_id, cost_cp, created_at)
+          SELECT id, from_character_id, to_character_id, item_name, quantity, kind, note, given_by_player_id, cost_cp, created_at FROM gifts;
+        DROP TABLE gifts;
+        ALTER TABLE gifts_new RENAME TO gifts;
+        CREATE INDEX IF NOT EXISTS gifts_from ON gifts (from_character_id);
+        CREATE INDEX IF NOT EXISTS gifts_to ON gifts (to_character_id);
+      `);
+    }
   }
 ];
 

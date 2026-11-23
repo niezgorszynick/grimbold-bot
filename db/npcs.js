@@ -126,6 +126,13 @@ function listNpcs({ showStats = false, viewer = null } = {}) {
   return rows.map(row => npcView(row, byNpc[row.id], showStats));
 }
 
+// The NPCs a DM can shop as at Grimbold's (shop.js purchaseAsNpc): those
+// they can see and not dead. [{ id, name, private }].
+function listNpcBuyers(viewer) {
+  return db.prepare("SELECT id, name, private, owner_player_id, status FROM npcs WHERE status != 'dead' ORDER BY name COLLATE NOCASE").all()
+    .filter(row => canSeeNpc(row, viewer)).map(row => ({ id: row.id, name: row.name, private: Boolean(row.private) }));
+}
+
 function getNpc(id, { showStats = false, viewer = null } = {}) {
   const row = db.prepare(`${NPC_QUERY} WHERE n.id = ?`).get(Number(id));
   if (!row || !canSeeNpc(row, viewer)) return null;
@@ -271,4 +278,4 @@ function deleteNpc(id) {
   return deleted;
 }
 
-module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, canSeeNpc, requireVisibleNpc, npcCondition, listNpcs, listNpcsBasedOn, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };
+module.exports = { NPC_STATUSES: STATUSES, NPC_PLANS: PLANS, canSeeNpc, requireVisibleNpc, npcCondition, listNpcs, listNpcBuyers, listNpcsBasedOn, getNpc, getAdventureNpcs, listNpcOwners, saveNpc, deleteNpc };

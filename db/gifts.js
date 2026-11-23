@@ -67,18 +67,20 @@ function loadRecipient(toId, fromId) {
 }
 
 // The gift as logged; returned to the routes for Grimbold's notes.
-function recordGift({ fromId, toId, itemName, quantity, kind, note, givenBy, costCp = 0 }) {
+// fromNpc: { id, name } for a gift a DM bought as a Notable NPC (no fromId).
+function recordGift({ fromId = null, fromNpc = null, toId, itemName, quantity, kind, note, givenBy, costCp = 0 }) {
   const id = Number(db.prepare(`
-    INSERT INTO gifts (from_character_id, to_character_id, item_name, quantity, kind, note, given_by_player_id, cost_cp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(fromId, toId, itemName, quantity, kind, note || '', givenBy > 0 ? givenBy : null, costCp).lastInsertRowid);
+    INSERT INTO gifts (from_character_id, from_npc_id, from_name, to_character_id, item_name, quantity, kind, note, given_by_player_id, cost_cp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(fromId, fromNpc ? fromNpc.id : null, fromNpc ? fromNpc.name : null, toId, itemName, quantity, kind, note || '', givenBy > 0 ? givenBy : null, costCp).lastInsertRowid);
   return getGift(id);
 }
 
 function getGift(id) {
   const row = db.prepare(`
-    SELECT g.*, f.name AS from_name, t.name AS to_name, p.discord_tag AS given_by_tag
-    FROM gifts g JOIN characters f ON f.id = g.from_character_id JOIN characters t ON t.id = g.to_character_id
+    SELECT g.*, COALESCE(f.name, n.name, g.from_name) AS from_name, t.name AS to_name, p.discord_tag AS given_by_tag
+    FROM gifts g LEFT JOIN characters f ON f.id = g.from_character_id LEFT JOIN npcs n ON n.id = g.from_npc_id
+    JOIN characters t ON t.id = g.to_character_id
     LEFT JOIN players p ON p.id = g.given_by_player_id WHERE g.id = ?
   `).get(Number(id));
   return row ? giftView(row) : null;
@@ -87,7 +89,8 @@ function getGift(id) {
 function giftView(row) {
   return {
     id: row.id,
-    from: { id: row.from_character_id, name: row.from_name },
+    // An NPC's gift has no character: npcId instead.
+    from: { id: row.from_character_id || null, npcId: row.from_npc_id || null, name: row.from_name || 'Someone' },
     to: { id: row.to_character_id, name: row.to_name },
     item: row.item_name,
     quantity: row.quantity,
@@ -102,8 +105,9 @@ function giftView(row) {
 // The latest gifts, newest first (the Sales Ledger tab).
 function listGifts({ limit = 100 } = {}) {
   return db.prepare(`
-    SELECT g.*, f.name AS from_name, t.name AS to_name, p.discord_tag AS given_by_tag
-    FROM gifts g JOIN characters f ON f.id = g.from_character_id JOIN characters t ON t.id = g.to_character_id
+    SELECT g.*, COALESCE(f.name, n.name, g.from_name) AS from_name, t.name AS to_name, p.discord_tag AS given_by_tag
+    FROM gifts g LEFT JOIN characters f ON f.id = g.from_character_id LEFT JOIN npcs n ON n.id = g.from_npc_id
+    JOIN characters t ON t.id = g.to_character_id
     LEFT JOIN players p ON p.id = g.given_by_player_id ORDER BY g.id DESC LIMIT ?
   `).all(Math.min(500, Number(limit) || 100)).map(giftView);
 }

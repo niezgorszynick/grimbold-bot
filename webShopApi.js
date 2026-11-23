@@ -28,7 +28,8 @@ async function sendGrimboldShopEmbed({
   discountPercent,
   finalUnitPriceCp,
   totalCostCp,
-  giftTo = null
+  giftTo = null,
+  npc = null
 }) {
   const token = process.env.DISCORD_TOKEN;
   if (!token || !channelId) {
@@ -45,13 +46,16 @@ async function sendGrimboldShopEmbed({
     fields: [
       { name: 'Item', value: `**${item.name}** \`${item.category}\``, inline: true },
       { name: 'Quantity', value: `${quantity}`, inline: true },
-      {
-        name: 'Recipient (Character)',
-        value: `🛡️ **${character.name}** (Lvl ${character.level} ${character.class || 'Adventurer'})`,
-        inline: false
-      },
+      // An NPC's purchase: the NPC buys, no player or purse is named.
+      npc
+        ? { name: 'Bought by', value: `🎭 **${npc.name}**`, inline: false }
+        : {
+          name: 'Recipient (Character)',
+          value: `🛡️ **${character.name}** (Lvl ${character.level} ${character.class || 'Adventurer'})`,
+          inline: false
+        },
       ...(giftTo ? [{ name: '🎁 A gift for', value: `**${giftTo}**`, inline: false }] : []),
-      { name: 'Purchased By', value: buyerTag, inline: true },
+      ...(npc ? [] : [{ name: 'Purchased By', value: buyerTag, inline: true }]),
       {
         name: 'Discount',
         value: discountPercent < 0
@@ -66,7 +70,7 @@ async function sendGrimboldShopEmbed({
         value: `**${formatCp(totalCostCp)}** (${formatCp(finalUnitPriceCp)} each)`,
         inline: true
       },
-      { name: 'Remaining Purse', value: formatCp(character.gold_cp), inline: true }
+      ...(npc ? [] : [{ name: 'Remaining Purse', value: formatCp(character.gold_cp), inline: true }])
     ],
     footer: { text: "Grimbold's Emporium • Web Campaign Hub" },
     timestamp: new Date().toISOString()
@@ -1836,6 +1840,41 @@ router.post('/shop/reservations/:id/cancel', (req, res) => {
   } catch (error) {
     return res.status(error.message === 'Forbidden.' ? 403 : 400).json({ error: error.message });
   }
+});
+
+// A DM buys as a Notable NPC, as a gift for a character (shop.js purchaseAsNpc).
+router.post('/shop/buy-as-npc', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM buys as an NPC.' });
+  const { itemName, npcId, quantity, giftToCharacterId, giftNote } = req.body || {};
+  try {
+    const result = shop.purchaseAsNpc({
+      itemName, npcId, user, giftToCharacterId, giftNote,
+      quantity: quantity === undefined ? 1 : Number(quantity)
+    });
+    require('./characterThreads').announceGift(result.gift);
+    if (result.refundedReservation) require('./characterThreads').announceReservation('refunded', result.refundedReservation);
+    void sendGrimboldShopEmbed({
+      channelId: require('./shopAnnouncements').shopChannelId(),
+      item: result.item, character: null, npc: result.npc, quantity: result.quantity, buyerTag: null,
+      discountPercent: 0, finalUnitPriceCp: result.finalUnitPriceCp, totalCostCp: result.totalCostCp,
+      giftTo: result.gift.to.name
+    });
+    return res.json({ success: true, transaction: { ...result, totalCostFormatted: formatCp(result.totalCostCp) } });
+  } catch (error) {
+    if (error instanceof shop.PurchaseError) return res.status(400).json({ error: error.message });
+    console.error('NPC purchase failed:', error);
+    return res.status(500).json({ error: 'Purchase failed.' });
+  }
+});
+
+// The NPCs a DM can buy as: those they can see.
+router.get('/shop/npc-buyers', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Only a DM buys as an NPC.' });
+  return res.json({ npcs: db.listNpcBuyers(user) });
 });
 
 router.post('/shop/buy', async (req, res) => {
