@@ -258,6 +258,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
             <p class="muted small">Saved with the sheet.</p>
           </details>
           ${chroniclesHtml(characterToEdit.id)}
+          ${require('./art').artStripHtml({ characterId: characterToEdit.id })}
           <!-- Speak in Discord as the character: one folded line, above everything in every layout. -->
           ${characterToEdit.status === 'alive' ? `<section id="cs_speak" class="sheet-card" data-collapse="speak" data-character-id="${Number(characterToEdit.id)}"></section>
           <script src="/admin/assets/discord-editor.js" defer></script>

@@ -24,6 +24,7 @@ const TAB_RENDERERS = {
   'map': require('./tabs/map'),
   'lineup': require('./tabs/lineup'),
   'chronicles': require('./tabs/chronicles'),
+  'art': require('./tabs/art'),
   'changelog': require('./tabs/changelog')
 };
 
@@ -31,7 +32,7 @@ module.exports = function renderAdminPage(req) {
   const currentUser = req.session.user;
   const isAdmin = currentUser.role === 'admin';
   const isRootAdmin = currentUser.id === 0 && isAdmin;
-  const playerAllowedTabs = ['items', 'players', 'adventures', 'sessions', 'map', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet', 'lineup', 'chronicles', 'changelog'];
+  const playerAllowedTabs = ['items', 'players', 'adventures', 'sessions', 'map', 'npcs', 'rolls', 'analytics', 'auctions', 'character-sheet', 'lineup', 'chronicles', 'art', 'changelog'];
   const tabLabels = {
     items: 'Shop Items',
     catalog: 'Master Catalog',
@@ -49,6 +50,7 @@ module.exports = function renderAdminPage(req) {
     'character-sheet': 'Character Sheet',
     lineup: 'Lineup',
     chronicles: 'Chronicles',
+    art: 'Art',
     changelog: 'Changelog'
   };
   const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
@@ -56,7 +58,7 @@ module.exports = function renderAdminPage(req) {
   // Changelog is the "What's new" link by Logout.
   const TAB_GROUPS = [
     { label: 'Shop', tabs: ['items', 'auctions', 'catalog', 'restock', 'sales'] },
-    { label: 'Characters', tabs: ['character-sheet', 'lineup', 'chronicles', 'players'] },
+    { label: 'Characters', tabs: ['character-sheet', 'lineup', 'chronicles', 'art', 'players'] },
     { label: 'Adventures', tabs: ['adventures', 'sessions', 'map'] },
     { label: 'DM Tools', tabs: ['npcs', 'monsters'] },
     { label: 'Records', tabs: ['rolls', 'analytics'] }

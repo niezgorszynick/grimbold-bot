@@ -1303,6 +1303,51 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(adventure_trackers)').all().map(column => column.name));
       if (!columns.has('combatant_id')) db.exec('ALTER TABLE adventure_trackers ADD COLUMN combatant_id INTEGER REFERENCES encounter_combatants(id) ON DELETE CASCADE');
     }
+  },
+  {
+    // The Art tab (art.js, db/art.js): images posted in the Discord art
+    // channel, one row per attachment, with Grimbold's own copy (file, thumb)
+    // since Discord's links expire. Tagged with the characters in it and an
+    // adventure. tagged_by / adventure_by: who set them — 'name' (found in the
+    // post), 'guess' (adventure only), 'discord' (Tag art), 'dm' (the panel);
+    // adventure_by 'none' = nobody wants one guessed. not_art: a meme or a
+    // screenshot, never shown in the gallery.
+    version: 46,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS art_images (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          attachment_id TEXT NOT NULL UNIQUE,
+          message_id TEXT NOT NULL,
+          channel_id TEXT,
+          guild_id TEXT,
+          thread_name TEXT,
+          posted_by_discord_id TEXT,
+          posted_by_tag TEXT,
+          posted_at TEXT,
+          message_text TEXT,
+          filename TEXT,
+          width INTEGER,
+          height INTEGER,
+          file TEXT,
+          thumb_file TEXT,
+          download_error TEXT,
+          adventure_id INTEGER REFERENCES adventures(id) ON DELETE SET NULL,
+          adventure_by TEXT,
+          tagged_by TEXT,
+          not_art INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS art_images_message ON art_images (message_id);
+        CREATE INDEX IF NOT EXISTS art_images_adventure ON art_images (adventure_id);
+        CREATE TABLE IF NOT EXISTS art_image_characters (
+          image_id INTEGER NOT NULL REFERENCES art_images(id) ON DELETE CASCADE,
+          character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+          PRIMARY KEY (image_id, character_id)
+        );
+        CREATE INDEX IF NOT EXISTS art_image_characters_character ON art_image_characters (character_id);
+      `);
+    }
   }
 ];
 

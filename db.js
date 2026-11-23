@@ -42,6 +42,7 @@ module.exports = {
   ...require('./db/spellEffects'),
   ...require('./db/lineup'),
   ...require('./db/characterDocs'),
+  ...require('./db/art'),
   ...require('./db/npcVoice'),
   // Direct database access for scripts (seed, restock, maintenance)
   db,

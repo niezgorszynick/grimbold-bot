@@ -884,6 +884,18 @@ router.post('/auctions/:id/cancel', (req, res) => {
   }
 });
 
+// Art (the Art tab): everyone logged in sees the gallery; DMs also what is
+// still to sort. size=thumb: the gallery's smaller copy.
+router.get('/art/:id/image', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.getArtImage(req.params.id, { isAdmin: isAdmin(user) })) return res.status(404).json({ error: 'No such image.' });
+  const found = db.getArtFile(req.params.id, { size: req.query.size });
+  if (!found) return res.status(404).json({ error: 'No copy of that image.' });
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(found.file);
+});
+
 // Character portraits: everyone logged in sees them; the owner or a DM uploads.
 router.get('/characters/:id/portrait', (req, res) => {
   if (!getSessionApiUser(req)) return res.status(401).json({ error: 'Unauthorized' });

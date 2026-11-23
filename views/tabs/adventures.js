@@ -11,6 +11,7 @@ function renderAdventureTable(adventureId, isAdmin) {
     <div class="adventure-table-page">
       <a href="/admin?tab=adventures" class="btn btn-small btn-secondary">← All adventures</a>
       <section id="adventure-table" data-roll-page="party" data-adventure-id="${adventureId}" data-is-admin="${isAdmin ? 'true' : 'false'}" aria-live="polite">Loading adventure…</section>
+      ${require('./art').artStripHtml({ adventureId, title: '🎨 Art from this adventure' })}
       <script src="/admin/assets/discord-editor.js" defer></script>
       <script src="/admin/assets/adventure-table.js" defer></script>
       <script src="/admin/assets/dice.js" defer></script>
@@ -112,6 +113,7 @@ module.exports = function renderAdventuresTab(ctx) {
   if (Number.isSafeInteger(tableId) && tableId > 0) return renderAdventureTable(tableId, isAdmin);
   const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
   const finishedParties = db.getAdventureParties(allAdventures.map(adventure => adventure.id));
+  const artCount = db.artCounts().byAdventure;
   const allPlayers = db.getAllPlayers ? db.getAllPlayers() : [];
   const editAdvId = isAdmin && req.query.edit_adv ? Number(req.query.edit_adv) : null;
   let editingAdventure = null;
@@ -295,7 +297,7 @@ module.exports = function renderAdventuresTab(ctx) {
           ${allAdventures.length === 0 ? `<tr><td colspan="${isAdmin ? 6 : 5}">No completed adventures recorded yet.</td></tr>` : allAdventures.map(adv => `
             <tr>
               <td data-sort="${adv.created_at}">${adv.created_at}</td>
-              <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong>${partyLine(finishedParties[adv.id])}</td>
+              <td data-sort="${escapeHtml(adv.title)}"><strong>${escapeHtml(adv.title)}</strong>${artCount.has(adv.id) ? ` <a class="small" href="/admin?tab=art&adventure=${adv.id}" title="Art from this adventure">🎨 ${artCount.get(adv.id)}</a>` : ''}${partyLine(finishedParties[adv.id])}</td>
               <td data-sort="${escapeHtml(adv.dm_name || '')}">${adv.dm_name ? escapeHtml(adv.dm_name) : '<em>None</em>'}</td>
               <td data-sort="${adv.xp_awarded}"><span class="tag green">+${adv.xp_awarded} XP</span></td>
               <td>${escapeHtml(adv.description || '—')}</td>

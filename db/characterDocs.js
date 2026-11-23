@@ -211,6 +211,10 @@ function listDocsWithoutFormatting(limit = 5) {
 
 module.exports = {
   DOC_KINDS: KINDS,
+  // Name matching, shared with the Art tab (db/art.js).
+  nameText: normalize,
+  textHasName: hasNameForm,
+  textHasWord: hasWord,
   listDocsWithoutFormatting,
   extractDocLinks,
   docEmbedUrl: embedUrl,

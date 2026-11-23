@@ -414,6 +414,30 @@ router.post('/chronicles/update', (req, res) => {
   }
 });
 
+// Art (admins): read the art channel's history, and tag an image.
+router.post('/art/import', (req, res) => {
+  const started = require('./art').startImport(req.session.user.discord_tag);
+  res.redirect(`/admin?tab=art&view=unsorted&status=${started ? 'art_import_started' : 'art_import_busy'}`);
+});
+
+router.post('/art/update', (req, res) => {
+  const target = typeof req.body.return_to === 'string' && /^\/admin\?tab=art(&|$)/.test(req.body.return_to) ? req.body.return_to : '/admin?tab=art';
+  const back = req.body.return_to ? target : `/admin?tab=art&art=${encodeURIComponent(req.body.id)}`;
+  try {
+    const notArt = req.body.not_art === undefined ? undefined : [].concat(req.body.not_art).includes('1');
+    // The quick Not art button sends no characters; the forms send none when all are unticked.
+    const tagging = req.body.character_ids !== undefined || req.body.adventure !== undefined;
+    db.updateArtImage(req.body.id, {
+      characterIds: tagging ? [].concat(req.body.character_ids || []) : undefined,
+      adventure: req.body.adventure,
+      notArt
+    });
+    res.redirect(`${back}&status=art_updated${back.includes('&art=') ? '#art-viewer' : ''}`);
+  } catch (err) {
+    res.redirect(`${back}&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 // Notable NPCs (admins): create or update, and delete.
 router.post('/npcs/save', (req, res) => {
   try {

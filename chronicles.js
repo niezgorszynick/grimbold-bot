@@ -243,6 +243,7 @@ module.exports = {
   setClientForTests,
   channelId,
   scanChannel,
+  channelSources: sources,
   runScan,
   startImport,
   refreshDoc,

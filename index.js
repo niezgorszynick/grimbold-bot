@@ -154,6 +154,8 @@ require('./adventureThreads').registerAdventureThreads(client);
 require('./characterThreads').setCharacterThreadsClient(client);
 // Google Docs about characters shared in the docs channel (Chronicles tab).
 require('./chronicles').setChroniclesClient(client);
+// Art posted in the art channel, tagged with its characters (Art tab, art.js).
+require('./art').setArtClient(client);
 // Natural 1s and 20s from every source, in one channel (NAT_ROLLS_CHANNEL_ID).
 require('./naturalRolls').setNaturalRollsClient(client);
 // Session changes made in the panel are announced in the adventure's thread.
@@ -188,7 +190,7 @@ for (const file of commandFiles) {
     continue;
   }
   client.commands.set(command.data.name, command);
-  console.log(`✅ Loaded command: /${command.data.name}`);
+  console.log(`✅ Loaded command: ${command.data.type === 3 ? '' : '/'}${command.data.name}`);
 }
 
 // ─── Ready ────────────────────────────────────────────────────────────────────
@@ -220,7 +222,14 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  if (!interaction.isChatInputCommand()) return;
+  // Tag art: the menu's selects and buttons (art.js).
+  if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('art:')) {
+    await require('./art').handleArtInteraction(interaction).catch(error => console.error('[ERROR] Tag art:', error));
+    return;
+  }
+
+  // Slash commands, and right-click commands on a message (Tag art).
+  if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
   if (!command) return;

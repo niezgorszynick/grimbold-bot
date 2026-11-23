@@ -1545,3 +1545,25 @@ button.sheet-hud-tile { cursor: pointer; }
 .voice-bot-head { display: flex; align-items: center; gap: 10px; }
 .voice-bot-warning { background: rgba(240, 178, 50, 0.12); border-left: 3px solid #f0b232; padding: 6px 10px; margin: 0; color: #f2e3c0; }
 .voice-bot input[type=text] { flex: 1; min-width: 140px; }
+
+/* Art tab (views/tabs/art.js) and the Art strips on sheets and adventures. */
+.art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 10px; }
+.art-grid-small { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
+.art-grid figure { margin: 0; display: grid; gap: 4px; align-content: start; }
+.art-grid figure.is-current .art-thumb { outline: 2px solid #d4af37; }
+.art-grid figcaption { font-size: 13px; line-height: 1.3; }
+.art-thumb { display: block; border-radius: 6px; overflow: hidden; background: #1e1f22; border: 1px solid #3f4147; aspect-ratio: 1 / 1; }
+.art-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.art-thumb:hover { border-color: #d4af37; }
+.art-missing { display: grid; place-content: center; height: 100%; text-align: center; color: #949ba4; font-size: 28px; }
+.art-viewer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.art-viewer-head h3 { margin: 0 0 4px; }
+.art-viewer-head h3 a { color: inherit; }
+.art-caption { white-space: pre-wrap; margin: 6px 0 0; font-size: 14px; }
+.art-full { display: block; max-width: 100%; max-height: 80vh; margin: 12px auto 0; border-radius: 6px; }
+.art-sort { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 10px; }
+.art-sort-item { display: grid; gap: 6px; align-content: start; padding: 8px; border: 1px solid #3f4147; border-radius: 6px; }
+.art-sort-item p { margin: 0; }
+.art-quick { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; margin: 0; }
+.art-quick select { flex: 1 1 140px; min-width: 0; }
+.art-strip { margin-top: 12px; }
