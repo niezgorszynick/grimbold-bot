@@ -60,7 +60,9 @@ function savedTextHtml(text) {
 function viewerHtml(doc, { isAdmin, characters }) {
   const restricted = doc.access === 'restricted';
   const hasCopy = Boolean(doc.saved_length);
-  const showCopyFirst = restricted && hasCopy;
+  // The saved copy opens first (quicker, and kept when a doc goes private);
+  // the live doc loads only when asked for.
+  const showCopyFirst = hasCopy;
   return `
     <section class="card chronicle-viewer" id="chronicle-viewer" data-doc-id="${doc.id}">
       <div class="chronicle-viewer-head">
@@ -84,7 +86,7 @@ function viewerHtml(doc, { isAdmin, characters }) {
       <p id="chronicle-refresh-status" class="muted small" role="status">${restricted
         ? `🔒 This doc isn't shared with “Anyone with the link”, so Google shows a sign-in box here.${hasCopy ? ' The saved copy is from before it was closed.' : ' Ask its author to share it with anyone with the link, then press Refresh.'}`
         : doc.saved_at ? `Copy saved ${escapeHtml(when(doc.saved_at))}.` : ''}</p>
-      <iframe class="chronicle-frame" data-pane="live" src="${escapeHtml(doc.embedUrl)}" title="${escapeHtml(doc.title || 'Document')}" loading="lazy" referrerpolicy="no-referrer"${showCopyFirst ? ' hidden' : ''}></iframe>
+      <iframe class="chronicle-frame" data-pane="live" ${showCopyFirst ? 'data-src' : 'src'}="${escapeHtml(doc.embedUrl)}" title="${escapeHtml(doc.title || 'Document')}" loading="lazy" referrerpolicy="no-referrer"${showCopyFirst ? ' hidden' : ''}></iframe>
       ${hasCopy ? `<article class="chronicle-text" data-pane="copy"${showCopyFirst ? '' : ' hidden'}>${doc.saved_html ? `<div class="chronicle-rich">${doc.saved_html}</div>` : savedTextHtml(doc.saved_text)}</article>` : ''}
       ${isAdmin ? `
       <details class="chronicle-dm">
@@ -106,6 +108,8 @@ function viewerHtml(doc, { isAdmin, characters }) {
         const buttons = viewer.querySelectorAll('[data-show]');
         buttons.forEach(button => button.addEventListener('click', () => {
           panes.forEach(pane => { pane.hidden = pane.dataset.pane !== button.dataset.show; });
+          const frame = viewer.querySelector('iframe[data-src]');
+          if (button.dataset.show === 'live' && frame) { frame.src = frame.dataset.src; frame.removeAttribute('data-src'); }
           buttons.forEach(other => other.classList.toggle('btn-secondary', other !== button));
         }));
         const refresh = document.getElementById('chronicle-refresh');
