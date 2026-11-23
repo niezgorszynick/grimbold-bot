@@ -104,11 +104,16 @@ function buildView(sheetData, isAdmin, sale = { roll: null, discountPercent: 0 }
         // A custom description wins; otherwise the catalog's.
         description: row.description || (known ? known.description : ''),
         // What Grimbold pays for one: { unitCp, share } or { unitCp: 0, reason }.
-        sale: rules.gearOffer(row, { catalogRow: mundaneCatalogRow(row.name, catalog), discountPercent: sale.discountPercent, isAdmin })
+        sale: rules.gearOffer(row, { catalogRow: mundaneCatalogRow(row.name, catalog), discountPercent: sale.discountPercent, isAdmin }),
+        // Whether the player could sell it themselves (the DM's switch).
+        playerSaleBlocked: Boolean(rules.playerSaleBlock(row, mundaneCatalogRow(row.name, catalog))),
+        sellableByDm: Boolean(row.sellable)
       };
     }),
     // The owner's weekly roll behind the offers (null: not rolled this week).
     saleRoll: sale.roll,
+    // DMs let a player sell gear the sheet thinks wasn't paid for.
+    isAdmin: Boolean(isAdmin),
     // Choices for custom weapon stats.
     weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS },
     // What item bonuses add up to now, for the skill and save numbers.
@@ -133,6 +138,7 @@ function getCharacterInventory({ id, player_id, is_admin }) {
 //       | setBonuses { index, name, bonuses } | useBonuses { index, name, active }
 //       | setProperties { index, name, properties } (custom properties, rules/itemProperties.js)
 //       | sell { index, name, quantity } (to Grimbold, see rules/gearSales.js)
+//       | allowSale { index, name, allowed } | allowSaleAll (DMs: the player may sell it)
 // add with weapon stats (custom items): see rules/customWeapons.js.
 // `name` with update/remove guards against a list changed in another tab.
 function changeCharacterInventory({ id, player_id, is_admin, action, params = {} }) {
@@ -269,6 +275,24 @@ function changeCharacterInventory({ id, player_id, is_admin, action, params = {}
       else delete row.nickname;
       nextSheet = { ...sheetData, inventory };
       message = row.nickname ? `${row.name} is now called ${row.nickname}.` : `${row.name} has its own name again.`;
+    } else if (action === 'allowSale' || action === 'allowSaleAll') {
+      // The DM lets the player sell gear the sheet counts as not paid for
+      // (added by hand, starting gear after a rebuild, an old sheet).
+      if (!is_admin) throw new Error('Only a DM can let a player sell an item.');
+      const catalog = new Map(getCatalogForSheets().map(entry => [entry.name.toLowerCase(), entry]));
+      if (action === 'allowSale') {
+        const index = Number(params.index);
+        const row = Number.isSafeInteger(index) ? inventory[index] : null;
+        if (!row || row.name !== params.name) throw new Error('The item list changed. Reload the page and try again.');
+        if (params.allowed) row.sellable = true;
+        else delete row.sellable;
+        message = params.allowed ? `${row.name}: the player can sell it to Grimbold.` : `${row.name}: only a DM sells it to Grimbold.`;
+      } else {
+        const blocked = inventory.filter(row => rules.playerSaleBlock(row, mundaneCatalogRow(row.name, catalog)));
+        blocked.forEach(row => { row.sellable = true; });
+        message = blocked.length ? `The player can sell ${blocked.length} more item${blocked.length === 1 ? '' : 's'} to Grimbold.` : 'Nothing was blocked.';
+      }
+      nextSheet = { ...sheetData, inventory };
     } else if (action === 'sell') {
       const index = Number(params.index);
       const row = Number.isSafeInteger(index) ? inventory[index] : null;

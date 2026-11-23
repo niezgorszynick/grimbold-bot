@@ -234,12 +234,22 @@
         });
     }
     const canSell = Boolean(item.sale && item.sale.unitCp > 0);
+    // Gear the player can't sell themselves: a greyed coin that says why.
     const sell = canSell
       ? button('🪙', () => { selling = selling === key ? null : key; giving = null; render(); }, 'btn btn-small btn-secondary gift-button', {
         title: 'Sell ' + (item.nickname || item.name) + ' to Grimbold (' + coins(item.sale.unitCp) + (item.quantity > 1 ? ' each' : '') + ')',
         'aria-label': 'Sell ' + (item.nickname || item.name) + ' to Grimbold'
       })
-      : null;
+      : item.playerSaleBlocked && !view.isAdmin
+        ? el('span', { className: 'btn btn-small btn-secondary gift-button is-blocked', title: (item.sale && item.sale.reason) || 'Only a DM sells this to Grimbold.', 'aria-label': 'Only a DM can sell ' + (item.nickname || item.name), text: '🪙' })
+        : null;
+    // DMs: let the player sell it themselves.
+    const saleSwitch = view.isAdmin && (item.playerSaleBlocked || item.sellableByDm) ? (() => {
+      const box = el('input', { type: 'checkbox' });
+      box.checked = item.sellableByDm;
+      box.addEventListener('change', () => act({ action: 'allowSale', index: item.index, name: item.name, allowed: box.checked }));
+      return el('label', { className: 'creator-check' }, [box, ' 🪙 The player may sell it to Grimbold' + (item.sellableByDm ? '' : ' (now only a DM can: it was added by hand or its count raised)')]);
+    })() : null;
     const stats = item.gear && item.gear.stats ? el('p', { className: 'small gear-stats', text: item.gear.stats }) : null;
     return el('li', { className: 'inventory-row' }, [
       el('div', { className: 'inventory-row-main' }, [
@@ -275,6 +285,7 @@
           ? renderText(item.description)
           : (stats ? null : el('p', { className: 'muted small', text: 'No description. Custom items can have one when you add them.' })),
         item.sale && !canSell && item.sale.reason ? el('p', { className: 'muted small', text: '🪙 ' + item.sale.reason }) : null,
+        saleSwitch,
         item.source === 'custom' ? weaponEditor(item) : null,
         propertyEditor(item, key),
         bonusEditor(item),
@@ -527,6 +538,8 @@
     ]);
   }
 
+  const blockedCount = () => view.items.filter(item => item.playerSaleBlocked).length;
+
   function render() {
     if (!view) return;
     const toggle = (value, text) => button(text, () => { mode = mode === value ? null : value; render(); },
@@ -535,7 +548,11 @@
       view.items.length
         ? el('ul', { className: 'inventory-list' }, view.items.map(itemRow))
         : el('p', { className: 'muted small', text: 'No items yet.' }),
-      el('div', { className: 'vitals-actions inventory-modes' }, [toggle('catalog', '+ From catalog'), toggle('custom', '+ Custom item')]),
+      el('div', { className: 'vitals-actions inventory-modes' }, [toggle('catalog', '+ From catalog'), toggle('custom', '+ Custom item'),
+        // DMs: every catalog item the player can't sell yet, in one go.
+        view.isAdmin && blockedCount() ? button('🪙 Let the player sell all ' + blockedCount() + ' blocked', () => {
+          if (window.confirm('Let the player sell these ' + blockedCount() + ' catalog items to Grimbold themselves? (Custom items still have no price.)')) act({ action: 'allowSaleAll' });
+        }, 'btn btn-small btn-secondary', { title: 'Catalog items the sheet counts as not paid for (added by hand, starting gear after a rebuild, an old sheet)' }) : null]),
       mode === 'catalog' ? renderCatalogPicker() : null,
       mode === 'custom' ? renderCustomForm() : null,
       el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', 'aria-live': 'polite', text: message })

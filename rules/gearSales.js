@@ -11,7 +11,8 @@
 // A player sells only gear that was paid for or given: bought in the shop,
 // a gift, starting equipment, or added by the DM. Items a player put on their
 // own list (or whose count they raised) cost nothing, so only the DM can sell
-// those for them. Custom items have no catalog price.
+// those for them, unless the DM lets the player sell it (sellable: true on the
+// row, e.g. starting gear after a rebuild). Custom items have no catalog price.
 
 'use strict';
 
@@ -23,7 +24,9 @@ const isCustom = row => row.source === 'custom' || Boolean(row.weapon) || (Array
 
 // Paid for or given (not added by the player themselves).
 function isPaidFor(row) {
-  if (!row || row.unsellable || isCustom(row)) return false;
+  if (!row || isCustom(row)) return false;
+  if (row.sellable) return true;
+  if (row.unsellable) return false;
   return PAID_SOURCES.includes(row.source) || (row.source === 'catalog' && row.addedBy === 'dm');
 }
 
@@ -47,4 +50,10 @@ function gearOffer(row, { catalogRow = null, discountPercent = 0, isAdmin = fals
   return { unitCp: Math.max(1, unitCp), share, fullValue };
 }
 
-module.exports = { SELL_SHARE, isPaidFor, sameSaleStatus, sellShare, gearOffer };
+// Why the player can't sell it themselves, when a DM could let them: null otherwise.
+function playerSaleBlock(row, catalogRow) {
+  if (!row || isCustom(row) || !catalogRow || !(catalogRow.base_price_cp > 0) || isPaidFor(row)) return null;
+  return 'Added to the list by hand, so Grimbold only buys it through the DM.';
+}
+
+module.exports = { SELL_SHARE, isPaidFor, sameSaleStatus, sellShare, gearOffer, playerSaleBlock };

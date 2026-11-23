@@ -1644,3 +1644,6 @@ button.sheet-hud-tile { cursor: pointer; }
 .item-property-form { display: grid; gap: 6px; }
 .item-property-form textarea { width: 100%; min-height: 60px; }
 .item-property-form .creator-check { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* Gear the player can't sell themselves: a greyed coin (public/character-inventory.js). */
+.gift-button.is-blocked { opacity: 0.35; cursor: help; filter: grayscale(1); }

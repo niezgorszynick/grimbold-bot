@@ -103,3 +103,34 @@ test('bought gear stays sellable: it stacks only with gear of the same kind', ()
   shop.purchaseItem({ itemName: 'Rope (50 feet)', quantity: 1, characterId: id, playerId: player, buyerTag: 'tester', buyerDiscordId: discordOf(player) });
   assert.deepEqual(inventory(id).map(row => [row.source, row.quantity]), [['catalog', 2], ['shop', 1]]);
 });
+
+test('a DM lets the player sell gear added by hand: one item, or all blocked at once', () => {
+  const player = createPlayer();
+  const id = addCharacter(player, [
+    { name: 'Rope (50 feet)', quantity: 1, source: 'catalog' },
+    { name: 'Longsword', quantity: 1, source: 'class', unsellable: true },
+    { name: 'Rope (50 feet)', quantity: 2, source: 'shop' },
+    { name: 'Shaman bag', quantity: 1, source: 'custom' }
+  ]);
+  const asPlayer = { id, player_id: player, is_admin: false };
+  const asDm = { id, player_id: 0, is_admin: true };
+  let view = db.getCharacterInventory(asPlayer);
+  assert.deepEqual(view.items.map(item => item.playerSaleBlocked), [true, true, false, false], 'custom items are not blocked, just unpriced');
+  assert.equal(view.isAdmin, false);
+  assert.match(view.items[0].sale.reason, /added to the list by hand/i);
+  assert.throws(() => db.changeCharacterInventory({ ...asPlayer, action: 'sell', params: { index: 0, name: 'Rope (50 feet)' } }), /through the DM/);
+  assert.throws(() => db.changeCharacterInventory({ ...asPlayer, action: 'allowSale', params: { index: 0, name: 'Rope (50 feet)', allowed: true } }), /Only a DM/);
+
+  db.changeCharacterInventory({ ...asDm, action: 'allowSale', params: { index: 0, name: 'Rope (50 feet)', allowed: true } });
+  view = db.getCharacterInventory(asPlayer);
+  assert.equal(view.items[0].sellableByDm, true);
+  assert.ok(view.items[0].sale.unitCp > 0);
+  db.changeCharacterInventory({ ...asPlayer, action: 'sell', params: { index: 0, name: 'Rope (50 feet)' } });
+
+  const all = db.changeCharacterInventory({ ...asDm, action: 'allowSaleAll' });
+  assert.match(all.message, /1 more item/);
+  assert.ok(db.getCharacterInventory(asPlayer).items.find(item => item.name === 'Longsword').sale.unitCp > 0, 'starting gear after a rebuild too');
+  assert.equal(db.getCharacterInventory(asPlayer).items.find(item => item.name === 'Shaman bag').sale.unitCp, 0, 'a custom item still has no price');
+  const blockedAgain = db.changeCharacterInventory({ ...asDm, action: 'allowSale', params: { index: 0, name: 'Longsword', allowed: false } });
+  assert.equal(blockedAgain.inventory.items[0].playerSaleBlocked, true, 'and back');
+});
