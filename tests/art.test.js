@@ -172,7 +172,7 @@ test('the Art tab, the sheet and the adventure show the gallery; DMs tag in the 
   const viewer = renderAdminPage({ session: { user: admin }, query: { tab: 'art', art: String(first.id) } });
   assert.match(viewer, new RegExp(`name="character_ids" value="${thorin}" checked`), 'ticked chips, not a multi-select');
   assert.match(viewer, /owner's characters/, "the poster's characters first");
-  for (const [, code] of viewer.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+  for (const [, code] of viewer.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
   assert.match(renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'unsorted' } }), /Nothing to sort/);
   db.updateArtImage(first.id, { notArt: false, characterIds: [] });
   const unsorted = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'unsorted' } });

@@ -1620,3 +1620,7 @@ button.sheet-hud-tile { cursor: pointer; }
 .art-upload { display: grid; gap: 8px; margin: 10px 0 4px; padding: 12px; border: 1px dashed #d4af37; border-radius: 6px; }
 .art-upload h4 { margin: 0; }
 .art-upload p { margin: 0; }
+
+/* A spell's rolls on its line (public/character-spells.js quickRolls). */
+.spell-quick { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.spell-quick-save { padding: 1px 8px; border-radius: 999px; border: 1px solid #4e5058; color: #dbdee1; white-space: nowrap; }

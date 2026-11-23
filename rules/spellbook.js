@@ -97,6 +97,15 @@ function maxSpellLevelFor(spellcasting, classLevel) {
 }
 
 // Every spell source the character has, with its limits.
+// Spells a class itself always has prepared, from a level, and the feature
+// that says so: [level, spell, feature, free casts per Long Rest without a slot].
+// (Faithful Steed's and Favored Enemy's free casts are counted on the
+// Resources card, rules/classResources.js.)
+const CLASS_ALWAYS_PREPARED = {
+  Paladin: [[2, 'Divine Smite', "Paladin's Smite", 1], [5, 'Find Steed', 'Faithful Steed', 0]],
+  Ranger: [[1, "Hunter's Mark", 'Favored Enemy', 0]]
+};
+
 // character: { classes: [{ className, subclassName, level }], species, sheetData, totalLevel }
 function getSpellSources(character) {
   const { classes, sheetData = {} } = character;
@@ -109,6 +118,7 @@ function getSpellSources(character) {
     const spellcasting = (classData && classData.spellcasting) || SUBCLASS_SPELLCASTING[row.subclassName];
     if (!spellcasting) continue;
     const ruleKey = classData && classData.spellcasting ? row.className : row.subclassName;
+    const classSpells = (CLASS_ALWAYS_PREPARED[row.className] || []).filter(([level]) => row.level >= level);
     const mod = abilityModifier(scoreOf(sheetData, spellcasting.ability));
     sources.push({
       kind: 'class',
@@ -128,8 +138,12 @@ function getSpellSources(character) {
         : null,
       classLevel: row.level,
       // Domain, oath, circle, patron and origin spells.
-      alwaysPrepared: subclassSpellsFor(row, sheetData),
+      alwaysPrepared: [...new Set([...classSpells.map(([, spell]) => spell), ...subclassSpellsFor(row, sheetData)])],
       alwaysPreparedLabel: row.subclassName || null,
+      // Which feature prepares each class spell (the rest: the subclass).
+      alwaysPreparedFrom: Object.fromEntries(classSpells.map(([, spell, feature]) => [spell, feature])),
+      // Paladin's Smite: Divine Smite once per Long Rest without a slot.
+      ...(classSpells.some(([, , , free]) => free) ? { freeUsesBySpell: Object.fromEntries(classSpells.filter(([, , , free]) => free).map(([, spell, , free]) => [spell, free])) } : {}),
       // Circle of the Land: the land, chosen again after each Long Rest.
       land: row.subclassName === 'Circle of the Land' && row.level >= 3
         ? { current: chosenLand(sheetData), options: Object.keys(LAND_SPELLS) }
@@ -359,7 +373,7 @@ function getSpellSources(character) {
   for (const source of sources) {
     source.preparedElsewhere = sources
       .filter(other => other !== source)
-      .flatMap(other => (other.alwaysPrepared || []).map(name => ({ name, from: other.alwaysPreparedLabel || other.label })))
+      .flatMap(other => (other.alwaysPrepared || []).map(name => ({ name, from: (other.alwaysPreparedFrom || {})[name] || other.alwaysPreparedLabel || other.label })))
       .filter((entry, index, list) => !(source.alwaysPrepared || []).includes(entry.name) && list.findIndex(item => item.name === entry.name) === index);
   }
   return sources;
@@ -462,7 +476,7 @@ function chooseSpells(state, source, request, catalog = getSpellCatalog()) {
     !current.cantrips.includes(name) && !current.prepared.includes(name));
   if (fixed) {
     const elsewhere = (source.preparedElsewhere || []).find(entry => entry.name === fixed);
-    throw new Error(`${fixed} is always prepared for you (${elsewhere ? elsewhere.from : source.alwaysPreparedLabel || source.label}); choose another spell.`);
+    throw new Error(`${fixed} is always prepared for you (${elsewhere ? elsewhere.from : (source.alwaysPreparedFrom || {})[fixed] || source.alwaysPreparedLabel || source.label}); choose another spell.`);
   }
   if (source.minSpellLevel) {
     prepared.forEach(name => {

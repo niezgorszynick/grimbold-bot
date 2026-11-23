@@ -231,6 +231,36 @@
     });
   }
 
+  // What a spell rolls, on its line even when folded: a spell attack (with
+  // its bonus) or the save its targets make (with the DC), and its dice
+  // (damage or healing), scaled to the slot chosen to cast it.
+  const SAVE_ABILITY = { Strength: 'STR', Dexterity: 'DEX', Constitution: 'CON', Intelligence: 'INT', Wisdom: 'WIS', Charisma: 'CHA' };
+  function quickRolls(source, spell, slotLevel) {
+    const text = String(spell.description || '');
+    const parts = [];
+    if (/\bspell attack\b/i.test(text)) {
+      parts.push(el('button', {
+        type: 'button', className: 'roll-link spell-quick-attack', 'data-roll': 'spell:' + source.key,
+        title: 'Roll the spell attack for ' + spell.name, text: '🎯 ' + signed(source.attackBonus + shift(source))
+      }));
+    }
+    const save = text.match(/\b(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) saving throw/);
+    if (save) parts.push(el('span', { className: 'spell-quick-save', title: 'Targets make a ' + save[1] + ' saving throw against your spell save DC', text: 'DC ' + (source.saveDc + shift(source)) + ' ' + SAVE_ABILITY[save[1]] }));
+    const link = diceLinks(source, spell, slotLevel);
+    if (link) {
+      const seen = new Set();
+      [...text.matchAll(/\b(\d+)d(\d+)\b(?:\s*\+\s*(\d+)\b)?/g)].forEach((match, index) => {
+        const node = link(match[0], index);
+        if (!node || seen.has(node.textContent) || seen.size >= 2) return;
+        seen.add(node.textContent);
+        const type = text.slice(match.index + match[0].length).match(/^\s+(Acid|Bludgeoning|Cold|Fire|Force|Lightning|Necrotic|Piercing|Poison|Psychic|Radiant|Slashing|Thunder) damage/);
+        if (type) node.textContent += ' ' + type[1];
+        parts.push(node);
+      });
+    }
+    return parts.length ? el('span', { className: 'spell-quick' }, parts) : null;
+  }
+
   function spellRow(source, name, { canCast = true, extraTag } = {}) {
     const spell = catalog[name] || { name, level: 0, description: 'This spell is not in the spell list file.' };
     const key = source.key + '|' + name;
@@ -239,7 +269,7 @@
       spell.concentration ? 'Concentration' : null,
       spell.castingTime ? spell.castingTime.split(',')[0] : null,
       // Domain, oath, circle, patron and origin spells.
-      source.kind === 'class' && (source.alwaysPrepared || []).includes(name) ? 'Always prepared (' + source.alwaysPreparedLabel + ')' : null,
+      source.kind === 'class' && (source.alwaysPrepared || []).includes(name) ? 'Always prepared (' + ((source.alwaysPreparedFrom || {})[name] || source.alwaysPreparedLabel) + ')' : null,
       extraTag
     ].filter(Boolean);
     const controls = el('span', { className: 'spell-cast' });
@@ -279,6 +309,7 @@
           onclick: () => { openDetails.has(key) ? openDetails.delete(key) : openDetails.add(key); render(); }
         }),
         el('span', { className: 'muted small', text: tags.join(' · ') }),
+        quickRolls(source, spell, diceLevel),
         controls
       ]),
       picking && picking.key === key ? targetPicker() : null,
