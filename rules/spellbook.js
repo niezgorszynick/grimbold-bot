@@ -356,6 +356,27 @@ function getSpellSources(character) {
       freeUses: data.freeUses === 'proficiency' ? pb : 1
     });
   }
+  // Spells a DM granted by hand (sheet debug mode, db/spells.js): any spell,
+  // cast with the character's slots, at will, or once per Long Rest.
+  // sheetData.grantedSpells: [{ name, uses: 'slots' | 'atWill' | 'longRest' }].
+  const granted = (Array.isArray(sheetData.grantedSpells) ? sheetData.grantedSpells : []).filter(entry => entry && entry.name);
+  if (granted.length) {
+    const classAbility = (sources.find(source => source.kind === 'class') || {}).ability;
+    const ability = ['int', 'wis', 'cha'].includes(sheetData.grantedSpellAbility) ? sheetData.grantedSpellAbility
+      : classAbility || ['int', 'wis', 'cha'].reduce((best, key) => (scoreOf(sheetData, key) > scoreOf(sheetData, best) ? key : best), 'int');
+    const freeUsesBySpell = Object.fromEntries(granted.filter(entry => entry.uses === 'atWill' || entry.uses === 'longRest')
+      .map(entry => [entry.name, entry.uses === 'atWill' ? 'atWill' : 1]));
+    sources.push({
+      kind: 'granted',
+      key: 'Granted',
+      label: 'Granted by a DM',
+      ...castingNumbers(ability),
+      alwaysPrepared: granted.map(entry => entry.name),
+      alwaysPreparedLabel: 'granted by a DM',
+      grantedUses: Object.fromEntries(granted.map(entry => [entry.name, entry.uses || 'slots'])),
+      freeUsesBySpell
+    });
+  }
   // Spells of the Mark (Dragonmark feats) join every class spell list.
   const markSpells = [...new Set(sources.flatMap(source => source.markList || []))];
   if (markSpells.length) {
@@ -463,7 +484,7 @@ function allowanceFor(state, source) {
 // spellbook spells) for one source. Returns the next spellcasting state and,
 // for copied spellbook spells, the gold cost in GP.
 function chooseSpells(state, source, request, catalog = getSpellCatalog()) {
-  if (source.kind === 'species' || source.kind === 'invocation') throw new Error(`${source.label} spells are fixed.`);
+  if (source.kind === 'species' || source.kind === 'invocation' || source.kind === 'granted') throw new Error(`${source.label} spells are fixed.`);
   if (!source.cantripLimit && !source.preparedLimit) throw new Error(`${source.label} has no spells to choose.`);
   const current = chosenOf(state, source);
   const body = request || {};

@@ -296,7 +296,65 @@ function changeMagicInitiateList({ id, is_admin, from, spellList, spellAbility }
   })();
 }
 
+// Granting any spell by hand (sheet debug mode): the Root DM and the players
+// whose Discord IDs are in the config key 'spell_granters'.
+function getSpellGranters() {
+  const row = db.prepare("SELECT value FROM config WHERE key = 'spell_granters'").get();
+  try {
+    const list = row ? JSON.parse(row.value) : [];
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function canGrantSpells(user) {
+  if (!user) return false;
+  if (Number(user.id) === 0 && user.role === 'admin') return true;
+  if (!(Number(user.id) > 0)) return false;
+  const player = db.prepare('SELECT discord_id FROM players WHERE id = ?').get(Number(user.id));
+  return Boolean(player && getSpellGranters().includes(String(player.discord_id)));
+}
+
+const GRANT_USES = ['slots', 'atWill', 'longRest'];
+
+// { action: 'grant', spell, uses } adds (or changes) a granted spell;
+// { action: 'ungrant', spell } takes it away; { action: 'grantAbility', ability }
+// sets the ability they are cast with. Any character, by those who may grant.
+function grantCharacterSpell({ id, user, action, spell, uses, ability }) {
+  if (!canGrantSpells(user)) throw new Error('Forbidden.');
+  return db.transaction(() => {
+    const character = loadCharacter(id, null, true);
+    const sheetData = readSheet(character.sheet_data);
+    const list = Array.isArray(sheetData.grantedSpells) ? sheetData.grantedSpells.filter(entry => entry && entry.name) : [];
+    let next = list;
+    let nextAbility = sheetData.grantedSpellAbility;
+    if (action === 'grant') {
+      const found = rules.findSpell(String(spell || '').trim());
+      if (!found) throw new Error(`There is no spell called "${String(spell || '').trim()}" in the spell list.`);
+      const how = GRANT_USES.includes(uses) ? uses : 'slots';
+      next = [...list.filter(entry => entry.name !== found.name), { name: found.name, uses: how }];
+    } else if (action === 'ungrant') {
+      next = list.filter(entry => entry.name !== spell);
+      if (next.length === list.length) throw new Error(`${spell} isn't a granted spell.`);
+    } else if (action === 'grantAbility') {
+      if (!['int', 'wis', 'cha'].includes(ability)) throw new Error('Choose Intelligence, Wisdom or Charisma.');
+      nextAbility = ability;
+    } else {
+      throw new Error('Unknown spell action.');
+    }
+    const nextSheet = { ...sheetData, grantedSpells: next };
+    if (nextAbility) nextSheet.grantedSpellAbility = nextAbility;
+    if (!next.length) delete nextSheet.grantedSpells;
+    db.prepare('UPDATE characters SET sheet_data = ? WHERE id = ?').run(JSON.stringify(nextSheet), character.id);
+    return { spells: buildView(character, nextSheet) };
+  })();
+}
+
 module.exports = {
+  canGrantSpells,
+  getSpellGranters,
+  grantCharacterSpell,
   changeMagicInitiateList,
   getCharacterSpells,
   resolveCharacterConcentration,

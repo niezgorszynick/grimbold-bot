@@ -495,7 +495,9 @@ router.get('/characters/:id/spells', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    return res.json(db.getCharacterSpells({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) }));
+    const canGrant = db.canGrantSpells(user);
+    // Those who may grant spells (debug mode) see any character's spells.
+    return res.json({ ...db.getCharacterSpells({ id: req.params.id, player_id: user.id, is_admin: isAdmin(user) || canGrant }), canGrant });
   } catch (error) {
     return res.status(spellErrorStatus(error.message)).json({ error: error.message });
   }
@@ -534,6 +536,11 @@ router.post('/characters/:id/spells', (req, res) => {
     if (body.action === 'land') return res.json(db.setCharacterLand({ ...who, land: body.land }));
     if (body.action === 'invocations') return res.json(db.chooseCharacterInvocations({ ...who, choices: body.invocations }));
     if (body.action === 'featList') return res.json(db.changeMagicInitiateList({ ...who, from: body.from, spellList: body.spellList, spellAbility: body.spellAbility }));
+    // Debug mode: the Root DM and the chosen players grant any spell.
+    if (['grant', 'ungrant', 'grantAbility'].includes(body.action)) {
+      const result = db.grantCharacterSpell({ id: req.params.id, user, action: body.action, spell: body.spell, uses: body.uses, ability: body.ability });
+      return res.json({ ...result, spells: { ...result.spells, canGrant: true } });
+    }
     return res.status(400).json({ error: 'Unknown spell action.' });
   } catch (error) {
     if (error instanceof TypeError) {

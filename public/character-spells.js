@@ -125,6 +125,12 @@
     return result;
   }
 
+  // The Root DM and chosen players may grant any spell, in debug mode.
+  let canGrant = false;
+  const debugToggle = document.getElementById('cs_debug');
+  const debugOn = () => Boolean(debugToggle && debugToggle.checked);
+  if (debugToggle) debugToggle.addEventListener('change', () => render());
+
   async function act(body, describe) {
     try {
       const result = await request('POST', body);
@@ -776,9 +782,47 @@
     ]);
   }
 
+  // Debug mode: add any spell from the spell list to this character, and how
+  // it is cast (with slots, at will, or once per Long Rest).
+  const GRANT_USES = { slots: 'With spell slots', atWill: 'At will (no slot)', longRest: 'Once per Long Rest (no slot)' };
+  function grantCard() {
+    if (!canGrant || !debugOn()) return null;
+    const granted = view.sources.find(source => source.kind === 'granted');
+    const name = el('input', { type: 'text', list: 'cs-grant-spells', placeholder: 'Spell name…', 'aria-label': 'Spell to grant', autocomplete: 'off' });
+    const list = el('datalist', { id: 'cs-grant-spells' }, Object.keys(catalog).sort().map(spell => el('option', { value: spell })));
+    const uses = el('select', { 'aria-label': 'How it is cast' });
+    Object.entries(GRANT_USES).forEach(([value, label]) => uses.add(new Option(label, value)));
+    const grant = () => {
+      const spell = name.value.trim();
+      if (!spell) return;
+      act({ action: 'grant', spell, uses: uses.value }, () => spell + ' granted (' + GRANT_USES[uses.value].toLowerCase() + ').');
+    };
+    name.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); grant(); } });
+    const rows = granted ? granted.alwaysPrepared.map(spell => el('li', {}, [
+      el('strong', { text: spell }), ' ',
+      el('span', { className: 'muted small', text: GRANT_USES[(granted.grantedUses || {})[spell] || 'slots'] }), ' ',
+      button('Remove', () => act({ action: 'ungrant', spell }, () => spell + ' removed.'), 'btn btn-small btn-secondary')
+    ])) : [];
+    let abilityPicker = null;
+    if (granted) {
+      const ability = el('select', { 'aria-label': 'Ability for granted spells' });
+      Object.entries({ int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' }).forEach(([value, label]) => ability.add(new Option(label, value)));
+      ability.value = granted.ability;
+      ability.addEventListener('change', () => act({ action: 'grantAbility', ability: ability.value }, () => 'Granted spells now use ' + ability.options[ability.selectedIndex].text + '.'));
+      abilityPicker = el('label', { className: 'vitals-inline' }, [el('span', { className: 'muted small', text: 'Cast with ' }), ability]);
+    }
+    return el('div', { className: 'spell-source spell-grant' }, [
+      el('strong', { text: '🐞 Grant a spell' }),
+      el('p', { className: 'muted small', text: 'Any spell from the spell list, for this character: it appears under “Granted by a DM” and is always prepared.' }),
+      el('div', { className: 'spell-grant-form' }, [name, list, uses, button('Grant', grant)]),
+      rows.length ? el('ul', { className: 'spell-grant-list' }, rows) : null,
+      abilityPicker
+    ]);
+  }
+
   function render() {
     if (!view) return;
-    root.hidden = view.sources.length === 0 && !view.invocations;
+    root.hidden = view.sources.length === 0 && !view.invocations && !(canGrant && debugOn());
     if (root.hidden) return;
     const classSources = view.sources.filter(source => source.kind === 'class');
     const otherSources = view.sources.filter(source => source.kind !== 'class');
@@ -795,6 +839,7 @@
       ...classSources.map(renderSource),
       view.invocations ? renderInvocations(view.invocations) : null,
       ...otherSources.map(renderSource),
+      grantCard(),
       el('p', { className: 'sheet-message' + (isError ? ' is-error' : ''), role: 'status', 'aria-live': 'polite', text: message })
     ].filter(Boolean));
   }
@@ -818,6 +863,7 @@
       if (catalogResult) catalog = Object.fromEntries(catalogResult.spells.map(spell => [spell.name, spell]));
       if (spellsView.invocations && !creationRules) await loadInvocationData();
       view = spellsView;
+      canGrant = Boolean(spellsView.canGrant);
       render();
     } catch (error) {
       root.hidden = false;

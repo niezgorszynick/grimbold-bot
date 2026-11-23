@@ -58,6 +58,9 @@
   opacity: 1;
 }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1e1f22; color: #dbdee1; margin: 0; padding: 20px; box-sizing: border-box; }
+/* Links readable on the dark panel (the browser's own blue and purple are not);
+   buttons, tabs and lists that style their links keep their own colours. */
+a { color: #8ea1ff; }
 *, *:before, *:after { box-sizing: inherit; }
 .container { max-width: 1150px; margin: 0 auto; }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -1624,3 +1627,9 @@ button.sheet-hud-tile { cursor: pointer; }
 /* A spell's rolls on its line (public/character-spells.js quickRolls). */
 .spell-quick { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
 .spell-quick-save { padding: 1px 8px; border-radius: 999px; border: 1px solid #4e5058; color: #dbdee1; white-space: nowrap; }
+/* Debug mode: granting any spell (public/character-spells.js grantCard). */
+.spell-grant { border: 1px dashed #f0b232; }
+.spell-grant p { margin: 4px 0 8px; }
+.spell-grant-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.spell-grant-form input { flex: 1 1 200px; min-width: 0; }
+.spell-grant-list { margin: 8px 0; padding-left: 1.2em; display: grid; gap: 4px; }

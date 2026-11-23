@@ -66,3 +66,66 @@ test('each spell shows what it rolls on its line: the spell attack, the save DC,
   assert.deepEqual(shown('Fire Bolt'), ['🎯 +5', '1d10 Fire']);
   assert.deepEqual(shown('Detect Magic'), []);
 });
+
+test('the Root DM and chosen players grant any spell (debug mode): always prepared, cast with slots, at will or once per Long Rest', () => {
+  const root = { id: 0, discord_tag: 'admin', role: 'admin' };
+  const granter = createPlayer();
+  db.prepare("UPDATE players SET discord_id = '210398055516602369' WHERE id = ?").run(granter);
+  const dm = createPlayer('admin');
+  const id = addCharacter('Fighter', 'Champion', 5);
+  assert.equal(db.canGrantSpells(root), true);
+  assert.equal(db.canGrantSpells({ id: granter, role: 'player' }), true, 'on the list');
+  assert.equal(db.canGrantSpells({ id: dm, role: 'admin' }), false, 'a DM is not, unless listed');
+  assert.equal(db.canGrantSpells({ id: player, role: 'player' }), false);
+  assert.throws(() => db.grantCharacterSpell({ id, user: { id: player, role: 'player' }, action: 'grant', spell: 'Fireball' }), /Forbidden/);
+  assert.throws(() => db.grantCharacterSpell({ id, user: root, action: 'grant', spell: 'Fireballz' }), /no spell called/);
+
+  db.grantCharacterSpell({ id, user: root, action: 'grant', spell: 'fireball', uses: 'longRest' });
+  db.grantCharacterSpell({ id, user: { id: granter, role: 'player' }, action: 'grant', spell: 'Fire Bolt', uses: 'atWill' });
+  const { spells } = db.grantCharacterSpell({ id, user: root, action: 'grant', spell: 'Guiding Bolt' });
+  const granted = sourceOf(spells, 'Granted');
+  assert.deepEqual(granted.alwaysPrepared, ['Fireball', 'Fire Bolt', 'Guiding Bolt']);
+  assert.deepEqual(granted.grantedUses, { Fireball: 'longRest', 'Fire Bolt': 'atWill', 'Guiding Bolt': 'slots' });
+  assert.equal(granted.freeLeft.Fireball, 1);
+  assert.equal(granted.freeLeft['Fire Bolt'], 'atWill');
+  assert.equal(granted.ability, 'wis', 'a non-caster: the highest of INT, WIS and CHA');
+  assert.ok(spells.spellDice.Granted.Fireball, 'its dice roll');
+
+  db.castCharacterSpell({ ...asOwner(id), request: { source: 'Granted', spell: 'Fireball', free: true } });
+  assert.throws(() => db.castCharacterSpell({ ...asOwner(id), request: { source: 'Granted', spell: 'Fireball', free: true } }), /Long Rest/);
+  assert.throws(() => db.chooseCharacterSpells({ ...asOwner(id), source: 'Granted', request: { prepared: [] } }), /fixed/);
+
+  db.grantCharacterSpell({ id, user: root, action: 'grantAbility', ability: 'cha' });
+  assert.equal(sourceOf(db.getCharacterSpells(asOwner(id)), 'Granted').ability, 'cha');
+  db.grantCharacterSpell({ id, user: root, action: 'grant', spell: 'Fireball', uses: 'slots' });
+  assert.equal(sourceOf(db.getCharacterSpells(asOwner(id)), 'Granted').grantedUses.Fireball, 'slots', 'granting again changes how');
+  for (const spell of ['Fireball', 'Fire Bolt', 'Guiding Bolt']) db.grantCharacterSpell({ id, user: root, action: 'ungrant', spell });
+  assert.equal(sourceOf(db.getCharacterSpells(asOwner(id)), 'Granted'), undefined);
+  assert.throws(() => db.grantCharacterSpell({ id, user: root, action: 'ungrant', spell: 'Fireball' }), /isn't a granted spell/);
+});
+
+test('through the API: the sheet learns who may grant, and only they can', async () => {
+  const express = require('express');
+  const granter = createPlayer();
+  db.prepare("UPDATE players SET discord_id = '210398055516602369-api' WHERE id = ?").run(granter);
+  db.prepare("UPDATE config SET value = ? WHERE key = 'spell_granters'").run(JSON.stringify(['210398055516602369', '210398055516602369-api']));
+  const id = addCharacter('Wizard', 'Evoker', 3);
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')) } }; next(); });
+  app.use('/api', require('../webShopApi'));
+  const server = app.listen(0);
+  const call = (userId, method, body) => fetch(`http://127.0.0.1:${server.address().port}/api/characters/${id}/spells`, {
+    method, headers: { 'x-user': String(userId), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined
+  });
+  try {
+    assert.equal((await (await call(player, 'GET')).json()).canGrant, false);
+    assert.equal((await call(player, 'POST', { action: 'grant', spell: 'Wish' })).status, 403);
+    assert.equal((await (await call(granter, 'GET')).json()).canGrant, true);
+    const granted = await (await call(granter, 'POST', { action: 'grant', spell: 'Wish', uses: 'longRest' })).json();
+    assert.equal(granted.spells.canGrant, true);
+    assert.ok(granted.spells.sources.find(source => source.key === 'Granted').alwaysPrepared.includes('Wish'));
+  } finally {
+    server.close();
+  }
+});

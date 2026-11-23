@@ -1441,6 +1441,15 @@ const MIGRATIONS = [
       db.exec(`UPDATE art_images SET adventure_id = NULL, adventure_by = 'none'
         WHERE is_reference = 1 AND (adventure_by IS NULL OR adventure_by IN ('guess', 'name'))`);
     }
+  },
+  {
+    // Players (by Discord ID) who, with the Root DM, may grant any spell to a
+    // character in sheet debug mode (db/spells.js). The first, as asked on 2026-11-23.
+    version: 53,
+    up(db) {
+      db.prepare("INSERT INTO config (key, value) VALUES ('spell_granters', ?) ON CONFLICT(key) DO NOTHING")
+        .run(JSON.stringify(['210398055516602369']));
+    }
   }
 ];
 
