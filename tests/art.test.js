@@ -177,7 +177,8 @@ test('the Art tab, the sheet and the adventure show the gallery; DMs tag in the 
   db.updateArtImage(first.id, { notArt: false, characterIds: [] });
   const unsorted = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'unsorted' } });
   assert.match(unsorted, new RegExp(`id="sort-${first.id}"`));
-  assert.match(unsorted, /name="not_art" value="1"/);
+  assert.match(unsorted, /name="category" value="not_art"/);
+  assert.match(unsorted, /name="category" value="meme"/);
   assert.match(unsorted, /name="adventure"/, 'the adventure is chosen while sorting');
   db.updateArtImage(first.id, { characterIds: [String(thorin)], adventure: 'guess' });
   const sheet = renderAdminPage({ session: { user: player }, query: { tab: 'character-sheet', edit_char: String(thorin) } });
@@ -221,6 +222,9 @@ test('others in a picture: NPCs, familiars and names used before are reused, wha
 });
 
 test('the artist: read from the post, credited by hand under one spelling, shown on the art', async () => {
+  const [byPoster] = db.getArtMessage('m1');
+  assert.equal(byPoster.artist_name, 'tester1', 'nobody named in the post: the poster, by their player name');
+  assert.equal(byPoster.artist_by, 'poster');
   assert.equal(db.parseArtist('Elara i Thorin, art by Selkie!'), 'Selkie');
   assert.equal(db.parseArtist('Autor: Kasia Nowak\nnowy szkic'), 'Kasia Nowak');
   assert.equal(db.parseArtist('rys. @Mira, dzięki'), 'Mira');
@@ -230,9 +234,12 @@ test('the artist: read from the post, credited by hand under one spelling, shown
   db.updateArtImage(image.id, { artist: 'Selkie', artistUrl: 'https://example.com/selkie' });
   const [other] = db.getArtMessage('m1');
   db.updateArtImage(other.id, { artist: '  selkie ' });
+  db.updateArtImage(image.id, { artist: '' });
+  assert.equal(db.getArtImage(image.id, { isAdmin: true }).artist_by, 'dm', 'cleared by hand stays cleared');
+  db.updateArtImage(image.id, { artist: 'Selkie', artistUrl: 'https://example.com/selkie' });
   assert.equal(db.getArtImage(other.id, { isAdmin: true }).artist_name, 'Selkie', 'the spelling already used');
   assert.throws(() => db.updateArtImage(other.id, { artist: 'Selkie', artistUrl: 'javascript:alert(1)' }), /http/);
-  assert.deepEqual(db.listArtArtists().map(entry => entry.name), ['Selkie']);
+  assert.deepEqual(db.listArtArtists().map(entry => entry.name).sort(), ['Selkie', 'tester1'], 'the other picture of m1 keeps its poster credit');
   assert.ok(db.listArtImages({ artist: 'Selkie' }).length >= 1);
 
   const admin = { id: 0, discord_tag: 'admin', role: 'admin' };
@@ -258,4 +265,42 @@ test('the artist: read from the post, credited by hand under one spelling, shown
   assert.equal(tagged.artist_name, 'Mira');
   assert.equal(tagged.artist_url, null);
   assert.match(replies.at(-1).content, /Artist:\*\* 🖌 Mira/);
+});
+
+test('memes: a category of their own, seen by everyone, tagged or not', async () => {
+  const [image] = db.getArtMessage('m1');
+  const replies = [];
+  const press = customId => art.handleArtInteraction({
+    customId, values: [], user: { id: ownerDiscord }, component: { options: [] },
+    update: async payload => replies.push(payload), reply: async payload => replies.push(payload)
+  });
+  const buttons = () => replies.at(-1).components.at(-1).toJSON().components.map(button => button.custom_id).filter(Boolean);
+
+  db.tagArtMessage('m1', { characterIds: [], among: [String(elara), String(brom)], others: [] });
+  await press('art:k:m1:meme');
+  const meme = db.getArtImage(image.id);
+  assert.equal(meme.category, 'meme');
+  assert.equal(meme.visible, true, 'a meme shows with nobody tagged');
+  assert.match(replies.at(-1).content, /Memes/);
+  assert.ok(buttons().includes('art:k:m1:art'), 'and can go back to art');
+  assert.ok(db.listArtImages({ view: 'memes' }).some(entry => entry.id === image.id));
+  assert.ok(!db.listArtImages().some(entry => entry.id === image.id), 'not in the art gallery');
+  assert.ok(!db.listArtImages({ view: 'unsorted' }).some(entry => entry.id === image.id), 'nor waiting to be sorted');
+  assert.equal(db.artCounts().memes, 2, 'both images of the post');
+
+  db.tagArtMessage('m1', { characterIds: [String(elara)] });
+  assert.equal(db.getArtImage(image.id).category, 'meme', 'tagging keeps it a meme');
+  assert.ok(db.listArtImages({ view: 'memes' }).find(entry => entry.id === image.id).characters.length === 1);
+
+  const player = { id: owner, discord_tag: 'owner', role: 'player' };
+  const html = renderAdminPage({ session: { user: player }, query: { tab: 'art', view: 'memes' } });
+  assert.match(html, /😂 Memes \(2\)/);
+  assert.match(html, new RegExp(`art=${image.id}#art-viewer`), 'players see the memes');
+  assert.doesNotMatch(html, /To sort/);
+
+  db.updateArtImage(image.id, { category: 'not_art' });
+  assert.equal(db.getArtImage(image.id, { isAdmin: true }).is_meme, false, 'one category at a time');
+  db.updateArtImage(image.id, { category: 'art' });
+  assert.equal(db.getArtImage(image.id).category, 'art');
+  assert.throws(() => db.updateArtImage(image.id, { category: 'cat' }), /Unknown category/);
 });

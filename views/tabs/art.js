@@ -75,13 +75,13 @@ function othersHtml(image) {
 function artistHtml(image) {
   return `
     <div class="art-artist-fields">
-      <label class="art-form-label">🖌 Artist
+      <label class="art-form-label">🖌 Artist${image.artist_by && ARTIST_BY[image.artist_by] ? ` <span class="muted small">(${ARTIST_BY[image.artist_by]})</span>` : ''}
         <input type="text" name="artist" list="art-artist-list" value="${escapeHtml(image.artist_name || '')}" placeholder="Who drew it?" maxlength="100" autocomplete="off">
       </label>
       <label class="art-form-label">Their page <span class="muted small">(optional)</span>
         <input type="url" name="artist_url" value="${escapeHtml(image.artist_url || '')}" placeholder="https://…" maxlength="300">
       </label>
-      ${image.posted_by_tag ? `<button type="button" class="btn btn-small btn-secondary" data-fill-artist="${escapeHtml(image.posted_by_tag)}">${escapeHtml(image.posted_by_tag)} drew it</button>` : ''}
+      ${image.poster_name && image.poster_name !== image.artist_name ? `<button type="button" class="btn btn-small btn-secondary" data-fill-artist="${escapeHtml(image.poster_name)}">${escapeHtml(image.poster_name)} drew it</button>` : ''}
     </div>`;
 }
 
@@ -199,6 +199,7 @@ function adventureOptions(image, adventures) {
     ${adventures.map(adventure => `<option value="${adventure.id}"${value === String(adventure.id) ? ' selected' : ''}>${escapeHtml(adventure.title)}${adventure.fits ? ' ✓' : ''}</option>`).join('')}`;
 }
 
+const ARTIST_BY = { name: 'named in the post', poster: 'the poster, by default', discord: 'set in Discord', dm: 'set by a DM' };
 const TAGGED_BY = { name: 'named in the post', discord: 'tagged in Discord', dm: 'set by a DM' };
 
 function viewerHtml(image, { isAdmin, characters, back }) {
@@ -215,7 +216,7 @@ function viewerHtml(image, { isAdmin, characters, back }) {
           <p class="muted small">
             ${image.adventure_id ? `<a href="/admin?tab=art&adventure=${image.adventure_id}">${escapeHtml(image.adventure_title)}</a>${image.adventure_by === 'guess' ? ' <span class="tag">guessed</span>' : ''}` : 'No adventure'}
             ${image.posted_by_tag ? ` · posted by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}
-            ${image.not_art ? ' · <span class="tag red">Not art</span>' : ''}
+            ${image.not_art ? ' · <span class="tag red">Not art</span>' : image.is_meme ? ' · <span class="tag">😂 Meme</span>' : ''}
           </p>
           ${image.message_text ? `<p class="art-caption">${escapeHtml(image.message_text)}</p>` : ''}
         </div>
@@ -244,7 +245,11 @@ function viewerHtml(image, { isAdmin, characters, back }) {
             <select name="adventure">${adventureOptions(image, adventures)}</select>
           </label>
           <div class="art-form-actions">
-            <label class="art-check"><input type="hidden" name="not_art" value="0"><input type="checkbox" name="not_art" value="1"${image.not_art ? ' checked' : ''}> Not art (a meme, a screenshot)</label>
+            <fieldset class="art-category">
+              <legend class="visually-hidden">Category</legend>
+              ${[['art', '🎨 Art'], ['meme', '😂 Meme'], ['not_art', '🚫 Not art']].map(([value, label]) =>
+                `<label><input type="radio" name="category" value="${value}"${image.category === value ? ' checked' : ''}> ${label}</label>`).join('')}
+            </fieldset>
             <button type="submit" class="btn btn-green">Save</button>
           </div>
         </form>
@@ -279,7 +284,8 @@ function sortingHtml(images, { characters, keep }) {
               <select name="adventure">${adventureOptions(image, adventures)}</select>
             </label>
             <div class="art-form-actions">
-              <button type="submit" name="not_art" value="1" class="btn btn-small btn-secondary">🚫 Not art</button>
+              <button type="submit" name="category" value="meme" class="btn btn-small btn-secondary">😂 Meme</button>
+              <button type="submit" name="category" value="not_art" class="btn btn-small btn-secondary">🚫 Not art</button>
               <button type="submit" class="btn btn-green">Save</button>
             </div>
           </div>
@@ -303,7 +309,7 @@ module.exports = function renderArtTab(ctx) {
     ORDER BY (c.status = 'dead'), c.name COLLATE NOCASE
   `).all();
   const adventures = db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all();
-  const view = isAdmin && ['unsorted', 'not_art'].includes(query.view) ? query.view : 'gallery';
+  const view = query.view === 'memes' || (isAdmin && ['unsorted', 'not_art'].includes(query.view)) ? query.view : 'gallery';
   const who = String(query.who || (Number(query.character) > 0 ? `c${Number(query.character)}` : ''));
   const characterId = view === 'gallery' && /^c\d+$/.test(who) ? Number(who.slice(1)) : null;
   const figureId = view === 'gallery' && /^f\d+$/.test(who) ? Number(who.slice(1)) : null;
@@ -332,11 +338,12 @@ module.exports = function renderArtTab(ctx) {
       ${isAdmin ? scanStatusHtml() : ''}
       <form method="GET" action="/admin" class="chronicle-filters">
         <input type="hidden" name="tab" value="art">
-        ${isAdmin ? `<select name="view" aria-label="Show" onchange="this.form.submit()">
-          <option value="">Gallery (${counts.gallery})</option>
-          <option value="unsorted"${view === 'unsorted' ? ' selected' : ''}>To sort (${counts.unsorted})</option>
-          <option value="not_art"${view === 'not_art' ? ' selected' : ''}>Not art (${counts.notArt})</option>
-        </select>` : ''}
+        <select name="view" aria-label="Show" onchange="this.form.submit()">
+          <option value="">🎨 Gallery (${counts.gallery})</option>
+          <option value="memes"${view === 'memes' ? ' selected' : ''}>😂 Memes (${counts.memes})</option>
+          ${isAdmin ? `<option value="unsorted"${view === 'unsorted' ? ' selected' : ''}>To sort (${counts.unsorted})</option>
+          <option value="not_art"${view === 'not_art' ? ' selected' : ''}>🚫 Not art (${counts.notArt})</option>` : ''}
+        </select>
         ${view === 'gallery' ? `
         <select name="who" aria-label="Who is in it" onchange="this.form.submit()">
           <option value="">Everyone</option>
@@ -365,7 +372,7 @@ module.exports = function renderArtTab(ctx) {
                 ${thumb(entry, `/admin?tab=art${keep}&art=${entry.id}#art-viewer`)}
                 <figcaption>${names(entry) || '<span class="muted">nobody</span>'}${entry.adventure_title ? `<br><span class="muted small">${escapeHtml(entry.adventure_title)}</span>` : ''}${entry.artist_name ? `<br><span class="art-credit">🖌 ${escapeHtml(entry.artist_name)}</span>` : ''}</figcaption>
               </figure>`).join('')}</div>`
-          : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : 'No art here yet.'}</p>`}
+          : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : view === 'memes' ? 'No memes yet: mark one with Tag art → 😂 Meme.' : 'No art here yet.'}</p>`}
     </section>
     ${isAdmin ? `
     <datalist id="art-figure-list">${db.artFigureSuggestions().map(label => `<option value="${escapeHtml(label)}"></option>`).join('')}</datalist>

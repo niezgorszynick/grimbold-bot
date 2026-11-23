@@ -1379,6 +1379,39 @@ const MIGRATIONS = [
       if (!columns.has('artist_url')) db.exec('ALTER TABLE art_images ADD COLUMN artist_url TEXT');
       if (!columns.has('artist_by')) db.exec('ALTER TABLE art_images ADD COLUMN artist_by TEXT');
     }
+  },
+  {
+    // Art: a picture nobody credited is credited to whoever posted it, by
+    // their player name (Discord's name for someone without an account);
+    // artist_by 'poster'. A name credited before keeps its first spelling.
+    version: 48,
+    up(db) {
+      const key = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const known = new Map(db.prepare('SELECT DISTINCT artist_name FROM art_images WHERE artist_name IS NOT NULL').all()
+        .map(row => [key(row.artist_name), row.artist_name]));
+      const rows = db.prepare(`
+        SELECT i.id, COALESCE(p.discord_tag, i.posted_by_tag) AS poster FROM art_images i
+        LEFT JOIN players p ON p.discord_id = i.posted_by_discord_id
+        WHERE i.artist_name IS NULL AND i.artist_by IS NULL
+      `).all();
+      const credit = db.prepare("UPDATE art_images SET artist_name = ?, artist_by = 'poster' WHERE id = ?");
+      for (const row of rows) {
+        const name = String(row.poster || '').replace(/\s+/g, ' ').trim();
+        if (!name) continue;
+        if (!known.has(key(name))) known.set(key(name), name);
+        credit.run(known.get(key(name)), row.id);
+      }
+    }
+  },
+  {
+    // Art: memes are a category of their own beside art and Not art
+    // (is_meme; a picture is art, a meme, or not_art, never two).
+    version: 49,
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(art_images)').all().map(column => column.name));
+      if (!columns.has('is_meme')) db.exec('ALTER TABLE art_images ADD COLUMN is_meme INTEGER NOT NULL DEFAULT 0');
+    }
   }
 ];
 

@@ -3,8 +3,9 @@
 // characters in it, several if need be, and with an adventure. Grimbold tags
 // what the post names; anyone with a panel account fixes it with Discord's
 // "Tag art" menu, and DMs in the panel. Only images with a character show in
-// the gallery: the rest wait in "To sort", and memes and screenshots are
-// marked Not art. Everyone signed in sees the gallery.
+// the gallery: the rest wait in "To sort". Memes are a category of their own
+// (shown whether or not anyone is tagged), and screenshots and the like are
+// marked Not art. Everyone signed in sees the gallery and the memes.
 
 'use strict';
 
@@ -208,8 +209,16 @@ function setArtist(imageId, { artist, url }, by) {
   const current = db.prepare('SELECT artist_name, artist_url FROM art_images WHERE id = ?').get(imageId);
   const name = artist === undefined ? current.artist_name : canonicalArtist(artist);
   const link = url === undefined ? current.artist_url : checkArtistUrl(url);
+  // Cleared by hand stays cleared; otherwise nobody set it.
   db.prepare('UPDATE art_images SET artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
-    .run(name, name ? link : null, name ? by : null, imageId);
+    .run(name, name ? link : null, name || HUMAN.includes(by) ? by : null, imageId);
+}
+
+// Who posted it, by their player name in the panel (or Discord's name for
+// someone without an account): the artist unless the post credits another.
+function posterArtist({ posterDiscordId, posterTag }) {
+  const player = posterDiscordId ? db.prepare('SELECT discord_tag FROM players WHERE discord_id = ?').get(String(posterDiscordId)) : null;
+  return (player && player.discord_tag) || posterTag || null;
 }
 
 // ─── Records ────────────────────────────────────────────────────────────────
@@ -249,7 +258,7 @@ function refreshGuess(imageId) {
 // Tags from the post's text, for a message nobody has tagged by hand: on
 // the first look, and again when the post was edited.
 function tagFromText(images, text) {
-  if (images.some(image => HUMAN.includes(image.tagged_by) || image.not_art)) return;
+  if (images.some(image => HUMAN.includes(image.tagged_by) || image.not_art || image.is_meme)) return;
   const characterIds = matchArtCharacters({ text, characters: allCharacters() });
   const figureIds = matchArtFigures(text);
   const adventureId = matchArtAdventure({ text, adventures: allAdventures() });
@@ -292,18 +301,19 @@ function recordArtMessage({ messageId, channelId, guildId, threadName, posterDis
       for (const id of created) {
         setTags(id, tags, tagged.tagged_by || 'name');
         setFigures(id, figures);
-        db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ?, not_art = ?, artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
-          .run(tagged.adventure_id, tagged.adventure_by, tagged.not_art, tagged.artist_name, tagged.artist_url, tagged.artist_by, id);
+        db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ?, not_art = ?, is_meme = ?, artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
+          .run(tagged.adventure_id, tagged.adventure_by, tagged.not_art, tagged.is_meme, tagged.artist_name, tagged.artist_url, tagged.artist_by, id);
       }
     }
     if (created.length || textChanged) {
       const threadText = threadName ? `\n${threadName}` : '';
       tagFromText(messageImages(messageId), `${text || ''}${threadText}`);
-      // The artist the post credits, unless someone set one by hand.
+      // The artist the post credits, else the poster, unless someone set one by hand.
       const artist = parseArtist(text);
+      const poster = posterArtist({ posterDiscordId, posterTag });
       for (const image of messageImages(messageId)) {
-        if (image.artist_by && image.artist_by !== 'name') continue;
-        setArtist(image.id, { artist: artist || '', url: '' }, 'name');
+        if (image.artist_by && !['name', 'poster'].includes(image.artist_by)) continue;
+        setArtist(image.id, { artist: artist || poster || '', url: '' }, artist ? 'name' : 'poster');
       }
     }
   })();
@@ -311,6 +321,19 @@ function recordArtMessage({ messageId, channelId, guildId, threadName, posterDis
 }
 
 // ─── Tagging ────────────────────────────────────────────────────────────────
+
+const CATEGORIES = ['art', 'meme', 'not_art'];
+const categoryOf = image => (image.not_art ? 'not_art' : image.is_meme ? 'meme' : 'art');
+
+// category: 'art' | 'meme' | 'not_art'. notArt (true/false) is the older way
+// to say not_art or art.
+function setCategory(imageId, { category, notArt }, by) {
+  const value = category !== undefined ? category : notArt === undefined ? undefined : notArt ? 'not_art' : 'art';
+  if (value === undefined) return;
+  if (!CATEGORIES.includes(value)) throw new Error('Unknown category.');
+  db.prepare('UPDATE art_images SET not_art = ?, is_meme = ?, tagged_by = ? WHERE id = ?')
+    .run(value === 'not_art' ? 1 : 0, value === 'meme' ? 1 : 0, by, imageId);
+}
 
 function checkCharacters(ids) {
   const list = [...new Set([].concat(ids || []).filter(id => id !== '' && id !== null && id !== undefined).map(Number))];
@@ -341,7 +364,7 @@ function setAdventure(imageId, adventure, by) {
 // the tags among `among` (the characters that menu offered; all if not given).
 // others: the names of everyone else in it (they replace the earlier ones; a
 // player character's name adds that character). artist, artistUrl: the credit.
-function tagArtMessage(messageId, { characterIds, among, adventure, notArt, others, artist, artistUrl }, by = 'discord') {
+function tagArtMessage(messageId, { characterIds, among, adventure, notArt, category, others, artist, artistUrl }, by = 'discord') {
   const images = messageImages(messageId);
   if (!images.length) throw new Error('Grimbold has no images from that message.');
   if (artistUrl !== undefined) checkArtistUrl(artistUrl);
@@ -362,15 +385,16 @@ function tagArtMessage(messageId, { characterIds, among, adventure, notArt, othe
       }
       setArtist(image.id, { artist, url: artistUrl }, by);
       setAdventure(image.id, adventure, by);
-      if (notArt !== undefined) db.prepare('UPDATE art_images SET not_art = ?, tagged_by = ? WHERE id = ?').run(notArt ? 1 : 0, by, image.id);
+      setCategory(image.id, { category, notArt }, by);
     }
   })();
   return messageImages(messageId);
 }
 
 // The DM in the panel, one image: { characterIds, figureIds (kept), others
-// (names to add), adventure, notArt, artist, artistUrl }.
-function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt, artist, artistUrl }) {
+// (names to add), adventure, category ('art' | 'meme' | 'not_art') or notArt,
+// artist, artistUrl }.
+function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt, category, artist, artistUrl }) {
   const image = db.prepare('SELECT id FROM art_images WHERE id = ?').get(Number(id));
   if (!image) throw new Error('Image not found.');
   if (artistUrl !== undefined) checkArtistUrl(artistUrl);
@@ -388,7 +412,7 @@ function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt
     }
     setArtist(image.id, { artist, url: artistUrl }, 'dm');
     setAdventure(image.id, adventure, 'dm');
-    if (notArt !== undefined) db.prepare('UPDATE art_images SET not_art = ?, tagged_by = ? WHERE id = ?').run(notArt ? 1 : 0, 'dm', image.id);
+    setCategory(image.id, { category, notArt }, 'dm');
   })();
   return getArtImage(image.id, { isAdmin: true });
 }
@@ -397,8 +421,9 @@ function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt
 
 const HAS_SOMEONE = `(EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)
   OR EXISTS (SELECT 1 FROM art_image_figures z WHERE z.image_id = i.id))`;
-const VISIBLE = `i.not_art = 0 AND ${HAS_SOMEONE}`;
-const UNSORTED = `i.not_art = 0 AND NOT ${HAS_SOMEONE}`;
+const VISIBLE = `i.not_art = 0 AND i.is_meme = 0 AND ${HAS_SOMEONE}`;
+const UNSORTED = `i.not_art = 0 AND i.is_meme = 0 AND NOT ${HAS_SOMEONE}`;
+const MEMES = 'i.not_art = 0 AND i.is_meme = 1';
 
 // Figures with the names they go by now: [{ id, kind, name, label, characterId }].
 const FIGURE_COLUMNS = `f.id, f.kind,
@@ -441,9 +466,11 @@ function present(row, characters, figures = []) {
   return {
     ...row,
     not_art: Boolean(row.not_art),
+    is_meme: Boolean(row.is_meme),
+    category: categoryOf(row),
     characters,
     figures,
-    visible: !row.not_art && (characters.length > 0 || figures.length > 0),
+    visible: !row.not_art && (Boolean(row.is_meme) || characters.length > 0 || figures.length > 0),
     imageUrl: row.file ? `/api/art/${row.id}/image?v=${version}` : null,
     thumbUrl: row.file ? `/api/art/${row.id}/image?size=thumb&v=${version}` : null,
     messageUrl: row.guild_id && row.channel_id && row.message_id
@@ -451,9 +478,11 @@ function present(row, characters, figures = []) {
   };
 }
 
-const COLUMNS = 'i.*, a.title AS adventure_title';
+const COLUMNS = `i.*, a.title AS adventure_title,
+  COALESCE((SELECT p.discord_tag FROM players p WHERE p.discord_id = i.posted_by_discord_id), i.posted_by_tag) AS poster_name`;
 
-// view: 'gallery' (tagged art), 'unsorted' (nobody in it yet), 'not_art'.
+// view: 'gallery' (tagged art), 'memes', 'unsorted' (art with nobody in it
+// yet), 'not_art'.
 // characterId / figureId / adventureId / artist narrow the gallery. limit:
 // the newest so many.
 function listArtImages({ view = 'gallery', characterId, figureId, adventureId, artist, limit } = {}) {
@@ -463,6 +492,7 @@ function listArtImages({ view = 'gallery', characterId, figureId, adventureId, a
   if (artist) { where.push('i.artist_name = ?'); params.push(String(artist)); }
   if (view === 'unsorted') where.push(UNSORTED);
   else if (view === 'not_art') where.push('i.not_art = 1');
+  else if (view === 'memes') where.push(MEMES);
   else where.push(VISIBLE);
   if (characterId) { where.push('EXISTS (SELECT 1 FROM art_image_characters y WHERE y.image_id = i.id AND y.character_id = ?)'); params.push(Number(characterId)); }
   if (adventureId) { where.push('i.adventure_id = ?'); params.push(Number(adventureId)); }
@@ -491,7 +521,7 @@ function artCounts() {
   const count = sql => db.prepare(`SELECT COUNT(*) AS n FROM art_images i WHERE ${sql}`).get().n;
   const byCharacter = new Map(db.prepare(`
     SELECT t.character_id AS id, COUNT(*) AS n FROM art_image_characters t JOIN art_images i ON i.id = t.image_id
-    WHERE i.not_art = 0 GROUP BY t.character_id
+    WHERE i.not_art = 0 AND i.is_meme = 0 GROUP BY t.character_id
   `).all().map(row => [row.id, row.n]));
   const byAdventure = new Map(db.prepare(`
     SELECT i.adventure_id AS id, COUNT(*) AS n FROM art_images i WHERE i.adventure_id IS NOT NULL AND ${VISIBLE} GROUP BY i.adventure_id
@@ -500,6 +530,7 @@ function artCounts() {
     gallery: count(VISIBLE),
     unsorted: count(UNSORTED),
     notArt: count('i.not_art = 1'),
+    memes: count(MEMES),
     byCharacter,
     byAdventure
   };
@@ -510,7 +541,7 @@ function listArtFigures() {
   return db.prepare(`
     SELECT ${FIGURE_COLUMNS}, COUNT(*) AS count FROM art_image_figures t JOIN art_images i ON i.id = t.image_id
     JOIN art_figures f ON f.id = t.figure_id ${FIGURE_JOINS}
-    WHERE i.not_art = 0 GROUP BY f.id ORDER BY name COLLATE NOCASE
+    WHERE i.not_art = 0 AND i.is_meme = 0 GROUP BY f.id ORDER BY name COLLATE NOCASE
   `).all().map(row => ({ ...figureView(row), count: row.count }));
 }
 

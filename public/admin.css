@@ -1611,3 +1611,8 @@ button.sheet-hud-tile { cursor: pointer; }
 .art-credit-banner strong { font-size: 18px; }
 .art-credit-banner .art-credit-link { font-size: 13px; }
 .art-credit-banner.is-missing { background: transparent; border-style: dashed; border-color: #4e5058; color: #949ba4; font-size: 14px; }
+
+/* Art: the category (art, meme, not art) in the tagging form. */
+.art-category { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 auto 0 0; padding: 0; border: 0; font-size: 13px; }
+.art-category label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

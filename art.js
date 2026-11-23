@@ -240,7 +240,8 @@ function tagView(messageId) {
     `**Adventure:** ${first.adventure_title ? `${first.adventure_title}${first.adventure_by === 'guess' ? ' (guessed)' : ''}` : first.adventure_by === 'none' ? 'none' : '— none found —'}`,
     first.not_art
       ? '🚫 Marked **Not art**: it stays out of the gallery.'
-      : tagged.length || first.figures.length ? '✅ In the Art tab.' : '⏳ Waiting in “To sort” until somebody in it is tagged.'
+      : first.is_meme ? '😂 Filed under **Memes** in the Art tab.'
+        : tagged.length || first.figures.length ? '✅ In the Art tab.' : '⏳ Waiting in “To sort” until somebody in it is tagged.'
   ];
   if (more) lines.push(`*${more} more characters didn't fit here: a DM can tag them in the panel.*`);
 
@@ -280,10 +281,14 @@ function tagView(messageId) {
       }))
     ])));
 
+  // The category: art, a meme, or not art at all; the current one says how to go back.
   const buttons = [
+    first.is_meme
+      ? new ButtonBuilder().setCustomId(`art:k:${messageId}:art`).setLabel('Not a meme: art').setEmoji('🎨').setStyle(ButtonStyle.Success)
+      : new ButtonBuilder().setCustomId(`art:k:${messageId}:meme`).setLabel('Meme').setEmoji('😂').setStyle(ButtonStyle.Secondary),
     first.not_art
-      ? new ButtonBuilder().setCustomId(`art:x:${messageId}`).setLabel('It is art after all').setStyle(ButtonStyle.Success)
-      : new ButtonBuilder().setCustomId(`art:x:${messageId}`).setLabel('Not art (meme, screenshot)').setEmoji('🚫').setStyle(ButtonStyle.Danger),
+      ? new ButtonBuilder().setCustomId(`art:k:${messageId}:art`).setLabel('It is art after all').setStyle(ButtonStyle.Success)
+      : new ButtonBuilder().setCustomId(`art:k:${messageId}:not_art`).setLabel('Not art (screenshot…)').setEmoji('🚫').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`art:o:${messageId}`).setLabel('NPCs, others & artist').setEmoji('🖌').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`art:d:${messageId}`).setLabel('Done').setStyle(ButtonStyle.Secondary)
   ];
@@ -317,7 +322,7 @@ function othersModal(messageId) {
   if (current) others.setValue(current);
   const artist = new TextInputBuilder().setCustomId('artist').setLabel('Artist').setStyle(TextInputStyle.Short)
     .setRequired(false).setMaxLength(100)
-    .setPlaceholder(first.posted_by_tag ? `Who drew it? (posted by ${first.posted_by_tag})`.slice(0, 100) : 'Who drew it?');
+    .setPlaceholder(first.poster_name ? `Who drew it? (posted by ${first.poster_name})`.slice(0, 100) : 'Who drew it?');
   if (first.artist_name) artist.setValue(first.artist_name);
   const link = new TextInputBuilder().setCustomId('artist_url').setLabel('Artist\'s link (optional)').setStyle(TextInputStyle.Short)
     .setRequired(false).setMaxLength(300).setPlaceholder('https://…');
@@ -343,6 +348,8 @@ async function handleArtInteraction(interaction) {
       db.tagArtMessage(messageId, { characterIds: interaction.values, among });
     } else if (what === 'a') {
       db.tagArtMessage(messageId, { adventure: interaction.values[0] });
+    } else if (what === 'k') {
+      db.tagArtMessage(messageId, { category: interaction.customId.split(':')[3] });
     } else if (what === 'x') {
       const [first] = db.getArtMessage(messageId);
       db.tagArtMessage(messageId, { notArt: !(first && first.not_art) });
