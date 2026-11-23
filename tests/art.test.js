@@ -350,3 +350,66 @@ test('art editors: players the DMs list tag and sort art as DMs do; importing st
     server.close();
   }
 });
+
+test('reference material: any player uploads images; they, DMs and art editors tag and delete them', async () => {
+  const uploader = createPlayer();
+  const other = createPlayer();
+  const express = require('express');
+  const app = express();
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')) } }; next(); });
+  app.use('/api', require('../webShopApi'));
+  app.use('/admin', require('../server'));
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const upload = (userId, body) => fetch(`${base}/api/art/upload`, {
+      method: 'POST', body, headers: { 'x-user': String(userId), 'content-type': 'image/png', 'x-caption': encodeURIComponent('Strój Elary — szkic') }
+    });
+    assert.equal((await upload(uploader, Buffer.from('not an image'))).status, 400);
+    const response = await upload(uploader, PNG);
+    assert.equal(response.status, 200);
+    const { id } = await response.json();
+    const image = db.getArtImage(id);
+    assert.equal(image.category, 'reference');
+    assert.equal(image.uploaded, true);
+    assert.equal(image.visible, true, 'seen by everyone, tagged or not');
+    assert.equal(image.message_text, 'Strój Elary — szkic');
+    assert.equal(image.posted_by_tag, db.prepare('SELECT discord_tag FROM players WHERE id = ?').get(uploader).discord_tag);
+    assert.equal((await fetch(`${base}/api/art/${id}/image`, { headers: { 'x-user': String(other) } })).status, 200);
+    assert.deepEqual(db.listArtImages({ view: 'references' }).map(entry => entry.id), [id]);
+    assert.ok(!db.listArtImages().some(entry => entry.id === id), 'not in the art gallery');
+    assert.equal(db.artCounts().references, 1);
+    assert.equal(db.listArtMessagesWithoutFile(100).some(row => String(row.message_id).startsWith('upload:')), false);
+
+    const post = (path, userId, body) => fetch(`${base}/admin${path}`, {
+      method: 'POST', redirect: 'manual', headers: { 'x-user': String(userId), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body)
+    });
+    assert.equal((await post('/art/update', other, { id: String(id), caption: 'hacked' })).status, 403, "not someone else's upload");
+    const saved = await post('/art/update', uploader, { id: String(id), character_ids: String(elara), figures_form: '1', others: 'Old Tom', adventure: 'none', category: 'reference', caption: 'Strój Elary, wersja 2' });
+    assert.equal(saved.status, 302);
+    const tagged = db.getArtImage(id);
+    assert.deepEqual(tagged.characters.map(character => character.id), [elara]);
+    assert.deepEqual(tagged.figures.map(figure => figure.name), ['Old Tom']);
+    assert.equal(tagged.message_text, 'Strój Elary, wersja 2');
+    assert.equal(tagged.category, 'reference', 'tagging keeps it a reference');
+
+    const uploaderUser = { id: uploader, discord_tag: 'u', role: 'player' };
+    const page = renderAdminPage({ session: { user: uploaderUser }, query: { tab: 'art', view: 'references', art: String(id) } });
+    assert.match(page, /📌 Add reference material/);
+    assert.match(page, /Tag this image/, 'the uploader tags their own upload');
+    assert.match(page, /Delete upload/);
+    assert.match(page, /value="reference" checked/);
+    for (const [, code] of page.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+    assert.doesNotMatch(renderAdminPage({ session: { user: { id: other, discord_tag: 'o', role: 'player' } }, query: { tab: 'art', view: 'references', art: String(id) } }), /Tag this image/);
+
+    const [discordImage] = db.getArtMessage('m1');
+    assert.throws(() => db.deleteArtUpload(discordImage.id, { id: 0, role: 'admin' }), /Only uploaded images/);
+    assert.equal((await post('/art/delete', other, { id: String(id) })).status, 403);
+    const file = db.getArtFile(id).file;
+    assert.equal((await post('/art/delete', uploader, { id: String(id) })).status, 302);
+    assert.equal(db.getArtImage(id, { isAdmin: true }), null);
+    assert.equal(fs.existsSync(file), false, 'the file goes too');
+  } finally {
+    server.close();
+  }
+});

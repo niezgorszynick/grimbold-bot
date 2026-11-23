@@ -44,7 +44,8 @@ router.use(requireAuth);
 router.use((req, res, next) => {
   // Every panel form POST is a DM action; players change their characters through /api.
   // Art editors (players the DMs chose) tag art as DMs do.
-  if (req.method === 'POST' && req.path === '/art/update' && db.canEditArt(req.session.user)) return next();
+  // Art editors (players the DMs chose) tag art as DMs do; a player their own uploads.
+  if (req.method === 'POST' && ['/art/update', '/art/delete'].includes(req.path) && db.canEditArtImage(req.session.user, req.body && req.body.id)) return next();
   return req.method === 'POST' ? requireAdmin(req, res, next) : next();
 });
 
@@ -432,6 +433,16 @@ router.post('/art/editors', (req, res) => {
   }
 });
 
+// An uploaded image, deleted by its uploader, a DM or an art editor.
+router.post('/art/delete', (req, res) => {
+  try {
+    db.deleteArtUpload(req.body.id, req.session.user);
+    res.redirect('/admin?tab=art&view=references&status=art_deleted');
+  } catch (err) {
+    res.redirect(`/admin?tab=art&view=references&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
 router.post('/art/update', (req, res) => {
   const target = typeof req.body.return_to === 'string' && /^\/admin\?tab=art(&|$)/.test(req.body.return_to) ? req.body.return_to : '/admin?tab=art';
   const back = req.body.return_to ? target : `/admin?tab=art&art=${encodeURIComponent(req.body.id)}`;
@@ -447,7 +458,8 @@ router.post('/art/update', (req, res) => {
       others: figures ? [].concat(req.body.others || []).filter(name => String(name).trim()) : undefined,
       adventure: req.body.adventure,
       notArt,
-      category: ['art', 'meme', 'not_art'].includes(req.body.category) ? req.body.category : undefined,
+      category: ['art', 'meme', 'reference', 'not_art'].includes(req.body.category) ? req.body.category : undefined,
+      caption: req.body.caption,
       artist: req.body.artist,
       artistUrl: req.body.artist_url
     });

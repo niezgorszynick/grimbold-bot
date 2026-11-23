@@ -1421,6 +1421,17 @@ const MIGRATIONS = [
       db.prepare("INSERT INTO config (key, value) VALUES ('art_editors', ?) ON CONFLICT(key) DO NOTHING")
         .run(JSON.stringify(['1447629856870240471', '280626176341442570']));
     }
+  },
+  {
+    // Art: reference material, a category of its own (is_reference), and
+    // images uploaded in the panel rather than posted in Discord
+    // (uploaded_by_player_id; their attachment and message ids start 'upload:').
+    version: 51,
+    up(db) {
+      const columns = new Set(db.prepare('PRAGMA table_info(art_images)').all().map(column => column.name));
+      if (!columns.has('is_reference')) db.exec('ALTER TABLE art_images ADD COLUMN is_reference INTEGER NOT NULL DEFAULT 0');
+      if (!columns.has('uploaded_by_player_id')) db.exec('ALTER TABLE art_images ADD COLUMN uploaded_by_player_id INTEGER REFERENCES players(id) ON DELETE SET NULL');
+    }
   }
 ];
 

@@ -241,6 +241,7 @@ function tagView(messageId) {
     first.not_art
       ? '🚫 Marked **Not art**: it stays out of the gallery.'
       : first.is_meme ? '😂 Filed under **Memes** in the Art tab.'
+        : first.is_reference ? '📌 Filed under **Reference** in the Art tab.'
         : tagged.length || first.figures.length ? '✅ In the Art tab.' : '⏳ Waiting in “To sort” until somebody in it is tagged.'
   ];
   if (more) lines.push(`*${more} more characters didn't fit here: a DM can tag them in the panel.*`);

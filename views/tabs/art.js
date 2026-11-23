@@ -202,7 +202,9 @@ function adventureOptions(image, adventures) {
 const ARTIST_BY = { name: 'named in the post', poster: 'the poster, by default', discord: 'set in Discord', dm: 'set by a DM' };
 const TAGGED_BY = { name: 'named in the post', discord: 'tagged in Discord', dm: 'set by a DM' };
 
-function viewerHtml(image, { isAdmin, characters, back }) {
+// canEdit: DMs and art editors, and a player on their own upload.
+function viewerHtml(image, { canEdit, characters, back }) {
+  const isAdmin = canEdit;
   const adventures = isAdmin ? db.listArtAdventureChoices({ characterIds: image.characters.map(character => character.id), postedAt: image.posted_at }) : [];
   return `
     <section class="card art-viewer" id="art-viewer">
@@ -215,8 +217,8 @@ function viewerHtml(image, { isAdmin, characters, back }) {
           ${creditBanner(image, { isAdmin })}
           <p class="muted small">
             ${image.adventure_id ? `<a href="/admin?tab=art&adventure=${image.adventure_id}">${escapeHtml(image.adventure_title)}</a>${image.adventure_by === 'guess' ? ' <span class="tag">guessed</span>' : ''}` : 'No adventure'}
-            ${image.posted_by_tag ? ` · posted by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}
-            ${image.not_art ? ' · <span class="tag red">Not art</span>' : image.is_meme ? ' · <span class="tag">😂 Meme</span>' : ''}
+            ${image.posted_by_tag ? ` · ${image.uploaded ? 'uploaded' : 'posted'} by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}
+            ${image.not_art ? ' · <span class="tag red">Not art</span>' : image.is_meme ? ' · <span class="tag">😂 Meme</span>' : image.is_reference ? ' · <span class="tag">📌 Reference</span>' : ''}
           </p>
           ${image.message_text ? `<p class="art-caption">${escapeHtml(image.message_text)}</p>` : ''}
         </div>
@@ -241,18 +243,25 @@ function viewerHtml(image, { isAdmin, characters, back }) {
           <p class="art-form-label">Anyone else? <span class="muted small">(NPCs, familiars, characters from outside our games)</span></p>
           ${othersHtml(image)}
           ${artistHtml(image)}
+          ${image.uploaded ? `<label class="art-form-label">Caption <span class="muted small">(what it is, where it's from)</span>
+            <textarea name="caption" rows="2" maxlength="2000">${escapeHtml(image.message_text || '')}</textarea>
+          </label>` : ''}
           <label class="art-form-label">Adventure <span class="muted small">(✓ = they were all in it)</span>
             <select name="adventure">${adventureOptions(image, adventures)}</select>
           </label>
           <div class="art-form-actions">
             <fieldset class="art-category">
               <legend class="visually-hidden">Category</legend>
-              ${[['art', '🎨 Art'], ['meme', '😂 Meme'], ['not_art', '🚫 Not art']].map(([value, label]) =>
+              ${[['art', '🎨 Art'], ['meme', '😂 Meme'], ['reference', '📌 Reference'], ['not_art', '🚫 Not art']].map(([value, label]) =>
                 `<label><input type="radio" name="category" value="${value}"${image.category === value ? ' checked' : ''}> ${label}</label>`).join('')}
             </fieldset>
             <button type="submit" class="btn btn-green">Save</button>
           </div>
         </form>
+        ${image.uploaded ? `<form method="POST" action="/admin/art/delete" class="art-form-actions" onsubmit="return confirm('Delete this uploaded image for good?')">
+          <input type="hidden" name="id" value="${image.id}">
+          <button type="submit" class="btn btn-small btn-red">🗑 Delete upload</button>
+        </form>` : ''}
       </div>` : ''}
       </div>
     </section>`;
@@ -285,6 +294,7 @@ function sortingHtml(images, { characters, keep }) {
             </label>
             <div class="art-form-actions">
               <button type="submit" name="category" value="meme" class="btn btn-small btn-secondary">😂 Meme</button>
+              <button type="submit" name="category" value="reference" class="btn btn-small btn-secondary">📌 Reference</button>
               <button type="submit" name="category" value="not_art" class="btn btn-small btn-secondary">🚫 Not art</button>
               <button type="submit" class="btn btn-green">Save</button>
             </div>
@@ -312,6 +322,53 @@ function editorsHtml() {
     </section>`;
 }
 
+// Reference material: anyone logged in uploads images (they then open to be tagged).
+function uploadHtml() {
+  return `
+    <form class="art-upload" id="art-upload">
+      <h4>📌 Add reference material</h4>
+      <p class="muted small">Upload images from outside the Discord channel: character references, outfits, maps, mood boards. PNG, JPG, WebP or GIF, 25 MB each at most. After uploading you can tag who is in it and the adventure.</p>
+      <label class="art-form-label">Images <input type="file" name="files" accept="image/png,image/jpeg,image/webp,image/gif" multiple required></label>
+      <label class="art-form-label">Caption <span class="muted small">(optional: what it is, where it's from)</span>
+        <textarea name="caption" rows="2" maxlength="2000"></textarea>
+      </label>
+      <div class="art-form-actions">
+        <span class="muted small" id="art-upload-status" role="status"></span>
+        <button type="submit" class="btn btn-green">Upload</button>
+      </div>
+    </form>
+    <script>
+      (() => {
+        const form = document.getElementById('art-upload');
+        const status = document.getElementById('art-upload-status');
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          const files = [...form.elements.files.files];
+          if (!files.length) return;
+          const button = form.querySelector('button[type="submit"]');
+          button.disabled = true;
+          const ids = [];
+          try {
+            for (const [index, file] of files.entries()) {
+              status.textContent = 'Uploading ' + (index + 1) + ' of ' + files.length + '…';
+              const response = await fetch('/api/art/upload', {
+                method: 'POST', credentials: 'same-origin', body: file,
+                headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Caption': encodeURIComponent(form.elements.caption.value) }
+              });
+              const body = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(file.name + ': ' + (body.error || 'upload failed'));
+              ids.push(body.id);
+            }
+            location.href = '/admin?tab=art&view=references&art=' + ids[0] + '#art-viewer';
+          } catch (error) {
+            status.textContent = error.message + (ids.length ? ' (' + ids.length + ' uploaded before it)' : '');
+            button.disabled = false;
+          }
+        });
+      })();
+    </script>`;
+}
+
 module.exports = function renderArtTab(ctx) {
   // isAdmin here: may tag and sort (DMs and art editors); isDm: imports and the editors list.
   const { req, isAdmin: isDm, currentUser } = ctx;
@@ -321,6 +378,7 @@ module.exports = function renderArtTab(ctx) {
     const banners = {
       art_updated: '<div class="alert green">🎨 Image saved.</div>',
       art_editors_saved: '<div class="alert green">🎨 Art editors saved.</div>',
+      art_deleted: '<div class="alert green">🗑 Upload deleted.</div>',
       art_import_started: '<div class="alert green">🎨 Grimbold is reading the art channel\'s history. Reload in a minute to see what he found.</div>',
       art_import_busy: '<div class="alert red">⏳ Grimbold is already reading the channel; try again in a minute.</div>'
     };
@@ -331,7 +389,7 @@ module.exports = function renderArtTab(ctx) {
     ORDER BY (c.status = 'dead'), c.name COLLATE NOCASE
   `).all();
   const adventures = db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all();
-  const view = query.view === 'memes' || (isAdmin && ['unsorted', 'not_art'].includes(query.view)) ? query.view : 'gallery';
+  const view = ['memes', 'references'].includes(query.view) || (isAdmin && ['unsorted', 'not_art'].includes(query.view)) ? query.view : 'gallery';
   const who = String(query.who || (Number(query.character) > 0 ? `c${Number(query.character)}` : ''));
   const characterId = view === 'gallery' && /^c\d+$/.test(who) ? Number(who.slice(1)) : null;
   const figureId = view === 'gallery' && /^f\d+$/.test(who) ? Number(who.slice(1)) : null;
@@ -342,13 +400,15 @@ module.exports = function renderArtTab(ctx) {
   const artists = db.listArtArtists();
   const images = db.listArtImages({ view, characterId, figureId, adventureId, artist });
   const keep = `${view !== 'gallery' ? `&view=${view}` : ''}${characterId ? `&who=c${characterId}` : ''}${figureId ? `&who=f${figureId}` : ''}${adventureId ? `&adventure=${adventureId}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
-  const image = query.art ? db.getArtImage(query.art, { isAdmin }) : null;
+  const image = query.art ? db.getArtImage(query.art, { isAdmin: db.canEditArtImage(currentUser, query.art) }) : null;
+  const canEditImage = Boolean(image && db.canEditArtImage(currentUser, image.id));
+  const withForms = isAdmin || canEditImage;
   if (query.art && !image) ctx.setStatusBanner('<div class="alert red">⚠️ That image is not in the gallery.</div>');
   const withArt = characters.filter(character => counts.byCharacter.has(character.id));
   const adventuresWithArt = adventures.filter(adventure => counts.byAdventure.has(adventure.id));
 
   return `
-    ${image ? viewerHtml(image, { isAdmin, characters, back: `/admin?tab=art${keep}` }) : ''}
+    ${image ? viewerHtml(image, { canEdit: canEditImage, characters, back: `/admin?tab=art${keep}` }) : ''}
     <section class="card art">
       <div class="chronicles-head">
         <div>
@@ -363,6 +423,7 @@ module.exports = function renderArtTab(ctx) {
         <select name="view" aria-label="Show" onchange="this.form.submit()">
           <option value="">🎨 Gallery (${counts.gallery})</option>
           <option value="memes"${view === 'memes' ? ' selected' : ''}>😂 Memes (${counts.memes})</option>
+          <option value="references"${view === 'references' ? ' selected' : ''}>📌 Reference (${counts.references})</option>
           ${isAdmin ? `<option value="unsorted"${view === 'unsorted' ? ' selected' : ''}>To sort (${counts.unsorted})</option>
           <option value="not_art"${view === 'not_art' ? ' selected' : ''}>🚫 Not art (${counts.notArt})</option>` : ''}
         </select>
@@ -386,6 +447,7 @@ module.exports = function renderArtTab(ctx) {
         </select>` : ''}
         <noscript><button type="submit" class="btn btn-small">Filter</button></noscript>
       </form>
+      ${view === 'references' ? uploadHtml() : ''}
       ${view === 'unsorted'
         ? sortingHtml(images, { characters, keep })
         : images.length
@@ -394,10 +456,10 @@ module.exports = function renderArtTab(ctx) {
                 ${thumb(entry, `/admin?tab=art${keep}&art=${entry.id}#art-viewer`)}
                 <figcaption>${names(entry) || '<span class="muted">nobody</span>'}${entry.adventure_title ? `<br><span class="muted small">${escapeHtml(entry.adventure_title)}</span>` : ''}${entry.artist_name ? `<br><span class="art-credit">🖌 ${escapeHtml(entry.artist_name)}</span>` : ''}</figcaption>
               </figure>`).join('')}</div>`
-          : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : view === 'memes' ? 'No memes yet: mark one with Tag art → 😂 Meme.' : 'No art here yet.'}</p>`}
+          : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : view === 'memes' ? 'No memes yet: mark one with Tag art → 😂 Meme.' : view === 'references' ? 'No reference material yet: upload the first above.' : 'No art here yet.'}</p>`}
     </section>
     ${isDm ? editorsHtml() : ''}
-    ${isAdmin ? `
+    ${withForms ? `
     <datalist id="art-figure-list">${db.artFigureSuggestions().map(label => `<option value="${escapeHtml(label)}"></option>`).join('')}</datalist>
     <datalist id="art-artist-list">${[...new Set([...db.listKnownArtists(), ...db.prepare('SELECT DISTINCT posted_by_tag AS name FROM art_images WHERE posted_by_tag IS NOT NULL').all().map(row => row.name)])]
       .sort((a, b) => a.localeCompare(b)).map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>

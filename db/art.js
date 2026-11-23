@@ -322,17 +322,17 @@ function recordArtMessage({ messageId, channelId, guildId, threadName, posterDis
 
 // ─── Tagging ────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ['art', 'meme', 'not_art'];
-const categoryOf = image => (image.not_art ? 'not_art' : image.is_meme ? 'meme' : 'art');
+const CATEGORIES = ['art', 'meme', 'reference', 'not_art'];
+const categoryOf = image => (image.not_art ? 'not_art' : image.is_meme ? 'meme' : image.is_reference ? 'reference' : 'art');
 
-// category: 'art' | 'meme' | 'not_art'. notArt (true/false) is the older way
-// to say not_art or art.
+// category: 'art' | 'meme' | 'reference' | 'not_art'. notArt (true/false) is
+// the older way to say not_art or art.
 function setCategory(imageId, { category, notArt }, by) {
   const value = category !== undefined ? category : notArt === undefined ? undefined : notArt ? 'not_art' : 'art';
   if (value === undefined) return;
   if (!CATEGORIES.includes(value)) throw new Error('Unknown category.');
-  db.prepare('UPDATE art_images SET not_art = ?, is_meme = ?, tagged_by = ? WHERE id = ?')
-    .run(value === 'not_art' ? 1 : 0, value === 'meme' ? 1 : 0, by, imageId);
+  db.prepare('UPDATE art_images SET not_art = ?, is_meme = ?, is_reference = ?, tagged_by = ? WHERE id = ?')
+    .run(value === 'not_art' ? 1 : 0, value === 'meme' ? 1 : 0, value === 'reference' ? 1 : 0, by, imageId);
 }
 
 function checkCharacters(ids) {
@@ -394,9 +394,13 @@ function tagArtMessage(messageId, { characterIds, among, adventure, notArt, cate
 // The DM in the panel, one image: { characterIds, figureIds (kept), others
 // (names to add), adventure, category ('art' | 'meme' | 'not_art') or notArt,
 // artist, artistUrl }.
-function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt, category, artist, artistUrl }) {
-  const image = db.prepare('SELECT id FROM art_images WHERE id = ?').get(Number(id));
+function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt, category, artist, artistUrl, caption }) {
+  const image = db.prepare('SELECT id, uploaded_by_player_id, message_id FROM art_images WHERE id = ?').get(Number(id));
   if (!image) throw new Error('Image not found.');
+  // An upload's caption is written in the panel (a post's is its text).
+  if (caption !== undefined && String(image.message_id).startsWith('upload:')) {
+    db.prepare('UPDATE art_images SET message_text = ? WHERE id = ?').run(String(caption).trim().slice(0, 2000) || null, image.id);
+  }
   if (artistUrl !== undefined) checkArtistUrl(artistUrl);
   db.transaction(() => {
     const named = others === undefined ? { characterIds: [], figureIds: [] } : resolveArtNames(others);
@@ -421,9 +425,10 @@ function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt
 
 const HAS_SOMEONE = `(EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)
   OR EXISTS (SELECT 1 FROM art_image_figures z WHERE z.image_id = i.id))`;
-const VISIBLE = `i.not_art = 0 AND i.is_meme = 0 AND ${HAS_SOMEONE}`;
-const UNSORTED = `i.not_art = 0 AND i.is_meme = 0 AND NOT ${HAS_SOMEONE}`;
+const VISIBLE = `i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 AND ${HAS_SOMEONE}`;
+const UNSORTED = `i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 AND NOT ${HAS_SOMEONE}`;
 const MEMES = 'i.not_art = 0 AND i.is_meme = 1';
+const REFERENCES = 'i.not_art = 0 AND i.is_reference = 1';
 
 // Figures with the names they go by now: [{ id, kind, name, label, characterId }].
 const FIGURE_COLUMNS = `f.id, f.kind,
@@ -467,10 +472,12 @@ function present(row, characters, figures = []) {
     ...row,
     not_art: Boolean(row.not_art),
     is_meme: Boolean(row.is_meme),
+    is_reference: Boolean(row.is_reference),
+    uploaded: String(row.message_id || '').startsWith('upload:'),
     category: categoryOf(row),
     characters,
     figures,
-    visible: !row.not_art && (Boolean(row.is_meme) || characters.length > 0 || figures.length > 0),
+    visible: !row.not_art && (Boolean(row.is_meme) || Boolean(row.is_reference) || characters.length > 0 || figures.length > 0),
     imageUrl: row.file ? `/api/art/${row.id}/image?v=${version}` : null,
     thumbUrl: row.file ? `/api/art/${row.id}/image?size=thumb&v=${version}` : null,
     messageUrl: row.guild_id && row.channel_id && row.message_id
@@ -493,6 +500,7 @@ function listArtImages({ view = 'gallery', characterId, figureId, adventureId, a
   if (view === 'unsorted') where.push(UNSORTED);
   else if (view === 'not_art') where.push('i.not_art = 1');
   else if (view === 'memes') where.push(MEMES);
+  else if (view === 'references') where.push(REFERENCES);
   else where.push(VISIBLE);
   if (characterId) { where.push('EXISTS (SELECT 1 FROM art_image_characters y WHERE y.image_id = i.id AND y.character_id = ?)'); params.push(Number(characterId)); }
   if (adventureId) { where.push('i.adventure_id = ?'); params.push(Number(adventureId)); }
@@ -521,7 +529,7 @@ function artCounts() {
   const count = sql => db.prepare(`SELECT COUNT(*) AS n FROM art_images i WHERE ${sql}`).get().n;
   const byCharacter = new Map(db.prepare(`
     SELECT t.character_id AS id, COUNT(*) AS n FROM art_image_characters t JOIN art_images i ON i.id = t.image_id
-    WHERE i.not_art = 0 AND i.is_meme = 0 GROUP BY t.character_id
+    WHERE i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 GROUP BY t.character_id
   `).all().map(row => [row.id, row.n]));
   const byAdventure = new Map(db.prepare(`
     SELECT i.adventure_id AS id, COUNT(*) AS n FROM art_images i WHERE i.adventure_id IS NOT NULL AND ${VISIBLE} GROUP BY i.adventure_id
@@ -531,6 +539,7 @@ function artCounts() {
     unsorted: count(UNSORTED),
     notArt: count('i.not_art = 1'),
     memes: count(MEMES),
+    references: count(REFERENCES),
     byCharacter,
     byAdventure
   };
@@ -541,7 +550,7 @@ function listArtFigures() {
   return db.prepare(`
     SELECT ${FIGURE_COLUMNS}, COUNT(*) AS count FROM art_image_figures t JOIN art_images i ON i.id = t.image_id
     JOIN art_figures f ON f.id = t.figure_id ${FIGURE_JOINS}
-    WHERE i.not_art = 0 AND i.is_meme = 0 GROUP BY f.id ORDER BY name COLLATE NOCASE
+    WHERE i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 GROUP BY f.id ORDER BY name COLLATE NOCASE
   `).all().map(row => ({ ...figureView(row), count: row.count }));
 }
 
@@ -625,7 +634,7 @@ function getArtFile(id, { size } = {}) {
 // Images Grimbold has no copy of yet, by message (to fetch their links again).
 function listArtMessagesWithoutFile(limit = 20) {
   return db.prepare(`
-    SELECT message_id, channel_id FROM art_images WHERE file IS NULL
+    SELECT message_id, channel_id FROM art_images WHERE file IS NULL AND message_id NOT LIKE 'upload:%'
     GROUP BY message_id ORDER BY MIN(id) LIMIT ?
   `).all(Number(limit));
 }
@@ -661,6 +670,50 @@ function canEditArt(user) {
   return Boolean(player && getArtEditors().includes(String(player.discord_id)));
 }
 
+// DMs and art editors edit any image; a player the images they uploaded.
+function canEditArtImage(user, imageId) {
+  if (canEditArt(user)) return true;
+  if (!user || !(Number(user.id) > 0)) return false;
+  const image = db.prepare('SELECT uploaded_by_player_id FROM art_images WHERE id = ?').get(Number(imageId));
+  return Boolean(image && image.uploaded_by_player_id === Number(user.id));
+}
+
+// A player uploads reference material in the panel: the image and an
+// optional caption. Returns the new image's id.
+function uploadArtImage({ user, buffer, caption }) {
+  if (!user) throw new Error('Log in to upload.');
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('Choose an image to upload.');
+  if (buffer.length > MAX_IMAGE_BYTES) throw new Error('Images can be 25 MB at most.');
+  if (!sniffImage(buffer)) throw new Error('Only PNG, JPG, WebP or GIF images can be uploaded.');
+  const player = Number(user.id) > 0 ? db.prepare('SELECT id, discord_id, discord_tag FROM players WHERE id = ?').get(Number(user.id)) : null;
+  const key = `upload:${crypto.randomBytes(9).toString('hex')}`;
+  const id = Number(db.prepare(`
+    INSERT INTO art_images (attachment_id, message_id, posted_by_discord_id, posted_by_tag, posted_at, message_text,
+      is_reference, uploaded_by_player_id, tagged_by)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL)
+  `).run(key, key, player ? player.discord_id : null, player ? player.discord_tag : (user.discord_tag || 'admin'),
+    new Date().toISOString(), String(caption || '').trim().slice(0, 2000) || null, player ? player.id : null).lastInsertRowid);
+  try {
+    saveArtFiles(id, { buffer });
+  } catch (error) {
+    db.prepare('DELETE FROM art_images WHERE id = ?').run(id);
+    throw error;
+  }
+  return id;
+}
+
+// Uploads can be deleted (by whoever may edit them); Discord posts can't, as
+// the next look at the channel would bring them back: mark them Not art.
+function deleteArtUpload(id, user) {
+  const image = db.prepare('SELECT * FROM art_images WHERE id = ?').get(Number(id));
+  if (!image) throw new Error('Image not found.');
+  if (!String(image.message_id).startsWith('upload:')) throw new Error('Only uploaded images can be deleted; mark a Discord post Not art instead.');
+  if (!canEditArtImage(user, image.id)) throw new Error('Forbidden.');
+  db.prepare('DELETE FROM art_images WHERE id = ?').run(image.id);
+  removeFile(image.file);
+  removeFile(image.thumb_file);
+}
+
 // The list for the DMs' card: [{ discordId, tag }] (tag null: no panel account).
 function listArtEditors() {
   return getArtEditors().map(discordId => {
@@ -684,6 +737,9 @@ module.exports = {
   getArtEditors,
   setArtEditors,
   canEditArt,
+  canEditArtImage,
+  uploadArtImage,
+  deleteArtUpload,
   listArtEditors,
   resolveArtFigure,
   parseArtist,

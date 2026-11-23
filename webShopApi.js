@@ -889,11 +889,25 @@ router.post('/auctions/:id/cancel', (req, res) => {
 router.get('/art/:id/image', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!db.getArtImage(req.params.id, { isAdmin: db.canEditArt(user) })) return res.status(404).json({ error: 'No such image.' });
+  if (!db.getArtImage(req.params.id, { isAdmin: db.canEditArtImage(user, req.params.id) })) return res.status(404).json({ error: 'No such image.' });
   const found = db.getArtFile(req.params.id, { size: req.query.size });
   if (!found) return res.status(404).json({ error: 'No copy of that image.' });
   res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
   return res.sendFile(found.file);
+});
+
+// Reference material: any player uploads an image (the raw body, 25 MB at
+// most); X-Caption: its caption, URI-encoded. Returns { id }.
+router.post('/art/upload', express.raw({ type: () => true, limit: db.ART_MAX_IMAGE_BYTES }), (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    let caption = '';
+    try { caption = decodeURIComponent(req.get('x-caption') || ''); } catch { caption = ''; }
+    return res.json({ id: db.uploadArtImage({ user, buffer: req.body, caption }) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
 });
 
 // Character portraits: everyone logged in sees them; the owner or a DM uploads.

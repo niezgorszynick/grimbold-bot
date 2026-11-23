@@ -1617,3 +1617,6 @@ button.sheet-hud-tile { cursor: pointer; }
 .art-category label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .art-editors { margin: 8px 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.art-upload { display: grid; gap: 8px; margin: 10px 0 4px; padding: 12px; border: 1px dashed #d4af37; border-radius: 6px; }
+.art-upload h4 { margin: 0; }
+.art-upload p { margin: 0; }
