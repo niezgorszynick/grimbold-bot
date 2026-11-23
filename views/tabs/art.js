@@ -51,7 +51,7 @@ function creditBanner(image, { isAdmin }) {
   if (!image.artist_name) {
     return `<p class="art-credit-banner is-missing">🖌 Artist not credited yet${isAdmin ? ': add them in the form' : ': use Tag art in Discord to add them'}.</p>`;
   }
-  return `<p class="art-credit-banner">🖌 Art by <a href="/admin?tab=art&artist=${encodeURIComponent(image.artist_name)}" title="All art by ${escapeHtml(image.artist_name)}"><strong>${escapeHtml(image.artist_name)}</strong></a>${image.artist_url ? ` <a class="art-credit-link" href="${escapeHtml(image.artist_url)}" target="_blank" rel="noopener">their page ↗</a>` : ''}</p>`;
+  return `<p class="art-credit-banner">🖌 Art by <a href="/admin?tab=art${image.is_meme ? '&view=memes' : image.is_reference ? '&view=references' : ''}&artist=${encodeURIComponent(image.artist_name)}" title="All art by ${escapeHtml(image.artist_name)}"><strong>${escapeHtml(image.artist_name)}</strong></a>${image.artist_url ? ` <a class="art-credit-link" href="${escapeHtml(image.artist_url)}" target="_blank" rel="noopener">their page ↗</a>` : ''}</p>`;
 }
 
 // Everyone besides the characters: ticked chips for those tagged, and a box
@@ -205,18 +205,20 @@ const TAGGED_BY = { name: 'named in the post', discord: 'tagged in Discord', dm:
 // canEdit: DMs and art editors, and a player on their own upload.
 function viewerHtml(image, { canEdit, characters, back }) {
   const isAdmin = canEdit;
+  // Its names link to the same view (Memes, Reference) filtered by them.
+  const inView = image.is_meme ? '&view=memes' : image.is_reference ? '&view=references' : '';
   const adventures = isAdmin ? db.listArtAdventureChoices({ characterIds: image.characters.map(character => character.id), postedAt: image.posted_at }) : [];
   return `
     <section class="card art-viewer" id="art-viewer">
       <div class="art-viewer-head">
         <div>
           <h3>${image.characters.length || image.figures.length
-            ? [...image.characters.map(character => `<a href="/admin?tab=art&character=${character.id}">${escapeHtml(character.name)}</a>`),
-              ...image.figures.map(figure => `<a href="/admin?tab=art&who=f${figure.id}" class="art-figure">${escapeHtml(figure.label)}</a>`)].join(', ')
+            ? [...image.characters.map(character => `<a href="/admin?tab=art${inView}&who=c${character.id}">${escapeHtml(character.name)}</a>`),
+              ...image.figures.map(figure => `<a href="/admin?tab=art${inView}&who=f${figure.id}" class="art-figure">${escapeHtml(figure.label)}</a>`)].join(', ')
             : '<span class="tag red">Nobody tagged yet</span>'}</h3>
           ${creditBanner(image, { isAdmin })}
           <p class="muted small">
-            ${image.adventure_id ? `<a href="/admin?tab=art&adventure=${image.adventure_id}">${escapeHtml(image.adventure_title)}</a>${image.adventure_by === 'guess' ? ' <span class="tag">guessed</span>' : ''}` : 'No adventure'}
+            ${image.adventure_id ? `<a href="/admin?tab=art${inView}&adventure=${image.adventure_id}">${escapeHtml(image.adventure_title)}</a>${image.adventure_by === 'guess' ? ' <span class="tag">guessed</span>' : ''}` : 'No adventure'}
             ${image.posted_by_tag ? ` · ${image.uploaded ? 'uploaded' : 'posted'} by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}
             ${image.not_art ? ' · <span class="tag red">Not art</span>' : image.is_meme ? ' · <span class="tag">😂 Meme</span>' : image.is_reference ? ' · <span class="tag">📌 Reference</span>' : ''}
           </p>
@@ -391,21 +393,37 @@ module.exports = function renderArtTab(ctx) {
   const adventures = db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all();
   const view = ['memes', 'references'].includes(query.view) || (isAdmin && ['unsorted', 'not_art'].includes(query.view)) ? query.view : 'gallery';
   const who = String(query.who || (Number(query.character) > 0 ? `c${Number(query.character)}` : ''));
-  const characterId = view === 'gallery' && /^c\d+$/.test(who) ? Number(who.slice(1)) : null;
-  const figureId = view === 'gallery' && /^f\d+$/.test(who) ? Number(who.slice(1)) : null;
-  const adventureId = view === 'gallery' && Number(query.adventure) > 0 ? Number(query.adventure) : null;
-  const artist = view === 'gallery' && query.artist ? String(query.artist) : '';
+  // Gallery, Memes and Reference filter by who is in it, adventure and artist.
+  const filtered = ['gallery', 'memes', 'references'].includes(view);
+  const characterId = filtered && /^c\d+$/.test(who) ? Number(who.slice(1)) : null;
+  const figureId = filtered && /^f\d+$/.test(who) ? Number(who.slice(1)) : null;
+  const adventureId = filtered && Number(query.adventure) > 0 ? Number(query.adventure) : null;
+  const artist = filtered && query.artist ? String(query.artist) : '';
   const counts = db.artCounts();
-  const figures = db.listArtFigures();
-  const artists = db.listArtArtists();
   const images = db.listArtImages({ view, characterId, figureId, adventureId, artist });
+  // The filters' choices and counts come from this view's pictures.
+  const inView = filtered ? db.listArtImages({ view }) : [];
+  const tally = (list, keyOf) => {
+    const map = new Map();
+    for (const entry of list) for (const key of keyOf(entry)) map.set(key, (map.get(key) || 0) + 1);
+    return map;
+  };
+  const byCharacter = tally(inView, entry => entry.characters.map(character => character.id));
+  const byFigure = tally(inView, entry => entry.figures.map(figure => figure.id));
+  const byAdventure = tally(inView, entry => (entry.adventure_id ? [entry.adventure_id] : []));
+  const byArtist = tally(inView, entry => (entry.artist_name ? [entry.artist_name] : []));
+  const figureLabels = new Map(inView.flatMap(entry => entry.figures.map(figure => [figure.id, figure.label])));
+  const figures = [...byFigure.keys()].map(id => ({ id, label: figureLabels.get(id), count: byFigure.get(id) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const artists = [...byArtist.entries()].map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   const keep = `${view !== 'gallery' ? `&view=${view}` : ''}${characterId ? `&who=c${characterId}` : ''}${figureId ? `&who=f${figureId}` : ''}${adventureId ? `&adventure=${adventureId}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
   const image = query.art ? db.getArtImage(query.art, { isAdmin: db.canEditArtImage(currentUser, query.art) }) : null;
   const canEditImage = Boolean(image && db.canEditArtImage(currentUser, image.id));
   const withForms = isAdmin || canEditImage;
   if (query.art && !image) ctx.setStatusBanner('<div class="alert red">⚠️ That image is not in the gallery.</div>');
-  const withArt = characters.filter(character => counts.byCharacter.has(character.id));
-  const adventuresWithArt = adventures.filter(adventure => counts.byAdventure.has(adventure.id));
+  const withArt = characters.filter(character => byCharacter.has(character.id));
+  const adventuresWithArt = adventures.filter(adventure => byAdventure.has(adventure.id));
 
   return `
     ${image ? viewerHtml(image, { canEdit: canEditImage, characters, back: `/admin?tab=art${keep}` }) : ''}
@@ -427,19 +445,19 @@ module.exports = function renderArtTab(ctx) {
           ${isAdmin ? `<option value="unsorted"${view === 'unsorted' ? ' selected' : ''}>To sort (${counts.unsorted})</option>
           <option value="not_art"${view === 'not_art' ? ' selected' : ''}>🚫 Not art (${counts.notArt})</option>` : ''}
         </select>
-        ${view === 'gallery' ? `
+        ${filtered ? `
         <select name="who" aria-label="Who is in it" onchange="this.form.submit()">
           <option value="">Everyone</option>
-          <optgroup label="Characters">
-            ${withArt.map(character => `<option value="c${character.id}"${characterId === character.id ? ' selected' : ''}>${escapeHtml(character.name)} (${counts.byCharacter.get(character.id)})</option>`).join('')}
-          </optgroup>
+          ${withArt.length ? `<optgroup label="Characters">
+            ${withArt.map(character => `<option value="c${character.id}"${characterId === character.id ? ' selected' : ''}>${escapeHtml(character.name)} (${byCharacter.get(character.id)})</option>`).join('')}
+          </optgroup>` : ''}
           ${figures.length ? `<optgroup label="NPCs, familiars and others">
             ${figures.map(figure => `<option value="f${figure.id}"${figureId === figure.id ? ' selected' : ''}>${escapeHtml(figure.label)} (${figure.count})</option>`).join('')}
           </optgroup>` : ''}
         </select>
         <select name="adventure" aria-label="Adventure" onchange="this.form.submit()">
           <option value="">All adventures</option>
-          ${adventuresWithArt.map(adventure => `<option value="${adventure.id}"${adventureId === adventure.id ? ' selected' : ''}>${escapeHtml(adventure.title)} (${counts.byAdventure.get(adventure.id)})</option>`).join('')}
+          ${adventuresWithArt.map(adventure => `<option value="${adventure.id}"${adventureId === adventure.id ? ' selected' : ''}>${escapeHtml(adventure.title)} (${byAdventure.get(adventure.id)})</option>`).join('')}
         </select>
         <select name="artist" aria-label="Artist" onchange="this.form.submit()">
           <option value="">All artists</option>

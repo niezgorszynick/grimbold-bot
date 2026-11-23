@@ -392,6 +392,19 @@ test('reference material: any player uploads images; they, DMs and art editors t
     assert.deepEqual(tagged.figures.map(figure => figure.name), ['Old Tom']);
     assert.equal(tagged.message_text, 'Strój Elary, wersja 2');
     assert.equal(tagged.category, 'reference', 'tagging keeps it a reference');
+    assert.equal(image.adventure_by, 'none', 'an upload has no adventure by default');
+    assert.equal(tagged.adventure_id, null);
+    db.updateArtImage(id, { adventure: String(keep) });
+    db.updateArtImage(id, { characterIds: [String(brom)] });
+    assert.equal(db.getArtImage(id).adventure_id, keep, 'one chosen by hand stays');
+
+    // A picture from the channel moved to Reference drops its guessed adventure.
+    const [fromChannel] = db.getArtMessage('m1');
+    db.updateArtImage(fromChannel.id, { category: 'art', characterIds: [String(elara)], adventure: 'guess' });
+    assert.ok(db.getArtImage(fromChannel.id).adventure_id, 'guessed while art');
+    db.updateArtImage(fromChannel.id, { category: 'reference', adventure: 'guess' });
+    assert.equal(db.getArtImage(fromChannel.id).adventure_id, null);
+    assert.equal(db.getArtImage(fromChannel.id).adventure_by, 'none');
 
     const uploaderUser = { id: uploader, discord_tag: 'u', role: 'player' };
     const page = renderAdminPage({ session: { user: uploaderUser }, query: { tab: 'art', view: 'references', art: String(id) } });
@@ -412,4 +425,20 @@ test('reference material: any player uploads images; they, DMs and art editors t
   } finally {
     server.close();
   }
+});
+
+test('Memes and Reference filter by who is in them, adventure and artist, with their own counts', () => {
+  const admin = { id: 0, discord_tag: 'admin', role: 'admin' };
+  const [image] = db.getArtMessage('m1');
+  db.updateArtImage(image.id, { category: 'reference', characterIds: [String(elara)], artist: 'Selkie' });
+  const html = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'references' } });
+  assert.ok(html.includes(`<option value="c${elara}">Elara Moonwhisper (1)</option>`), 'counted in Reference');
+  assert.match(html, /🖌 Selkie \(1\)/);
+  const filtered = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'references', who: `c${brom}` } });
+  assert.doesNotMatch(filtered, new RegExp(`art=${image.id}#art-viewer`), 'someone else: not listed');
+  const mine = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'references', who: `c${elara}`, art: String(image.id) } });
+  assert.match(mine, new RegExp(`view=references&who=c${elara}&art=${image.id}#art-viewer`));
+  assert.ok(mine.includes(`href="/admin?tab=art&view=references&who=c${elara}">Elara`), 'names link within Reference');
+  const memes = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'memes' } });
+  assert.match(memes, /name="who"/);
 });

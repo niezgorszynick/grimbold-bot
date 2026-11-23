@@ -1432,6 +1432,15 @@ const MIGRATIONS = [
       if (!columns.has('is_reference')) db.exec('ALTER TABLE art_images ADD COLUMN is_reference INTEGER NOT NULL DEFAULT 0');
       if (!columns.has('uploaded_by_player_id')) db.exec('ALTER TABLE art_images ADD COLUMN uploaded_by_player_id INTEGER REFERENCES players(id) ON DELETE SET NULL');
     }
+  },
+  {
+    // Art: reference material has no adventure unless one was chosen for it
+    // (a guessed or post-named one is dropped).
+    version: 52,
+    up(db) {
+      db.exec(`UPDATE art_images SET adventure_id = NULL, adventure_by = 'none'
+        WHERE is_reference = 1 AND (adventure_by IS NULL OR adventure_by IN ('guess', 'name'))`);
+    }
   }
 ];
 

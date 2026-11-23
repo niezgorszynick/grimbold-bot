@@ -333,6 +333,10 @@ function setCategory(imageId, { category, notArt }, by) {
   if (!CATEGORIES.includes(value)) throw new Error('Unknown category.');
   db.prepare('UPDATE art_images SET not_art = ?, is_meme = ?, is_reference = ?, tagged_by = ? WHERE id = ?')
     .run(value === 'not_art' ? 1 : 0, value === 'meme' ? 1 : 0, value === 'reference' ? 1 : 0, by, imageId);
+  // Reference material belongs to no adventure, unless one is chosen for it.
+  if (value === 'reference') {
+    db.prepare("UPDATE art_images SET adventure_id = NULL, adventure_by = 'none' WHERE id = ? AND (adventure_by IS NULL OR adventure_by IN ('guess', 'name'))").run(imageId);
+  }
 }
 
 function checkCharacters(ids) {
@@ -689,8 +693,8 @@ function uploadArtImage({ user, buffer, caption }) {
   const key = `upload:${crypto.randomBytes(9).toString('hex')}`;
   const id = Number(db.prepare(`
     INSERT INTO art_images (attachment_id, message_id, posted_by_discord_id, posted_by_tag, posted_at, message_text,
-      is_reference, uploaded_by_player_id, tagged_by)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL)
+      is_reference, uploaded_by_player_id, tagged_by, adventure_by)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL, 'none')
   `).run(key, key, player ? player.discord_id : null, player ? player.discord_tag : (user.discord_tag || 'admin'),
     new Date().toISOString(), String(caption || '').trim().slice(0, 2000) || null, player ? player.id : null).lastInsertRowid);
   try {
