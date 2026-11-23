@@ -35,13 +35,54 @@ function scanStatusHtml() {
   return `${warning}<p class="muted small">${lines.join('<br>')}</p>`;
 }
 
-const names = image => image.characters.map(character => escapeHtml(character.name)).join(', ');
+const names = image => [...image.characters.map(character => character.name), ...(image.figures || []).map(figure => figure.label)]
+  .map(name => escapeHtml(name)).join(', ');
 
+// The artist's credit: on a thumbnail, and as a banner on the opened image.
 function thumb(image, href) {
   const picture = image.thumbUrl
     ? `<img src="${escapeHtml(image.thumbUrl)}" alt="${names(image) || 'Art'}" loading="lazy">`
     : `<span class="art-missing" title="${escapeHtml(image.download_error || 'Not copied yet')}">🖼<br><span class="small">${image.download_error ? 'No copy' : 'Copying…'}</span></span>`;
-  return `<a class="art-thumb" href="${href}">${picture}</a>`;
+  const credit = image.artist_name ? `<span class="art-credit-badge">🖌 ${escapeHtml(image.artist_name)}</span>` : '';
+  return `<a class="art-thumb" href="${href}">${picture}${credit}</a>`;
+}
+
+function creditBanner(image, { isAdmin }) {
+  if (!image.artist_name) {
+    return `<p class="art-credit-banner is-missing">🖌 Artist not credited yet${isAdmin ? ': add them in the form' : ': use Tag art in Discord to add them'}.</p>`;
+  }
+  return `<p class="art-credit-banner">🖌 Art by <a href="/admin?tab=art&artist=${encodeURIComponent(image.artist_name)}" title="All art by ${escapeHtml(image.artist_name)}"><strong>${escapeHtml(image.artist_name)}</strong></a>${image.artist_url ? ` <a class="art-credit-link" href="${escapeHtml(image.artist_url)}" target="_blank" rel="noopener">their page ↗</a>` : ''}</p>`;
+}
+
+// Everyone besides the characters: ticked chips for those tagged, and a box
+// to add more (suggesting NPCs, familiars and names used before).
+function othersHtml(image) {
+  const figures = image.figures || [];
+  return `
+    <div class="art-picker" data-others>
+      <input type="hidden" name="figures_form" value="1">
+      <div class="art-picker-list art-others-list" data-others-list>
+        ${figures.map(figure => `<label class="art-chip"><input type="checkbox" name="figure_ids" value="${figure.id}" checked><span>${escapeHtml(figure.label)}</span></label>`).join('')}
+        <span class="muted small" data-others-empty${figures.length ? ' hidden' : ''}>Nobody else yet.</span>
+      </div>
+      <div class="art-picker-head">
+        <input type="text" name="others" list="art-figure-list" data-others-input placeholder="Add an NPC, a familiar or anyone else…" autocomplete="off" aria-label="Add someone else">
+        <button type="button" class="btn btn-small btn-secondary" data-others-add>Add</button>
+      </div>
+    </div>`;
+}
+
+function artistHtml(image) {
+  return `
+    <div class="art-artist-fields">
+      <label class="art-form-label">🖌 Artist
+        <input type="text" name="artist" list="art-artist-list" value="${escapeHtml(image.artist_name || '')}" placeholder="Who drew it?" maxlength="100" autocomplete="off">
+      </label>
+      <label class="art-form-label">Their page <span class="muted small">(optional)</span>
+        <input type="url" name="artist_url" value="${escapeHtml(image.artist_url || '')}" placeholder="https://…" maxlength="300">
+      </label>
+      ${image.posted_by_tag ? `<button type="button" class="btn btn-small btn-secondary" data-fill-artist="${escapeHtml(image.posted_by_tag)}">${escapeHtml(image.posted_by_tag)} drew it</button>` : ''}
+    </div>`;
 }
 
 // A row of thumbnails, newest first, with a link to the rest in the tab.
@@ -113,6 +154,34 @@ const PICKER_SCRIPT = `
         });
         picker.addEventListener('change', recount);
       });
+      document.querySelectorAll('[data-others]').forEach(box => {
+        const input = box.querySelector('[data-others-input]');
+        const list = box.querySelector('[data-others-list]');
+        const empty = box.querySelector('[data-others-empty]');
+        const add = () => {
+          const names = input.value.split(/[,;]+/).map(name => name.trim()).filter(Boolean);
+          const known = [...list.querySelectorAll('.art-chip span')].map(chip => plain(chip.textContent));
+          names.filter(name => !known.includes(plain(name))).forEach(name => {
+            const chip = document.createElement('label');
+            chip.className = 'art-chip';
+            const tick = Object.assign(document.createElement('input'), { type: 'checkbox', name: 'others', value: name, checked: true });
+            const text = document.createElement('span');
+            text.textContent = name;
+            chip.append(tick, text);
+            list.insertBefore(chip, empty);
+          });
+          empty.hidden = true;
+          input.value = '';
+          input.focus();
+        };
+        box.querySelector('[data-others-add]').addEventListener('click', add);
+        input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); add(); } });
+      });
+      document.querySelectorAll('[data-fill-artist]').forEach(button => button.addEventListener('click', () => {
+        const field = button.closest('form').querySelector('input[name="artist"]');
+        field.value = button.dataset.fillArtist;
+        field.focus();
+      }));
     })();
   </script>`;
 
@@ -138,7 +207,11 @@ function viewerHtml(image, { isAdmin, characters, back }) {
     <section class="card art-viewer" id="art-viewer">
       <div class="art-viewer-head">
         <div>
-          <h3>${image.characters.length ? image.characters.map(character => `<a href="/admin?tab=art&character=${character.id}">${escapeHtml(character.name)}</a>`).join(', ') : '<span class="tag red">Nobody tagged yet</span>'}</h3>
+          <h3>${image.characters.length || image.figures.length
+            ? [...image.characters.map(character => `<a href="/admin?tab=art&character=${character.id}">${escapeHtml(character.name)}</a>`),
+              ...image.figures.map(figure => `<a href="/admin?tab=art&who=f${figure.id}" class="art-figure">${escapeHtml(figure.label)}</a>`)].join(', ')
+            : '<span class="tag red">Nobody tagged yet</span>'}</h3>
+          ${creditBanner(image, { isAdmin })}
           <p class="muted small">
             ${image.adventure_id ? `<a href="/admin?tab=art&adventure=${image.adventure_id}">${escapeHtml(image.adventure_title)}</a>${image.adventure_by === 'guess' ? ' <span class="tag">guessed</span>' : ''}` : 'No adventure'}
             ${image.posted_by_tag ? ` · posted by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}
@@ -164,6 +237,9 @@ function viewerHtml(image, { isAdmin, characters, back }) {
           <input type="hidden" name="return_to" value="${escapeHtml(`${back}&art=${image.id}`)}">
           <p class="art-form-label">Who is in it?</p>
           ${pickerHtml(characters, image.characters.map(character => character.id), { posterDiscordId: image.posted_by_discord_id, posterTag: image.posted_by_tag })}
+          <p class="art-form-label">Anyone else? <span class="muted small">(NPCs, familiars, characters from outside our games)</span></p>
+          ${othersHtml(image)}
+          ${artistHtml(image)}
           <label class="art-form-label">Adventure <span class="muted small">(✓ = they were all in it)</span>
             <select name="adventure">${adventureOptions(image, adventures)}</select>
           </label>
@@ -182,7 +258,7 @@ function sortingHtml(images, { characters, keep }) {
   if (!images.length) return '<p class="muted">Nothing to sort: every image has somebody in it or is marked Not art.</p>';
   const adventures = db.listArtAdventureChoices({});
   return `
-    <p class="muted small">Tick everyone in the picture (type to find them; Enter ticks the only match), choose the adventure or leave it to Grimbold's guess, and save. A saved picture moves to the gallery.</p>
+    <p class="muted small">Tick everyone in the picture (type to find them; Enter ticks the only match), add NPCs, familiars or anyone else, credit the artist, choose the adventure or leave it to Grimbold's guess, and save. A saved picture moves to the gallery.</p>
     <div class="art-sort">
       ${images.map(image => `
         <form method="POST" action="/admin/art/update" class="art-sort-item" id="sort-${image.id}">
@@ -197,6 +273,8 @@ function sortingHtml(images, { characters, keep }) {
           </div>
           <div class="art-sort-form">
             ${pickerHtml(characters, [], { posterDiscordId: image.posted_by_discord_id, posterTag: image.posted_by_tag })}
+            ${othersHtml(image)}
+            ${artistHtml(image)}
             <label class="art-form-label">Adventure
               <select name="adventure">${adventureOptions(image, adventures)}</select>
             </label>
@@ -226,11 +304,16 @@ module.exports = function renderArtTab(ctx) {
   `).all();
   const adventures = db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all();
   const view = isAdmin && ['unsorted', 'not_art'].includes(query.view) ? query.view : 'gallery';
-  const characterId = view === 'gallery' && Number(query.character) > 0 ? Number(query.character) : null;
+  const who = String(query.who || (Number(query.character) > 0 ? `c${Number(query.character)}` : ''));
+  const characterId = view === 'gallery' && /^c\d+$/.test(who) ? Number(who.slice(1)) : null;
+  const figureId = view === 'gallery' && /^f\d+$/.test(who) ? Number(who.slice(1)) : null;
   const adventureId = view === 'gallery' && Number(query.adventure) > 0 ? Number(query.adventure) : null;
+  const artist = view === 'gallery' && query.artist ? String(query.artist) : '';
   const counts = db.artCounts();
-  const images = db.listArtImages({ view, characterId, adventureId });
-  const keep = `${view !== 'gallery' ? `&view=${view}` : ''}${characterId ? `&character=${characterId}` : ''}${adventureId ? `&adventure=${adventureId}` : ''}`;
+  const figures = db.listArtFigures();
+  const artists = db.listArtArtists();
+  const images = db.listArtImages({ view, characterId, figureId, adventureId, artist });
+  const keep = `${view !== 'gallery' ? `&view=${view}` : ''}${characterId ? `&who=c${characterId}` : ''}${figureId ? `&who=f${figureId}` : ''}${adventureId ? `&adventure=${adventureId}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
   const image = query.art ? db.getArtImage(query.art, { isAdmin }) : null;
   if (query.art && !image) ctx.setStatusBanner('<div class="alert red">⚠️ That image is not in the gallery.</div>');
   const withArt = characters.filter(character => counts.byCharacter.has(character.id));
@@ -255,13 +338,22 @@ module.exports = function renderArtTab(ctx) {
           <option value="not_art"${view === 'not_art' ? ' selected' : ''}>Not art (${counts.notArt})</option>
         </select>` : ''}
         ${view === 'gallery' ? `
-        <select name="character" aria-label="Character" onchange="this.form.submit()">
-          <option value="">All characters</option>
-          ${withArt.map(character => `<option value="${character.id}"${characterId === character.id ? ' selected' : ''}>${escapeHtml(character.name)} (${counts.byCharacter.get(character.id)})</option>`).join('')}
+        <select name="who" aria-label="Who is in it" onchange="this.form.submit()">
+          <option value="">Everyone</option>
+          <optgroup label="Characters">
+            ${withArt.map(character => `<option value="c${character.id}"${characterId === character.id ? ' selected' : ''}>${escapeHtml(character.name)} (${counts.byCharacter.get(character.id)})</option>`).join('')}
+          </optgroup>
+          ${figures.length ? `<optgroup label="NPCs, familiars and others">
+            ${figures.map(figure => `<option value="f${figure.id}"${figureId === figure.id ? ' selected' : ''}>${escapeHtml(figure.label)} (${figure.count})</option>`).join('')}
+          </optgroup>` : ''}
         </select>
         <select name="adventure" aria-label="Adventure" onchange="this.form.submit()">
           <option value="">All adventures</option>
           ${adventuresWithArt.map(adventure => `<option value="${adventure.id}"${adventureId === adventure.id ? ' selected' : ''}>${escapeHtml(adventure.title)} (${counts.byAdventure.get(adventure.id)})</option>`).join('')}
+        </select>
+        <select name="artist" aria-label="Artist" onchange="this.form.submit()">
+          <option value="">All artists</option>
+          ${artists.map(entry => `<option value="${escapeHtml(entry.name)}"${artist === entry.name ? ' selected' : ''}>🖌 ${escapeHtml(entry.name)} (${entry.count})</option>`).join('')}
         </select>` : ''}
         <noscript><button type="submit" class="btn btn-small">Filter</button></noscript>
       </form>
@@ -271,11 +363,15 @@ module.exports = function renderArtTab(ctx) {
           ? `<div class="art-grid">${images.map(entry => `
               <figure class="${image && image.id === entry.id ? 'is-current' : ''}">
                 ${thumb(entry, `/admin?tab=art${keep}&art=${entry.id}#art-viewer`)}
-                <figcaption>${names(entry) || '<span class="muted">nobody</span>'}${entry.adventure_title ? `<br><span class="muted small">${escapeHtml(entry.adventure_title)}</span>` : ''}</figcaption>
+                <figcaption>${names(entry) || '<span class="muted">nobody</span>'}${entry.adventure_title ? `<br><span class="muted small">${escapeHtml(entry.adventure_title)}</span>` : ''}${entry.artist_name ? `<br><span class="art-credit">🖌 ${escapeHtml(entry.artist_name)}</span>` : ''}</figcaption>
               </figure>`).join('')}</div>`
           : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : 'No art here yet.'}</p>`}
     </section>
-    ${isAdmin ? PICKER_SCRIPT : ''}
+    ${isAdmin ? `
+    <datalist id="art-figure-list">${db.artFigureSuggestions().map(label => `<option value="${escapeHtml(label)}"></option>`).join('')}</datalist>
+    <datalist id="art-artist-list">${[...new Set([...db.listKnownArtists(), ...db.prepare('SELECT DISTINCT posted_by_tag AS name FROM art_images WHERE posted_by_tag IS NOT NULL').all().map(row => row.name)])]
+      .sort((a, b) => a.localeCompare(b)).map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
+    ${PICKER_SCRIPT}` : ''}
   `;
 };
 

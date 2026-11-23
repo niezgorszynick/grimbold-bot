@@ -1593,3 +1593,21 @@ button.sheet-hud-tile { cursor: pointer; }
 .art-sort-item p { margin: 0; }
 .art-sort-form { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .art-strip { margin-top: 12px; }
+
+/* Art: others in a picture, and the artist's credit. */
+.art-figure { font-style: italic; }
+.art-others-list { max-height: 140px; }
+.art-artist-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; }
+.art-artist-fields input { width: 100%; min-width: 0; }
+.art-artist-fields [data-fill-artist] { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 520px) { .art-artist-fields { grid-template-columns: 1fr; } }
+.art-thumb { position: relative; }
+.art-credit-badge { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 8px; border-radius: 999px; background: rgba(17, 18, 20, 0.82); color: #f2d98a; border: 1px solid rgba(212, 175, 55, 0.7); font-size: 12px; font-weight: 600; }
+.art-credit { color: #e2b24f; font-weight: 600; font-size: 13px; }
+.art-credit-banner { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 6px 0 4px; padding: 8px 14px; border-radius: 6px;
+  background: rgba(212, 175, 55, 0.14); border: 1px solid rgba(212, 175, 55, 0.6); color: #f2d98a; font-size: 16px; }
+.art-credit-banner a { color: #f2d98a; }
+.art-credit-banner strong { font-size: 18px; }
+.art-credit-banner .art-credit-link { font-size: 13px; }
+.art-credit-banner.is-missing { background: transparent; border-style: dashed; border-color: #4e5058; color: #949ba4; font-size: 14px; }

@@ -88,6 +88,130 @@ function allAdventures() {
   return db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled'").all();
 }
 
+// ─── Others in a picture, and the artist ────────────────────────────────────
+
+const cleanName = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+const companionWord = kind => (kind === 'pet' ? 'pet' : 'familiar');
+
+// What can be named besides the characters: public Notable NPCs, and named
+// familiars and pets. [{ kind, refId, name, label }].
+function figureCandidates() {
+  const npcs = db.prepare('SELECT id, name FROM npcs WHERE COALESCE(private, 0) = 0').all()
+    .map(npc => ({ kind: 'npc', refId: npc.id, name: npc.name, label: `${npc.name} (NPC)` }));
+  const companions = db.prepare(`
+    SELECT co.id, co.name, co.kind, c.name AS owner FROM companions co JOIN characters c ON c.id = co.character_id
+    WHERE co.name IS NOT NULL AND TRIM(co.name) != ''
+  `).all().map(row => ({ kind: 'companion', refId: row.id, name: row.name, label: `${row.name} (${row.owner}'s ${companionWord(row.kind)})` }));
+  return [...npcs, ...companions];
+}
+
+// The figure for an NPC or companion (made on first use), or for a name.
+function ensureFigure(kind, refId, name) {
+  const clean = cleanName(name);
+  if (kind === 'custom') {
+    const key = nameText(clean);
+    const found = db.prepare("SELECT id FROM art_figures WHERE kind = 'custom' AND name_key = ?").get(key);
+    if (found) return found.id;
+    return Number(db.prepare("INSERT INTO art_figures (kind, name, name_key) VALUES ('custom', ?, ?)").run(clean, key).lastInsertRowid);
+  }
+  const found = db.prepare('SELECT id FROM art_figures WHERE kind = ? AND ref_id = ?').get(kind, refId);
+  if (found) {
+    db.prepare('UPDATE art_figures SET name = ?, name_key = ? WHERE id = ?').run(clean, nameText(clean), found.id);
+    return found.id;
+  }
+  return Number(db.prepare('INSERT INTO art_figures (kind, ref_id, name, name_key) VALUES (?, ?, ?, ?)').run(kind, refId, clean, nameText(clean)).lastInsertRowid);
+}
+
+// A typed name → { characterId } or { figureId }, or null for nothing. The
+// same name in another case, with other spaces, accents or punctuation is the
+// same one: an NPC or a familiar as the suggestions label them, a name used
+// before, a player character, an NPC or a familiar by name; else a new name.
+function resolveArtFigure(text) {
+  const name = cleanName(text);
+  const key = nameText(name);
+  if (!key) return null;
+  const candidates = figureCandidates();
+  const byLabel = candidates.find(candidate => nameText(candidate.label) === key);
+  if (byLabel) return { figureId: ensureFigure(byLabel.kind, byLabel.refId, byLabel.name) };
+  const used = db.prepare('SELECT id FROM art_figures WHERE name_key = ? ORDER BY (kind = \'custom\') DESC, id').all(key);
+  if (used.length) return { figureId: used[0].id };
+  const characters = allCharacters().filter(character => nameText(character.name) === key);
+  if (characters.length === 1) return { characterId: characters[0].id };
+  const named = candidates.filter(candidate => nameText(candidate.name) === key);
+  if (named.length === 1) return { figureId: ensureFigure(named[0].kind, named[0].refId, named[0].name) };
+  return { figureId: ensureFigure('custom', null, name) };
+}
+
+// Names typed in a list, split on commas and new lines → { characterIds, figureIds }.
+function resolveArtNames(names) {
+  const characterIds = new Set();
+  const figureIds = new Set();
+  for (const entry of [].concat(names || []).flatMap(value => String(value).split(/[,\n;]+/))) {
+    const found = resolveArtFigure(entry);
+    if (found && found.characterId) characterIds.add(found.characterId);
+    if (found && found.figureId) figureIds.add(found.figureId);
+  }
+  return { characterIds: [...characterIds], figureIds: [...figureIds] };
+}
+
+// The NPCs, familiars and names used before that a post names in full.
+function matchArtFigures(text) {
+  const words = nameText(text);
+  if (!words) return [];
+  const found = new Set();
+  for (const figure of db.prepare("SELECT id, name_key FROM art_figures WHERE kind = 'custom'").all()) {
+    if (figure.name_key.length >= 4 && textHasWord(words, figure.name_key)) found.add(figure.id);
+  }
+  for (const candidate of figureCandidates()) {
+    const key = nameText(candidate.name);
+    if (key.length >= 4 && textHasWord(words, key)) found.add(ensureFigure(candidate.kind, candidate.refId, candidate.name));
+  }
+  return [...found];
+}
+
+// "Art by Selkie", "autor: Selkie", "rys. Selkie", "credit: @Selkie" → 'Selkie'.
+function parseArtist(text) {
+  const patterns = [
+    /\b(?:art|arts|drawn|drawing|painted|painting|illustrated|illustration|sketched|sketch|made)\s+by\s*:?\s*([^\n,.;|()!?]+)/i,
+    /(?:^|[\s(])(?:autor(?:ka)?|artyst(?:a|ka)|narysowa[lł]a?|rysowa[lł]a?|rysunek|rys\.|kredyty?|credits?|artist)\s*:?\s*([^\n,.;|()!?]+)/i,
+    /(?:^|\s)by\s*:?\s*(@[^\n,.;|()!?]+)/i
+  ];
+  for (const pattern of patterns) {
+    const match = String(text || '').match(pattern);
+    if (!match) continue;
+    const name = cleanName(match[1].replace(/^@/, '')).split(' ').slice(0, 4).join(' ');
+    if (name.length >= 2) return name;
+  }
+  return null;
+}
+
+// An artist credited before under the same name keeps that spelling.
+function canonicalArtist(name) {
+  const clean = cleanName(name);
+  if (!clean) return null;
+  const key = nameText(clean);
+  const known = db.prepare('SELECT DISTINCT artist_name FROM art_images WHERE artist_name IS NOT NULL').all()
+    .find(row => nameText(row.artist_name) === key);
+  return known ? known.artist_name : clean;
+}
+
+function checkArtistUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return null;
+  if (!/^https?:\/\/\S+$/i.test(value) || value.length > 300) throw new Error('The artist\'s link must be a web address starting with http:// or https://.');
+  return value;
+}
+
+// artist: a name ('' = none); url: undefined keeps the link.
+function setArtist(imageId, { artist, url }, by) {
+  if (artist === undefined && url === undefined) return;
+  const current = db.prepare('SELECT artist_name, artist_url FROM art_images WHERE id = ?').get(imageId);
+  const name = artist === undefined ? current.artist_name : canonicalArtist(artist);
+  const link = url === undefined ? current.artist_url : checkArtistUrl(url);
+  db.prepare('UPDATE art_images SET artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
+    .run(name, name ? link : null, name ? by : null, imageId);
+}
+
 // ─── Records ────────────────────────────────────────────────────────────────
 
 // Is this Discord attachment an image? { contentType, name }.
@@ -99,6 +223,13 @@ function isArtAttachment(attachment) {
 
 const messageImages = messageId => db.prepare('SELECT * FROM art_images WHERE message_id = ? ORDER BY id').all(String(messageId));
 const imageTags = imageId => db.prepare('SELECT character_id FROM art_image_characters WHERE image_id = ?').all(imageId).map(row => row.character_id);
+const imageFigures = imageId => db.prepare('SELECT figure_id FROM art_image_figures WHERE image_id = ?').all(imageId).map(row => row.figure_id);
+
+function setFigures(imageId, figureIds) {
+  db.prepare('DELETE FROM art_image_figures WHERE image_id = ?').run(imageId);
+  const add = db.prepare('INSERT OR IGNORE INTO art_image_figures (image_id, figure_id) VALUES (?, ?)');
+  for (const id of figureIds) add.run(imageId, id);
+}
 
 function setTags(imageId, characterIds, by) {
   db.prepare('DELETE FROM art_image_characters WHERE image_id = ?').run(imageId);
@@ -120,9 +251,11 @@ function refreshGuess(imageId) {
 function tagFromText(images, text) {
   if (images.some(image => HUMAN.includes(image.tagged_by) || image.not_art)) return;
   const characterIds = matchArtCharacters({ text, characters: allCharacters() });
+  const figureIds = matchArtFigures(text);
   const adventureId = matchArtAdventure({ text, adventures: allAdventures() });
   for (const image of images) {
     setTags(image.id, characterIds, 'name');
+    setFigures(image.id, figureIds);
     if (!image.adventure_by || image.adventure_by === 'guess' || image.adventure_by === 'name') {
       db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ? WHERE id = ?').run(adventureId, adventureId ? 'name' : null, image.id);
     }
@@ -151,19 +284,27 @@ function recordArtMessage({ messageId, channelId, guildId, threadName, posterDis
     const all = messageImages(messageId);
     const textChanged = all.some(image => (image.message_text || '') !== String(text || '').slice(0, 2000));
     if (textChanged) db.prepare('UPDATE art_images SET message_text = ? WHERE message_id = ?').run(String(text || '').slice(0, 2000), String(messageId));
-    // New images of a tagged message share its tags.
+    // New images of a tagged message share its tags and credit.
     const tagged = all.find(image => !created.includes(image.id));
     if (tagged && created.length) {
       const tags = imageTags(tagged.id);
+      const figures = imageFigures(tagged.id);
       for (const id of created) {
         setTags(id, tags, tagged.tagged_by || 'name');
-        db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ?, not_art = ? WHERE id = ?')
-          .run(tagged.adventure_id, tagged.adventure_by, tagged.not_art, id);
+        setFigures(id, figures);
+        db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ?, not_art = ?, artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
+          .run(tagged.adventure_id, tagged.adventure_by, tagged.not_art, tagged.artist_name, tagged.artist_url, tagged.artist_by, id);
       }
     }
     if (created.length || textChanged) {
       const threadText = threadName ? `\n${threadName}` : '';
       tagFromText(messageImages(messageId), `${text || ''}${threadText}`);
+      // The artist the post credits, unless someone set one by hand.
+      const artist = parseArtist(text);
+      for (const image of messageImages(messageId)) {
+        if (image.artist_by && image.artist_by !== 'name') continue;
+        setArtist(image.id, { artist: artist || '', url: '' }, 'name');
+      }
     }
   })();
   return { images: messageImages(messageId), created };
@@ -198,10 +339,14 @@ function setAdventure(imageId, adventure, by) {
 
 // Tag art in Discord, for every image of the message. characterIds replace
 // the tags among `among` (the characters that menu offered; all if not given).
-function tagArtMessage(messageId, { characterIds, among, adventure, notArt }, by = 'discord') {
+// others: the names of everyone else in it (they replace the earlier ones; a
+// player character's name adds that character). artist, artistUrl: the credit.
+function tagArtMessage(messageId, { characterIds, among, adventure, notArt, others, artist, artistUrl }, by = 'discord') {
   const images = messageImages(messageId);
   if (!images.length) throw new Error('Grimbold has no images from that message.');
+  if (artistUrl !== undefined) checkArtistUrl(artistUrl);
   db.transaction(() => {
+    const named = others === undefined ? null : resolveArtNames(others);
     for (const image of images) {
       if (characterIds !== undefined) {
         const chosen = checkCharacters(characterIds);
@@ -210,6 +355,12 @@ function tagArtMessage(messageId, { characterIds, among, adventure, notArt }, by
         setTags(image.id, [...new Set([...kept, ...chosen])], by);
         refreshGuess(image.id);
       }
+      if (named) {
+        setFigures(image.id, named.figureIds);
+        setTags(image.id, [...new Set([...imageTags(image.id), ...named.characterIds])], by);
+        refreshGuess(image.id);
+      }
+      setArtist(image.id, { artist, url: artistUrl }, by);
       setAdventure(image.id, adventure, by);
       if (notArt !== undefined) db.prepare('UPDATE art_images SET not_art = ?, tagged_by = ? WHERE id = ?').run(notArt ? 1 : 0, by, image.id);
     }
@@ -217,15 +368,25 @@ function tagArtMessage(messageId, { characterIds, among, adventure, notArt }, by
   return messageImages(messageId);
 }
 
-// The DM in the panel, one image: { characterIds, adventure, notArt }.
-function updateArtImage(id, { characterIds, adventure, notArt }) {
+// The DM in the panel, one image: { characterIds, figureIds (kept), others
+// (names to add), adventure, notArt, artist, artistUrl }.
+function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt, artist, artistUrl }) {
   const image = db.prepare('SELECT id FROM art_images WHERE id = ?').get(Number(id));
   if (!image) throw new Error('Image not found.');
+  if (artistUrl !== undefined) checkArtistUrl(artistUrl);
   db.transaction(() => {
-    if (characterIds !== undefined) {
-      setTags(image.id, checkCharacters(characterIds), 'dm');
+    const named = others === undefined ? { characterIds: [], figureIds: [] } : resolveArtNames(others);
+    if (characterIds !== undefined || named.characterIds.length) {
+      const base = characterIds === undefined ? imageTags(image.id) : checkCharacters(characterIds);
+      setTags(image.id, [...new Set([...base, ...named.characterIds])], 'dm');
       refreshGuess(image.id);
     }
+    if (figureIds !== undefined || named.figureIds.length) {
+      const kept = figureIds === undefined ? imageFigures(image.id) : [].concat(figureIds).map(Number).filter(Number.isSafeInteger);
+      setFigures(image.id, [...new Set([...kept, ...named.figureIds])]);
+      db.prepare('UPDATE art_images SET tagged_by = ? WHERE id = ?').run('dm', image.id);
+    }
+    setArtist(image.id, { artist, url: artistUrl }, 'dm');
     setAdventure(image.id, adventure, 'dm');
     if (notArt !== undefined) db.prepare('UPDATE art_images SET not_art = ?, tagged_by = ? WHERE id = ?').run(notArt ? 1 : 0, 'dm', image.id);
   })();
@@ -234,7 +395,22 @@ function updateArtImage(id, { characterIds, adventure, notArt }) {
 
 // ─── Reading ────────────────────────────────────────────────────────────────
 
-const VISIBLE = 'i.not_art = 0 AND EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)';
+const HAS_SOMEONE = `(EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)
+  OR EXISTS (SELECT 1 FROM art_image_figures z WHERE z.image_id = i.id))`;
+const VISIBLE = `i.not_art = 0 AND ${HAS_SOMEONE}`;
+const UNSORTED = `i.not_art = 0 AND NOT ${HAS_SOMEONE}`;
+
+// Figures with the names they go by now: [{ id, kind, name, label, characterId }].
+const FIGURE_COLUMNS = `f.id, f.kind,
+  COALESCE(n.name, co.name, f.name) AS name, co.kind AS companion_kind, oc.name AS owner, oc.id AS owner_id`;
+const FIGURE_JOINS = `LEFT JOIN npcs n ON f.kind = 'npc' AND n.id = f.ref_id AND COALESCE(n.private, 0) = 0
+  LEFT JOIN companions co ON f.kind = 'companion' AND co.id = f.ref_id
+  LEFT JOIN characters oc ON oc.id = co.character_id`;
+function figureView(row) {
+  const label = row.kind === 'npc' ? `${row.name} (NPC)`
+    : row.kind === 'companion' && row.owner ? `${row.name} (${row.owner}'s ${companionWord(row.companion_kind)})` : row.name;
+  return { id: row.id, kind: row.kind, name: row.name, label, ownerId: row.owner_id || null };
+}
 
 function withCharacters(rows) {
   if (!rows.length) return rows;
@@ -248,16 +424,26 @@ function withCharacters(rows) {
     if (!byImage.has(tag.image_id)) byImage.set(tag.image_id, []);
     byImage.get(tag.image_id).push({ id: tag.id, name: tag.name, status: tag.status });
   }
-  return rows.map(row => present(row, byImage.get(row.id) || []));
+  const figures = db.prepare(`
+    SELECT t.image_id, ${FIGURE_COLUMNS} FROM art_image_figures t JOIN art_figures f ON f.id = t.figure_id ${FIGURE_JOINS}
+    WHERE t.image_id IN (${ids.map(() => '?').join(',')}) ORDER BY name COLLATE NOCASE
+  `).all(...ids);
+  const figuresByImage = new Map();
+  for (const figure of figures) {
+    if (!figuresByImage.has(figure.image_id)) figuresByImage.set(figure.image_id, []);
+    figuresByImage.get(figure.image_id).push(figureView(figure));
+  }
+  return rows.map(row => present(row, byImage.get(row.id) || [], figuresByImage.get(row.id) || []));
 }
 
-function present(row, characters) {
+function present(row, characters, figures = []) {
   const version = encodeURIComponent(row.file || '');
   return {
     ...row,
     not_art: Boolean(row.not_art),
     characters,
-    visible: !row.not_art && characters.length > 0,
+    figures,
+    visible: !row.not_art && (characters.length > 0 || figures.length > 0),
     imageUrl: row.file ? `/api/art/${row.id}/image?v=${version}` : null,
     thumbUrl: row.file ? `/api/art/${row.id}/image?size=thumb&v=${version}` : null,
     messageUrl: row.guild_id && row.channel_id && row.message_id
@@ -267,12 +453,15 @@ function present(row, characters) {
 
 const COLUMNS = 'i.*, a.title AS adventure_title';
 
-// view: 'gallery' (tagged art), 'unsorted' (no character yet), 'not_art'.
-// characterId / adventureId narrow the gallery. limit: the newest so many.
-function listArtImages({ view = 'gallery', characterId, adventureId, limit } = {}) {
+// view: 'gallery' (tagged art), 'unsorted' (nobody in it yet), 'not_art'.
+// characterId / figureId / adventureId / artist narrow the gallery. limit:
+// the newest so many.
+function listArtImages({ view = 'gallery', characterId, figureId, adventureId, artist, limit } = {}) {
   const where = [];
   const params = [];
-  if (view === 'unsorted') where.push('i.not_art = 0 AND NOT EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)');
+  if (figureId) { where.push('EXISTS (SELECT 1 FROM art_image_figures w WHERE w.image_id = i.id AND w.figure_id = ?)'); params.push(Number(figureId)); }
+  if (artist) { where.push('i.artist_name = ?'); params.push(String(artist)); }
+  if (view === 'unsorted') where.push(UNSORTED);
   else if (view === 'not_art') where.push('i.not_art = 1');
   else where.push(VISIBLE);
   if (characterId) { where.push('EXISTS (SELECT 1 FROM art_image_characters y WHERE y.image_id = i.id AND y.character_id = ?)'); params.push(Number(characterId)); }
@@ -309,11 +498,43 @@ function artCounts() {
   `).all().map(row => [row.id, row.n]));
   return {
     gallery: count(VISIBLE),
-    unsorted: count('i.not_art = 0 AND NOT EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)'),
+    unsorted: count(UNSORTED),
     notArt: count('i.not_art = 1'),
     byCharacter,
     byAdventure
   };
+}
+
+// Everyone besides the characters who is in some art: [{ id, label, count }].
+function listArtFigures() {
+  return db.prepare(`
+    SELECT ${FIGURE_COLUMNS}, COUNT(*) AS count FROM art_image_figures t JOIN art_images i ON i.id = t.image_id
+    JOIN art_figures f ON f.id = t.figure_id ${FIGURE_JOINS}
+    WHERE i.not_art = 0 GROUP BY f.id ORDER BY name COLLATE NOCASE
+  `).all().map(row => ({ ...figureView(row), count: row.count }));
+}
+
+// What the "others" box suggests: names used before, public NPCs, named
+// familiars and pets, by their labels.
+function artFigureSuggestions() {
+  const labels = new Map();
+  for (const figure of db.prepare(`SELECT ${FIGURE_COLUMNS} FROM art_figures f ${FIGURE_JOINS}`).all().map(figureView)) {
+    if (figure.kind === 'custom' || figure.label !== figure.name) labels.set(nameText(figure.label), figure.label);
+  }
+  for (const candidate of figureCandidates()) labels.set(nameText(candidate.label), candidate.label);
+  return [...labels.values()].sort((a, b) => a.localeCompare(b));
+}
+
+// Credited artists: [{ name, count }], the most credited first.
+function listArtArtists() {
+  return db.prepare(`
+    SELECT i.artist_name AS name, COUNT(*) AS count FROM art_images i
+    WHERE i.artist_name IS NOT NULL AND ${VISIBLE} GROUP BY i.artist_name ORDER BY count DESC, name COLLATE NOCASE
+  `).all();
+}
+
+function listKnownArtists() {
+  return db.prepare('SELECT DISTINCT artist_name AS name FROM art_images WHERE artist_name IS NOT NULL ORDER BY artist_name COLLATE NOCASE').all().map(row => row.name);
 }
 
 // Adventures to offer for an image: those all its characters were in first,
@@ -390,6 +611,12 @@ function setArtScanStatus(status) {
 
 module.exports = {
   ART_MAX_IMAGE_BYTES: MAX_IMAGE_BYTES,
+  resolveArtFigure,
+  parseArtist,
+  listArtFigures,
+  artFigureSuggestions,
+  listArtArtists,
+  listKnownArtists,
   isArtAttachment,
   matchArtCharacters,
   matchArtAdventure,

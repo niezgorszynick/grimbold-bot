@@ -1348,6 +1348,37 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS art_image_characters_character ON art_image_characters (character_id);
       `);
     }
+  },
+  {
+    // Art: who else is in a picture (art_figures: a Notable NPC, a familiar or
+    // pet from companions, or anyone else by name; name_key is the name
+    // without case, accents, punctuation or extra spaces, so one isn't added
+    // twice), and the artist's credit (artist_by as tagged_by).
+    version: 47,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS art_figures (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL CHECK (kind IN ('npc', 'companion', 'custom')),
+          ref_id INTEGER,
+          name TEXT NOT NULL,
+          name_key TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS art_figures_ref ON art_figures (kind, ref_id) WHERE ref_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS art_figures_custom ON art_figures (name_key) WHERE kind = 'custom';
+        CREATE TABLE IF NOT EXISTS art_image_figures (
+          image_id INTEGER NOT NULL REFERENCES art_images(id) ON DELETE CASCADE,
+          figure_id INTEGER NOT NULL REFERENCES art_figures(id) ON DELETE CASCADE,
+          PRIMARY KEY (image_id, figure_id)
+        );
+        CREATE INDEX IF NOT EXISTS art_image_figures_figure ON art_image_figures (figure_id);
+      `);
+      const columns = new Set(db.prepare('PRAGMA table_info(art_images)').all().map(column => column.name));
+      if (!columns.has('artist_name')) db.exec('ALTER TABLE art_images ADD COLUMN artist_name TEXT');
+      if (!columns.has('artist_url')) db.exec('ALTER TABLE art_images ADD COLUMN artist_url TEXT');
+      if (!columns.has('artist_by')) db.exec('ALTER TABLE art_images ADD COLUMN artist_by TEXT');
+    }
   }
 ];
 

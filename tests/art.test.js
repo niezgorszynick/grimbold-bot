@@ -188,3 +188,74 @@ test('the Art tab, the sheet and the adventure show the gallery; DMs tag in the 
   db.deleteCharacter(thorin);
   assert.equal(db.getArtImage(first.id, { isAdmin: true }).characters.length, 0, "a deleted character's art goes back to sorting");
 });
+
+test('others in a picture: NPCs, familiars and names used before are reused, whatever the spacing or case', () => {
+  const npc = Number(db.prepare("INSERT INTO npcs (name) VALUES ('Mistrz Głos')").run().lastInsertRowid);
+  db.prepare("INSERT INTO npcs (name, private) VALUES ('Secret Villain', 1)").run();
+  const companion = Number(db.prepare("INSERT INTO companions (character_id, kind, name) VALUES (?, 'familiar', 'Pazur')").run(elara).lastInsertRowid);
+
+  const first = db.resolveArtFigure('  Old   Tom ');
+  assert.equal(db.resolveArtFigure('old tom').figureId, first.figureId);
+  assert.equal(db.resolveArtFigure('OLD TOM!').figureId, first.figureId, 'case, spaces and punctuation');
+  assert.equal(db.prepare("SELECT name FROM art_figures WHERE id = ?").get(first.figureId).name, 'Old Tom');
+  assert.deepEqual(db.resolveArtFigure('elara moonwhisper'), { characterId: elara }, 'a player character stays a character');
+  const viaLabel = db.resolveArtFigure("Pazur (Elara Moonwhisper's familiar)");
+  assert.equal(db.resolveArtFigure('pazur').figureId, viaLabel.figureId);
+  assert.equal(db.prepare('SELECT kind, ref_id FROM art_figures WHERE id = ?').get(viaLabel.figureId).ref_id, companion);
+  const npcFigure = db.resolveArtFigure('Mistrz Głos (NPC)');
+  assert.equal(db.prepare('SELECT ref_id FROM art_figures WHERE id = ?').get(npcFigure.figureId).ref_id, npc);
+  const suggestions = db.artFigureSuggestions();
+  assert.ok(suggestions.includes('Mistrz Głos (NPC)') && suggestions.includes('Old Tom'));
+  assert.ok(!suggestions.some(label => /Secret Villain/.test(label)), 'private NPCs are never suggested');
+  assert.equal(db.prepare("SELECT kind FROM art_figures WHERE id = ?").get(db.resolveArtFigure('Secret Villain').figureId).kind, 'custom');
+
+  // In the panel: a picture with only an NPC in it is art too.
+  const [meme] = db.getArtMessage('m2');
+  db.updateArtImage(meme.id, { notArt: false, characterIds: [], figureIds: [], others: ['mistrz  głos', 'Old Tom, Ktoś Nowy'] });
+  const saved = db.getArtImage(meme.id);
+  assert.deepEqual(saved.figures.map(figure => figure.label).sort(), ['Ktoś Nowy', 'Mistrz Głos (NPC)', 'Old Tom']);
+  assert.equal(saved.visible, true);
+  assert.ok(db.listArtImages({ figureId: npcFigure.figureId }).some(image => image.id === meme.id));
+  db.updateArtImage(meme.id, { figureIds: [String(npcFigure.figureId)], others: [] });
+  assert.deepEqual(db.getArtImage(meme.id).figures.map(figure => figure.label), ['Mistrz Głos (NPC)'], 'unticked ones go');
+});
+
+test('the artist: read from the post, credited by hand under one spelling, shown on the art', async () => {
+  assert.equal(db.parseArtist('Elara i Thorin, art by Selkie!'), 'Selkie');
+  assert.equal(db.parseArtist('Autor: Kasia Nowak\nnowy szkic'), 'Kasia Nowak');
+  assert.equal(db.parseArtist('rys. @Mira, dzięki'), 'Mira');
+  assert.equal(db.parseArtist('fan art of Elara'), null);
+
+  const [image] = db.getArtMessage('m2');
+  db.updateArtImage(image.id, { artist: 'Selkie', artistUrl: 'https://example.com/selkie' });
+  const [other] = db.getArtMessage('m1');
+  db.updateArtImage(other.id, { artist: '  selkie ' });
+  assert.equal(db.getArtImage(other.id, { isAdmin: true }).artist_name, 'Selkie', 'the spelling already used');
+  assert.throws(() => db.updateArtImage(other.id, { artist: 'Selkie', artistUrl: 'javascript:alert(1)' }), /http/);
+  assert.deepEqual(db.listArtArtists().map(entry => entry.name), ['Selkie']);
+  assert.ok(db.listArtImages({ artist: 'Selkie' }).length >= 1);
+
+  const admin = { id: 0, discord_tag: 'admin', role: 'admin' };
+  const html = renderAdminPage({ session: { user: admin }, query: { tab: 'art', art: String(image.id) } });
+  assert.match(html, /art-credit-banner">🖌 Art by/);
+  assert.match(html, /href="https:\/\/example.com\/selkie"/);
+  assert.match(html, /art-credit-badge">🖌 Selkie/);
+  assert.match(html, /<datalist id="art-figure-list">/);
+  for (const [, code] of html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+
+  // Tag art in Discord: the form for others and the artist.
+  const modal = art.othersModal('m2').toJSON();
+  assert.equal(modal.custom_id, 'art:m:m2');
+  assert.equal(modal.components[1].components[0].value, 'Selkie');
+  const replies = [];
+  await art.handleArtInteraction({
+    customId: 'art:m:m2', user: { id: ownerDiscord },
+    fields: { getTextInputValue: name => ({ others: 'Old Tom\nPazur', artist: 'Mira', artist_url: '' })[name] },
+    update: async payload => replies.push(payload), reply: async payload => replies.push(payload)
+  });
+  const tagged = db.getArtMessage('m2')[0];
+  assert.deepEqual(tagged.figures.map(figure => figure.name).sort(), ['Old Tom', 'Pazur']);
+  assert.equal(tagged.artist_name, 'Mira');
+  assert.equal(tagged.artist_url, null);
+  assert.match(replies.at(-1).content, /Artist:\*\* 🖌 Mira/);
+});

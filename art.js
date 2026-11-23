@@ -14,7 +14,8 @@
 'use strict';
 
 const {
-  ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, MessageFlags
+  ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
+  ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 const db = require('./db');
 
@@ -87,6 +88,18 @@ function inArtChannel(message) {
   return message.channelId === channelId() || Boolean(channel && channel.parentId === channelId());
 }
 
+// The post's text with <@id> mentions as the names they show.
+function plainText(message) {
+  const users = message.mentions && message.mentions.users;
+  const members = message.mentions && message.mentions.members;
+  return String(message.content || '').replace(/<@!?(\d+)>/g, (whole, id) => {
+    const member = members && members.get ? members.get(id) : null;
+    const user = users && users.get ? users.get(id) : null;
+    const name = (member && member.displayName) || (user && (user.globalName || user.username));
+    return name ? `@${name}` : whole;
+  });
+}
+
 // One message: its images recorded and copied. Returns the new image ids.
 async function recordMessage(message, threadName) {
   const author = message.author || {};
@@ -101,7 +114,7 @@ async function recordMessage(message, threadName) {
     posterDiscordId: author.id,
     posterTag: (message.member && message.member.displayName) || author.globalName || author.username || null,
     postedAt: message.createdAt ? new Date(message.createdAt).toISOString() : null,
-    text: message.content || '',
+    text: plainText(message),
     attachments
   });
   await keepCopies(message);
@@ -222,11 +235,12 @@ function tagView(messageId) {
     : first.adventure_id && first.adventure_by !== 'guess' ? String(first.adventure_id) : 'guess';
   const lines = [
     `🎨 **${images.length === 1 ? 'An image' : `${images.length} images`}** posted by ${first.posted_by_tag || 'someone'}${first.posted_at ? ` on ${first.posted_at.slice(0, 10)}` : ''}`,
-    `**In it:** ${tagged.length ? tagged.map(tag => tag.name).join(', ') : '— nobody yet —'}`,
+    `**In it:** ${tagged.length || first.figures.length ? [...tagged.map(tag => tag.name), ...first.figures.map(figure => figure.label)].join(', ') : '— nobody yet —'}`,
+    `**Artist:** ${first.artist_name ? `🖌 ${first.artist_name}${first.artist_url ? ` (<${first.artist_url}>)` : ''}` : '— not credited —'}`,
     `**Adventure:** ${first.adventure_title ? `${first.adventure_title}${first.adventure_by === 'guess' ? ' (guessed)' : ''}` : first.adventure_by === 'none' ? 'none' : '— none found —'}`,
     first.not_art
       ? '🚫 Marked **Not art**: it stays out of the gallery.'
-      : tagged.length ? '✅ In the Art tab.' : '⏳ Waiting in “To sort” until somebody in it is tagged.'
+      : tagged.length || first.figures.length ? '✅ In the Art tab.' : '⏳ Waiting in “To sort” until somebody in it is tagged.'
   ];
   if (more) lines.push(`*${more} more characters didn't fit here: a DM can tag them in the panel.*`);
 
@@ -270,6 +284,7 @@ function tagView(messageId) {
     first.not_art
       ? new ButtonBuilder().setCustomId(`art:x:${messageId}`).setLabel('It is art after all').setStyle(ButtonStyle.Success)
       : new ButtonBuilder().setCustomId(`art:x:${messageId}`).setLabel('Not art (meme, screenshot)').setEmoji('🚫').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`art:o:${messageId}`).setLabel('NPCs, others & artist').setEmoji('🖌').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`art:d:${messageId}`).setLabel('Done').setStyle(ButtonStyle.Secondary)
   ];
   const link = panelLink(images);
@@ -292,12 +307,37 @@ async function handleTagArt(interaction) {
   return interaction.editReply(tagView(message.id));
 }
 
+// The form for everyone else in it and the artist, filled with what is set.
+function othersModal(messageId) {
+  const [first] = db.getArtMessage(messageId);
+  const others = new TextInputBuilder().setCustomId('others').setLabel('Who else is in it? (one per line)')
+    .setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000)
+    .setPlaceholder('An NPC, a familiar or anyone else: names used before are reused');
+  const current = first.figures.map(figure => figure.label).join('\n');
+  if (current) others.setValue(current);
+  const artist = new TextInputBuilder().setCustomId('artist').setLabel('Artist').setStyle(TextInputStyle.Short)
+    .setRequired(false).setMaxLength(100)
+    .setPlaceholder(first.posted_by_tag ? `Who drew it? (posted by ${first.posted_by_tag})`.slice(0, 100) : 'Who drew it?');
+  if (first.artist_name) artist.setValue(first.artist_name);
+  const link = new TextInputBuilder().setCustomId('artist_url').setLabel('Artist\'s link (optional)').setStyle(TextInputStyle.Short)
+    .setRequired(false).setMaxLength(300).setPlaceholder('https://…');
+  if (first.artist_url) link.setValue(first.artist_url);
+  return new ModalBuilder().setCustomId(`art:m:${messageId}`).setTitle('Others in it, and the artist')
+    .addComponents([others, artist, link].map(input => new ActionRowBuilder().addComponents(input)));
+}
+
 // The menu's selects and buttons (customId art:<what>:<messageId>[:<menu>]).
 async function handleArtInteraction(interaction) {
   if (!isPlayer(interaction.user.id)) return interaction.reply({ content: NOT_A_PLAYER, flags: MessageFlags.Ephemeral });
   const [, what, messageId] = interaction.customId.split(':');
   try {
     if (what === 'd') return interaction.update({ content: '🎨 Thanks! Grimbold hangs it in the gallery.', components: [] });
+    if (what === 'o') return interaction.showModal(othersModal(messageId));
+    if (what === 'm') {
+      const field = name => interaction.fields.getTextInputValue(name) || '';
+      db.tagArtMessage(messageId, { others: field('others').split('\n'), artist: field('artist'), artistUrl: field('artist_url') });
+      return interaction.update(tagView(messageId));
+    }
     if (what === 'c') {
       const among = (interaction.component && interaction.component.options || []).map(option => option.value);
       db.tagArtMessage(messageId, { characterIds: interaction.values, among });
@@ -326,6 +366,7 @@ module.exports = {
   startImport,
   recordMessage,
   tagView,
+  othersModal,
   handleTagArt,
   handleArtInteraction,
   isRunning: () => running

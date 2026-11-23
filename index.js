@@ -223,7 +223,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   // Tag art: the menu's selects and buttons (art.js).
-  if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('art:')) {
+  if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith('art:')) {
     await require('./art').handleArtInteraction(interaction).catch(error => console.error('[ERROR] Tag art:', error));
     return;
   }

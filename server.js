@@ -425,12 +425,18 @@ router.post('/art/update', (req, res) => {
   const back = req.body.return_to ? target : `/admin?tab=art&art=${encodeURIComponent(req.body.id)}`;
   try {
     const notArt = req.body.not_art === undefined ? undefined : [].concat(req.body.not_art).includes('1');
-    // The quick Not art button sends no characters; the forms send none when all are unticked.
+    // The forms send no characters when all are unticked; figures_form marks
+    // a form with the "anyone else" box (figure_ids kept, others added by name).
     const tagging = req.body.character_ids !== undefined || req.body.adventure !== undefined;
+    const figures = req.body.figures_form !== undefined;
     db.updateArtImage(req.body.id, {
       characterIds: tagging ? [].concat(req.body.character_ids || []) : undefined,
+      figureIds: figures ? [].concat(req.body.figure_ids || []) : undefined,
+      others: figures ? [].concat(req.body.others || []).filter(name => String(name).trim()) : undefined,
       adventure: req.body.adventure,
-      notArt
+      notArt,
+      artist: req.body.artist,
+      artistUrl: req.body.artist_url
     });
     res.redirect(`${back}&status=art_updated${back.includes('&art=') ? '#art-viewer' : ''}`);
   } catch (err) {
