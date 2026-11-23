@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-23">
+<title>Art, Familiars and More</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 18–23 November 2026</span>
+    <h1>Art, Familiars and More</h1>
+    <p class="lede">The art you post in Discord now has its own gallery, familiars and pets join the character sheet, every spell shows what it rolls, items can carry properties of their own, and NPCs can send gifts from Grimbold's counter.</p>
+  </header>
+
+  <section>
+    <h2>For everyone: the Art tab</h2>
+    <p>A new <strong>Art</strong> tab under Characters collects the pictures posted in the art channel, filed under the characters in them and the adventure they come from. Each character sheet has an <strong>🎨 Art</strong> strip with that character's newest pictures, and each adventure table has one too.</p>
+
+    <h3>✍️ Name them in the post</h3>
+    <ul>
+      <li>When you post a picture, write <strong>who is in it</strong> in the same message, and the adventure if you like: <code>Elara i Thorin — Sunken Keep</code>.</li>
+      <li>First names are enough, in any form (<em>Elarze</em>, <em>Thorina</em>), unless two characters share one. Several characters in one picture are fine.</li>
+      <li>Leave the adventure out and Grimbold guesses it: the latest adventure everyone in the picture was in before it was posted.</li>
+      <li>Grimbold checks for new posts every 10 minutes and keeps his own copy of each picture. Several pictures in one post get the same tags, so post them separately if they show different people.</li>
+    </ul>
+
+    <h3>🏷 Or tag it afterwards</h3>
+    <ul>
+      <li>Right-click the post (on a phone, press and hold it), then choose <strong>Apps → Tag art</strong>. Only you see the menu, and anyone with a panel account can use it.</li>
+      <li>Tick the characters and pick the adventure. <strong>NPCs, others &amp; artist</strong> opens a form for everyone else in it and for the artist.</li>
+      <li>Press <strong>😂 Meme</strong> for a meme, or <strong>🚫 Not art</strong> for a screenshot or anything that shouldn't be shown.</li>
+      <li>Forgot to tag? Editing the post works too, as long as nobody has tagged it by hand yet.</li>
+    </ul>
+
+    <h3>🧙 NPCs, familiars and everyone else</h3>
+    <ul>
+      <li>Not everyone in a picture is a player character: add a Notable NPC, a familiar or pet, or anyone at all, one per line.</li>
+      <li>Names used before are reused, whatever the capitals or spaces, so <em>Old Tom</em>, <em>old tom</em> and <em>Old  Tom</em> are the same person. After the first time, Grimbold also recognizes the full name in later posts.</li>
+    </ul>
+
+    <h3>🖌 Credit the artist</h3>
+    <ul>
+      <li>Whoever posts a picture is credited as its artist, by their player name, unless the post says otherwise: <code>art by Selkie</code>, <code>autor: Selkie</code> or <code>rys. @Selkie</code>.</li>
+      <li>The artist can also be set in Tag art, with a link to their page if they have one.</li>
+      <li>The artist's name is on every picture in the gallery and at the top of the picture when you open it, and the gallery can be filtered by artist.</li>
+    </ul>
+
+    <h3>😂 Memes and 📌 Reference</h3>
+    <ul>
+      <li>The Art tab's first dropdown has three views: <strong>🎨 Gallery</strong>, <strong>😂 Memes</strong> and <strong>📌 Reference</strong>, each with its own filters by who is in it, adventure and artist.</li>
+      <li>Memes and reference material show up whether or not anyone is tagged, and stay out of the art gallery and the character strips.</li>
+      <li><strong>Reference</strong> is for character references, outfits, maps and mood boards from outside the channel: anyone can upload images there (PNG, JPG, WebP or GIF, up to 25 MB each) with a caption, tag them, and delete their own uploads.</li>
+    </ul>
+    <p class="note">A picture without anyone tagged waits for a DM or an art editor to sort it, so memes and screenshots never end up in the gallery by accident.</p>
+  </section>
+
+  <section>
+    <h2>For everyone: the character sheet</h2>
+
+    <h3>🐾 Familiars and pets</h3>
+    <ul>
+      <li>Anyone who can cast <strong>Find Familiar</strong> (a prepared spell or a Wizard's spellbook, Pact of the Chain, Familiar Friend, a Druid's Wild Companion) gets a <strong>Familiar</strong> card. Casting it picks a form, a name and Celestial, Fey or Fiend.</li>
+      <li>The familiar has its own HP, Dismiss, Recall and Release, and a stat block whose numbers roll on your dice. Familiar feats and invocations add what they give: extra HP, resistances, Energy Pulse, Phase Walk, Healing Beacon, Intercept Attack and the like.</li>
+      <li>On the adventure table it stands under its owner with HP, AC and initiative, and in a fight it rolls its own initiative. At 0 HP it disappears.</li>
+      <li>A DM can also give a character a <strong>pet</strong> for show (an ostrich, say): a name, a description, no stats, never in a fight.</li>
+    </ul>
+
+    <h3>✨ Spells</h3>
+    <ul>
+      <li>Every spell shows what it rolls <strong>on its line</strong>, even folded: a 🎯 spell attack button with its bonus (Guiding Bolt, Fire Bolt), the DC and ability of the save its targets make (Inflict Wounds), and its damage or healing dice with the damage type, at the slot level you picked to cast it.</li>
+      <li>Class spells are always prepared and don't use up your picks: a Paladin's <strong>Divine Smite</strong> from level 2 (and free once per Long Rest) and <strong>Find Steed</strong> from level 5, a Ranger's <strong>Hunter's Mark</strong>.</li>
+    </ul>
+
+    <h3>🧬 Species traits</h3>
+    <ul>
+      <li>Species traits have their uses and dice on the Resources card: Healing Hands, Celestial Revelation, Breath Weapon and Draconic Flight, Stonecunning, the Giant Ancestry boons and Large Form, Adrenaline Rush and Relentless Endurance.</li>
+      <li>Gnomish Cunning gives Advantage on Intelligence, Wisdom and Charisma saves.</li>
+      <li>New from <em>Lorwyn: First Light</em>: the Lorwyn and Shadowmoor elf lineages, and a Halfling's kithkin heritage.</li>
+    </ul>
+
+    <h3>🎒 Items</h3>
+    <ul>
+      <li>An item can have <strong>properties</strong> of its own: open it in the Inventory and add what it does, such as a Sylvan Talon set in a Rapier. A property can have uses that come back at dawn, on a Long Rest or on a Short Rest; those also show on the <strong>Resources</strong> card to tick off.</li>
+      <li>An item made special (properties or bonuses) keeps its own line, even when you get another of the same item.</li>
+      <li>Items you can't sell to Grimbold yourself now show a greyed 🪙: hover it to see why, and ask a DM to let you sell it.</li>
+    </ul>
+
+    <h3>📜 Chronicles</h3>
+    <ul>
+      <li>Saved copies keep the doc's formatting: bold and italics, sizes and colours, headings, lists, tables and links.</li>
+      <li>A doc opens on its saved copy, which is quicker; <strong>Live doc</strong> shows Google's own view when you want it.</li>
+    </ul>
+
+    <h3>🖥 Easier to read</h3>
+    <ul>
+      <li>Links on the panel are a readable light blue instead of the browser's dark blue and purple.</li>
+      <li>On narrower windows, the sheet's header buttons wrap onto a second line instead of crowding the character's details.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+
+      <h2>Art</h2>
+      <ul>
+        <li><strong>Import past messages</strong> on the Art tab reads the channel's whole history, threads included.</li>
+        <li><strong>To sort</strong> lists every picture with nobody tagged: tick who is in it, add others, credit the artist, pick the adventure, and save. <strong>😂 Meme</strong>, <strong>📌 Reference</strong> and <strong>🚫 Not art</strong> buttons file it in one click; Not art keeps it out of sight, set aside in case it was a mistake.</li>
+        <li><strong>Art editors:</strong> players you list by Discord ID in the Art editors card (bottom of the Art tab) can tag and sort art the way a DM does.</li>
+      </ul>
+
+      <h2>Gifts from NPCs</h2>
+      <ul>
+        <li>In the shop, <strong>Buy → Buy as → 🎭 A Notable NPC</strong> buys an item as one of your NPCs, as a gift for a character.</li>
+        <li>It works like any purchase (the shelf, stock, reservations, the Sales Ledger and Grimbold's note in the recipient's thread) at the shop's own price, but NPCs have all the gold they need: no purse is touched or shown. The shop channel names the NPC, not you.</li>
+      </ul>
+
+      <h2>Selling for players</h2>
+      <ul>
+        <li>Gear a player added to their own list (or whose count they raised, or starting gear after a rebuild) is something only a DM sells to Grimbold. Open the item as a DM to let the player sell it themselves, or press <strong>🪙 Let the player sell all … blocked</strong> by the Inventory's buttons for the whole list. Custom items still have no shop price.</li>
+      </ul>
+
+      <h2>Adventure table and NPCs</h2>
+      <ul>
+        <li><strong>Tracked resources:</strong> on the adventure table, the adventure's DM and the Root DM can track things for a party member, an NPC or a monster in a fight: a name, a short comment and an optional count with − and + buttons. Players never see them.</li>
+        <li>A familiar in a fight takes the DM's damage itself; the DM can allow any statblock as a familiar's form.</li>
+        <li>The NPC form's <strong>Based on a statblock</strong> shows what the statblock brings before you save, and statblock and item suggestions show the creature's name with its CR.</li>
+      </ul>
+
+      <h2>Debug mode</h2>
+      <ul>
+        <li>With <strong>🐞 Debug</strong> on, the Root DM (and players set up for it) can grant any spell from the spell list to a character, cast with its slots, at will, or once per Long Rest.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</body>
+</html>
