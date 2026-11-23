@@ -304,3 +304,49 @@ test('memes: a category of their own, seen by everyone, tagged or not', async ()
   assert.equal(db.getArtImage(image.id).category, 'art');
   assert.throws(() => db.updateArtImage(image.id, { category: 'cat' }), /Unknown category/);
 });
+
+test('art editors: players the DMs list tag and sort art as DMs do; importing stays with the DMs', async () => {
+  assert.deepEqual(db.getArtEditors(), ['1447629856870240471', '280626176341442570'], 'the first two are on the list');
+  const editor = createPlayer();
+  const plain = createPlayer();
+  db.prepare("UPDATE players SET discord_id = '280626176341442570' WHERE id = ?").run(editor);
+  const editorUser = { id: editor, discord_tag: 'editor', role: 'player' };
+  const plainUser = { id: plain, discord_tag: 'plain', role: 'player' };
+  assert.equal(db.canEditArt(editorUser), true);
+  assert.equal(db.canEditArt(plainUser), false);
+  assert.equal(db.canEditArt({ id: 0, role: 'admin' }), true);
+  assert.throws(() => db.setArtEditors('280626176341442570\nSelkie'), /Not a Discord ID: Selkie/);
+
+  const [image] = db.getArtMessage('m1');
+  const page = user => renderAdminPage({ session: { user }, query: { tab: 'art', view: 'unsorted', art: String(image.id) } });
+  const editorPage = page(editorUser);
+  assert.match(editorPage, /Tag this image/);
+  assert.match(editorPage, /To sort \(/);
+  assert.doesNotMatch(editorPage, /Import past messages|Art editors/, 'not the import nor the list');
+  assert.doesNotMatch(page(plainUser), /Tag this image|To sort \(/);
+  const dmPage = page({ id: 0, discord_tag: 'admin', role: 'admin' });
+  assert.match(dmPage, /🛡 Art editors/);
+  assert.match(dmPage, /280626176341442570<\/code> tester\d+/, 'named when they have a panel account');
+
+  // The panel's form posts: an editor may tag, not import; others may do neither.
+  const express = require('express');
+  const app = express();
+  app.use((req, res, next) => { req.session = { user: { id: Number(req.get('x-user')) } }; next(); });
+  app.use('/admin', require('../server'));
+  const server = app.listen(0);
+  try {
+    const post = (path, userId, body) => fetch(`http://127.0.0.1:${server.address().port}/admin${path}`, {
+      method: 'POST', redirect: 'manual', headers: { 'x-user': String(userId), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body)
+    });
+    db.setPlayerCredentials(editor, 'test1234', 'player');
+    const saved = await post('/art/update', editor, { id: String(image.id), category: 'meme' });
+    assert.equal(saved.status, 302);
+    assert.equal(db.getArtImage(image.id).category, 'meme');
+    assert.equal((await post('/art/import', editor, {})).status, 403);
+    assert.equal((await post('/art/editors', editor, { discord_ids: '' })).status, 403);
+    assert.equal((await post('/art/update', plain, { id: String(image.id), category: 'art' })).status, 403);
+    assert.equal(db.getArtImage(image.id).category, 'meme');
+  } finally {
+    server.close();
+  }
+});

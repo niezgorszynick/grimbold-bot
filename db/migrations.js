@@ -1412,6 +1412,15 @@ const MIGRATIONS = [
       const columns = new Set(db.prepare('PRAGMA table_info(art_images)').all().map(column => column.name));
       if (!columns.has('is_meme')) db.exec('ALTER TABLE art_images ADD COLUMN is_meme INTEGER NOT NULL DEFAULT 0');
     }
+  },
+  {
+    // Art editors (db/art.js): players, by Discord ID, who tag and sort the
+    // Art tab as DMs do. The first two, as asked on 2026-11-23.
+    version: 50,
+    up(db) {
+      db.prepare("INSERT INTO config (key, value) VALUES ('art_editors', ?) ON CONFLICT(key) DO NOTHING")
+        .run(JSON.stringify(['1447629856870240471', '280626176341442570']));
+    }
   }
 ];
 

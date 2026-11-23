@@ -630,6 +630,45 @@ function listArtMessagesWithoutFile(limit = 20) {
   `).all(Number(limit));
 }
 
+// ─── Art editors ────────────────────────────────────────────────────────────
+
+// Players (by Discord ID) who tag and sort the Art tab as DMs do.
+function getArtEditors() {
+  const row = db.prepare("SELECT value FROM config WHERE key = 'art_editors'").get();
+  try {
+    const list = row ? JSON.parse(row.value) : [];
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+// ids: Discord IDs, as a list or text (any separators). Returns the list kept.
+function setArtEditors(ids) {
+  const list = [...new Set([].concat(ids || []).flatMap(value => String(value).split(/[^0-9]+/)).filter(id => /^\d{15,22}$/.test(id)))];
+  const bad = [].concat(ids || []).flatMap(value => String(value).split(/[\s,;]+/)).filter(token => token && !/^\d{15,22}$/.test(token));
+  if (bad.length) throw new Error(`Not a Discord ID: ${bad.slice(0, 3).join(', ')}. Copy it with right-click → Copy User ID.`);
+  db.prepare("INSERT INTO config (key, value) VALUES ('art_editors', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(list));
+  return list;
+}
+
+// DMs, and players on the editors list.
+function canEditArt(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (!(Number(user.id) > 0)) return false;
+  const player = db.prepare('SELECT discord_id FROM players WHERE id = ?').get(Number(user.id));
+  return Boolean(player && getArtEditors().includes(String(player.discord_id)));
+}
+
+// The list for the DMs' card: [{ discordId, tag }] (tag null: no panel account).
+function listArtEditors() {
+  return getArtEditors().map(discordId => {
+    const player = db.prepare('SELECT discord_tag FROM players WHERE discord_id = ?').get(discordId);
+    return { discordId, tag: player ? player.discord_tag : null };
+  });
+}
+
 const SCAN_KEY = 'art_scan';
 function getArtScanStatus() {
   const row = db.prepare('SELECT value FROM config WHERE key = ?').get(SCAN_KEY);
@@ -642,6 +681,10 @@ function setArtScanStatus(status) {
 
 module.exports = {
   ART_MAX_IMAGE_BYTES: MAX_IMAGE_BYTES,
+  getArtEditors,
+  setArtEditors,
+  canEditArt,
+  listArtEditors,
   resolveArtFigure,
   parseArtist,
   listArtFigures,

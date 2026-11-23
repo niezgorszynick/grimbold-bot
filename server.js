@@ -43,6 +43,8 @@ function requireRootAdmin(req, res, next) {
 router.use(requireAuth);
 router.use((req, res, next) => {
   // Every panel form POST is a DM action; players change their characters through /api.
+  // Art editors (players the DMs chose) tag art as DMs do.
+  if (req.method === 'POST' && req.path === '/art/update' && db.canEditArt(req.session.user)) return next();
   return req.method === 'POST' ? requireAdmin(req, res, next) : next();
 });
 
@@ -418,6 +420,16 @@ router.post('/chronicles/update', (req, res) => {
 router.post('/art/import', (req, res) => {
   const started = require('./art').startImport(req.session.user.discord_tag);
   res.redirect(`/admin?tab=art&view=unsorted&status=${started ? 'art_import_started' : 'art_import_busy'}`);
+});
+
+// Art editors (DMs): the players who tag and sort art as DMs do.
+router.post('/art/editors', (req, res) => {
+  try {
+    db.setArtEditors(req.body.discord_ids || '');
+    res.redirect('/admin?tab=art&status=art_editors_saved#art-editors');
+  } catch (err) {
+    res.redirect(`/admin?tab=art&err=${encodeURIComponent(err.message)}#art-editors`);
+  }
 });
 
 router.post('/art/update', (req, res) => {

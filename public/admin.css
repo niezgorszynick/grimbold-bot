@@ -1616,3 +1616,4 @@ button.sheet-hud-tile { cursor: pointer; }
 .art-category { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 auto 0 0; padding: 0; border: 0; font-size: 13px; }
 .art-category label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.art-editors { margin: 8px 0; padding-left: 1.2em; display: grid; gap: 4px; }

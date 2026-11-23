@@ -293,12 +293,34 @@ function sortingHtml(images, { characters, keep }) {
     </div>`;
 }
 
+// DMs: who else may tag and sort art, by Discord ID.
+function editorsHtml() {
+  const editors = db.listArtEditors();
+  return `
+    <section class="card" id="art-editors">
+      <details${editors.length ? '' : ' open'}>
+        <summary><strong>🛡 Art editors</strong> <span class="muted small">${editors.length} player${editors.length === 1 ? '' : 's'}</span></summary>
+        <p class="muted small">Players on this list tag and sort art here as DMs do: who is in a picture, the adventure, the artist, and Art / Meme / Not art. Importing the channel stays with the DMs.</p>
+        ${editors.length ? `<ul class="art-editors">${editors.map(editor => `<li><code>${escapeHtml(editor.discordId)}</code> ${editor.tag ? escapeHtml(editor.tag) : '<span class="muted small">(no panel account with this ID yet)</span>'}</li>`).join('')}</ul>` : ''}
+        <form method="POST" action="/admin/art/editors" class="art-tag-form">
+          <label class="art-form-label">Discord IDs, one per line <span class="muted small">(right-click a member → Copy User ID)</span>
+            <textarea name="discord_ids" rows="4">${escapeHtml(editors.map(editor => editor.discordId).join('\n'))}</textarea>
+          </label>
+          <div class="art-form-actions"><button type="submit" class="btn btn-green">Save</button></div>
+        </form>
+      </details>
+    </section>`;
+}
+
 module.exports = function renderArtTab(ctx) {
-  const { req, isAdmin } = ctx;
+  // isAdmin here: may tag and sort (DMs and art editors); isDm: imports and the editors list.
+  const { req, isAdmin: isDm, currentUser } = ctx;
+  const isAdmin = isDm || db.canEditArt(currentUser);
   const query = req.query;
   if (!query.err) {
     const banners = {
       art_updated: '<div class="alert green">🎨 Image saved.</div>',
+      art_editors_saved: '<div class="alert green">🎨 Art editors saved.</div>',
       art_import_started: '<div class="alert green">🎨 Grimbold is reading the art channel\'s history. Reload in a minute to see what he found.</div>',
       art_import_busy: '<div class="alert red">⏳ Grimbold is already reading the channel; try again in a minute.</div>'
     };
@@ -333,9 +355,9 @@ module.exports = function renderArtTab(ctx) {
           <h3>🎨 Art</h3>
           <p class="muted small">Art of the characters, posted in Discord. Say who is in a picture by naming them in the post (and the adventure, if you like), or right-click the post → <strong>Apps → Tag art</strong>.</p>
         </div>
-        ${isAdmin ? '<form method="POST" action="/admin/art/import"><button type="submit" class="btn btn-small" title="Read every message in the art channel (and its threads) for images">📥 Import past messages</button></form>' : ''}
+        ${isDm ? '<form method="POST" action="/admin/art/import"><button type="submit" class="btn btn-small" title="Read every message in the art channel (and its threads) for images">📥 Import past messages</button></form>' : ''}
       </div>
-      ${isAdmin ? scanStatusHtml() : ''}
+      ${isDm ? scanStatusHtml() : ''}
       <form method="GET" action="/admin" class="chronicle-filters">
         <input type="hidden" name="tab" value="art">
         <select name="view" aria-label="Show" onchange="this.form.submit()">
@@ -374,6 +396,7 @@ module.exports = function renderArtTab(ctx) {
               </figure>`).join('')}</div>`
           : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : view === 'memes' ? 'No memes yet: mark one with Tag art → 😂 Meme.' : 'No art here yet.'}</p>`}
     </section>
+    ${isDm ? editorsHtml() : ''}
     ${isAdmin ? `
     <datalist id="art-figure-list">${db.artFigureSuggestions().map(label => `<option value="${escapeHtml(label)}"></option>`).join('')}</datalist>
     <datalist id="art-artist-list">${[...new Set([...db.listKnownArtists(), ...db.prepare('SELECT DISTINCT posted_by_tag AS name FROM art_images WHERE posted_by_tag IS NOT NULL').all().map(row => row.name)])]

@@ -889,7 +889,7 @@ router.post('/auctions/:id/cancel', (req, res) => {
 router.get('/art/:id/image', (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!db.getArtImage(req.params.id, { isAdmin: isAdmin(user) })) return res.status(404).json({ error: 'No such image.' });
+  if (!db.getArtImage(req.params.id, { isAdmin: db.canEditArt(user) })) return res.status(404).json({ error: 'No such image.' });
   const found = db.getArtFile(req.params.id, { size: req.query.size });
   if (!found) return res.status(404).json({ error: 'No copy of that image.' });
   res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
