@@ -60,11 +60,61 @@ function artStripHtml({ characterId, adventureId, title = '🎨 Art', limit = 12
     </details>`;
 }
 
-function characterOptions(characters, selected) {
+// Characters to tick, with a search box: the poster's own first (they are
+// usually in the picture), then everyone else; the dead marked †.
+function pickerHtml(characters, selected, { posterDiscordId, posterTag } = {}) {
   const chosen = new Set([].concat(selected).map(String));
-  return characters.map(character =>
-    `<option value="${character.id}"${chosen.has(String(character.id)) ? ' selected' : ''}>${escapeHtml(character.name)}${character.status === 'dead' ? ' †' : ''}</option>`).join('');
+  const chip = character => `
+        <label class="art-chip"><input type="checkbox" name="character_ids" value="${character.id}"${chosen.has(String(character.id)) ? ' checked' : ''}><span>${escapeHtml(character.name)}${character.status === 'dead' ? ' †' : ''}</span></label>`;
+  const own = posterDiscordId ? characters.filter(character => character.discord_id === posterDiscordId) : [];
+  const others = characters.filter(character => !own.includes(character));
+  return `
+    <div class="art-picker" data-picker>
+      <div class="art-picker-head">
+        <input type="search" data-picker-filter placeholder="Find a character…" aria-label="Find a character" autocomplete="off">
+        <span class="muted small" data-picker-count>${chosen.size} chosen</span>
+      </div>
+      <div class="art-picker-list">
+        ${own.length ? `<p class="art-picker-group">${escapeHtml(posterTag || 'The poster')}'s characters</p>${own.map(chip).join('')}<p class="art-picker-group">Everyone else</p>` : ''}
+        ${others.map(chip).join('')}
+      </div>
+    </div>`;
 }
+
+// The search boxes and counters of every picker on the page.
+const PICKER_SCRIPT = `
+  <script>
+    (() => {
+      const plain = text => String(text || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+      document.querySelectorAll('[data-picker]').forEach(picker => {
+        const filter = picker.querySelector('[data-picker-filter]');
+        const count = picker.querySelector('[data-picker-count]');
+        const chips = [...picker.querySelectorAll('.art-chip')];
+        const groups = [...picker.querySelectorAll('.art-picker-group')];
+        const recount = () => { count.textContent = chips.filter(chip => chip.querySelector('input').checked).length + ' chosen'; };
+        const apply = () => {
+          const words = plain(filter.value).split(/\\s+/).filter(Boolean);
+          chips.forEach(chip => { chip.hidden = !words.every(word => plain(chip.textContent).includes(word)); });
+          groups.forEach(group => { group.hidden = words.length > 0; });
+        };
+        filter.addEventListener('input', apply);
+        // Enter ticks the only match (and keeps the form from sending).
+        filter.addEventListener('keydown', event => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          const shown = chips.filter(chip => !chip.hidden);
+          if (shown.length === 1) {
+            const box = shown[0].querySelector('input');
+            box.checked = !box.checked;
+            filter.value = '';
+            apply();
+            recount();
+          }
+        });
+        picker.addEventListener('change', recount);
+      });
+    })();
+  </script>`;
 
 function adventureChoice(image) {
   if (image.adventure_by === 'none') return 'none';
@@ -102,48 +152,60 @@ function viewerHtml(image, { isAdmin, characters, back }) {
           <a class="btn btn-small btn-secondary" href="${back}">Close</a>
         </div>
       </div>
+      <div class="art-viewer-body${isAdmin ? ' with-form' : ''}">
       ${image.imageUrl
-        ? `<a href="${escapeHtml(image.imageUrl)}" target="_blank" rel="noopener"><img class="art-full" src="${escapeHtml(image.imageUrl)}" alt="${names(image) || 'Art'}"></a>`
+        ? `<a href="${escapeHtml(image.imageUrl)}" target="_blank" rel="noopener" class="art-full-link"><img class="art-full" src="${escapeHtml(image.imageUrl)}" alt="${names(image) || 'Art'}"></a>`
         : `<p class="alert red">Grimbold has no copy of this image${image.download_error ? `: ${escapeHtml(image.download_error)}` : ' yet'}.</p>`}
       ${isAdmin ? `
-      <details class="chronicle-dm"${image.characters.length ? '' : ' open'}>
-        <summary><strong>🛡 Tag this image</strong>${image.tagged_by ? ` <span class="muted small">(${escapeHtml(TAGGED_BY[image.tagged_by] || image.tagged_by)})</span>` : ''}</summary>
-        <form method="POST" action="/admin/art/update" class="chronicle-dm-form">
+      <div class="art-tag-panel">
+        <h4>🛡 Tag this image${image.tagged_by ? ` <span class="muted small">(${escapeHtml(TAGGED_BY[image.tagged_by] || image.tagged_by)})</span>` : ''}</h4>
+        <form method="POST" action="/admin/art/update" class="art-tag-form">
           <input type="hidden" name="id" value="${image.id}">
           <input type="hidden" name="return_to" value="${escapeHtml(`${back}&art=${image.id}`)}">
-          <label>Characters in it <span class="muted">(Ctrl/⌘-click for several)</span>
-            <select name="character_ids" multiple size="8">${characterOptions(characters, image.characters.map(character => character.id))}</select>
+          <p class="art-form-label">Who is in it?</p>
+          ${pickerHtml(characters, image.characters.map(character => character.id), { posterDiscordId: image.posted_by_discord_id, posterTag: image.posted_by_tag })}
+          <label class="art-form-label">Adventure <span class="muted small">(✓ = they were all in it)</span>
+            <select name="adventure">${adventureOptions(image, adventures)}</select>
           </label>
-          <label>Adventure <span class="muted">(✓ = they were all in it)</span><select name="adventure">${adventureOptions(image, adventures)}</select></label>
-          <label class="chronicle-hidden"><input type="hidden" name="not_art" value="0"><input type="checkbox" name="not_art" value="1"${image.not_art ? ' checked' : ''}> Not art (a meme, a screenshot)</label>
-          <button type="submit" class="btn btn-small btn-green">Save</button>
+          <div class="art-form-actions">
+            <label class="art-check"><input type="hidden" name="not_art" value="0"><input type="checkbox" name="not_art" value="1"${image.not_art ? ' checked' : ''}> Not art (a meme, a screenshot)</label>
+            <button type="submit" class="btn btn-green">Save</button>
+          </div>
         </form>
-      </details>` : ''}
+      </div>` : ''}
+      </div>
     </section>`;
 }
 
-// To sort: each image with a quick form for its characters.
+// To sort: each image beside a form for who is in it and its adventure.
 function sortingHtml(images, { characters, keep }) {
   if (!images.length) return '<p class="muted">Nothing to sort: every image has somebody in it or is marked Not art.</p>';
+  const adventures = db.listArtAdventureChoices({});
   return `
+    <p class="muted small">Tick everyone in the picture (type to find them; Enter ticks the only match), choose the adventure or leave it to Grimbold's guess, and save. A saved picture moves to the gallery.</p>
     <div class="art-sort">
       ${images.map(image => `
-        <div class="art-sort-item">
-          ${thumb(image, `/admin?tab=art${keep}&art=${image.id}#art-viewer`)}
-          <p class="muted small">${image.posted_by_tag ? escapeHtml(image.posted_by_tag) : ''}${image.posted_at ? ` · ${escapeHtml(date(image.posted_at))}` : ''}${image.message_text ? `<br>“${escapeHtml(image.message_text.slice(0, 120))}”` : ''}</p>
-          <form method="POST" action="/admin/art/update" class="art-quick">
-            <input type="hidden" name="id" value="${image.id}">
-            <input type="hidden" name="return_to" value="/admin?tab=art&view=unsorted">
-            <select name="character_ids" multiple size="4" aria-label="Characters in it">${characterOptions(characters, [])}</select>
-            <button type="submit" class="btn btn-small btn-green">Save</button>
-          </form>
-          <form method="POST" action="/admin/art/update" class="art-quick">
-            <input type="hidden" name="id" value="${image.id}">
-            <input type="hidden" name="return_to" value="/admin?tab=art&view=unsorted">
-            <input type="hidden" name="not_art" value="1">
-            <button type="submit" class="btn btn-small btn-secondary">🚫 Not art</button>
-          </form>
-        </div>`).join('')}
+        <form method="POST" action="/admin/art/update" class="art-sort-item" id="sort-${image.id}">
+          <input type="hidden" name="id" value="${image.id}">
+          <input type="hidden" name="return_to" value="/admin?tab=art&view=unsorted">
+          <div class="art-sort-image">
+            ${image.imageUrl
+              ? `<a href="/admin?tab=art${keep}&art=${image.id}#art-viewer"><img src="${escapeHtml(image.thumbUrl)}" alt="To sort" loading="lazy"></a>`
+              : thumb(image, `/admin?tab=art${keep}&art=${image.id}#art-viewer`)}
+            <p class="muted small">${image.posted_by_tag ? escapeHtml(image.posted_by_tag) : ''}${image.posted_at ? ` · ${escapeHtml(date(image.posted_at))}` : ''}${image.messageUrl ? ` · <a href="${escapeHtml(image.messageUrl)}" target="_blank" rel="noopener">Discord ↗</a>` : ''}</p>
+            ${image.message_text ? `<p class="art-caption small">“${escapeHtml(image.message_text.slice(0, 200))}”</p>` : ''}
+          </div>
+          <div class="art-sort-form">
+            ${pickerHtml(characters, [], { posterDiscordId: image.posted_by_discord_id, posterTag: image.posted_by_tag })}
+            <label class="art-form-label">Adventure
+              <select name="adventure">${adventureOptions(image, adventures)}</select>
+            </label>
+            <div class="art-form-actions">
+              <button type="submit" name="not_art" value="1" class="btn btn-small btn-secondary">🚫 Not art</button>
+              <button type="submit" class="btn btn-green">Save</button>
+            </div>
+          </div>
+        </form>`).join('')}
     </div>`;
 }
 
@@ -158,7 +220,10 @@ module.exports = function renderArtTab(ctx) {
     };
     if (banners[query.status]) ctx.setStatusBanner(banners[query.status]);
   }
-  const characters = db.prepare('SELECT id, name, status FROM characters ORDER BY name COLLATE NOCASE').all();
+  const characters = db.prepare(`
+    SELECT c.id, c.name, c.status, p.discord_id FROM characters c LEFT JOIN players p ON p.id = c.player_id
+    ORDER BY (c.status = 'dead'), c.name COLLATE NOCASE
+  `).all();
   const adventures = db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all();
   const view = isAdmin && ['unsorted', 'not_art'].includes(query.view) ? query.view : 'gallery';
   const characterId = view === 'gallery' && Number(query.character) > 0 ? Number(query.character) : null;
@@ -210,6 +275,7 @@ module.exports = function renderArtTab(ctx) {
               </figure>`).join('')}</div>`
           : `<p class="muted">${view === 'not_art' ? 'Nothing marked Not art.' : 'No art here yet.'}</p>`}
     </section>
+    ${isAdmin ? PICKER_SCRIPT : ''}
   `;
 };
 

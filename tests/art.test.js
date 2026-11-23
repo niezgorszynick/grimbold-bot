@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const vm = require('vm');
 
 process.env.UPLOADS_DIR = path.join(os.tmpdir(), `grimbold-art-${process.pid}-${Date.now()}`);
 const { db, createPlayer } = require('./helpers/tempDatabase');
@@ -168,8 +169,17 @@ test('the Art tab, the sheet and the adventure show the gallery; DMs tag in the 
     assert.equal(/Import past messages/.test(html), user === admin);
     assert.equal(/Tag this image/.test(html), user === admin);
   }
+  const viewer = renderAdminPage({ session: { user: admin }, query: { tab: 'art', art: String(first.id) } });
+  assert.match(viewer, new RegExp(`name="character_ids" value="${thorin}" checked`), 'ticked chips, not a multi-select');
+  assert.match(viewer, /owner's characters/, "the poster's characters first");
+  for (const [, code] of viewer.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+  assert.match(renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'unsorted' } }), /Nothing to sort/);
+  db.updateArtImage(first.id, { notArt: false, characterIds: [] });
   const unsorted = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'unsorted' } });
-  assert.match(unsorted, /Nothing to sort/);
+  assert.match(unsorted, new RegExp(`id="sort-${first.id}"`));
+  assert.match(unsorted, /name="not_art" value="1"/);
+  assert.match(unsorted, /name="adventure"/, 'the adventure is chosen while sorting');
+  db.updateArtImage(first.id, { characterIds: [String(thorin)], adventure: 'guess' });
   const sheet = renderAdminPage({ session: { user: player }, query: { tab: 'character-sheet', edit_char: String(thorin) } });
   assert.match(sheet, /art-strip/);
   const table = renderAdminPage({ session: { user: player }, query: { tab: 'adventures', table: String(keep) } });
