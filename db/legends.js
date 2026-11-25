@@ -415,10 +415,12 @@ function presentImages(rows) {
 
 const HAS_CHARACTER_IMAGE = 'EXISTS (SELECT 1 FROM legend_image_characters x WHERE x.image_id = i.id)';
 
-// view: 'gallery' (about someone), 'unsorted', 'hidden'. characterId, artist narrow it.
-function listLegendImages({ view = 'gallery', characterId, artist, limit } = {}) {
+// view: 'gallery' (about someone), 'unsorted', 'hidden'. characterId,
+// artist and poster (a Discord ID) narrow it.
+function listLegendImages({ view = 'gallery', characterId, artist, poster, limit } = {}) {
   const where = [view === 'hidden' ? 'i.hidden = 1' : 'i.hidden = 0'];
   const params = [];
+  if (poster) { where.push('i.posted_by_discord_id = ?'); params.push(String(poster)); }
   if (view === 'unsorted') where.push(`NOT ${HAS_CHARACTER_IMAGE}`);
   if (view === 'gallery') where.push(HAS_CHARACTER_IMAGE);
   if (characterId) { where.push('EXISTS (SELECT 1 FROM legend_image_characters y WHERE y.image_id = i.id AND y.character_id = ?)'); params.push(Number(characterId)); }
@@ -457,6 +459,41 @@ function updateLegendImage(id, { characterIds, hidden, artist, artistUrl }) {
     if (link !== undefined) db.prepare('UPDATE legend_images SET artist_url = ? WHERE id = ?').run(link, image.id);
   })();
   return getLegendImage(image.id);
+}
+
+// Many images at once (To sort): { characterIds } adds those characters to
+// each (keeping who is already tagged), or { hidden: true } hides them all.
+// Returns how many were changed.
+function tagLegendImages(ids, { characterIds, hidden }) {
+  const list = [...new Set([].concat(ids || []).map(Number).filter(Number.isSafeInteger))];
+  if (!list.length) throw new Error('Select some images first.');
+  const add = hidden ? [] : checkCharacterIds(characterIds);
+  if (!hidden && !add.length) throw new Error('Tick who is in them first.');
+  let changed = 0;
+  db.transaction(() => {
+    for (const id of list) {
+      if (!db.prepare('SELECT id FROM legend_images WHERE id = ?').get(id)) continue;
+      if (hidden) {
+        db.prepare("UPDATE legend_images SET hidden = 1, tagged_by = 'hand' WHERE id = ?").run(id);
+      } else {
+        const current = db.prepare('SELECT character_id FROM legend_image_characters WHERE image_id = ?').all(id).map(row => row.character_id);
+        setImageCharacters(id, [...new Set([...current, ...add])], 'hand');
+      }
+      changed += 1;
+    }
+  })();
+  return changed;
+}
+
+// Who posted what is still to sort: [{ discordId, tag, count }], the most first.
+function listLegendUnsortedPosters() {
+  return db.prepare(`
+    SELECT i.posted_by_discord_id AS discordId,
+      COALESCE((SELECT p.discord_tag FROM players p WHERE p.discord_id = i.posted_by_discord_id), MAX(i.posted_by_tag)) AS tag,
+      COUNT(*) AS count
+    FROM legend_images i WHERE i.hidden = 0 AND NOT ${HAS_CHARACTER_IMAGE} AND i.posted_by_discord_id IS NOT NULL
+    GROUP BY i.posted_by_discord_id ORDER BY count DESC, tag COLLATE NOCASE
+  `).all();
 }
 
 function listLegendArtists() {
@@ -557,6 +594,8 @@ module.exports = {
   getLegendImage,
   getLegendMessageImages,
   updateLegendImage,
+  tagLegendImages,
+  listLegendUnsortedPosters,
   listLegendArtists,
   saveLegendImageFiles,
   getLegendImageFile,

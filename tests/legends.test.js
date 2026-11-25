@@ -184,3 +184,45 @@ test('the forms and the images answer only those who see Legends', async () => {
     server.close();
   }
 });
+
+test('To sort in bulk: select many, tag them at once (adding to who is there) or hide them', async () => {
+  const add = (id, poster) => db.recordLegendImages({ messageId: `bulk-${id}`, channelId: 'c', guildId: 'g', posterDiscordId: poster, posterTag: poster, postedAt: '2026-11-21T10:00:00Z', text: '', attachments: [image(`bulk-${id}`)] }).created[0];
+  const ids = Array.from({ length: 130 }, (_, index) => add(index, index < 125 ? '600030860950896670' : '322015943075299330'));
+  const [aidan, rankor] = [characterId('Aidan'), characterId('Rankor')];
+  assert.equal(db.listLegendUnsortedPosters()[0].count, 125);
+  assert.equal(db.listLegendImages({ view: 'unsorted', poster: '322015943075299330' }).length, 5);
+
+  const page = query => renderAdminPage({ session: { user: users.viewer }, query: { tab: 'legends', view: 'unsorted', ...query } });
+  const first = page({});
+  assert.equal((first.match(/name="image_ids" value=/g) || []).length, 120, '120 to a page');
+  assert.match(first, /page=2/);
+  assert.match(first, /data-key="1"/);
+  for (const [, code] of first.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+  assert.equal((page({ poster: '322015943075299330' }).match(/name="image_ids" value=/g) || []).length, 5);
+
+  assert.throws(() => db.tagLegendImages(ids.slice(0, 3), { characterIds: [] }), /Tick who/);
+  assert.throws(() => db.tagLegendImages([], { characterIds: [aidan] }), /Select some/);
+  db.updateLegendImage(ids[0], { characterIds: [rankor] });
+  assert.equal(db.tagLegendImages(ids.slice(0, 100), { characterIds: [String(aidan)] }), 100);
+  assert.deepEqual(db.getLegendImage(ids[0]).characters.map(character => character.name), ['Aidan', 'Rankor'], 'added to who was there');
+  assert.equal(db.getLegendImage(ids[50]).tagged_by, 'hand');
+
+  const express = require('express');
+  const app = express();
+  app.use((req, res, next) => { req.session = { user: JSON.parse(req.get('x-user')) }; next(); });
+  app.use('/admin', require('../server'));
+  const server = app.listen(0);
+  try {
+    const post = (user, body) => fetch(`http://127.0.0.1:${server.address().port}/admin/legends/images/bulk`, {
+      method: 'POST', redirect: 'manual', headers: { 'x-user': JSON.stringify({ id: user.id, role: user.role }), 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams([...ids.slice(100, 110).map(id => ['image_ids', String(id)]), ...Object.entries(body)])
+    });
+    assert.equal((await post(users.otherDm, { action: 'hide' })).status, 403);
+    const hid = await post(users.viewer, { action: 'hide', return_to: '/admin?tab=legends&view=unsorted&poster=600030860950896670' });
+    assert.equal(hid.status, 302);
+    assert.match(hid.headers.get('location'), /poster=600030860950896670&status=legend_bulk_hidden&n=10/);
+    assert.ok(ids.slice(100, 110).every(id => db.getLegendImage(id).hidden));
+  } finally {
+    server.close();
+  }
+});

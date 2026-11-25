@@ -214,9 +214,105 @@ function artGridHtml(images, { keep, current }) {
     </figure>`).join('')}</div>`;
 }
 
-// To sort: each image or doc beside its chips, saved or hidden in one go.
-function sortingHtml({ images, docs, characters }) {
-  if (!images.length && !docs.length) return '<p class="muted">Nothing to sort: everything is about someone, or hidden.</p>';
+const SORT_PAGE = 120;
+
+// To sort, images: a grid to select many (click, Shift-click for a range),
+// and one bar to tag them all with the ticked characters, or hide them.
+// Keys 1–9 tick the first nine characters; Enter tags.
+function bulkSortHtml({ images, characters, posters, poster, page }) {
+  const pages = Math.max(1, Math.ceil(images.length / SORT_PAGE));
+  const current = Math.min(Math.max(1, page), pages);
+  const shown = images.slice((current - 1) * SORT_PAGE, current * SORT_PAGE);
+  const base = `/admin?tab=legends&view=unsorted${poster ? `&poster=${encodeURIComponent(poster)}` : ''}`;
+  const back = `${base}${current > 1 ? `&page=${current}` : ''}`;
+  // How many images each post has, to mark those that came together.
+  const perPost = new Map();
+  images.forEach(image => perPost.set(image.message_id, (perPost.get(image.message_id) || 0) + 1));
+  const pager = pages > 1 ? `<p class="legend-pager small">${Array.from({ length: pages }, (_, index) => index + 1).map(number =>
+    number === current ? `<strong>${number}</strong>` : `<a href="${base}&page=${number}">${number}</a>`).join(' ')}</p>` : '';
+  return `
+    <form method="GET" action="/admin" class="chronicle-filters">
+      <input type="hidden" name="tab" value="legends">
+      <input type="hidden" name="view" value="unsorted">
+      <select name="poster" aria-label="Posted by" onchange="this.form.submit()">
+        <option value="">Posted by anyone</option>
+        ${posters.map(entry => `<option value="${escapeHtml(entry.discordId)}"${poster === entry.discordId ? ' selected' : ''}>${escapeHtml(entry.tag || entry.discordId)} (${entry.count})</option>`).join('')}
+      </select>
+      <noscript><button type="submit" class="btn btn-small">Filter</button></noscript>
+    </form>
+    <form method="POST" action="/admin/legends/images/bulk" class="legend-bulk" data-bulk>
+      <input type="hidden" name="return_to" value="${escapeHtml(back)}">
+      <div class="legend-bulk-bar">
+        <div class="legend-chips">
+          ${characters.map((character, index) => `<label class="art-chip"><input type="checkbox" name="character_ids" value="${character.id}"${index < 9 ? ` data-key="${index + 1}"` : ''}><span>${index < 9 ? `<kbd>${index + 1}</kbd> ` : ''}${escapeHtml(character.name)}</span></label>`).join('')}
+        </div>
+        <div class="art-form-actions">
+          <span class="muted small" data-bulk-count role="status">0 selected</span>
+          <button type="button" class="btn btn-small btn-secondary" data-bulk-all>Select all ${shown.length}</button>
+          <button type="button" class="btn btn-small btn-secondary" data-bulk-none>Clear</button>
+          <button type="submit" name="action" value="hide" class="btn btn-small btn-secondary" data-needs-selection disabled>🚫 Hide selected</button>
+          <button type="submit" name="action" value="tag" class="btn btn-green" data-needs-selection disabled>Tag selected</button>
+        </div>
+      </div>
+      <p class="muted small">${images.length} image${images.length === 1 ? '' : 's'} to sort. Click pictures to select them (Shift-click selects a range), tick who is in them, then <strong>Tag selected</strong>. Keys <kbd>1</kbd>–<kbd>9</kbd> tick characters, <kbd>Enter</kbd> tags. Pictures from one post sit together and carry a ▣ mark. ⤢ opens a picture large.</p>
+      ${pager}
+      <div class="legend-sort-grid">
+        ${shown.map(image => `
+          <label class="legend-sort-cell" title="${escapeHtml([image.posted_by_tag, date(image.posted_at), image.message_text].filter(Boolean).join(' · ').slice(0, 300))}">
+            <input type="checkbox" name="image_ids" value="${image.id}">
+            ${image.thumbUrl ? `<img src="${escapeHtml(image.thumbUrl)}" alt="" loading="lazy">` : `<span class="art-missing">🖼<br><span class="small">${image.download_error ? 'No copy' : 'Copying…'}</span></span>`}
+            ${perPost.get(image.message_id) > 1 ? `<span class="legend-sort-post" aria-label="one of ${perPost.get(image.message_id)} from one post">▣ ${perPost.get(image.message_id)}</span>` : ''}
+            <a class="legend-sort-open" href="${back}&image=${image.id}#legend-viewer" title="Open large" aria-label="Open large">⤢</a>
+            ${image.message_text ? `<span class="legend-sort-text">${escapeHtml(image.message_text.slice(0, 60))}</span>` : ''}
+          </label>`).join('')}
+      </div>
+      ${pager}
+    </form>
+    <script>
+      (() => {
+        const form = document.querySelector('[data-bulk]');
+        const boxes = [...form.querySelectorAll('input[name="image_ids"]')];
+        const count = form.querySelector('[data-bulk-count]');
+        const needing = form.querySelectorAll('[data-needs-selection]');
+        let last = null;
+        const update = () => {
+          const n = boxes.filter(box => box.checked).length;
+          count.textContent = n + ' selected';
+          needing.forEach(button => { button.disabled = n === 0; });
+        };
+        // The click is handled on the picture's cell, so Shift reaches it in every browser.
+        boxes.forEach((box, index) => box.closest('.legend-sort-cell').addEventListener('click', event => {
+          if (event.target.closest('.legend-sort-open')) return;
+          event.preventDefault();
+          box.checked = !box.checked;
+          if (event.shiftKey && last !== null) {
+            const [from, to] = [Math.min(last, index), Math.max(last, index)];
+            for (let i = from; i <= to; i += 1) boxes[i].checked = box.checked;
+          }
+          last = index;
+          update();
+        }));
+        form.querySelector('[data-bulk-all]').addEventListener('click', () => { boxes.forEach(box => { box.checked = true; }); update(); });
+        form.querySelector('[data-bulk-none]').addEventListener('click', () => { boxes.forEach(box => { box.checked = false; }); last = null; update(); });
+        document.addEventListener('keydown', event => {
+          if (event.ctrlKey || event.metaKey || event.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) && event.target.type !== 'checkbox') return;
+          const chip = /^[1-9]$/.test(event.key) && form.querySelector('[data-key="' + event.key + '"]');
+          if (chip) { event.preventDefault(); chip.checked = !chip.checked; return; }
+          if (event.key === 'Enter' && boxes.some(box => box.checked)) {
+            event.preventDefault();
+            form.requestSubmit(form.querySelector('button[value="tag"]'));
+          }
+        });
+        update();
+      })();
+    </script>`;
+}
+
+// To sort: the images in bulk, the docs (fewer) each beside its chips.
+function sortingHtml({ images, docs, characters, posters, poster, page }) {
+  if (!images.length && !docs.length) {
+    return `<p class="muted">${poster ? 'Nothing from this poster to sort. <a href="/admin?tab=legends&view=unsorted">Everyone\'s</a>' : 'Nothing to sort: everything is about someone, or hidden.'}</p>`;
+  }
   const back = '/admin?tab=legends&view=unsorted';
   const actions = `
     <div class="art-form-actions">
@@ -224,23 +320,10 @@ function sortingHtml({ images, docs, characters }) {
       <button type="submit" class="btn btn-green">Save</button>
     </div>`;
   return `
-    <p class="muted small">Grimbold couldn't tell who these are about. Tick everyone in them and save, or hide what isn't about any of them. Adding a character (or an alias) also sorts whatever names them.</p>
+    <p class="muted small">Grimbold couldn't tell who these are about. Adding a character (or an alias) also sorts whatever names them.</p>
+    ${images.length ? bulkSortHtml({ images, characters, posters, poster, page }) : ''}
+    ${docs.length ? `<h4>📜 Docs to sort (${docs.length})</h4>` : ''}
     <div class="art-sort">
-      ${images.map(image => `
-        <form method="POST" action="/admin/legends/images/update" class="art-sort-item" id="sort-image-${image.id}">
-          <input type="hidden" name="id" value="${image.id}">
-          <input type="hidden" name="return_to" value="${back}">
-          <div class="art-sort-image">
-            ${image.thumbUrl ? `<a href="/admin?tab=legends&view=unsorted&image=${image.id}#legend-viewer"><img src="${escapeHtml(image.thumbUrl)}" alt="To sort" loading="lazy"></a>` : thumb(image, `/admin?tab=legends&view=unsorted&image=${image.id}#legend-viewer`)}
-            <p class="muted small">${image.posted_by_tag ? escapeHtml(image.posted_by_tag) : ''}${image.posted_at ? ` · ${escapeHtml(date(image.posted_at))}` : ''}${image.messageUrl ? ` · <a href="${escapeHtml(image.messageUrl)}" target="_blank" rel="noopener">Discord ↗</a>` : ''}</p>
-            ${image.message_text ? `<p class="art-caption small">“${escapeHtml(image.message_text.slice(0, 200))}”</p>` : ''}
-          </div>
-          <div class="art-sort-form">
-            ${chipsHtml(characters, [])}
-            <label class="art-form-label">🖌 Artist <input type="text" name="artist" list="legend-artist-list" value="${escapeHtml(image.artist_name || '')}" placeholder="Who drew it?" maxlength="100" autocomplete="off"></label>
-            ${actions}
-          </div>
-        </form>`).join('')}
       ${docs.map(doc => `
         <form method="POST" action="/admin/legends/docs/update" class="art-sort-item" id="sort-doc-${doc.id}">
           <input type="hidden" name="id" value="${doc.id}">
@@ -346,6 +429,8 @@ module.exports = function renderLegendsTab(ctx) {
       legend_saved: '<div class="alert green">🏛 Character saved.</div>',
       legend_deleted: '<div class="alert green">🗑 Character removed.</div>',
       legend_item_saved: '<div class="alert green">🏛 Saved.</div>',
+      legend_bulk_tagged: `<div class="alert green">🏛 Tagged ${Number(query.n) || 0} image${Number(query.n) === 1 ? '' : 's'}.</div>`,
+      legend_bulk_hidden: `<div class="alert green">🚫 Hid ${Number(query.n) || 0} image${Number(query.n) === 1 ? '' : 's'}.</div>`,
       legends_viewers_saved: '<div class="alert green">🛡 The list of who sees Legends is saved.</div>',
       legends_import_started: '<div class="alert green">🏛 Grimbold is reading both channels\' history. Reload in a minute to see what he found.</div>',
       legends_import_busy: '<div class="alert red">⏳ Grimbold is already reading the channels; try again in a minute.</div>'
@@ -359,8 +444,9 @@ module.exports = function renderLegendsTab(ctx) {
   const listView = view === 'hidden' ? 'hidden' : sorting ? 'unsorted' : 'gallery';
   const kind = db.DOC_KINDS[query.kind] ? query.kind : '';
   const artist = query.artist ? String(query.artist) : '';
+  const poster = sorting && /^\d{15,22}$/.test(String(query.poster || '')) ? String(query.poster) : '';
   const characterId = who && !sorting && view !== 'hidden' ? who.id : null;
-  const images = view === 'docs' || kind ? [] : db.listLegendImages({ view: listView, characterId, artist });
+  const images = view === 'docs' || kind ? [] : db.listLegendImages({ view: listView, characterId, artist, poster });
   const docs = view === 'art' || artist ? [] : db.listLegendDocs({ view: listView, characterId, kind });
   const counts = db.legendCounts();
   const keep = `${who ? `&who=${who.id}` : ''}${view !== 'all' ? `&view=${view}` : ''}${kind ? `&kind=${kind}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
@@ -404,7 +490,7 @@ module.exports = function renderLegendsTab(ctx) {
       </form>
       ${who && (sorting || view === 'hidden') ? '<p class="muted small">To sort and Hidden show everyone\'s.</p>' : ''}
       ${sorting
-        ? sortingHtml({ images, docs, characters })
+        ? sortingHtml({ images, docs: poster ? [] : docs, characters, posters: db.listLegendUnsortedPosters(), poster, page: Number(query.page) || 1 })
         : images.length || docs.length
           ? `${docs.length ? `<h4>📜 Docs (${docs.length})</h4>${docListHtml(docs, { keep, current: doc && doc.id, showWho: !who })}` : ''}
              ${images.length ? `<h4>🎨 Art (${images.length})</h4>${artGridHtml(images, { keep, current: image && image.id })}` : ''}`

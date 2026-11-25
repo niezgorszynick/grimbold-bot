@@ -472,6 +472,17 @@ router.post('/legends/images/update', legendsRoute(body => db.updateLegendImage(
   artist: body.artist,
   artistUrl: body.artist_url
 }), body => `/admin?tab=legends&image=${encodeURIComponent(body.id)}#legend-viewer`, 'legend_item_saved'));
+// To sort: many images at once, tagged with the ticked characters or hidden.
+router.post('/legends/images/bulk', (req, res) => {
+  const back = legendsBack(req.body, '/admin?tab=legends&view=unsorted');
+  try {
+    const hidden = req.body.action === 'hide';
+    const changed = db.tagLegendImages(legendIds(req.body.image_ids), { characterIds: legendIds(req.body.character_ids), hidden });
+    res.redirect(`${withStatus(back, 'status', hidden ? 'legend_bulk_hidden' : 'legend_bulk_tagged')}&n=${changed}`);
+  } catch (err) {
+    res.redirect(withStatus(back, 'err', err.message));
+  }
+});
 router.post('/legends/viewers', (req, res) => {
   if (!isRootAdmin(req.session.user)) return res.status(403).send('Forbidden: only the Root DM changes who sees Legends.');
   try {
