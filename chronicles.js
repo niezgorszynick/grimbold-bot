@@ -248,6 +248,9 @@ module.exports = {
   startImport,
   refreshDoc,
   fetchDocCopy,
+  // Shared with Legends (legends.js).
+  messageText,
+  embedTitle,
   htmlToText,
   titleFromHtml,
   isRunning: () => running

@@ -1647,3 +1647,19 @@ button.sheet-hud-tile { cursor: pointer; }
 
 /* Gear the player can't sell themselves: a greyed coin (public/character-inventory.js). */
 .gift-button.is-blocked { opacity: 0.35; cursor: help; filter: grayscale(1); }
+
+/* Legends (views/tabs/legends.js): the row of characters without a sheet. */
+.legend-roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-top: 12px; }
+.legend-card { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 10px 8px; border: 1px solid #3f4147; border-radius: 8px; background: #2b2d31; color: #dbdee1; text-decoration: none; text-align: center; min-width: 0; }
+.legend-card:hover, .legend-card.is-current { border-color: #d4af37; }
+.legend-card.is-current { background: rgba(212, 175, 55, 0.12); }
+.legend-card strong { overflow-wrap: anywhere; }
+.legend-card-picture { width: 72px; height: 72px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #1e1f22; border: 1px solid #4e5058; font-size: 28px; color: #d4af37; }
+.legend-card-picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.legend-add { cursor: pointer; }
+.legend-add summary { display: grid; justify-items: center; gap: 4px; list-style: none; }
+.legend-add summary::-webkit-details-marker { display: none; }
+.legend-add[open] { grid-column: 1 / -1; justify-items: stretch; text-align: left; }
+.legend-add[open] summary { justify-items: start; }
+.legend-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.legend-description p { margin: 0 0 8px; }

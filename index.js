@@ -156,6 +156,8 @@ require('./characterThreads').setCharacterThreadsClient(client);
 require('./chronicles').setChroniclesClient(client);
 // Art posted in the art channel, tagged with its characters (Art tab, art.js).
 require('./art').setArtClient(client);
+// Docs and art about characters without a sheet, from their own two channels (Legends tab).
+require('./legends').setLegendsClient(client);
 // Natural 1s and 20s from every source, in one channel (NAT_ROLLS_CHANNEL_ID).
 require('./naturalRolls').setNaturalRollsClient(client);
 // Session changes made in the panel are announced in the adventure's thread.

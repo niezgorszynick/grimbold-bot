@@ -907,6 +907,29 @@ router.get('/art/:id/image', (req, res) => {
   return res.sendFile(found.file);
 });
 
+// Legends: images and doc copies, only for those who see the tab (not every DM).
+router.get('/legends/images/:id', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.canSeeLegends(user)) return res.status(404).json({ error: 'No such image.' });
+  const found = db.getLegendImageFile(req.params.id, { size: req.query.size });
+  if (!found) return res.status(404).json({ error: 'No copy of that image.' });
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(found.file);
+});
+
+router.post('/legends/docs/:id/refresh', async (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Not logged in.' });
+  if (!db.canSeeLegends(user) || !db.getLegendDoc(req.params.id)) return res.status(404).json({ error: 'Document not found.' });
+  try {
+    const doc = await require('./legends').refreshLegendDoc(req.params.id);
+    return res.json({ ok: true, access: doc.access, savedAt: doc.saved_at });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 // Reference material: any player uploads an image (the raw body, 25 MB at
 // most); X-Caption: its caption, URI-encoded. Returns { id }.
 router.post('/art/upload', express.raw({ type: () => true, limit: db.ART_MAX_IMAGE_BYTES }), (req, res) => {

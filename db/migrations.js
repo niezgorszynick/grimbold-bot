@@ -1481,6 +1481,88 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS gifts_to ON gifts (to_character_id);
       `);
     }
+  },
+  {
+    // Legends (legends.js, db/legends.js): docs and art about characters that
+    // have no sheet, read from their own two Discord channels and seen only by
+    // the players listed in config 'legends_viewers' (and the Root DM). Kept
+    // apart from character_docs and art_images so none of it reaches the
+    // Chronicles or Art tabs. A doc or an image can be about several of them;
+    // hidden = not about anyone (a meme, a stray link).
+    version: 55,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS legend_images (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          attachment_id TEXT NOT NULL UNIQUE,
+          message_id TEXT NOT NULL,
+          channel_id TEXT,
+          guild_id TEXT,
+          thread_name TEXT,
+          posted_by_discord_id TEXT,
+          posted_by_tag TEXT,
+          posted_at TEXT,
+          message_text TEXT,
+          filename TEXT,
+          width INTEGER,
+          height INTEGER,
+          file TEXT,
+          thumb_file TEXT,
+          download_error TEXT,
+          tagged_by TEXT,
+          artist_name TEXT,
+          artist_url TEXT,
+          hidden INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS legend_images_message ON legend_images (message_id);
+        CREATE TABLE IF NOT EXISTS legend_characters (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          name_key TEXT NOT NULL UNIQUE,
+          aliases TEXT NOT NULL DEFAULT '',
+          description TEXT NOT NULL DEFAULT '',
+          portrait_image_id INTEGER REFERENCES legend_images(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS legend_docs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_key TEXT NOT NULL UNIQUE,
+          url TEXT NOT NULL,
+          title TEXT,
+          kind TEXT NOT NULL DEFAULT 'other',
+          tagged_by TEXT,
+          hidden INTEGER NOT NULL DEFAULT 0,
+          channel_id TEXT,
+          guild_id TEXT,
+          message_id TEXT,
+          posted_by_discord_id TEXT,
+          posted_by_tag TEXT,
+          posted_at TEXT,
+          message_text TEXT,
+          access TEXT NOT NULL DEFAULT 'unknown',
+          saved_text TEXT,
+          saved_html TEXT,
+          saved_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS legend_doc_characters (
+          doc_id INTEGER NOT NULL REFERENCES legend_docs(id) ON DELETE CASCADE,
+          character_id INTEGER NOT NULL REFERENCES legend_characters(id) ON DELETE CASCADE,
+          PRIMARY KEY (doc_id, character_id)
+        );
+        CREATE TABLE IF NOT EXISTS legend_image_characters (
+          image_id INTEGER NOT NULL REFERENCES legend_images(id) ON DELETE CASCADE,
+          character_id INTEGER NOT NULL REFERENCES legend_characters(id) ON DELETE CASCADE,
+          PRIMARY KEY (image_id, character_id)
+        );
+      `);
+      // The five who see the tab, as asked on 2026-11-25.
+      db.prepare("INSERT INTO config (key, value) VALUES ('legends_viewers', ?) ON CONFLICT(key) DO NOTHING")
+        .run(JSON.stringify(['210398055516602369', '1283501577893712003', '507671376371646464', '600030860950896670', '322015943075299330']));
+      const add = db.prepare('INSERT OR IGNORE INTO legend_characters (name, name_key) VALUES (?, ?)');
+      for (const name of ['Torak', 'Ilphas', 'Aidan', 'Eris', 'Opal', 'Kaala', 'Silv', 'Rankor']) add.run(name, name.toLowerCase());
+    }
   }
 ];
 

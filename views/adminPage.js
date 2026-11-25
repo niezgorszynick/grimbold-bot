@@ -25,6 +25,7 @@ const TAB_RENDERERS = {
   'lineup': require('./tabs/lineup'),
   'chronicles': require('./tabs/chronicles'),
   'art': require('./tabs/art'),
+  'legends': require('./tabs/legends'),
   'changelog': require('./tabs/changelog')
 };
 
@@ -51,20 +52,24 @@ module.exports = function renderAdminPage(req) {
     lineup: 'Lineup',
     chronicles: 'Chronicles',
     art: 'Art',
+    legends: 'Legends',
     changelog: 'Changelog'
   };
-  const visibleTabs = isAdmin ? Object.keys(tabLabels) : playerAllowedTabs;
+  // Legends: only the players on its list and the Root DM, not every DM.
+  const seesLegends = db.canSeeLegends(currentUser);
+  if (seesLegends) playerAllowedTabs.push('legends');
+  const visibleTabs = (isAdmin ? Object.keys(tabLabels) : playerAllowedTabs).filter(tab => tab !== 'legends' || seesLegends);
   // The tabs in groups: a row of groups, and the current group's tabs under it.
   // Changelog is the "What's new" link by Logout.
   const TAB_GROUPS = [
     { label: 'Shop', tabs: ['items', 'auctions', 'catalog', 'restock', 'sales'] },
-    { label: 'Characters', tabs: ['character-sheet', 'lineup', 'chronicles', 'art', 'players'] },
+    { label: 'Characters', tabs: ['character-sheet', 'lineup', 'chronicles', 'art', 'legends', 'players'] },
     { label: 'Adventures', tabs: ['adventures', 'sessions', 'map'] },
     { label: 'DM Tools', tabs: ['npcs', 'monsters'] },
     { label: 'Records', tabs: ['rolls', 'analytics'] }
   ];
   let currentTab = req.query.tab || 'items';
-  if (!isAdmin && !playerAllowedTabs.includes(currentTab)) {
+  if ((!isAdmin && !playerAllowedTabs.includes(currentTab)) || (currentTab === 'legends' && !seesLegends)) {
     currentTab = 'items';
   }
   const status = req.query.status;

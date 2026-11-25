@@ -46,6 +46,10 @@ router.use((req, res, next) => {
   // Art editors (players the DMs chose) tag art as DMs do.
   // Art editors (players the DMs chose) tag art as DMs do; a player their own uploads.
   if (req.method === 'POST' && ['/art/update', '/art/delete'].includes(req.path) && db.canEditArtImage(req.session.user, req.body && req.body.id)) return next();
+  // Legends: only those who see the tab, DMs or not (other DMs are refused too).
+  if (req.path.startsWith('/legends/')) {
+    return db.canSeeLegends(req.session.user) ? next() : res.status(403).send('Forbidden.');
+  }
   return req.method === 'POST' ? requireAdmin(req, res, next) : next();
 });
 
@@ -414,6 +418,67 @@ router.post('/chronicles/update', (req, res) => {
     res.redirect(`${back}&status=doc_updated`);
   } catch (err) {
     res.redirect(`${back}&err=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// Legends (only those who see the tab, checked above): import, characters,
+// sorting docs and images; the Root DM keeps the list of who sees it.
+const legendsBack = (body, fallback) => (typeof body.return_to === 'string' && /^\/admin\?tab=legends(&|$)/.test(body.return_to) ? body.return_to : fallback);
+const withStatus = (url, key, value) => {
+  const [base, hash] = url.split('#');
+  return `${base}&${key}=${encodeURIComponent(value)}${hash ? `#${hash}` : ''}`;
+};
+function legendsRoute(action, fallback, status) {
+  return (req, res) => {
+    const back = legendsBack(req.body, fallback(req.body));
+    try {
+      action(req.body, req);
+      res.redirect(withStatus(back, 'status', status));
+    } catch (err) {
+      res.redirect(withStatus(back, 'err', err.message));
+    }
+  };
+}
+const legendIds = value => [].concat(value || []).filter(entry => entry !== '');
+
+router.post('/legends/import', (req, res) => {
+  const started = require('./legends').startImport(req.session.user.discord_tag);
+  res.redirect(`/admin?tab=legends&status=${started ? 'legends_import_started' : 'legends_import_busy'}`);
+});
+router.post('/legends/characters/save', (req, res) => {
+  try {
+    const id = db.saveLegendCharacter({
+      id: req.body.id ? Number(req.body.id) : null,
+      name: req.body.name,
+      aliases: req.body.aliases,
+      description: req.body.description,
+      portraitImageId: req.body.portrait_image_id
+    });
+    res.redirect(`/admin?tab=legends&who=${id}&status=legend_saved`);
+  } catch (err) {
+    res.redirect(`/admin?tab=legends${req.body.id ? `&who=${encodeURIComponent(req.body.id)}` : ''}&err=${encodeURIComponent(err.message)}`);
+  }
+});
+router.post('/legends/characters/delete', legendsRoute(body => db.deleteLegendCharacter(body.id), () => '/admin?tab=legends', 'legend_deleted'));
+router.post('/legends/docs/update', legendsRoute(body => db.updateLegendDoc(body.id, {
+  characterIds: body.tag_form !== undefined ? legendIds(body.character_ids) : undefined,
+  kind: body.kind || undefined,
+  hidden: body.hidden === undefined ? undefined : [].concat(body.hidden).includes('1'),
+  title: body.title
+}), body => `/admin?tab=legends&doc=${encodeURIComponent(body.id)}#legend-viewer`, 'legend_item_saved'));
+router.post('/legends/images/update', legendsRoute(body => db.updateLegendImage(body.id, {
+  characterIds: body.tag_form !== undefined ? legendIds(body.character_ids) : undefined,
+  hidden: body.hidden === undefined ? undefined : [].concat(body.hidden).includes('1'),
+  artist: body.artist,
+  artistUrl: body.artist_url
+}), body => `/admin?tab=legends&image=${encodeURIComponent(body.id)}#legend-viewer`, 'legend_item_saved'));
+router.post('/legends/viewers', (req, res) => {
+  if (!isRootAdmin(req.session.user)) return res.status(403).send('Forbidden: only the Root DM changes who sees Legends.');
+  try {
+    db.setLegendsViewers(req.body.discord_ids || '');
+    return res.redirect('/admin?tab=legends&status=legends_viewers_saved#legends-viewers');
+  } catch (err) {
+    return res.redirect(`/admin?tab=legends&err=${encodeURIComponent(err.message)}#legends-viewers`);
   }
 });
 

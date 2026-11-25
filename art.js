@@ -373,6 +373,11 @@ module.exports = {
   runScan,
   startImport,
   recordMessage,
+  // Shared with Legends (legends.js).
+  attachmentsOf,
+  downloadImage: download,
+  thumbUrl,
+  plainText,
   tagView,
   othersModal,
   handleTagArt,
