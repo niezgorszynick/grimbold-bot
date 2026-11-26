@@ -66,11 +66,14 @@ function thumb(image, href, rank) {
 
 const TAGGED_BY = { name: 'named in the post', hand: 'set by hand' };
 
-// The opened image: large, with who is in it and the form to change it.
+// Who has a picture in their top 4: chips, "you" for the viewer, best place first.
+function pickersHtml(pickedBy, picker) {
+  return [...pickedBy].sort((a, b) => a.rank - b.rank).map(entry => `<span class="legend-picker${entry.playerId === picker ? ' is-own' : ''}">${entry.playerId === picker ? 'you' : escapeHtml(entry.tag)} <strong>#${entry.rank}</strong></span>`).join(' ');
+}
+
 // The viewer's top 4 for this picture: a place 1–4 (the one they want in the
 // most is 1), and who else picked it.
 function pickPanelHtml(image, { picker, myRank, pickedBy, back }) {
-  const others = pickedBy.filter(entry => entry.playerId !== picker);
   const returnTo = escapeHtml(`${back}&image=${image.id}#legend-viewer`);
   const max = db.LEGEND_MAX_PICKS;
   const form = picker && !image.hidden ? `
@@ -82,11 +85,13 @@ function pickPanelHtml(image, { picker, myRank, pickedBy, back }) {
       ${myRank ? '<button type="submit" name="action" value="remove" class="btn btn-small btn-secondary">Take out</button>' : ''}
       <a class="small" href="/admin?tab=legends&view=picks">See everyone's</a>
     </form>` : '';
-  const list = others.length
-    ? `<p class="muted small">⭐ In the top ${max} of ${others.map(entry => `${escapeHtml(entry.tag)} (#${entry.rank})`).join(', ')}</p>` : '';
-  return form || list ? `<div class="legend-pick-panel">${form}${list}</div>` : '';
+  const list = pickedBy.length
+    ? `<p class="legend-pickers"><span class="muted small">⭐ Picked by</span> ${pickersHtml(pickedBy, picker)}</p>`
+    : '<p class="muted small">⭐ Nobody has it in their top 4 yet.</p>';
+  return `<div class="legend-pick-panel">${form}${list}</div>`;
 }
 
+// The opened image: large, with who is in it and the form to change it.
 function imageViewerHtml(image, { characters, back, picks, canDelete }) {
   return `
     <section class="card art-viewer" id="legend-viewer">
@@ -233,12 +238,13 @@ function docListHtml(docs, { keep, current, showWho = true }) {
     </ul>`;
 }
 
-function artGridHtml(images, { keep, current, ranks = new Map() }) {
+// pickers: Map(imageId → [{ playerId, tag, rank }]), shown under each picture.
+function artGridHtml(images, { keep, current, ranks = new Map(), pickers = new Map(), picker = null }) {
   if (!images.length) return '';
   return `<div class="art-grid">${images.map(image => `
     <figure class="${String(current) === String(image.id) ? 'is-current' : ''}">
       ${thumb(image, `/admin?tab=legends${keep}&image=${image.id}#legend-viewer`, ranks.get(image.id))}
-      <figcaption>${namesOf(image) || '<span class="muted">nobody</span>'}${image.artist_name ? `<br><span class="art-credit">🖌 ${escapeHtml(image.artist_name)}</span>` : ''}</figcaption>
+      <figcaption>${namesOf(image) || '<span class="muted">nobody</span>'}${image.artist_name ? `<br><span class="art-credit">🖌 ${escapeHtml(image.artist_name)}</span>` : ''}${pickers.has(image.id) ? `<br><span class="legend-pickers">⭐ ${pickersHtml(pickers.get(image.id), picker)}</span>` : ''}</figcaption>
     </figure>`).join('')}</div>`;
 }
 
@@ -450,9 +456,11 @@ function uploadHtml(characters, who) {
 }
 
 // Everyone's top 4, the viewer's own first with buttons to reorder.
-function picksHtml(entries, picker) {
-  const rows = [...entries.filter(entry => entry.playerId === picker), ...entries.filter(entry => entry.playerId !== picker)];
-  if (!rows.length) return '<p class="muted">Nobody on the list has a panel account yet.</p>';
+// compact: the main page's summary (no buttons, no help, nobody who picked nothing).
+function picksHtml(entries, picker, { compact = false } = {}) {
+  const rows = [...entries.filter(entry => entry.playerId === picker), ...entries.filter(entry => entry.playerId !== picker)]
+    .filter(entry => !compact || entry.picks.length);
+  if (!rows.length) return compact ? '' : '<p class="muted">Nobody on the list has a panel account yet.</p>';
   const max = db.LEGEND_MAX_PICKS;
   const back = '/admin?tab=legends&view=picks';
   const control = (image, action, label, title, disabled) => `
@@ -460,6 +468,22 @@ function picksHtml(entries, picker) {
       <input type="hidden" name="image_id" value="${image.id}"><input type="hidden" name="return_to" value="${back}">
       <button type="submit" name="action" value="${action}" class="btn btn-small btn-secondary" title="${title}" aria-label="${title}"${disabled ? ' disabled' : ''}>${label}</button>
     </form>`;
+  if (compact) {
+    return `
+    <section class="card legend-picks-summary">
+      <div class="chronicles-head">
+        <h3>⭐ Top ${max} picks</h3>
+        <a class="btn btn-small btn-secondary" href="${back}">${picker ? 'Change yours' : 'See them large'}</a>
+      </div>
+      <div class="legend-picks-mini">
+        ${rows.map(entry => `
+          <div class="legend-picks-mini-row${entry.playerId === picker ? ' is-own' : ''}">
+            <strong>${entry.playerId === picker ? 'You' : escapeHtml(entry.tag)}</strong>
+            <ol>${entry.picks.map((image, index) => `<li><span class="legend-pick-place">#${index + 1}</span>${thumb(image, `/admin?tab=legends&image=${image.id}#legend-viewer`)}</li>`).join('')}</ol>
+          </div>`).join('')}
+      </div>
+    </section>`;
+  }
   return `
     <p class="muted small">Each of you picks ${max} pictures from anywhere in Legends and ranks them: #1 is the one you want in the most, #${max} the least. Open a picture and choose its place; putting one where another already is moves the rest down.</p>
     <div class="legend-picks">
@@ -605,6 +629,11 @@ module.exports = function renderLegendsTab(ctx) {
   const allPicks = db.listLegendPicks();
   const picker = allPicks.some(entry => entry.playerId === Number(currentUser && currentUser.id)) ? Number(currentUser.id) : null;
   const ranks = db.legendPickRanks(picker);
+  const pickers = new Map();
+  allPicks.forEach(entry => entry.picks.forEach((pick, index) => {
+    if (!pickers.has(pick.id)) pickers.set(pick.id, []);
+    pickers.get(pick.id).push({ playerId: entry.playerId, tag: entry.tag, rank: index + 1 });
+  }));
   const counts = db.legendCounts();
   const keep = `${who ? `&who=${who.id}` : ''}${view !== 'all' ? `&view=${view}` : ''}${kind ? `&kind=${kind}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
   const back = `/admin?tab=legends${keep}`;
@@ -625,6 +654,7 @@ module.exports = function renderLegendsTab(ctx) {
       ${scanStatusHtml()}
       ${rosterHtml(characters, who ? who.id : null)}
     </section>
+    ${!who && view === 'all' && !kind && !artist ? picksHtml(allPicks, picker, { compact: true }) : ''}
     ${who ? profileHtml(who, db.listLegendImages({ characterId: who.id })) : ''}
     ${image ? imageViewerHtml(image, {
       characters,
@@ -633,7 +663,7 @@ module.exports = function renderLegendsTab(ctx) {
       picks: {
         picker,
         myRank: ranks.get(image.id) || null,
-        pickedBy: allPicks.flatMap(entry => entry.picks.map((pick, index) => (pick.id === image.id ? { playerId: entry.playerId, tag: entry.tag, rank: index + 1 } : null))).filter(Boolean)
+        pickedBy: pickers.get(image.id) || []
       }
     }) : ''}
     ${doc ? docViewerHtml(doc, { characters, back }) : ''}
@@ -662,7 +692,7 @@ module.exports = function renderLegendsTab(ctx) {
         ? sortingHtml({ images, docs: poster ? [] : docs, characters, posters: db.listLegendUnsortedPosters(), poster, page: Number(query.page) || 1 })
         : images.length || docs.length
           ? `${docs.length ? `<h4>📜 Docs (${docs.length})</h4>${docListHtml(docs, { keep, current: doc && doc.id, showWho: !who })}` : ''}
-             ${images.length ? `<h4>🎨 Art (${images.length})</h4>${artGridHtml(images, { keep, current: image && image.id, ranks })}` : ''}`
+             ${images.length ? `<h4>🎨 Art (${images.length})</h4>${artGridHtml(images, { keep, current: image && image.id, ranks, pickers, picker })}` : ''}`
           : `<p class="muted">${view === 'hidden' ? 'Nothing hidden.' : who ? `Nothing about ${escapeHtml(who.name)} yet.` : 'Nothing here yet: import the channels, or sort what is waiting.'}</p>`}
     </section>
     ${isRootAdmin ? viewersHtml() : ''}

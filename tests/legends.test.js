@@ -323,6 +323,17 @@ test('top 4 picks: each viewer ranks four pictures, and everyone on the tab sees
   assert.match(opened, /Delete upload/);
   assert.match(page(users.viewer, { view: 'art' }), /legend-pick-badge[^>]*>⭐1/);
   assert.match(page(users.viewer, {}), /id="legend-upload"/);
+  // Everyone's picks: on the main page, under each picture, on the opened one.
+  const tag = db.prepare('SELECT discord_tag FROM players WHERE id = ?').get(viewer).discord_tag;
+  const rootMain = page(users.root, {});
+  assert.match(rootMain, /legend-picks-summary/);
+  assert.ok(rootMain.includes(`<strong>${tag}</strong>`), 'Root sees whose picks they are');
+  assert.match(page(users.viewer, {}), /legend-picks-mini-row is-own/);
+  assert.doesNotMatch(page(users.viewer, { view: 'docs' }), /legend-picks-summary/, 'only on the main page');
+  assert.ok(page(users.root, { view: 'art' }).includes(`<span class="legend-picker">${tag} <strong>#1</strong></span>`));
+  assert.match(page(users.viewer, { view: 'art' }), /legend-picker is-own">you <strong>#1/);
+  assert.ok(page(users.root, { image: String(pictures[2]) }).includes(`Picked by</span> <span class="legend-picker">${tag} <strong>#1</strong>`));
+  assert.match(page(users.root, { image: String(pictures[3]) }), /Nobody has it in their top 4 yet/);
   for (const [, code] of page(users.viewer, {}).matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
 
   const express = require('express');
