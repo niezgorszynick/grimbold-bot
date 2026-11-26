@@ -11,7 +11,7 @@ const db = require('../../db');
 const rules = require('../../rules');
 const { escapeHtml } = require('../helpers');
 
-const KIND_OPTIONS = { character: 'Character', npc: 'Notable NPC', monster: 'Monster (every one of its kind)', custom: 'Custom name' };
+const KIND_OPTIONS = { character: 'Character', npc: 'Notable NPC', monster: 'Monster (every one of its kind)', custom: 'Custom name', later: 'I’ll choose later' };
 
 // Where a token's subject lives in the panel.
 function subjectHref(token) {
@@ -52,6 +52,7 @@ function subjectFieldsHtml(subjects, selected = {}) {
         </select></label>`)}
       ${field('monster', `<label class="art-form-label">Monster <span class="muted small">(from the Monsters tab; one token for all of them)</span>
         <input type="text" name="monster" list="token-monster-list" value="${escapeHtml(selected.monster || '')}" placeholder="Goblin Warrior" autocomplete="off" maxlength="200"></label>`)}
+      ${field('later', '<p class="muted small token-later-hint">It waits under <strong>To choose later</strong>, named after its file, until you link it with ✏️ Edit.</p>')}
       ${field('custom', `<label class="art-form-label">Name <span class="muted small">(anyone else: a one-off, a mount, a summon)</span>
         <input type="text" name="name" list="token-custom-list" value="${escapeHtml(selected.name || '')}" placeholder="Captain Ruvo's parrot" autocomplete="off" maxlength="100"></label>`)}
     </div>`;
@@ -105,11 +106,11 @@ function tokenCardHtml(token, subjects) {
     <figure class="token-card${token.main ? ' is-main' : ''}" data-token-search="${escapeHtml(`${token.name} ${token.label}`.toLowerCase())}">
       <div class="token-image"><img src="${escapeHtml(token.url)}" alt="${escapeHtml(token.label || token.name)}" loading="lazy"></div>
       <figcaption>
-        <span>${token.main ? '<span class="token-main" title="The main token">★ Main</span> ' : ''}${escapeHtml(token.label || (token.main ? '' : 'Variant'))}</span>
+        <span>${token.kind === 'later' ? `<strong>${escapeHtml(token.name)}</strong>${token.label ? ` · ${escapeHtml(token.label)}` : ''}` : `${token.main ? '<span class="token-main" title="The main token">★ Main</span> ' : ''}${escapeHtml(token.label || (token.main ? '' : 'Variant'))}`}</span>
         ${tokenActionsHtml(token)}
       </figcaption>
       <details class="token-edit">
-        <summary class="small">✏️ Edit</summary>
+        <summary class="small">${token.kind === 'later' ? '✏️ Choose who it is of' : '✏️ Edit'}</summary>
         <form method="POST" action="/admin/tokens/update" class="art-tag-form">
           <input type="hidden" name="id" value="${token.id}">
           <input type="hidden" name="return_to" value="/admin?tab=tokens#token-${token.id}">
@@ -176,14 +177,15 @@ function uploadFormHtml(subjects, query) {
               status.textContent = 'Uploading ' + (index + 1) + ' of ' + files.length + '…';
               const response = await fetch('/api/tokens/upload', {
                 method: 'POST', credentials: 'same-origin', body: file,
-                headers: { 'Content-Type': 'application/octet-stream', 'X-Token': encodeURIComponent(JSON.stringify({ ...meta, main: index === 0 && form.elements.main.checked })) }
+                headers: { 'Content-Type': 'application/octet-stream', 'X-Token': encodeURIComponent(JSON.stringify({ ...meta, name: meta.kind === 'later' ? file.name.replace(/\\.[^.]+$/, '') : meta.name, main: index === 0 && form.elements.main.checked })) }
               });
               const body = await response.json().catch(() => null);
               if (!body) throw new Error(file.name + ': ' + (response.status === 413 ? 'the server refused it as too large' : 'the server answered ' + response.status));
               if (!response.ok) throw new Error(file.name + ': ' + (body.error || 'upload failed'));
               ids.push(body.id);
             }
-            location.href = '/admin?tab=tokens&status=token_uploaded&n=' + ids.length + '#token-' + ids[0];
+            // The new id in the query too: an address that differs only after # would not reload the page.
+            location.href = '/admin?tab=tokens&status=token_uploaded&n=' + ids.length + '&new=' + ids[0] + '#token-' + ids[0];
           } catch (error) {
             status.textContent = error.message + (ids.length ? ' (' + ids.length + ' uploaded before it)' : '');
             button.disabled = false;
@@ -223,7 +225,7 @@ function renderTokensTab(ctx) {
   const groups = db.TOKEN_KINDS.map(groupKind => {
     const subjectsOf = new Map();
     for (const token of shown.filter(entry => entry.kind === groupKind)) {
-      const key = token.characterId ? `c${token.characterId}` : token.npcId ? `n${token.npcId}` : `${token.kind}:${token.name.toLowerCase()}`;
+      const key = token.kind === 'later' ? 'later' : token.characterId ? `c${token.characterId}` : token.npcId ? `n${token.npcId}` : `${token.kind}:${token.name.toLowerCase()}`;
       if (!subjectsOf.has(key)) subjectsOf.set(key, []);
       subjectsOf.get(key).push(token);
     }
@@ -253,6 +255,13 @@ function renderTokensTab(ctx) {
         ${group.subjects.map(list => {
           const first = list[0];
           const href = subjectHref(first);
+          if (first.kind === 'later') {
+            return `
+          <div class="token-subject-row" data-token-subject>
+            <h4 class="muted small">Uploaded without saying who they are of: open ✏️ on each to link it to a character, an NPC, a monster or a name.</h4>
+            <div class="token-grid">${list.map(token => `<div id="token-${token.id}">${tokenCardHtml(token, subjects)}</div>`).join('')}</div>
+          </div>`;
+          }
           return `
           <div class="token-subject-row" data-token-subject>
             <h4>${href ? `<a href="${escapeHtml(href)}">${escapeHtml(first.name)}</a>` : escapeHtml(first.name)}${first.privateNpc ? ' <span class="tag gold">🔒 Private</span>' : ''}${first.orphaned ? ` <span class="tag" title="Its ${first.kind === 'npc' ? 'NPC' : 'character'} was deleted">deleted</span>` : ''}

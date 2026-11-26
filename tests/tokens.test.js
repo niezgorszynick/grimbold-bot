@@ -85,6 +85,32 @@ test('DMs upload tokens of characters, NPCs, monster types and custom names; one
   assert.equal(db.getTokenFileByName(token.file), null, 'the file goes with it');
 });
 
+test('a token can wait for its subject: "I’ll choose later"', () => {
+  const waiting = upload(users.dm, { kind: 'later', name: 'meissa w czapce' }, { main: true });
+  const token = db.getToken(users.dm, waiting);
+  assert.equal(token.kind, 'later');
+  assert.equal(token.name, 'meissa w czapce');
+  assert.equal(token.main, false, 'nobody\'s, so not main');
+  assert.equal(db.getToken(users.dm, upload(users.dm, { kind: 'later' })).name, 'Untitled token');
+  db.updateToken({ user: users.dm, id: waiting, label: 'Hat', subject: { kind: 'later', name: 'whatever' }, monsterExists });
+  assert.equal(db.getToken(users.dm, waiting).label, 'Hat', 'relabelled, still waiting');
+  assert.equal(db.getToken(users.dm, waiting).kind, 'later');
+
+  const meissa = Number(db.prepare(`INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+    VALUES (?, 'Meissa', 'Elf', 'Bard', '', 1, 0, 'alive', 0, '{}')`).run(player).lastInsertRowid);
+  db.updateToken({ user: users.dm, id: waiting, subject: { kind: 'character', characterId: meissa }, monsterExists });
+  const linked = db.getToken(users.dm, waiting);
+  assert.equal(linked.kind, 'character');
+  assert.equal(linked.name, 'Meissa');
+  assert.equal(linked.main, true, 'her first token');
+
+  const page = renderAdminPage({ session: { user: users.dm }, query: { tab: 'tokens' } });
+  assert.match(page, /<option value="later">I’ll choose later<\/option>/);
+  assert.match(page, /<h3>To choose later<\/h3>/);
+  assert.match(page, /Choose who it is of/);
+  assert.ok(page.indexOf('To choose later</h3>') < page.indexOf('<h3>Characters</h3>'), 'waiting ones first');
+});
+
 test('the Tokens tab, the strips on subjects, and the routes', async () => {
   const page = (user, query) => renderAdminPage({ session: { user }, query });
   const tab = page(users.dm, { tab: 'tokens' });

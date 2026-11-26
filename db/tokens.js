@@ -19,8 +19,9 @@ const { sniffImage } = require('./npcFiles');
 // The Root DM (auth.js ROOT_ADMIN, id 0); auth.js loads db, so not required here.
 const ROOT_ADMIN = { id: 0 };
 
-const KINDS = ['character', 'npc', 'monster', 'custom'];
-const KIND_LABELS = { character: 'Characters', npc: 'Notable NPCs', monster: 'Monsters', custom: 'Custom' };
+// later: uploaded now, who it is of chosen later (named after its file meanwhile).
+const KINDS = ['later', 'character', 'npc', 'monster', 'custom'];
+const KIND_LABELS = { later: 'To choose later', character: 'Characters', npc: 'Notable NPCs', monster: 'Monsters', custom: 'Custom' };
 const MAX_BYTES = 5 * 1024 * 1024;
 const CONTENT_TYPES = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
 const FILE_NAME = /^token-[a-f0-9]{24}\.(png|jpg|webp|gif)$/;
@@ -60,6 +61,7 @@ function checkSubject({ kind, characterId, npcId, monster, name }, user, { monst
     if (!monsterExists(label)) throw new Error(`There is no monster called “${label}” in the catalog; use a custom name instead.`);
     return { kind, characterId: null, npcId: null, monster: label, name: label };
   }
+  if (kind === 'later') return { kind, characterId: null, npcId: null, monster: null, name: clean(name, 100) || 'Untitled token' };
   const label = clean(name, 100);
   if (!label) throw new Error('Give the token a name.');
   return { kind, characterId: null, npcId: null, monster: null, name: label };
@@ -76,6 +78,8 @@ function subjectWhere(row) {
 // Exactly one main token per subject: the one asked for, else the one already
 // main, else the oldest.
 function settleMain(row, mainId = null) {
+  // Tokens waiting to be linked are nobody's, so none of them is main.
+  if (row.kind === 'later') { db.prepare('UPDATE tokens SET is_main = 0 WHERE id = ?').run(row.id); return; }
   const { sql, params } = subjectWhere(row);
   const ids = db.prepare(`SELECT id, is_main FROM tokens WHERE ${sql} ORDER BY created_at, id`).all(...params);
   if (!ids.length) return;
@@ -177,7 +181,8 @@ function updateToken({ user, id, label, main, subject, monsterExists }) {
   const row = requireToken(user, id);
   // The same subject as now (the edit form always sends one): nothing to relink.
   const same = subject && subject.kind === row.kind && (
-    row.kind === 'character' ? Number(subject.characterId || 0) === Number(row.character_id || 0)
+    row.kind === 'later' ? true
+      : row.kind === 'character' ? Number(subject.characterId || 0) === Number(row.character_id || 0)
       : row.kind === 'npc' ? Number(subject.npcId || 0) === Number(row.npc_id || 0)
         : row.kind === 'monster' ? clean(subject.monster, 200) === row.monster_name
           : plain(subject.name) === row.name_key);
