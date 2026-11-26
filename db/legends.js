@@ -658,12 +658,25 @@ function pickingPlayer(user) {
   return Number(user.id);
 }
 
+// The new order; each pick keeps its note as it moves.
 function savePicks(playerId, ids) {
   db.transaction(() => {
+    const notes = new Map(db.prepare('SELECT image_id, note FROM legend_picks WHERE player_id = ?').all(playerId).map(row => [row.image_id, row.note]));
     db.prepare('DELETE FROM legend_picks WHERE player_id = ?').run(playerId);
-    const add = db.prepare('INSERT INTO legend_picks (player_id, image_id, rank) VALUES (?, ?, ?)');
-    ids.slice(0, MAX_PICKS).forEach((imageId, index) => add.run(playerId, imageId, index + 1));
+    const add = db.prepare('INSERT INTO legend_picks (player_id, image_id, rank, note) VALUES (?, ?, ?, ?)');
+    ids.slice(0, MAX_PICKS).forEach((imageId, index) => add.run(playerId, imageId, index + 1, notes.get(imageId) || null));
   })();
+}
+
+const MAX_PICK_NOTE = 600;
+
+// A few sentences on why: on a picture already in the player's top 4 ('' clears it).
+function setLegendPickNote(user, imageId, note) {
+  const playerId = pickingPlayer(user);
+  const text = String(note || '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  if (text.length > MAX_PICK_NOTE) throw new Error(`Keep it to a few sentences (${MAX_PICK_NOTE} characters at most).`);
+  const result = db.prepare('UPDATE legend_picks SET note = ? WHERE player_id = ? AND image_id = ?').run(text || null, playerId, Number(imageId));
+  if (!result.changes) throw new Error('That picture is not in your top 4.');
 }
 
 // Puts a picture at #rank (1–4) in the player's top 4; the ones from there
@@ -711,7 +724,9 @@ function listLegendPicks() {
     if (!player) return null;
     const ids = pickIds(player.id);
     const images = new Map(ids.length ? presentImages(db.prepare(`SELECT * FROM legend_images WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids)).map(image => [image.id, image]) : []);
-    return { playerId: player.id, tag: player.discord_tag, picks: ids.map(id => images.get(id)).filter(Boolean) };
+    const notes = new Map(db.prepare('SELECT image_id, note FROM legend_picks WHERE player_id = ?').all(player.id).map(row => [row.image_id, row.note]));
+    // Each pick: the picture, with pickNote (or null).
+    return { playerId: player.id, tag: player.discord_tag, picks: ids.map(id => images.get(id)).filter(Boolean).map(image => ({ ...image, pickNote: notes.get(image.id) || null })) };
   }).filter(Boolean);
 }
 
@@ -780,6 +795,8 @@ module.exports = {
   canDeleteLegendImage,
   deleteLegendUpload,
   LEGEND_MAX_PICKS: MAX_PICKS,
+  LEGEND_MAX_PICK_NOTE: MAX_PICK_NOTE,
+  setLegendPickNote,
   setLegendPick,
   removeLegendPick,
   moveLegendPick,

@@ -490,6 +490,10 @@ router.post('/legends/picks', (req, res) => {
   const user = req.session.user;
   try {
     const { action, image_id: imageId } = req.body;
+    if (action === 'note') {
+      db.setLegendPickNote(user, imageId, req.body.note);
+      return res.redirect(withStatus(back, 'status', 'legend_pick_note_saved'));
+    }
     if (action === 'remove') db.removeLegendPick(user, imageId);
     else if (action === 'up' || action === 'down') db.moveLegendPick(user, imageId, action === 'up' ? -1 : 1);
     else {

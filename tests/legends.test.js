@@ -334,6 +334,24 @@ test('top 4 picks: each viewer ranks four pictures, and everyone on the tab sees
   assert.match(page(users.viewer, { view: 'art' }), /legend-picker is-own">you <strong>#1/);
   assert.ok(page(users.root, { image: String(pictures[2]) }).includes(`Picked by</span> <span class="legend-picker">${tag} <strong>#1</strong>`));
   assert.match(page(users.root, { image: String(pictures[3]) }), /Nobody has it in their top 4 yet/);
+
+  // A note with each pick: kept as it moves, shown to everyone, cleared with ''.
+  assert.throws(() => db.setLegendPickNote(users.viewer, pictures[0], 'x'), /not in your top 4/);
+  assert.throws(() => db.setLegendPickNote(users.viewer, pictures[2], 'x'.repeat(601)), /few sentences/);
+  assert.throws(() => db.setLegendPickNote(users.root, pictures[2], 'x'), /Only players/);
+  db.setLegendPickNote(users.viewer, pictures[2], '  Eris <at> the gate.\r\n\r\n\r\nThe   best one.  ');
+  const noteOf = id => db.listLegendPicks().find(entry => entry.playerId === viewer).picks.find(pick => pick.id === id).pickNote;
+  assert.equal(noteOf(pictures[2]), 'Eris <at> the gate.\n\nThe best one.');
+  db.moveLegendPick(users.viewer, pictures[2], 1);
+  db.setLegendPick(users.viewer, pictures[2], 1);
+  assert.equal(noteOf(pictures[2]), 'Eris <at> the gate.\n\nThe best one.', 'kept as it moves');
+  assert.ok(page(users.root, { image: String(pictures[2]) }).includes(`<strong>${tag} (#1):</strong> Eris &lt;at&gt; the gate.<br><br>The best one.`));
+  assert.match(page(users.viewer, { image: String(pictures[2]) }), /Edit your note/);
+  assert.doesNotMatch(page(users.root, { image: String(pictures[2]) }), /Edit your note/);
+  assert.match(page(users.root, { view: 'picks' }), /legend-pick-note">Eris &lt;at&gt;/);
+  assert.match(page(users.root, {}), /title="Eris &lt;at&gt; the gate\./);
+  db.setLegendPickNote(users.viewer, pictures[2], '');
+  assert.equal(noteOf(pictures[2]), null);
   for (const [, code] of page(users.viewer, {}).matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
 
   const express = require('express');
@@ -350,6 +368,9 @@ test('top 4 picks: each viewer ranks four pictures, and everyone on the tab sees
     assert.equal(done.status, 302);
     assert.match(done.headers.get('location'), /status=legend_picked&rank=1#legend-viewer$/);
     assert.equal(order()[0], pictures[0]);
+    const noted = await post(users.viewer, { image_id: String(pictures[0]), action: 'note', note: 'For the cover.', return_to: '/admin?tab=legends&view=picks' });
+    assert.match(noted.headers.get('location'), /status=legend_pick_note_saved/);
+    assert.equal(db.listLegendPicks().find(entry => entry.playerId === viewer).picks[0].pickNote, 'For the cover.');
   } finally {
     server.close();
   }

@@ -1581,6 +1581,13 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    // Legends: a few sentences with each top 4 pick (why this one).
+    version: 57,
+    up(db) {
+      db.exec('ALTER TABLE legend_picks ADD COLUMN note TEXT');
+    }
   }
 ];
 

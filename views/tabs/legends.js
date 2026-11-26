@@ -71,8 +71,25 @@ function pickersHtml(pickedBy, picker) {
   return [...pickedBy].sort((a, b) => a.rank - b.rank).map(entry => `<span class="legend-picker${entry.playerId === picker ? ' is-own' : ''}">${entry.playerId === picker ? 'you' : escapeHtml(entry.tag)} <strong>#${entry.rank}</strong></span>`).join(' ');
 }
 
+// A pick's note as paragraphs.
+const noteHtml = note => escapeHtml(note).replace(/\n/g, '<br>');
+
+// The form for a pick's note (a few sentences on why).
+function pickNoteForm(imageId, note, returnTo, { open = false } = {}) {
+  return `
+    <details class="legend-pick-note-edit"${open ? ' open' : ''}>
+      <summary class="small">${note ? '✏️ Edit your note' : '✏️ Add a note'}</summary>
+      <form method="POST" action="/admin/legends/picks" class="art-tag-form">
+        <input type="hidden" name="image_id" value="${imageId}">
+        <input type="hidden" name="return_to" value="${returnTo}">
+        <textarea name="note" rows="3" maxlength="${db.LEGEND_MAX_PICK_NOTE}" placeholder="Why this one? A few sentences at most." aria-label="Your note on this pick">${escapeHtml(note || '')}</textarea>
+        <div class="art-form-actions"><button type="submit" name="action" value="note" class="btn btn-small btn-green">Save note</button></div>
+      </form>
+    </details>`;
+}
+
 // The viewer's top 4 for this picture: a place 1–4 (the one they want in the
-// most is 1), and who else picked it.
+// most is 1), their note on it, and who else picked it (and why).
 function pickPanelHtml(image, { picker, myRank, pickedBy, back }) {
   const returnTo = escapeHtml(`${back}&image=${image.id}#legend-viewer`);
   const max = db.LEGEND_MAX_PICKS;
@@ -85,10 +102,14 @@ function pickPanelHtml(image, { picker, myRank, pickedBy, back }) {
       ${myRank ? '<button type="submit" name="action" value="remove" class="btn btn-small btn-secondary">Take out</button>' : ''}
       <a class="small" href="/admin?tab=legends&view=picks">See everyone's</a>
     </form>` : '';
+  const mine = pickedBy.find(entry => entry.playerId === picker);
+  const notes = [...pickedBy].sort((a, b) => a.rank - b.rank).filter(entry => entry.note);
   const list = pickedBy.length
-    ? `<p class="legend-pickers"><span class="muted small">⭐ Picked by</span> ${pickersHtml(pickedBy, picker)}</p>`
+    ? `<p class="legend-pickers"><span class="muted small">⭐ Picked by</span> ${pickersHtml(pickedBy, picker)}</p>
+       ${notes.length ? `<ul class="legend-pick-notes">${notes.map(entry => `<li${entry.playerId === picker ? ' class="is-own"' : ''}><strong>${entry.playerId === picker ? 'You' : escapeHtml(entry.tag)} (#${entry.rank}):</strong> ${noteHtml(entry.note)}</li>`).join('')}</ul>` : ''}`
     : '<p class="muted small">⭐ Nobody has it in their top 4 yet.</p>';
-  return `<div class="legend-pick-panel">${form}${list}</div>`;
+  const edit = mine && form ? pickNoteForm(image.id, mine.note, returnTo) : '';
+  return `<div class="legend-pick-panel">${form}${list}${edit}</div>`;
 }
 
 // The opened image: large, with who is in it and the form to change it.
@@ -479,7 +500,7 @@ function picksHtml(entries, picker, { compact = false } = {}) {
         ${rows.map(entry => `
           <div class="legend-picks-mini-row${entry.playerId === picker ? ' is-own' : ''}">
             <strong>${entry.playerId === picker ? 'You' : escapeHtml(entry.tag)}</strong>
-            <ol>${entry.picks.map((image, index) => `<li><span class="legend-pick-place">#${index + 1}</span>${thumb(image, `/admin?tab=legends&image=${image.id}#legend-viewer`)}</li>`).join('')}</ol>
+            <ol>${entry.picks.map((image, index) => `<li${image.pickNote ? ` title="${escapeHtml(image.pickNote)}"` : ''}><span class="legend-pick-place">#${index + 1}${image.pickNote ? ' 💬' : ''}</span>${thumb(image, `/admin?tab=legends&image=${image.id}#legend-viewer`)}</li>`).join('')}</ol>
           </div>`).join('')}
       </div>
     </section>`;
@@ -501,6 +522,8 @@ function picksHtml(entries, picker, { compact = false } = {}) {
                 <span class="legend-pick-place">#${index + 1}</span>
                 ${thumb(image, `${back}&image=${image.id}#legend-viewer`)}
                 <span class="small">${namesOf(image) || '<span class="muted">nobody</span>'}${image.hidden ? ' · <span class="tag red">Hidden</span>' : ''}</span>
+                ${image.pickNote ? `<p class="legend-pick-note">${noteHtml(image.pickNote)}</p>` : ''}
+                ${own ? pickNoteForm(image.id, image.pickNote, back) : ''}
                 ${own ? `<div class="legend-pick-controls">
                   ${control(image, 'up', '↑', 'Move up', index === 0)}
                   ${control(image, 'down', '↓', 'Move down', index === entry.picks.length - 1)}
@@ -607,6 +630,7 @@ module.exports = function renderLegendsTab(ctx) {
       legend_upload_deleted: '<div class="alert green">🗑 Upload deleted.</div>',
       legend_picked: `<div class="alert green">⭐ #${Number(query.rank) || ''} in your top ${db.LEGEND_MAX_PICKS}.${query.dropped ? ` Your old #${db.LEGEND_MAX_PICKS} is out of it now (<a href="/admin?tab=legends&image=${Number(query.dropped) || 0}#legend-viewer">see it</a>).` : ''}</div>`,
       legend_picks_saved: '<div class="alert green">⭐ Your top 4 is saved.</div>',
+      legend_pick_note_saved: '<div class="alert green">💬 Note saved.</div>',
       legend_bulk_hidden: `<div class="alert green">🚫 Hid ${Number(query.n) || 0} image${Number(query.n) === 1 ? '' : 's'}.</div>`,
       legends_viewers_saved: '<div class="alert green">🛡 The list of who sees Legends is saved.</div>',
       legends_import_started: '<div class="alert green">🏛 Grimbold is reading both channels\' history. Reload in a minute to see what he found.</div>',
@@ -632,7 +656,7 @@ module.exports = function renderLegendsTab(ctx) {
   const pickers = new Map();
   allPicks.forEach(entry => entry.picks.forEach((pick, index) => {
     if (!pickers.has(pick.id)) pickers.set(pick.id, []);
-    pickers.get(pick.id).push({ playerId: entry.playerId, tag: entry.tag, rank: index + 1 });
+    pickers.get(pick.id).push({ playerId: entry.playerId, tag: entry.tag, rank: index + 1, note: pick.pickNote });
   }));
   const counts = db.legendCounts();
   const keep = `${who ? `&who=${who.id}` : ''}${view !== 'all' ? `&view=${view}` : ''}${kind ? `&kind=${kind}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
