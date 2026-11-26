@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="news-date" content="2026-11-26">
+<title>Tokens and Weapon Damage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one readable column, a shop-ledger feel; brass for the shop, slate ink for text, a DM section set apart by a tinted band. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --ink: #22262b;
+    --muted: #5d636b;
+    --line: #dcd8cd;
+    --brass: #9a6b12;
+    --brass-soft: #f3e8cf;
+    --dm-band: #eceff3;
+    --code-bg: #efece4;
+    --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+    --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+      --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17191c; --surface: #1f2226; --ink: #e8e6e1; --muted: #a2a7ad; --line: #34383e;
+    --brass: #e2b24f; --brass-soft: #3a3220; --dm-band: #1c2229; --code-bg: #2a2d31; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font-body); }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+  .band { background: var(--dm-band); border-block: 1px solid var(--line); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.6rem; color: var(--brass); }
+  h3 { font-size: 1.15rem; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+  section { display: grid; gap: 14px; }
+  .lede { color: var(--muted); font-size: 1.08rem; max-width: 62ch; }
+  .eyebrow { font: 600 0.78rem var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 700; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { background: var(--brass-soft); border-left: 3px solid var(--brass); padding: 12px 14px; border-radius: 0 6px 6px 0; }
+  .cmds { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+  .cmds dt { margin: 0; } .cmds dd { margin: 0; color: var(--muted); min-width: 0; }
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .kind { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .kind strong { font-family: var(--font-display); font-size: 1.05rem; }
+  .kind span { color: var(--muted); font-size: 0.92rem; }
+  .ask { font-size: 1.05rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.8rem; } .cmds { grid-template-columns: 1fr; } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <span class="eyebrow">Grimbold's Emporium · 24–26 November 2026</span>
+    <h1>Tokens and Weapon Damage</h1>
+    <p class="lede">Custom weapons can deal more than one type of damage, and DMs get a token base: one place for every token, ready to copy into Owlbear by link.</p>
+  </header>
+
+  <section>
+    <h2>For everyone: custom weapons</h2>
+    <h3>🔥 Damage of other types</h3>
+    <ul>
+      <li>A custom weapon can now deal extra damage of other types on every hit, such as <code>1d6 Piercing + 1d4 Fire</code>. Open the weapon in the Inventory and press <strong>+ Add damage of another type</strong>: dice and a damage type, up to three rows.</li>
+      <li>It works with a base weapon (a Longsword that also crackles with <code>1d6 Lightning</code>) or without one.</li>
+      <li>The extra dice are part of every damage roll of the weapon: two-handed, Sneak Attack and the off-hand attack too. It is one roll, so on a critical hit every die is doubled, the extra ones included.</li>
+      <li>The roll is named for all its types, e.g. <em>Ember Fang damage (Piercing + Fire)</em>, and the weapon's description in the Inventory shows them too.</li>
+    </ul>
+    <p class="note">Weapons you already have don't change until you add extra damage to them.</p>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <span class="eyebrow">For DMs</span>
+
+      <h2>🎭 The token base</h2>
+      <p>A new <strong>Tokens</strong> tab under DM Tools keeps token images for the whole table. Players don't see it.</p>
+
+      <h3>Uploading</h3>
+      <ul>
+        <li>Open <strong>⬆ Upload tokens</strong>, choose the images (PNG, JPG, WebP or GIF, up to 5 MB each; a transparent PNG works best) and say who they are of:</li>
+      </ul>
+      <div class="kinds">
+        <div class="kind"><strong>Character</strong><span>A player character, chosen from the list.</span></div>
+        <div class="kind"><strong>Notable NPC</strong><span>One of the NPCs you can see.</span></div>
+        <div class="kind"><strong>Monster</strong><span>A monster from the Monsters tab: one Goblin Warrior token serves every goblin warrior.</span></div>
+        <div class="kind"><strong>Custom name</strong><span>Anyone else: a one-off villain, a mount, a summon.</span></div>
+      </div>
+      <ul>
+        <li>Several images at once all go to the same character, NPC, monster or name.</li>
+        <li>Not sure yet? Choose <strong>I’ll choose later</strong>: the token waits at the top of the tab under <strong>To choose later</strong>, named after its file, until you open <strong>✏️ Choose who it is of</strong> and link it.</li>
+        <li>Anyone can have several tokens, each with a short <strong>label</strong>: disguised, wild shape, mounted. One of them is the <strong>★ main</strong> token: the first one, unless you tick <strong>Make it the main token</strong> on another.</li>
+        <li>Each token's <strong>✏️ Edit</strong> changes its label, makes it the main one, links it to someone else, or deletes it.</li>
+      </ul>
+
+      <h3>Finding them</h3>
+      <ul>
+        <li>The tab groups tokens by kind and then by who they are of, with a search box (name or label) and a filter by kind.</li>
+        <li>They also show where you work: on the NPC's edit form, on a monster's statblock, and in a <strong>🎭 Tokens (DMs)</strong> box on the character sheet. Each place has <strong>+ Upload a token</strong> with the form already filled in.</li>
+        <li>A private NPC's tokens are seen only by its DM and the Root DM, like the NPC itself. If a character or NPC is deleted, its tokens stay under the name they had.</li>
+      </ul>
+
+      <h3>Into Owlbear</h3>
+      <ul>
+        <li>Every token has three buttons: <strong>⬇</strong> downloads the image, <strong>🔗</strong> copies its link, and <strong>↗</strong> opens it full size.</li>
+        <li>Press <strong>🔗</strong> and paste the link into Owlbear when you add the image. The link opens without logging in to the panel, so Owlbear can load it.</li>
+        <li>Or press <strong>⬇</strong> and upload the file to Owlbear like any other picture.</li>
+      </ul>
+      <p class="note">Anyone who has a token's link can open that picture. The links are long and random, so nobody can guess them, but share them only where you would show the token anyway.</p>
+    </section>
+  </div>
+</div>
+</body>
+</html>
