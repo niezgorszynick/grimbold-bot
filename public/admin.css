@@ -1726,10 +1726,14 @@ button.sheet-hud-tile { cursor: pointer; }
 /* Token base (DM Tools → Tokens) and the token strips on NPCs, monsters and sheets. */
 .token-image, .token-mini img { background-color: #2b2d31; background-image: linear-gradient(45deg, #232428 25%, transparent 25%, transparent 75%, #232428 75%), linear-gradient(45deg, #232428 25%, transparent 25%, transparent 75%, #232428 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; }
 .token-group h3 { margin-top: 0; }
-.token-subject-row { margin-bottom: 14px; }
+/* Subjects flow side by side and wrap; each as wide as its tokens. */
+.token-subjects { display: flex; flex-wrap: wrap; gap: 18px 22px; align-items: flex-start; }
+.token-subject-row { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.token-subject-row.is-later, .token-subject-row:has(.token-edit[open]) { flex-basis: 100%; }
 .token-subject-row h4 { margin: 6px 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .token-subject-row[hidden], .token-group[hidden], .token-grid > div[hidden], .token-subject-field[hidden] { display: none; }
-.token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.token-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.token-grid > div { width: 160px; min-width: 0; }
 .token-card { margin: 0; display: grid; gap: 6px; padding: 8px; border: 1px solid #3f4147; border-radius: 8px; background: #2b2d31; min-width: 0; }
 .token-card.is-main { border-color: #d4af37; }
 .token-image { aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; display: grid; place-items: center; }
@@ -1738,12 +1742,24 @@ button.sheet-hud-tile { cursor: pointer; }
 .token-main { color: #d4af37; font-weight: 600; }
 .token-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .token-edit summary { cursor: pointer; color: #b5bac1; }
-.token-subject, .token-form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-items: end; }
+.token-subject, .token-form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 10px; align-items: end; }
 .token-subject-field { display: grid; min-width: 0; }
 .token-subject .art-form-label, .token-form-row .art-form-label { min-width: 0; }
 .token-subject input, .token-form-row input[type="text"] { width: 100%; box-sizing: border-box; }
 .token-main-check { padding-bottom: 9px; }
-.token-edit .token-subject, .token-edit .token-form-row { grid-template-columns: 1fr; }
+.token-subject select { min-width: 0; }
+/* A token being edited takes the whole row: its picture on the left, the form beside it. */
+.token-grid > div:has(> .token-card > .token-edit[open]) { width: 100%; }
+.token-card:has(> .token-edit[open]) { grid-template-columns: minmax(110px, 170px) minmax(0, 1fr); column-gap: 14px; align-items: start; }
+.token-card:has(> .token-edit[open]) > .token-image { grid-row: 1 / span 2; }
+.token-card:has(> .token-edit[open]) > figcaption, .token-card:has(> .token-edit[open]) > .token-edit { grid-column: 2; }
+.token-edit[open] > summary { margin-bottom: 8px; }
+.token-edit .art-form-actions { justify-content: flex-end; }
+@media (max-width: 520px) {
+  .token-card:has(> .token-edit[open]) { grid-template-columns: minmax(0, 1fr); }
+  .token-card:has(> .token-edit[open]) > .token-image { grid-row: auto; max-width: 170px; }
+  .token-card:has(> .token-edit[open]) > figcaption, .token-card:has(> .token-edit[open]) > .token-edit { grid-column: 1; }
+}
 .token-upload summary { cursor: pointer; }
 .token-upload[open] summary { margin-bottom: 10px; }
 .token-strip { display: grid; gap: 6px; margin: 10px 0; }

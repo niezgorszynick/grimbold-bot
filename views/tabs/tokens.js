@@ -252,12 +252,13 @@ function renderTokensTab(ctx) {
     ${groups.length ? groups.map(group => `
       <section class="card token-group" data-token-group>
         <h3>${db.TOKEN_KIND_LABELS[group.kind]}</h3>
+        <div class="token-subjects">
         ${group.subjects.map(list => {
           const first = list[0];
           const href = subjectHref(first);
           if (first.kind === 'later') {
             return `
-          <div class="token-subject-row" data-token-subject>
+          <div class="token-subject-row is-later" data-token-subject>
             <h4 class="muted small">Uploaded without saying who they are of: open ✏️ on each to link it to a character, an NPC, a monster or a name.</h4>
             <div class="token-grid">${list.map(token => `<div id="token-${token.id}">${tokenCardHtml(token, subjects)}</div>`).join('')}</div>
           </div>`;
@@ -269,6 +270,7 @@ function renderTokensTab(ctx) {
             <div class="token-grid">${list.map(token => `<div id="token-${token.id}">${tokenCardHtml(token, subjects)}</div>`).join('')}</div>
           </div>`;
         }).join('')}
+        </div>
       </section>`).join('') : `<section class="card"><p class="muted">${tokens.length ? 'No tokens of that kind yet.' : 'No tokens yet: upload the first above.'}</p></section>`}
     <datalist id="token-monster-list">${monsterNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
     <datalist id="token-custom-list">${subjects.customNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
