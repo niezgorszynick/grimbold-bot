@@ -974,6 +974,42 @@ router.post('/tokens/upload', express.raw({ type: () => true, limit: db.TOKEN_MA
   }
 });
 
+// Owlbear maps (DMs; a hidden one only its adventure's DM, the Root DM and
+// the uploader): the image, and uploads in pieces (the web server in front
+// refuses big requests): start { size } → { uploadId, pieceBytes }; each
+// piece raw at ?offset=; the browser's preview raw at /thumb; finish
+// { adventureId, markerId, name, note, hidden, width, height } → { id }.
+router.get('/battle-maps/:id/image', (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const found = db.getBattleMapFile(user, req.params.id, { size: req.query.size });
+  if (!found) return res.status(404).json({ error: 'No such map.' });
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+  if (req.query.download) res.attachment(found.downloadName);
+  return res.sendFile(found.file);
+});
+function battleMapRoute(action) {
+  return (req, res) => {
+    const user = getSessionApiUser(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!isAdmin(user)) return res.status(403).json({ error: 'Only DMs see the Owlbear maps.' });
+    try {
+      return res.json(action(user, req));
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  };
+}
+router.post('/battle-maps/uploads', battleMapRoute((user, req) => db.startBattleMapUpload({ user, size: req.body && req.body.size })));
+router.post('/battle-maps/uploads/:id/pieces', express.raw({ type: () => true, limit: 600 * 1024 }),
+  battleMapRoute((user, req) => db.addBattleMapPiece({ user, uploadId: req.params.id, offset: req.query.offset, buffer: req.body })));
+router.post('/battle-maps/uploads/:id/thumb', express.raw({ type: () => true, limit: 1024 * 1024 }),
+  battleMapRoute((user, req) => db.addBattleMapThumb({ user, uploadId: req.params.id, buffer: req.body })));
+router.post('/battle-maps/uploads/:id/finish', battleMapRoute((user, req) => {
+  const body = req.body || {};
+  return { id: db.finishBattleMapUpload({ user, uploadId: req.params.id, adventureId: body.adventureId, markerId: body.markerId, name: body.name, note: body.note, hidden: Boolean(body.hidden), width: body.width, height: body.height }) };
+}));
+
 router.post('/legends/docs/:id/refresh', async (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Not logged in.' });

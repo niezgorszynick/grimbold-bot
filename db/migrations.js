@@ -1624,6 +1624,32 @@ const MIGRATIONS = [
     up(db) {
       db.exec("ALTER TABLE tokens ADD COLUMN group_name TEXT NOT NULL DEFAULT ''");
     }
+  },
+  {
+    // DM Tools → Owlbear Maps (db/battleMaps.js): battle map images of an
+    // adventure, maybe at one of its world-map markers. Every DM sees them;
+    // hidden = only the adventure's DM, the Root DM and the uploader.
+    version: 60,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS battle_maps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          adventure_id INTEGER REFERENCES adventures(id) ON DELETE SET NULL,
+          marker_id INTEGER REFERENCES map_markers(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          hidden INTEGER NOT NULL DEFAULT 0,
+          file TEXT NOT NULL UNIQUE,
+          thumb_file TEXT,
+          width INTEGER,
+          height INTEGER,
+          uploaded_by_player_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS battle_maps_adventure ON battle_maps (adventure_id);
+        CREATE INDEX IF NOT EXISTS battle_maps_marker ON battle_maps (marker_id);
+      `);
+    }
   }
 ];
 

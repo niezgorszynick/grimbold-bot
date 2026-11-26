@@ -1773,3 +1773,25 @@ button.sheet-hud-tile { cursor: pointer; }
 .token-type-group { display: grid; gap: 8px; margin-bottom: 16px; }
 .token-type-group[hidden] { display: none; }
 .token-type-heading { margin: 0; padding-bottom: 4px; border-bottom: 1px solid #3f4147; color: #d4af37; font-size: 14px; letter-spacing: 0.03em; }
+
+/* Owlbear maps (DM Tools), their strip on the adventure page, and on world-map markers. */
+.battle-map-group h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-top: 0; }
+.battle-map-group[hidden], .battle-map-card[hidden] { display: none; }
+.battle-map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.battle-map-card { margin: 0; display: grid; gap: 8px; align-content: start; padding: 8px; border: 1px solid #3f4147; border-radius: 8px; background: #2b2d31; min-width: 0; }
+.battle-map-card.is-hidden { border-style: dashed; }
+.battle-map-card:has(> .token-edit[open]) { grid-column: 1 / -1; }
+.battle-map-image { display: block; aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; background: #1e1f22; }
+.battle-map-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.battle-map-card figcaption { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.battle-map-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.battle-map-tags a.tag { text-decoration: none; }
+.battle-map-note { color: #dbdee1; }
+.battle-map-mini-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.battle-map-mini { width: 160px; display: grid; gap: 4px; color: #dbdee1; text-decoration: none; }
+.battle-map-mini img { width: 160px; height: 110px; object-fit: cover; border-radius: 6px; border: 1px solid #3f4147; display: block; }
+.battle-map-mini:hover img { border-color: #d4af37; }
+.wm-maps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.wm-map { width: 96px; display: grid; gap: 2px; color: #dbdee1; text-decoration: none; }
+.wm-map img { width: 96px; height: 66px; object-fit: cover; border-radius: 4px; border: 1px solid #3f4147; display: block; }
+.wm-map span { overflow-wrap: anywhere; }

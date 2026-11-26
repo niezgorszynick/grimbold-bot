@@ -546,6 +546,36 @@ router.post('/tokens/delete', (req, res) => {
   }
 });
 
+// Owlbear maps (DMs): change, hide or delete one. Uploads go through /api/battle-maps/uploads.
+const battleMapsBack = (body, fallback) => (typeof body.return_to === 'string' && /^\/admin\?tab=(battle-maps|adventures|map)(&|#|$)/.test(body.return_to) ? body.return_to : fallback);
+router.post('/battle-maps/update', (req, res) => {
+  const back = battleMapsBack(req.body, '/admin?tab=battle-maps');
+  try {
+    const body = req.body;
+    db.updateBattleMap({
+      user: req.session.user,
+      id: body.id,
+      name: body.name,
+      note: body.note,
+      adventureId: body.adventure_id,
+      markerId: body.marker_id,
+      hidden: body.hidden === undefined ? undefined : [].concat(body.hidden).includes('1')
+    });
+    res.redirect(withStatus(back, 'status', 'battle_map_saved'));
+  } catch (err) {
+    res.redirect(withStatus(back, 'err', err.message));
+  }
+});
+router.post('/battle-maps/delete', (req, res) => {
+  const back = battleMapsBack(req.body, '/admin?tab=battle-maps');
+  try {
+    db.deleteBattleMap({ user: req.session.user, id: req.body.id });
+    res.redirect(withStatus(back, 'status', 'battle_map_deleted'));
+  } catch (err) {
+    res.redirect(withStatus(back, 'err', err.message));
+  }
+});
+
 // Art (admins): read the art channel's history, and tag an image.
 router.post('/art/import', (req, res) => {
   const started = require('./art').startImport(req.session.user.discord_tag);

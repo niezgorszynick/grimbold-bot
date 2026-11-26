@@ -6,12 +6,13 @@ const db = require('../../db');
 const { escapeHtml } = require('../helpers');
 
 // The live table of one adventure's party (filled in by adventure-table.js).
-function renderAdventureTable(adventureId, isAdmin) {
+function renderAdventureTable(adventureId, isAdmin, currentUser) {
   return `
     <div class="adventure-table-page">
       <a href="/admin?tab=adventures" class="btn btn-small btn-secondary">← All adventures</a>
       <section id="adventure-table" data-roll-page="party" data-adventure-id="${adventureId}" data-is-admin="${isAdmin ? 'true' : 'false'}" aria-live="polite">Loading adventure…</section>
       ${require('./art').artStripHtml({ adventureId, title: '🎨 Art from this adventure' })}
+      ${require('./battleMaps').battleMapStripHtml(currentUser, adventureId)}
       <script src="/admin/assets/discord-editor.js" defer></script>
       <script src="/admin/assets/adventure-table.js" defer></script>
       <script src="/admin/assets/dice.js" defer></script>
@@ -110,7 +111,7 @@ module.exports = function renderAdventuresTab(ctx) {
   const { req, isAdmin, currentUser } = ctx;
   let contentHtml = '';
   const tableId = Number.parseInt(req.query.table, 10);
-  if (Number.isSafeInteger(tableId) && tableId > 0) return renderAdventureTable(tableId, isAdmin);
+  if (Number.isSafeInteger(tableId) && tableId > 0) return renderAdventureTable(tableId, isAdmin, currentUser);
   const allAdventures = db.getAllAdventures ? db.getAllAdventures() : [];
   const finishedParties = db.getAdventureParties(allAdventures.map(adventure => adventure.id));
   const artCount = db.artCounts().byAdventure;

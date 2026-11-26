@@ -21,6 +21,7 @@ const TAB_RENDERERS = {
   'npcs': require('./tabs/npcs'),
   'monsters': require('./tabs/monsters'),
   'tokens': require('./tabs/tokens'),
+  'battle-maps': require('./tabs/battleMaps'),
   'sessions': require('./tabs/sessions'),
   'map': require('./tabs/map'),
   'lineup': require('./tabs/lineup'),
@@ -48,6 +49,7 @@ module.exports = function renderAdminPage(req) {
     npcs: 'Notable NPCs',
     monsters: 'Monsters',
     tokens: 'Tokens',
+    'battle-maps': 'Owlbear Maps',
     analytics: 'Analytics',
     auctions: 'Auctions',
     'character-sheet': 'Character Sheet',
@@ -67,7 +69,7 @@ module.exports = function renderAdminPage(req) {
     { label: 'Shop', tabs: ['items', 'auctions', 'catalog', 'restock', 'sales'] },
     { label: 'Characters', tabs: ['character-sheet', 'lineup', 'chronicles', 'art', 'legends', 'players'] },
     { label: 'Adventures', tabs: ['adventures', 'sessions', 'map'] },
-    { label: 'DM Tools', tabs: ['npcs', 'monsters', 'tokens'] },
+    { label: 'DM Tools', tabs: ['npcs', 'monsters', 'tokens', 'battle-maps'] },
     { label: 'Records', tabs: ['rolls', 'analytics'] }
   ];
   let currentTab = req.query.tab || 'items';

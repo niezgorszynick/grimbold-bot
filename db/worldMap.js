@@ -14,6 +14,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { db, uploadsDir } = require('./connection');
 const { sniffImage } = require('./npcFiles');
+const { listBattleMaps } = require('./battleMaps');
 
 const MAP_MAX_BYTES = 25 * 1024 * 1024;
 const CONTENT_TYPES = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
@@ -278,7 +279,11 @@ function getWorldMap({ user, asPlayerId = null }) {
       ...base,
       revealed: null,
       publicHexes: publicHexes(),
-      markers: markers.map(marker => markerView(marker, true)),
+      // With the Owlbear maps of each marker this DM may see.
+      markers: markers.map(marker => ({
+        ...markerView(marker, true),
+        maps: listBattleMaps(user, { markerId: marker.id }).map(map => ({ id: map.id, name: map.name, thumbUrl: map.thumbUrl, adventureId: map.adventureId, hidden: map.hidden }))
+      })),
       routes,
       characters: db.prepare(`SELECT c.id, c.name, p.discord_tag AS player FROM characters c JOIN players p ON p.id = c.player_id ORDER BY c.name COLLATE NOCASE`).all()
         .map(character => ({
