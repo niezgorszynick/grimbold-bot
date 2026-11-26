@@ -1588,6 +1588,34 @@ const MIGRATIONS = [
     up(db) {
       db.exec('ALTER TABLE legend_picks ADD COLUMN note TEXT');
     }
+  },
+  {
+    // The token base (db/tokens.js): token images DMs upload, each of a
+    // character, a Notable NPC, a catalog monster type or a custom name;
+    // several per subject with a label, one main. A deleted character or NPC
+    // leaves its tokens under the name they had.
+    version: 58,
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS tokens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL,
+          npc_id INTEGER REFERENCES npcs(id) ON DELETE SET NULL,
+          monster_name TEXT,
+          name TEXT NOT NULL,
+          name_key TEXT NOT NULL,
+          label TEXT NOT NULL DEFAULT '',
+          is_main INTEGER NOT NULL DEFAULT 0,
+          file TEXT NOT NULL UNIQUE,
+          uploaded_by_player_id INTEGER,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS tokens_character ON tokens (character_id);
+        CREATE INDEX IF NOT EXISTS tokens_npc ON tokens (npc_id);
+        CREATE INDEX IF NOT EXISTS tokens_monster ON tokens (monster_name);
+      `);
+    }
   }
 ];
 

@@ -5,6 +5,7 @@
 const db = require('../../db');
 const { DND_SPECIES, DND_DATA, DND_CLASSES_AND_SUBCLASSES } = require('../../dndData');
 const { escapeHtml } = require('../helpers');
+const { tokenStripHtml } = require('./tokens');
 
 // The character's docs from the Chronicles tab (diaries, letters, stories).
 function chroniclesHtml(characterId) {
@@ -240,6 +241,7 @@ module.exports = function renderCharacterSheetTab(ctx) {
               <label class="sheet-debug-toggle" title="Debug mode (this browser): each roll shows how it is calculated, and numbers on the sheet that differ from what the roll uses are marked"><input type="checkbox" id="cs_debug"> 🐞 Debug</label>
             </div>
           </header>
+          ${isAdmin ? `<details class="sheet-card sheet-tokens"><summary>🎭 Tokens (DMs)</summary>${tokenStripHtml(db.listTokens(currentUser, { characterId: characterToEdit.id }), { kind: 'character', characterId: characterToEdit.id, name: characterToEdit.name })}</details>` : ''}
           <p id="cs_message" class="sheet-message" role="status" aria-live="polite"></p>
           <section id="cs_debug_panel" class="sheet-card sheet-debug" hidden></section>
           <script src="/admin/assets/sheet-debug.js" defer></script>

@@ -8,6 +8,7 @@
 const db = require('../../db');
 const rules = require('../../rules');
 const { escapeHtml } = require('../helpers');
+const { tokenStripHtml } = require('./tokens');
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 const STATUS_TAGS = { alive: '', dead: '<span class="tag red">Dead</span>', unknown: '<span class="tag">Whereabouts unknown</span>' };
@@ -244,6 +245,7 @@ function npcForm(npc, adventures, owners, currentUserId, startMonster) {
         </div>
       </form>
       ${filesHtml(npc)}
+      ${npc ? tokenStripHtml(db.listTokens({ id: currentUserId, role: 'admin' }, { npcId: npc.id }), { kind: 'npc', npcId: npc.id, name: npc.name }) : ''}
     <script>
       // "Based on a statblock": show what the chosen statblock brings, and its
       // numbers as placeholders in the empty Stats fields (what saving fills in).

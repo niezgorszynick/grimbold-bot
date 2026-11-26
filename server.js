@@ -516,6 +516,35 @@ router.post('/legends/viewers', (req, res) => {
   }
 });
 
+// Token base (DMs): change or delete a token. Uploads go through /api/tokens/upload.
+const tokensBack = (body, fallback) => (typeof body.return_to === 'string' && /^\/admin\?tab=(tokens|npcs|monsters|character-sheet)(&|#|$)/.test(body.return_to) ? body.return_to : fallback);
+router.post('/tokens/update', (req, res) => {
+  const back = tokensBack(req.body, '/admin?tab=tokens');
+  try {
+    const body = req.body;
+    db.updateToken({
+      user: req.session.user,
+      id: body.id,
+      label: body.label,
+      main: [].concat(body.main || []).includes('1'),
+      subject: body.kind ? { kind: body.kind, characterId: body.character_id, npcId: body.npc_id, monster: body.monster, name: body.name } : undefined,
+      monsterExists: name => Boolean(require('./rules').getMonster(name))
+    });
+    res.redirect(withStatus(back, 'status', 'token_saved'));
+  } catch (err) {
+    res.redirect(withStatus(back, 'err', err.message));
+  }
+});
+router.post('/tokens/delete', (req, res) => {
+  const back = tokensBack(req.body, '/admin?tab=tokens');
+  try {
+    db.deleteToken({ user: req.session.user, id: req.body.id });
+    res.redirect(withStatus(back, 'status', 'token_deleted'));
+  } catch (err) {
+    res.redirect(withStatus(back, 'err', err.message));
+  }
+});
+
 // Art (admins): read the art channel's history, and tag an image.
 router.post('/art/import', (req, res) => {
   const started = require('./art').startImport(req.session.user.discord_tag);

@@ -10,6 +10,7 @@ const db = require('../../db');
 const rules = require('../../rules');
 const { escapeHtml } = require('../helpers');
 const { renderStatblock } = require('../statblock');
+const { tokenStripHtml, TOKEN_COPY_SCRIPT } = require('./tokens');
 
 const thousands = n => Number(n).toLocaleString('en-US');
 const monsterHref = name => `/admin?tab=monsters&monster=${encodeURIComponent(name)}`;
@@ -26,6 +27,7 @@ function monsterPanel(monster, viewer) {
       <button type="button" class="btn btn-small btn-secondary" data-close-monster>Close</button>
     </div>
     <div class="add-to-encounter" data-add-form hidden></div>
+    ${tokenStripHtml(db.listTokens(viewer, { monster: monster.name }), { kind: 'monster', monster: monster.name })}
     ${renderStatblock(monster)}`;
 }
 
@@ -187,6 +189,7 @@ module.exports = function renderMonstersTab(ctx) {
       </details>` : ''}
     </section>
     <section class="card monster-view" id="monster-view" ${chosen ? '' : 'hidden'}>${chosen ? monsterPanel(chosen, ctx.currentUser) : ''}</section>
+    ${TOKEN_COPY_SCRIPT}
     ${req.query.monster && !chosen ? `<div class="alert red">There is no monster called “${escapeHtml(req.query.monster)}”.</div>` : ''}
     <section class="card analytics-table-wrap">
       <table class="monster-table" id="monster-table">

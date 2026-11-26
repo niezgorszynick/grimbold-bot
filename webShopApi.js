@@ -949,6 +949,30 @@ router.post('/legends/uploads/:id/finish', legendUploadRoute((user, req) => {
   }) };
 }));
 
+// Token base: a DM uploads a token (the raw body, 5 MB at most). X-Token,
+// URI-encoded JSON: { kind, characterId, npcId, monster, name, label, main }.
+// Returns { id, url }.
+router.post('/tokens/upload', express.raw({ type: () => true, limit: db.TOKEN_MAX_BYTES }), (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!isAdmin(user)) return res.status(403).json({ error: 'Only DMs use the token base.' });
+  let meta = {};
+  try { meta = JSON.parse(decodeURIComponent(req.get('x-token') || '{}')) || {}; } catch { meta = {}; }
+  try {
+    const id = db.uploadToken({
+      user,
+      buffer: req.body,
+      subject: { kind: meta.kind, characterId: meta.characterId, npcId: meta.npcId, monster: meta.monster, name: meta.name },
+      label: meta.label,
+      main: Boolean(meta.main),
+      monsterExists: name => Boolean(rules.getMonster(name))
+    });
+    return res.json({ id, url: db.getToken(user, id).url });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 router.post('/legends/docs/:id/refresh', async (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Not logged in.' });

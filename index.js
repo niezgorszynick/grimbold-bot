@@ -115,6 +115,15 @@ app.get('/avatars/character/:file', (req, res) => {
   return res.sendFile(found.file);
 });
 
+// Tokens (DM Tools → Tokens) by their random file name: Owlbear loads them
+// without a login, from its own site.
+app.get('/tokens/:file', (req, res) => {
+  const found = db.getTokenFileByName(req.params.file);
+  if (!found) return res.status(404).end();
+  res.set({ 'Content-Type': found.contentType, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff', 'Access-Control-Allow-Origin': '*' });
+  return res.sendFile(found.file);
+});
+
 // DM Panel route
 // The Owlbear Rodeo extension (public, works without a panel login).
 app.use('/vtt', require('./vtt'));
