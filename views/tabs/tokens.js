@@ -142,8 +142,10 @@ function uploadFormHtml(subjects, query) {
           <input type="file" name="files" accept="image/png,image/jpeg,image/webp,image/gif" multiple required>
         </label>
         ${subjectFieldsHtml(subjects, preset)}
-        <label class="art-form-label">Label <span class="muted small">(optional: disguised, wild shape, mounted…)</span> <input type="text" name="label" maxlength="60"></label>
-        <label class="small"><input type="checkbox" name="main" value="1"> Make it the main token <span class="muted">(the first one of a subject always is)</span></label>
+        <div class="token-form-row">
+          <label class="art-form-label">Label <span class="muted small">(optional: disguised, wild shape, mounted…)</span> <input type="text" name="label" maxlength="60"></label>
+          <label class="small token-main-check"><input type="checkbox" name="main" value="1"> Make it the main token <span class="muted">(the first one of a subject always is)</span></label>
+        </div>
         <div class="art-form-actions">
           <span class="muted small" id="token-upload-status" role="status"></span>
           <button type="submit" class="btn btn-green">Upload</button>

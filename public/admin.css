@@ -1578,7 +1578,7 @@ button.sheet-hud-tile { cursor: pointer; }
 .art-tag-panel h4 { margin: 0; }
 .art-tag-form { display: grid; gap: 10px; margin: 0; }
 .art-form-label { display: grid; gap: 4px; margin: 0; font-size: 13px; font-weight: 600; }
-.art-form-label select { width: 100%; min-width: 0; }
+.art-form-label select { width: 100%; min-width: 0; box-sizing: border-box; }
 .art-form-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
 .art-check { display: flex; align-items: center; gap: 6px; margin-right: auto; font-size: 13px; }
 /* The character picker: a search box over ticked "chips". */
@@ -1738,7 +1738,12 @@ button.sheet-hud-tile { cursor: pointer; }
 .token-main { color: #d4af37; font-weight: 600; }
 .token-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .token-edit summary { cursor: pointer; color: #b5bac1; }
-.token-subject { display: grid; gap: 6px; }
+.token-subject, .token-form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-items: end; }
+.token-subject-field { display: grid; min-width: 0; }
+.token-subject .art-form-label, .token-form-row .art-form-label { min-width: 0; }
+.token-subject input, .token-form-row input[type="text"] { width: 100%; box-sizing: border-box; }
+.token-main-check { padding-bottom: 9px; }
+.token-edit .token-subject, .token-edit .token-form-row { grid-template-columns: 1fr; }
 .token-upload summary { cursor: pointer; }
 .token-upload[open] summary { margin-bottom: 10px; }
 .token-strip { display: grid; gap: 6px; margin: 10px 0; }
