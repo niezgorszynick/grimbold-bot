@@ -405,26 +405,41 @@ function uploadHtml(characters, who) {
           if (!files.length) return;
           const button = form.querySelector('button[type="submit"]');
           button.disabled = true;
-          const characters = [...form.querySelectorAll('input[name="character_ids"]:checked')].map(box => box.value).join(',');
+          const characters = [...form.querySelectorAll('input[name="character_ids"]:checked')].map(box => box.value);
+          // Grimbold's answer, or why the web server in front refused it.
+          const call = async (path, body, raw) => {
+            const response = await fetch('/api/legends/uploads' + path, {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
+              body: raw ? body : JSON.stringify(body)
+            });
+            const result = await response.json().catch(() => null);
+            if (!result) throw new Error(response.status === 413 ? 'the server refused it as too large' : 'the server answered ' + response.status + '; try again');
+            if (!response.ok) throw new Error(result.error || 'upload failed');
+            return result;
+          };
           const ids = [];
           try {
             for (const [index, file] of files.entries()) {
-              status.textContent = 'Uploading ' + (index + 1) + ' of ' + files.length + '…';
-              const response = await fetch('/api/legends/upload', {
-                method: 'POST', credentials: 'same-origin', body: file,
-                headers: {
-                  'Content-Type': file.type || 'application/octet-stream',
-                  'X-Caption': encodeURIComponent(form.elements.caption.value),
-                  'X-Characters': encodeURIComponent(characters),
-                  'X-Artist': encodeURIComponent(form.elements.artist.value),
-                  'X-Artist-Url': encodeURIComponent(form.elements.artist_url.value)
+              const label = files.length > 1 ? (index + 1) + ' of ' + files.length + ', ' : '';
+              try {
+                // In pieces: the web server in front refuses big requests.
+                const { uploadId, pieceBytes } = await call('', { size: file.size });
+                for (let offset = 0; offset < file.size; offset += pieceBytes) {
+                  status.textContent = 'Uploading ' + label + Math.round(offset / file.size * 100) + '%…';
+                  await call('/' + uploadId + '/pieces?offset=' + offset, file.slice(offset, offset + pieceBytes), true);
                 }
-              });
-              const body = await response.json().catch(() => ({}));
-              if (!response.ok) throw new Error(file.name + ': ' + (response.status === 413 ? 'too large' : body.error || 'upload failed'));
-              ids.push(body.id);
+                status.textContent = 'Saving ' + label.replace(/, $/, '') + '…';
+                const { id } = await call('/' + uploadId + '/finish', {
+                  caption: form.elements.caption.value, characterIds: characters,
+                  artist: form.elements.artist.value, artistUrl: form.elements.artist_url.value
+                });
+                ids.push(id);
+              } catch (error) {
+                throw new Error(file.name + ': ' + error.message);
+              }
             }
-            location.href = '/admin?tab=legends' + (characters ? '' : '&view=unsorted') + '&status=legend_uploaded&n=' + ids.length + '&image=' + ids[0] + '#legend-viewer';
+            location.href = '/admin?tab=legends' + (characters.length ? '' : '&view=unsorted') + '&status=legend_uploaded&n=' + ids.length + '&image=' + ids[0] + '#legend-viewer';
           } catch (error) {
             status.textContent = error.message + (ids.length ? ' (' + ids.length + ' uploaded before it)' : '');
             button.disabled = false;

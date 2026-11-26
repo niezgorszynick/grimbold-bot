@@ -249,6 +249,7 @@ test('uploading pictures on the tab: tagged on the way in, or To sort; only the 
 
   const express = require('express');
   const app = express();
+  app.use(express.json());
   app.use((req, res, next) => { req.session = { user: JSON.parse(req.get('x-user')) }; next(); });
   app.use('/admin', require('../server'));
   app.use('/api', require('../webShopApi'));
@@ -256,12 +257,26 @@ test('uploading pictures on the tab: tagged on the way in, or To sort; only the 
   const base = `http://127.0.0.1:${server.address().port}`;
   const as = user => ({ 'x-user': JSON.stringify({ id: user.id, role: user.role }) });
   try {
-    const upload = user => fetch(`${base}/api/legends/upload`, { method: 'POST', headers: { ...as(user), 'content-type': 'image/png', 'x-characters': String(opal), 'x-artist': encodeURIComponent('Zażółć') }, body: PNG });
-    assert.equal((await upload(users.otherDm)).status, 403);
-    const response = await upload(users.viewer);
+    // In pieces (nginx refuses big requests): a 1.2 MB picture in three.
+    const call = (user, route, body, raw) => fetch(`${base}/api/legends/uploads${route}`, {
+      method: 'POST', headers: { ...as(user), 'content-type': raw ? 'application/octet-stream' : 'application/json' }, body: raw ? body : JSON.stringify(body)
+    });
+    const big = Buffer.concat([PNG, Buffer.alloc(1200 * 1024, 7)]);
+    assert.equal((await call(users.otherDm, '', { size: big.length })).status, 403);
+    assert.equal((await call(users.viewer, '', { size: 30 * 1024 * 1024 })).status, 400, 'over 25 MB');
+    const { uploadId, pieceBytes } = await (await call(users.viewer, '', { size: big.length })).json();
+    assert.equal((await call(users.root, `/${uploadId}/pieces?offset=0`, big.subarray(0, pieceBytes), true)).status, 400, 'someone else\'s upload');
+    for (let offset = 0; offset < big.length; offset += pieceBytes) {
+      assert.equal((await call(users.viewer, `/${uploadId}/pieces?offset=${offset}`, big.subarray(offset, offset + pieceBytes), true)).status, 200);
+    }
+    assert.equal((await call(users.viewer, `/${uploadId}/pieces?offset=0`, big.subarray(0, 10), true)).status, 400, 'out of step');
+    const response = await call(users.viewer, `/${uploadId}/finish`, { characterIds: [String(opal)], artist: 'Zażółć' });
     assert.equal(response.status, 200);
     const { id } = await response.json();
     assert.equal(db.getLegendImage(id).artist_name, 'Zażółć');
+    assert.deepEqual(db.getLegendImage(id).characters.map(character => character.id), [opal]);
+    assert.equal(fs.statSync(db.getLegendImageFile(id).file).size, big.length, 'joined whole');
+    assert.equal((await call(users.viewer, `/${uploadId}/finish`, {})).status, 400, 'finished once');
     const remove = await fetch(`${base}/admin/legends/images/delete`, { method: 'POST', redirect: 'manual', headers: { ...as(users.viewer), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ id: String(id) }) });
     assert.equal(remove.status, 302);
     assert.equal(db.getLegendImage(id), null);

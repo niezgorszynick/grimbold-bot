@@ -918,27 +918,36 @@ router.get('/legends/images/:id', (req, res) => {
   return res.sendFile(found.file);
 });
 
-// Legends: anyone who sees the tab uploads a picture (the raw body, 25 MB at
-// most). Headers, URI-encoded: X-Caption, X-Characters (ids, comma-separated),
-// X-Artist, X-Artist-Url. Returns { id }.
-router.post('/legends/upload', express.raw({ type: () => true, limit: db.LEGEND_MAX_IMAGE_BYTES }), (req, res) => {
-  const user = getSessionApiUser(req);
-  if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!db.canSeeLegends(user)) return res.status(403).json({ error: 'Forbidden.' });
-  const header = name => { try { return decodeURIComponent(req.get(name) || ''); } catch { return ''; } };
-  try {
-    return res.json({ id: db.uploadLegendImage({
-      user,
-      buffer: req.body,
-      caption: header('x-caption'),
-      characterIds: header('x-characters').split(',').filter(Boolean),
-      artist: header('x-artist'),
-      artistUrl: header('x-artist-url')
-    }) });
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
-});
+// Legends: anyone who sees the tab uploads a picture, in pieces (the web
+// server in front refuses big requests): start { size } → { uploadId,
+// pieceBytes }; each piece as the raw body at ?offset=; finish { caption,
+// characterIds, artist, artistUrl } → { id }.
+function legendUploadRoute(action) {
+  return (req, res) => {
+    const user = getSessionApiUser(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!db.canSeeLegends(user)) return res.status(403).json({ error: 'Forbidden.' });
+    try {
+      return res.json(action(user, req));
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  };
+}
+router.post('/legends/uploads', legendUploadRoute((user, req) => db.startLegendUpload({ user, size: req.body && req.body.size })));
+router.post('/legends/uploads/:id/pieces', express.raw({ type: () => true, limit: 600 * 1024 }),
+  legendUploadRoute((user, req) => db.addLegendUploadPiece({ user, uploadId: req.params.id, offset: req.query.offset, buffer: req.body })));
+router.post('/legends/uploads/:id/finish', legendUploadRoute((user, req) => {
+  const body = req.body || {};
+  return { id: db.finishLegendUpload({
+    user,
+    uploadId: req.params.id,
+    caption: body.caption,
+    characterIds: [].concat(body.characterIds || []),
+    artist: body.artist,
+    artistUrl: body.artistUrl
+  }) };
+}));
 
 router.post('/legends/docs/:id/refresh', async (req, res) => {
   const user = getSessionApiUser(req);

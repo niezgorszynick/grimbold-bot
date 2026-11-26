@@ -577,6 +577,56 @@ function uploadLegendImage({ user, buffer, caption, characterIds, artist, artist
   return id;
 }
 
+// The same in pieces: the web server in front (nginx) refuses big requests,
+// so the browser sends the picture in parts, joined here. Each upload belongs
+// to whoever started it.
+const UPLOAD_PIECE_BYTES = 512 * 1024;
+function partFile(user, uploadId) {
+  if (!/^[a-f0-9]{24}$/.test(String(uploadId || ''))) throw new Error('That upload is not known; start again.');
+  return path.join(dir(), `upload-${Number(user.id) || 0}-${uploadId}.part`);
+}
+
+function startLegendUpload({ user, size }) {
+  if (!canSeeLegends(user)) throw new Error('Forbidden.');
+  const bytes = Number(size);
+  if (!Number.isInteger(bytes) || bytes < 1) throw new Error('Choose an image to upload.');
+  if (bytes > MAX_IMAGE_BYTES) throw new Error('Images can be 25 MB at most.');
+  fs.mkdirSync(dir(), { recursive: true });
+  // Parts left behind by uploads that never finished (over a day old).
+  fs.readdirSync(dir()).filter(name => name.endsWith('.part')).forEach(name => {
+    const file = path.join(dir(), name);
+    if (Date.now() - fs.statSync(file).mtimeMs > 86400000) fs.rmSync(file, { force: true });
+  });
+  const uploadId = crypto.randomBytes(12).toString('hex');
+  fs.writeFileSync(partFile(user, uploadId), Buffer.alloc(0));
+  return { uploadId, pieceBytes: UPLOAD_PIECE_BYTES };
+}
+
+// offset: where this piece goes (the bytes received so far), so a repeated piece is caught.
+function addLegendUploadPiece({ user, uploadId, offset, buffer }) {
+  if (!canSeeLegends(user)) throw new Error('Forbidden.');
+  const file = partFile(user, uploadId);
+  if (!fs.existsSync(file)) throw new Error('That upload is not known; start again.');
+  if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > UPLOAD_PIECE_BYTES) throw new Error('A piece of the upload is the wrong size.');
+  const received = fs.statSync(file).size;
+  if (Number(offset) !== received) throw new Error('The upload got out of step; start again.');
+  if (received + buffer.length > MAX_IMAGE_BYTES) throw new Error('Images can be 25 MB at most.');
+  fs.appendFileSync(file, buffer);
+  return { received: received + buffer.length };
+}
+
+// The joined picture saved as uploadLegendImage does: { uploadId, ...its fields }. Returns its id.
+function finishLegendUpload({ user, uploadId, ...fields }) {
+  if (!canSeeLegends(user)) throw new Error('Forbidden.');
+  const file = partFile(user, uploadId);
+  if (!fs.existsSync(file)) throw new Error('That upload is not known; start again.');
+  try {
+    return uploadLegendImage({ user, buffer: fs.readFileSync(file), ...fields });
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+}
+
 // An upload is deleted by whoever uploaded it, or the Root DM.
 function canDeleteLegendImage(user, id) {
   const image = db.prepare('SELECT message_id, uploaded_by_player_id FROM legend_images WHERE id = ?').get(Number(id));
@@ -724,6 +774,9 @@ module.exports = {
   getLegendImageFile,
   listLegendMessagesWithoutFile,
   uploadLegendImage,
+  startLegendUpload,
+  addLegendUploadPiece,
+  finishLegendUpload,
   canDeleteLegendImage,
   deleteLegendUpload,
   LEGEND_MAX_PICKS: MAX_PICKS,
