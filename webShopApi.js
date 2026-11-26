@@ -918,6 +918,28 @@ router.get('/legends/images/:id', (req, res) => {
   return res.sendFile(found.file);
 });
 
+// Legends: anyone who sees the tab uploads a picture (the raw body, 25 MB at
+// most). Headers, URI-encoded: X-Caption, X-Characters (ids, comma-separated),
+// X-Artist, X-Artist-Url. Returns { id }.
+router.post('/legends/upload', express.raw({ type: () => true, limit: db.LEGEND_MAX_IMAGE_BYTES }), (req, res) => {
+  const user = getSessionApiUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!db.canSeeLegends(user)) return res.status(403).json({ error: 'Forbidden.' });
+  const header = name => { try { return decodeURIComponent(req.get(name) || ''); } catch { return ''; } };
+  try {
+    return res.json({ id: db.uploadLegendImage({
+      user,
+      buffer: req.body,
+      caption: header('x-caption'),
+      characterIds: header('x-characters').split(',').filter(Boolean),
+      artist: header('x-artist'),
+      artistUrl: header('x-artist-url')
+    }) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 router.post('/legends/docs/:id/refresh', async (req, res) => {
   const user = getSessionApiUser(req);
   if (!user) return res.status(401).json({ error: 'Not logged in.' });

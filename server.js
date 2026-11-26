@@ -483,6 +483,25 @@ router.post('/legends/images/bulk', (req, res) => {
     res.redirect(withStatus(back, 'err', err.message));
   }
 });
+router.post('/legends/images/delete', legendsRoute((body, req) => db.deleteLegendUpload(body.id, req.session.user), () => '/admin?tab=legends', 'legend_upload_deleted'));
+// Top 4: put a picture at a place, move it, or take it out.
+router.post('/legends/picks', (req, res) => {
+  const back = legendsBack(req.body, '/admin?tab=legends&view=picks');
+  const user = req.session.user;
+  try {
+    const { action, image_id: imageId } = req.body;
+    if (action === 'remove') db.removeLegendPick(user, imageId);
+    else if (action === 'up' || action === 'down') db.moveLegendPick(user, imageId, action === 'up' ? -1 : 1);
+    else {
+      const { rank, dropped } = db.setLegendPick(user, imageId, req.body.rank);
+      const picked = withStatus(withStatus(back, 'status', 'legend_picked'), 'rank', rank);
+      return res.redirect(dropped ? withStatus(picked, 'dropped', dropped) : picked);
+    }
+    return res.redirect(withStatus(back, 'status', 'legend_picks_saved'));
+  } catch (err) {
+    return res.redirect(withStatus(back, 'err', err.message));
+  }
+});
 router.post('/legends/viewers', (req, res) => {
   if (!isRootAdmin(req.session.user)) return res.status(403).send('Forbidden: only the Root DM changes who sees Legends.');
   try {

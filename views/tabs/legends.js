@@ -12,7 +12,7 @@ const { escapeHtml } = require('../helpers');
 
 const date = value => (value ? String(value).slice(0, 10) : '');
 const when = value => (value ? `${String(value).replace('T', ' ').slice(0, 16)} UTC` : '');
-const VIEWS = { all: 'Everything', art: '🎨 Art', docs: '📜 Docs', unsorted: 'To sort', hidden: '🚫 Hidden' };
+const VIEWS = { all: 'Everything', art: '🎨 Art', docs: '📜 Docs', picks: '⭐ Top 4 picks', unsorted: 'To sort', hidden: '🚫 Hidden' };
 
 function scanStatusHtml() {
   const status = db.getLegendsScanStatus() || {};
@@ -54,26 +54,49 @@ function kindOptions(selected, { all } = {}) {
     `<option value="${value}"${selected === value ? ' selected' : ''}>${label}</option>`).join('')}`;
 }
 
-function thumb(image, href) {
+// rank: where the viewer put it in their top 4 (a ⭐ badge), if they did.
+function thumb(image, href, rank) {
   const picture = image.thumbUrl
     ? `<img src="${escapeHtml(image.thumbUrl)}" alt="${namesOf(image) || 'Art'}" loading="lazy">`
     : `<span class="art-missing" title="${escapeHtml(image.download_error || 'Not copied yet')}">🖼<br><span class="small">${image.download_error ? 'No copy' : 'Copying…'}</span></span>`;
   const credit = image.artist_name ? `<span class="art-credit-badge">🖌 ${escapeHtml(image.artist_name)}</span>` : '';
-  return `<a class="art-thumb" href="${href}">${picture}${credit}</a>`;
+  const star = rank ? `<span class="legend-pick-badge" title="#${rank} in your top 4">⭐${rank}</span>` : '';
+  return `<a class="art-thumb" href="${href}">${picture}${credit}${star}</a>`;
 }
 
 const TAGGED_BY = { name: 'named in the post', hand: 'set by hand' };
 
 // The opened image: large, with who is in it and the form to change it.
-function imageViewerHtml(image, { characters, back }) {
+// The viewer's top 4 for this picture: a place 1–4 (the one they want in the
+// most is 1), and who else picked it.
+function pickPanelHtml(image, { picker, myRank, pickedBy, back }) {
+  const others = pickedBy.filter(entry => entry.playerId !== picker);
+  const returnTo = escapeHtml(`${back}&image=${image.id}#legend-viewer`);
+  const max = db.LEGEND_MAX_PICKS;
+  const form = picker && !image.hidden ? `
+    <form method="POST" action="/admin/legends/picks" class="legend-pick-form">
+      <input type="hidden" name="image_id" value="${image.id}">
+      <input type="hidden" name="return_to" value="${returnTo}">
+      <span class="muted small">⭐ Your top ${max}:</span>
+      ${Array.from({ length: max }, (_, index) => index + 1).map(place => `<button type="submit" name="rank" value="${place}" class="btn btn-small${myRank === place ? ' btn-gold' : ' btn-secondary'}"${myRank === place ? ' aria-pressed="true"' : ''} title="${place === 1 ? 'The one you want in the most' : place === max ? 'The one you want in the least of your four' : `#${place}`}">#${place}</button>`).join('')}
+      ${myRank ? '<button type="submit" name="action" value="remove" class="btn btn-small btn-secondary">Take out</button>' : ''}
+      <a class="small" href="/admin?tab=legends&view=picks">See everyone's</a>
+    </form>` : '';
+  const list = others.length
+    ? `<p class="muted small">⭐ In the top ${max} of ${others.map(entry => `${escapeHtml(entry.tag)} (#${entry.rank})`).join(', ')}</p>` : '';
+  return form || list ? `<div class="legend-pick-panel">${form}${list}</div>` : '';
+}
+
+function imageViewerHtml(image, { characters, back, picks, canDelete }) {
   return `
     <section class="card art-viewer" id="legend-viewer">
       <div class="art-viewer-head">
         <div>
           <h3>${image.characters.length ? image.characters.map(character => `<a href="/admin?tab=legends&who=${character.id}">${escapeHtml(character.name)}</a>`).join(', ') : '<span class="tag red">Nobody tagged yet</span>'}</h3>
           ${image.artist_name ? `<p class="art-credit-banner">🖌 Art by <strong>${escapeHtml(image.artist_name)}</strong>${image.artist_url ? ` <a class="art-credit-link" href="${escapeHtml(image.artist_url)}" target="_blank" rel="noopener">their page ↗</a>` : ''}</p>` : ''}
-          <p class="muted small">${image.posted_by_tag ? `posted by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}${image.hidden ? ' · <span class="tag red">Hidden</span>' : ''}</p>
+          <p class="muted small">${image.posted_by_tag ? `${image.uploaded ? 'uploaded' : 'posted'} by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}${image.hidden ? ' · <span class="tag red">Hidden</span>' : ''}</p>
           ${image.message_text ? `<p class="art-caption">${escapeHtml(image.message_text)}</p>` : ''}
+          ${pickPanelHtml(image, { ...picks, back })}
         </div>
         <div class="chronicle-actions">
           ${image.imageUrl ? `<a class="btn btn-small btn-secondary" href="${escapeHtml(image.imageUrl)}" target="_blank" rel="noopener">Full size ↗</a>` : ''}
@@ -104,6 +127,11 @@ function imageViewerHtml(image, { characters, back }) {
               <button type="submit" class="btn btn-green">Save</button>
             </div>
           </form>
+          ${canDelete ? `<form method="POST" action="/admin/legends/images/delete" class="art-form-actions" onsubmit="return confirm('Delete this uploaded picture for good?')">
+            <input type="hidden" name="id" value="${image.id}">
+            <input type="hidden" name="return_to" value="${escapeHtml(back)}">
+            <button type="submit" class="btn btn-small btn-red">🗑 Delete upload</button>
+          </form>` : ''}
         </div>
       </div>
     </section>`;
@@ -205,11 +233,11 @@ function docListHtml(docs, { keep, current, showWho = true }) {
     </ul>`;
 }
 
-function artGridHtml(images, { keep, current }) {
+function artGridHtml(images, { keep, current, ranks = new Map() }) {
   if (!images.length) return '';
   return `<div class="art-grid">${images.map(image => `
     <figure class="${String(current) === String(image.id) ? 'is-current' : ''}">
-      ${thumb(image, `/admin?tab=legends${keep}&image=${image.id}#legend-viewer`)}
+      ${thumb(image, `/admin?tab=legends${keep}&image=${image.id}#legend-viewer`, ranks.get(image.id))}
       <figcaption>${namesOf(image) || '<span class="muted">nobody</span>'}${image.artist_name ? `<br><span class="art-credit">🖌 ${escapeHtml(image.artist_name)}</span>` : ''}</figcaption>
     </figure>`).join('')}</div>`;
 }
@@ -341,6 +369,112 @@ function sortingHtml({ images, docs, characters, posters, poster, page }) {
     </div>`;
 }
 
+// Pictures from outside the channel: tagged on the way in (nobody ticked: To sort).
+function uploadHtml(characters, who) {
+  return `
+    <section class="card">
+      <details class="legend-upload">
+        <summary><strong>⬆ Upload pictures</strong> <span class="muted small">from outside the Discord channel</span></summary>
+        <form class="art-tag-form" id="legend-upload">
+          <label class="art-form-label">Pictures <span class="muted small">(PNG, JPG, WebP or GIF, 25 MB each at most; several at once is fine)</span>
+            <input type="file" name="files" accept="image/png,image/jpeg,image/webp,image/gif" multiple required>
+          </label>
+          <span class="art-form-label">Who is in them? <span class="muted small">(none ticked: they wait in To sort)</span></span>
+          <div class="legend-chips">
+            ${characters.map(character => `<label class="art-chip"><input type="checkbox" name="character_ids" value="${character.id}"${who && who.id === character.id ? ' checked' : ''}><span>${escapeHtml(character.name)}</span></label>`).join('')}
+          </div>
+          <div class="art-artist-fields">
+            <label class="art-form-label">🖌 Artist <input type="text" name="artist" list="legend-artist-list" placeholder="Who drew it?" maxlength="100" autocomplete="off"></label>
+            <label class="art-form-label">Their page <span class="muted small">(optional)</span> <input type="url" name="artist_url" placeholder="https://…" maxlength="300"></label>
+          </div>
+          <label class="art-form-label">Caption <span class="muted small">(optional)</span><textarea name="caption" rows="2" maxlength="2000"></textarea></label>
+          <div class="art-form-actions">
+            <span class="muted small" id="legend-upload-status" role="status"></span>
+            <button type="submit" class="btn btn-green">Upload</button>
+          </div>
+        </form>
+      </details>
+    </section>
+    <script>
+      (() => {
+        const form = document.getElementById('legend-upload');
+        const status = document.getElementById('legend-upload-status');
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          const files = [...form.elements.files.files];
+          if (!files.length) return;
+          const button = form.querySelector('button[type="submit"]');
+          button.disabled = true;
+          const characters = [...form.querySelectorAll('input[name="character_ids"]:checked')].map(box => box.value).join(',');
+          const ids = [];
+          try {
+            for (const [index, file] of files.entries()) {
+              status.textContent = 'Uploading ' + (index + 1) + ' of ' + files.length + '…';
+              const response = await fetch('/api/legends/upload', {
+                method: 'POST', credentials: 'same-origin', body: file,
+                headers: {
+                  'Content-Type': file.type || 'application/octet-stream',
+                  'X-Caption': encodeURIComponent(form.elements.caption.value),
+                  'X-Characters': encodeURIComponent(characters),
+                  'X-Artist': encodeURIComponent(form.elements.artist.value),
+                  'X-Artist-Url': encodeURIComponent(form.elements.artist_url.value)
+                }
+              });
+              const body = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(file.name + ': ' + (response.status === 413 ? 'too large' : body.error || 'upload failed'));
+              ids.push(body.id);
+            }
+            location.href = '/admin?tab=legends' + (characters ? '' : '&view=unsorted') + '&status=legend_uploaded&n=' + ids.length + '&image=' + ids[0] + '#legend-viewer';
+          } catch (error) {
+            status.textContent = error.message + (ids.length ? ' (' + ids.length + ' uploaded before it)' : '');
+            button.disabled = false;
+          }
+        });
+      })();
+    </script>`;
+}
+
+// Everyone's top 4, the viewer's own first with buttons to reorder.
+function picksHtml(entries, picker) {
+  const rows = [...entries.filter(entry => entry.playerId === picker), ...entries.filter(entry => entry.playerId !== picker)];
+  if (!rows.length) return '<p class="muted">Nobody on the list has a panel account yet.</p>';
+  const max = db.LEGEND_MAX_PICKS;
+  const back = '/admin?tab=legends&view=picks';
+  const control = (image, action, label, title, disabled) => `
+    <form method="POST" action="/admin/legends/picks">
+      <input type="hidden" name="image_id" value="${image.id}"><input type="hidden" name="return_to" value="${back}">
+      <button type="submit" name="action" value="${action}" class="btn btn-small btn-secondary" title="${title}" aria-label="${title}"${disabled ? ' disabled' : ''}>${label}</button>
+    </form>`;
+  return `
+    <p class="muted small">Each of you picks ${max} pictures from anywhere in Legends and ranks them: #1 is the one you want in the most, #${max} the least. Open a picture and choose its place; putting one where another already is moves the rest down.</p>
+    <div class="legend-picks">
+      ${rows.map(entry => {
+        const own = entry.playerId === picker;
+        return `
+        <div class="legend-picks-row${own ? ' is-own' : ''}">
+          <h4>${own ? 'Your picks' : escapeHtml(entry.tag)} <span class="muted small">${entry.picks.length} of ${max}</span></h4>
+          <ol class="legend-picks-slots">
+            ${Array.from({ length: max }, (_, index) => {
+              const image = entry.picks[index];
+              if (!image) return `<li class="legend-pick-slot is-empty"><span class="legend-pick-place">#${index + 1}</span><span class="muted small">${own ? `Open a picture and press #${index + 1}` : 'Not picked yet'}</span></li>`;
+              return `
+              <li class="legend-pick-slot">
+                <span class="legend-pick-place">#${index + 1}</span>
+                ${thumb(image, `${back}&image=${image.id}#legend-viewer`)}
+                <span class="small">${namesOf(image) || '<span class="muted">nobody</span>'}${image.hidden ? ' · <span class="tag red">Hidden</span>' : ''}</span>
+                ${own ? `<div class="legend-pick-controls">
+                  ${control(image, 'up', '↑', 'Move up', index === 0)}
+                  ${control(image, 'down', '↓', 'Move down', index === entry.picks.length - 1)}
+                  ${control(image, 'remove', '✕', 'Take out', false)}
+                </div>` : ''}
+              </li>`;
+            }).join('')}
+          </ol>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
 // The row of characters: a picture (their portrait, else their first image), name and counts.
 function rosterHtml(characters, selected) {
   return `
@@ -430,6 +564,10 @@ module.exports = function renderLegendsTab(ctx) {
       legend_deleted: '<div class="alert green">🗑 Character removed.</div>',
       legend_item_saved: '<div class="alert green">🏛 Saved.</div>',
       legend_bulk_tagged: `<div class="alert green">🏛 Tagged ${Number(query.n) || 0} image${Number(query.n) === 1 ? '' : 's'}.</div>`,
+      legend_uploaded: `<div class="alert green">⬆ Uploaded ${Number(query.n) || 0} picture${Number(query.n) === 1 ? '' : 's'}.</div>`,
+      legend_upload_deleted: '<div class="alert green">🗑 Upload deleted.</div>',
+      legend_picked: `<div class="alert green">⭐ #${Number(query.rank) || ''} in your top ${db.LEGEND_MAX_PICKS}.${query.dropped ? ` Your old #${db.LEGEND_MAX_PICKS} is out of it now (<a href="/admin?tab=legends&image=${Number(query.dropped) || 0}#legend-viewer">see it</a>).` : ''}</div>`,
+      legend_picks_saved: '<div class="alert green">⭐ Your top 4 is saved.</div>',
       legend_bulk_hidden: `<div class="alert green">🚫 Hid ${Number(query.n) || 0} image${Number(query.n) === 1 ? '' : 's'}.</div>`,
       legends_viewers_saved: '<div class="alert green">🛡 The list of who sees Legends is saved.</div>',
       legends_import_started: '<div class="alert green">🏛 Grimbold is reading both channels\' history. Reload in a minute to see what he found.</div>',
@@ -446,8 +584,12 @@ module.exports = function renderLegendsTab(ctx) {
   const artist = query.artist ? String(query.artist) : '';
   const poster = sorting && /^\d{15,22}$/.test(String(query.poster || '')) ? String(query.poster) : '';
   const characterId = who && !sorting && view !== 'hidden' ? who.id : null;
-  const images = view === 'docs' || kind ? [] : db.listLegendImages({ view: listView, characterId, artist, poster });
-  const docs = view === 'art' || artist ? [] : db.listLegendDocs({ view: listView, characterId, kind });
+  const images = view === 'docs' || view === 'picks' || kind ? [] : db.listLegendImages({ view: listView, characterId, artist, poster });
+  const docs = view === 'art' || view === 'picks' || artist ? [] : db.listLegendDocs({ view: listView, characterId, kind });
+  // Top 4: players on the list pick (the Root DM only looks); everyone sees everyone's.
+  const allPicks = db.listLegendPicks();
+  const picker = allPicks.some(entry => entry.playerId === Number(currentUser && currentUser.id)) ? Number(currentUser.id) : null;
+  const ranks = db.legendPickRanks(picker);
   const counts = db.legendCounts();
   const keep = `${who ? `&who=${who.id}` : ''}${view !== 'all' ? `&view=${view}` : ''}${kind ? `&kind=${kind}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
   const back = `/admin?tab=legends${keep}`;
@@ -469,15 +611,25 @@ module.exports = function renderLegendsTab(ctx) {
       ${rosterHtml(characters, who ? who.id : null)}
     </section>
     ${who ? profileHtml(who, db.listLegendImages({ characterId: who.id })) : ''}
-    ${image ? imageViewerHtml(image, { characters, back }) : ''}
+    ${image ? imageViewerHtml(image, {
+      characters,
+      back,
+      canDelete: db.canDeleteLegendImage(currentUser, image.id),
+      picks: {
+        picker,
+        myRank: ranks.get(image.id) || null,
+        pickedBy: allPicks.flatMap(entry => entry.picks.map((pick, index) => (pick.id === image.id ? { playerId: entry.playerId, tag: entry.tag, rank: index + 1 } : null))).filter(Boolean)
+      }
+    }) : ''}
     ${doc ? docViewerHtml(doc, { characters, back }) : ''}
+    ${uploadHtml(characters, who)}
     <section class="card">
       <form method="GET" action="/admin" class="chronicle-filters">
         <input type="hidden" name="tab" value="legends">
         ${who ? `<input type="hidden" name="who" value="${who.id}">` : ''}
         <select name="view" aria-label="Show" onchange="this.form.submit()">
           ${Object.entries(VIEWS).map(([value, label]) => {
-            const count = { all: counts.images + counts.docs, art: counts.images, docs: counts.docs, unsorted: counts.unsorted, hidden: counts.hidden }[value];
+            const count = { all: counts.images + counts.docs, art: counts.images, docs: counts.docs, picks: allPicks.filter(entry => entry.picks.length).length, unsorted: counts.unsorted, hidden: counts.hidden }[value];
             return `<option value="${value === 'all' ? '' : value}"${view === value ? ' selected' : ''}>${label}${who && ['all', 'art', 'docs'].includes(value) ? '' : ` (${count})`}</option>`;
           }).join('')}
         </select>
@@ -488,12 +640,14 @@ module.exports = function renderLegendsTab(ctx) {
         </select>` : ''}
         <noscript><button type="submit" class="btn btn-small">Filter</button></noscript>
       </form>
-      ${who && (sorting || view === 'hidden') ? '<p class="muted small">To sort and Hidden show everyone\'s.</p>' : ''}
-      ${sorting
+      ${who && (sorting || view === 'hidden' || view === 'picks') ? `<p class="muted small">${view === 'picks' ? 'Top 4 picks show' : 'To sort and Hidden show'} everyone's.</p>` : ''}
+      ${view === 'picks'
+        ? picksHtml(allPicks, picker)
+        : sorting
         ? sortingHtml({ images, docs: poster ? [] : docs, characters, posters: db.listLegendUnsortedPosters(), poster, page: Number(query.page) || 1 })
         : images.length || docs.length
           ? `${docs.length ? `<h4>📜 Docs (${docs.length})</h4>${docListHtml(docs, { keep, current: doc && doc.id, showWho: !who })}` : ''}
-             ${images.length ? `<h4>🎨 Art (${images.length})</h4>${artGridHtml(images, { keep, current: image && image.id })}` : ''}`
+             ${images.length ? `<h4>🎨 Art (${images.length})</h4>${artGridHtml(images, { keep, current: image && image.id, ranks })}` : ''}`
           : `<p class="muted">${view === 'hidden' ? 'Nothing hidden.' : who ? `Nothing about ${escapeHtml(who.name)} yet.` : 'Nothing here yet: import the channels, or sort what is waiting.'}</p>`}
     </section>
     ${isRootAdmin ? viewersHtml() : ''}

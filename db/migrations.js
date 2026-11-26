@@ -1563,6 +1563,24 @@ const MIGRATIONS = [
       const add = db.prepare('INSERT OR IGNORE INTO legend_characters (name, name_key) VALUES (?, ?)');
       for (const name of ['Torak', 'Ilphas', 'Aidan', 'Eris', 'Opal', 'Kaala', 'Silv', 'Rankor']) add.run(name, name.toLowerCase());
     }
+  },
+  {
+    // Legends: pictures uploaded on the tab (message_id 'upload:…', who
+    // uploaded them), and each viewer's top 4 pictures, ranked 1 (want it in
+    // the most) to 4. Everyone on the tab sees everyone's picks.
+    version: 56,
+    up(db) {
+      db.exec(`
+        ALTER TABLE legend_images ADD COLUMN uploaded_by_player_id INTEGER;
+        CREATE TABLE IF NOT EXISTS legend_picks (
+          player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+          image_id INTEGER NOT NULL REFERENCES legend_images(id) ON DELETE CASCADE,
+          rank INTEGER NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (player_id, image_id)
+        );
+      `);
+    }
   }
 ];
 

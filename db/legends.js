@@ -405,6 +405,7 @@ function presentImages(rows) {
   return rows.map(row => ({
     ...row,
     hidden: Boolean(row.hidden),
+    uploaded: isUpload(row),
     characters: characters.get(row.id) || [],
     imageUrl: row.file ? imageUrl(row.id, 'full', row.file) : null,
     thumbUrl: row.file ? imageUrl(row.id, 'thumb', row.file) : null,
@@ -542,6 +543,128 @@ function getLegendImageFile(id, { size } = {}) {
   return null;
 }
 
+// ─── Uploads ────────────────────────────────────────────────────────────────
+
+const isUpload = image => String(image.message_id || '').startsWith('upload:');
+
+// Anyone who sees the tab uploads a picture from outside the channel, tagged
+// with who is in it (none: it waits in To sort) and who drew it. Returns its id.
+function uploadLegendImage({ user, buffer, caption, characterIds, artist, artistUrl }) {
+  if (!canSeeLegends(user)) throw new Error('Forbidden.');
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('Choose an image to upload.');
+  if (buffer.length > MAX_IMAGE_BYTES) throw new Error('Images can be 25 MB at most.');
+  if (!sniffImage(buffer)) throw new Error('Only PNG, JPG, WebP or GIF images can be uploaded.');
+  const ids = checkCharacterIds(characterIds);
+  const link = checkUrl(artistUrl);
+  const player = Number(user.id) > 0 ? db.prepare('SELECT id, discord_id, discord_tag FROM players WHERE id = ?').get(Number(user.id)) : null;
+  const key = `upload:${crypto.randomBytes(9).toString('hex')}`;
+  const id = db.transaction(() => {
+    const newId = Number(db.prepare(`
+      INSERT INTO legend_images (attachment_id, message_id, posted_by_discord_id, posted_by_tag, posted_at, message_text,
+        artist_name, artist_url, uploaded_by_player_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(key, key, player ? player.discord_id : null, player ? player.discord_tag : (user.discord_tag || 'Root DM'),
+      new Date().toISOString(), clean(caption, 2000) || null, clean(artist, 100) || null, link, player ? player.id : null).lastInsertRowid);
+    if (ids.length) setImageCharacters(newId, ids, 'hand');
+    return newId;
+  })();
+  try {
+    saveLegendImageFiles(id, { buffer });
+  } catch (error) {
+    db.prepare('DELETE FROM legend_images WHERE id = ?').run(id);
+    throw error;
+  }
+  return id;
+}
+
+// An upload is deleted by whoever uploaded it, or the Root DM.
+function canDeleteLegendImage(user, id) {
+  const image = db.prepare('SELECT message_id, uploaded_by_player_id FROM legend_images WHERE id = ?').get(Number(id));
+  if (!image || !isUpload(image) || !canSeeLegends(user)) return false;
+  return isRoot(user) || (Number(user.id) > 0 && image.uploaded_by_player_id === Number(user.id));
+}
+
+// Discord posts can't be deleted (the next look at the channel brings them back): hide them.
+function deleteLegendUpload(id, user) {
+  const image = db.prepare('SELECT * FROM legend_images WHERE id = ?').get(Number(id));
+  if (!image) throw new Error('Image not found.');
+  if (!isUpload(image)) throw new Error('Only uploaded pictures can be deleted; hide a Discord post instead.');
+  if (!canDeleteLegendImage(user, image.id)) throw new Error('Only whoever uploaded it (or the Root DM) can delete it.');
+  db.prepare('DELETE FROM legend_images WHERE id = ?').run(image.id);
+  removeFile(image.file);
+  removeFile(image.thumb_file);
+}
+
+// ─── Top 4 picks ────────────────────────────────────────────────────────────
+
+const MAX_PICKS = 4;
+
+// The player's picks, best first: [imageId].
+const pickIds = playerId => db.prepare('SELECT image_id FROM legend_picks WHERE player_id = ? ORDER BY rank, created_at')
+  .all(Number(playerId)).map(row => row.image_id);
+
+function pickingPlayer(user) {
+  if (!canSeeLegends(user) || !(Number(user.id) > 0)) throw new Error('Only players on the list pick their top 4.');
+  return Number(user.id);
+}
+
+function savePicks(playerId, ids) {
+  db.transaction(() => {
+    db.prepare('DELETE FROM legend_picks WHERE player_id = ?').run(playerId);
+    const add = db.prepare('INSERT INTO legend_picks (player_id, image_id, rank) VALUES (?, ?, ?)');
+    ids.slice(0, MAX_PICKS).forEach((imageId, index) => add.run(playerId, imageId, index + 1));
+  })();
+}
+
+// Puts a picture at #rank (1–4) in the player's top 4; the ones from there
+// down move one place, and a fifth falls out. Returns { rank, dropped: imageId | null }.
+function setLegendPick(user, imageId, rank) {
+  const playerId = pickingPlayer(user);
+  const place = Number(rank);
+  if (!Number.isInteger(place) || place < 1 || place > MAX_PICKS) throw new Error(`Pick a place from 1 to ${MAX_PICKS}.`);
+  const image = db.prepare('SELECT id, hidden FROM legend_images WHERE id = ?').get(Number(imageId));
+  if (!image) throw new Error('Image not found.');
+  if (image.hidden) throw new Error('That picture is hidden; show it again to pick it.');
+  const ids = pickIds(playerId).filter(id => id !== image.id);
+  ids.splice(Math.min(place - 1, ids.length), 0, image.id);
+  savePicks(playerId, ids);
+  return { rank: ids.indexOf(image.id) + 1, dropped: ids.length > MAX_PICKS ? ids[MAX_PICKS] : null };
+}
+
+function removeLegendPick(user, imageId) {
+  const playerId = pickingPlayer(user);
+  savePicks(playerId, pickIds(playerId).filter(id => id !== Number(imageId)));
+}
+
+// One place up (-1) or down (+1).
+function moveLegendPick(user, imageId, delta) {
+  const playerId = pickingPlayer(user);
+  const ids = pickIds(playerId);
+  const from = ids.indexOf(Number(imageId));
+  const to = from + (Number(delta) < 0 ? -1 : 1);
+  if (from < 0) throw new Error('That picture is not in your top 4.');
+  if (to < 0 || to >= ids.length) return;
+  [ids[from], ids[to]] = [ids[to], ids[from]];
+  savePicks(playerId, ids);
+}
+
+// The player's rank of each picture they picked: Map(imageId → 1–4).
+function legendPickRanks(playerId) {
+  return new Map(Number(playerId) > 0 ? pickIds(playerId).map((id, index) => [id, index + 1]) : []);
+}
+
+// Everyone on the list who has a panel account, with their picks in order:
+// [{ playerId, tag, picks: [image] }].
+function listLegendPicks() {
+  return listLegendsViewers().map(viewer => {
+    const player = db.prepare('SELECT id, discord_tag FROM players WHERE discord_id = ?').get(viewer.discordId);
+    if (!player) return null;
+    const ids = pickIds(player.id);
+    const images = new Map(ids.length ? presentImages(db.prepare(`SELECT * FROM legend_images WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids)).map(image => [image.id, image]) : []);
+    return { playerId: player.id, tag: player.discord_tag, picks: ids.map(id => images.get(id)).filter(Boolean) };
+  }).filter(Boolean);
+}
+
 function listLegendMessagesWithoutFile(limit = 20) {
   return db.prepare(`
     SELECT message_id, channel_id FROM legend_images WHERE file IS NULL GROUP BY message_id ORDER BY MIN(id) LIMIT ?
@@ -600,6 +723,15 @@ module.exports = {
   saveLegendImageFiles,
   getLegendImageFile,
   listLegendMessagesWithoutFile,
+  uploadLegendImage,
+  canDeleteLegendImage,
+  deleteLegendUpload,
+  LEGEND_MAX_PICKS: MAX_PICKS,
+  setLegendPick,
+  removeLegendPick,
+  moveLegendPick,
+  legendPickRanks,
+  listLegendPicks,
   legendCounts,
   getLegendsScanStatus,
   setLegendsScanStatus

@@ -226,3 +226,105 @@ test('To sort in bulk: select many, tag them at once (adding to who is there) or
     server.close();
   }
 });
+
+test('uploading pictures on the tab: tagged on the way in, or To sort; only the uploader or Root deletes', async () => {
+  const opal = characterId('Opal');
+  assert.throws(() => db.uploadLegendImage({ user: users.otherDm, buffer: PNG }), /Forbidden/);
+  assert.throws(() => db.uploadLegendImage({ user: users.viewer, buffer: Buffer.from('not an image') }), /Only PNG/);
+  const tagged = db.uploadLegendImage({ user: users.viewer, buffer: PNG, characterIds: [String(opal)], artist: 'Selkie', artistUrl: 'https://selkie.example', caption: 'Opal at the docks' });
+  const shown = db.getLegendImage(tagged);
+  assert.equal(shown.uploaded, true);
+  assert.equal(shown.tagged_by, 'hand');
+  assert.deepEqual(shown.characters.map(character => character.id), [opal]);
+  assert.equal(shown.artist_name, 'Selkie');
+  assert.ok(shown.imageUrl);
+  const loose = db.uploadLegendImage({ user: users.root, buffer: PNG });
+  assert.ok(db.listLegendImages({ view: 'unsorted' }).some(entry => entry.id === loose), 'nobody ticked: To sort');
+  assert.equal(db.getLegendImage(loose).posted_by_tag, 'Root DM');
+
+  assert.equal(db.canDeleteLegendImage(users.viewer, loose), false, 'not their upload');
+  assert.equal(db.canDeleteLegendImage(users.root, tagged), true);
+  const [posted] = db.listLegendImages().filter(entry => !entry.uploaded);
+  assert.throws(() => db.deleteLegendUpload(posted.id, users.root), /Only uploaded/);
+
+  const express = require('express');
+  const app = express();
+  app.use((req, res, next) => { req.session = { user: JSON.parse(req.get('x-user')) }; next(); });
+  app.use('/admin', require('../server'));
+  app.use('/api', require('../webShopApi'));
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const as = user => ({ 'x-user': JSON.stringify({ id: user.id, role: user.role }) });
+  try {
+    const upload = user => fetch(`${base}/api/legends/upload`, { method: 'POST', headers: { ...as(user), 'content-type': 'image/png', 'x-characters': String(opal), 'x-artist': encodeURIComponent('Zażółć') }, body: PNG });
+    assert.equal((await upload(users.otherDm)).status, 403);
+    const response = await upload(users.viewer);
+    assert.equal(response.status, 200);
+    const { id } = await response.json();
+    assert.equal(db.getLegendImage(id).artist_name, 'Zażółć');
+    const remove = await fetch(`${base}/admin/legends/images/delete`, { method: 'POST', redirect: 'manual', headers: { ...as(users.viewer), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ id: String(id) }) });
+    assert.equal(remove.status, 302);
+    assert.equal(db.getLegendImage(id), null);
+  } finally {
+    server.close();
+  }
+  db.deleteLegendUpload(tagged, users.viewer);
+  assert.equal(db.getLegendImage(tagged), null);
+});
+
+test('top 4 picks: each viewer ranks four pictures, and everyone on the tab sees them', async () => {
+  const pictures = Array.from({ length: 5 }, () => db.uploadLegendImage({ user: users.viewer, buffer: PNG, characterIds: [characterId('Eris')] }));
+  const order = () => db.listLegendPicks().find(entry => entry.playerId === viewer).picks.map(image => image.id);
+  assert.throws(() => db.setLegendPick(users.root, pictures[0], 1), /Only players/);
+  assert.throws(() => db.setLegendPick(users.otherDm, pictures[0], 1), /Only players/);
+  assert.throws(() => db.setLegendPick(users.viewer, pictures[0], 5), /from 1 to 4/);
+  for (const [index, id] of pictures.slice(0, 4).entries()) db.setLegendPick(users.viewer, id, index + 1);
+  assert.deepEqual(order(), pictures.slice(0, 4));
+  const { rank, dropped } = db.setLegendPick(users.viewer, pictures[4], 2);
+  assert.equal(rank, 2);
+  assert.equal(dropped, pictures[3], 'the old #4 falls out');
+  assert.deepEqual(order(), [pictures[0], pictures[4], pictures[1], pictures[2]]);
+  db.setLegendPick(users.viewer, pictures[2], 1);
+  assert.deepEqual(order(), [pictures[2], pictures[0], pictures[4], pictures[1]], 'moving one already picked drops nothing');
+  db.moveLegendPick(users.viewer, pictures[1], -1);
+  assert.deepEqual(order(), [pictures[2], pictures[0], pictures[1], pictures[4]]);
+  db.removeLegendPick(users.viewer, pictures[0]);
+  assert.deepEqual(order(), [pictures[2], pictures[1], pictures[4]]);
+  db.updateLegendImage(pictures[3], { hidden: true });
+  assert.throws(() => db.setLegendPick(users.viewer, pictures[3], 1), /hidden/);
+  db.deleteLegendUpload(pictures[4], users.viewer);
+  assert.deepEqual(order(), [pictures[2], pictures[1]], 'a deleted picture leaves the picks');
+
+  // Root sees the picks page; the viewer gets the buttons.
+  const page = (user, query) => renderAdminPage({ session: { user }, query: { tab: 'legends', ...query } });
+  const rootPicks = page(users.root, { view: 'picks' });
+  assert.match(rootPicks, /legend-picks-row/);
+  assert.doesNotMatch(rootPicks, /value="up"/, 'Root only looks');
+  const own = page(users.viewer, { view: 'picks' });
+  assert.match(own, /Your picks/);
+  assert.match(own, /value="down"/);
+  const opened = page(users.viewer, { image: String(pictures[2]) });
+  assert.match(opened, /name="rank" value="1" class="btn btn-small btn-gold" aria-pressed="true"/);
+  assert.match(opened, /Delete upload/);
+  assert.match(page(users.viewer, { view: 'art' }), /legend-pick-badge[^>]*>⭐1/);
+  assert.match(page(users.viewer, {}), /id="legend-upload"/);
+  for (const [, code] of page(users.viewer, {}).matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(code));
+
+  const express = require('express');
+  const app = express();
+  app.use((req, res, next) => { req.session = { user: JSON.parse(req.get('x-user')) }; next(); });
+  app.use('/admin', require('../server'));
+  const server = app.listen(0);
+  try {
+    const post = (user, body) => fetch(`http://127.0.0.1:${server.address().port}/admin/legends/picks`, {
+      method: 'POST', redirect: 'manual', headers: { 'x-user': JSON.stringify({ id: user.id, role: user.role }), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body)
+    });
+    assert.equal((await post(users.otherDm, { image_id: String(pictures[0]), rank: '1' })).status, 403);
+    const done = await post(users.viewer, { image_id: String(pictures[0]), rank: '1', return_to: `/admin?tab=legends&image=${pictures[0]}#legend-viewer` });
+    assert.equal(done.status, 302);
+    assert.match(done.headers.get('location'), /status=legend_picked&rank=1#legend-viewer$/);
+    assert.equal(order()[0], pictures[0]);
+  } finally {
+    server.close();
+  }
+});
