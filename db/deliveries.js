@@ -2,7 +2,8 @@
 // (db/artisans.js) deliver once a week, at a moment picked at random inside it.
 // deliverDueArtisans runs every few minutes in the bot (artisanDeliveries.js):
 // each artisan whose moment has come adds their goods' weekly amount, up to
-// each cap, like the restock would, and gets next week's moment. The week's
+// each cap, like the restock would, plus their random magic items (a pawn
+// shop, up to its cap), and gets next week's moment. The week's
 // sale on artisan goods or category shortage (the last restock's event) still
 // applies to what they bring.
 
@@ -11,7 +12,7 @@
 const { db } = require('./connection');
 const { weekStart, pickDeliveryTime } = require('../rules/deliveryWindow');
 const { artisanDeliveryWindow, nextArtisanDeliveryAt } = require('./artisans');
-const { shopRoundPrice } = require('./restock');
+const { shopRoundPrice, drawArtisanMagic, readRestockConfig, restockPartyLevel } = require('./restock');
 
 // The last restock's sale or shortage, if that restock was this week.
 function thisWeeksEvent(now) {
@@ -48,6 +49,35 @@ function planDelivery({ goods, shelf, heldIds = [], event = null }) {
     changes.push({ good, existing: null, stock, added: stock, price: saleCut ? shopRoundPrice(good.price_cp * (100 - saleCut) / 100) : good.price_cp });
   }
   return changes;
+}
+
+// A scheduled artisan's random magic items, put on the shelf now (not during
+// a magic shortage; a category shortage keeps out that category). Returns the rows.
+function deliverArtisanMagic(artisan, now, random) {
+  const settings = { id: artisan.id, cap: artisan.magic_cap || 0, common: artisan.magic_common || 0, uncommon: artisan.magic_uncommon || 0, rare: artisan.magic_rare || 0 };
+  if (!settings.common && !settings.uncommon && !settings.rare) return [];
+  const event = thisWeeksEvent(now);
+  const target = event && event.kind === 'shortage' ? String((event.params || {}).target || '') : '';
+  if (target === 'magic') return [];
+  const shelf = db.prepare('SELECT * FROM items').all();
+  const config = readRestockConfig();
+  const fluctuate = cp => shopRoundPrice(cp * (config.fluctuation_min + random() * (config.fluctuation_max - config.fluctuation_min)));
+  const held = shelf.filter(item => item.source === 'artisan_magic' && item.artisan_id === artisan.id && item.stock !== 0).length;
+  const rows = drawArtisanMagic({
+    artisan: settings,
+    held,
+    catalog: db.prepare('SELECT * FROM catalog').all(),
+    level: restockPartyLevel(config),
+    taken: new Set(shelf.map(item => item.name.toLowerCase())),
+    fluctuate,
+    random
+  }).filter(row => !target.startsWith('category:') || String(row.category || '').toLowerCase() !== target.slice('category:'.length).toLowerCase());
+  const insert = db.prepare(`
+    INSERT INTO items (name, category, price, stock, description, is_active, source, rarity, weeks, artisan_id)
+    VALUES (?, ?, ?, 1, ?, 1, 'artisan_magic', ?, 0, ?)
+  `);
+  rows.forEach(row => insert.run(row.name, row.category, row.price, row.description, row.rarity, artisan.id));
+  return rows;
 }
 
 // Delivers for every scheduled artisan whose moment has passed, and picks a
@@ -87,10 +117,14 @@ function deliverDueArtisans({ now = new Date(), random = Math.random } = {}) {
         if (change.existing) restock.run(change.stock, change.existing.id);
         else insert.run(change.good.name, change.good.category, change.price, change.stock, change.good.description);
       }
+      const magic = deliverArtisanMagic(artisan, now, random);
       return {
         artisan: artisan.name,
         note: artisan.delivery_note || '',
-        delivered: changes.filter(change => change.added > 0).map(change => ({ name: change.good.name, added: change.added, stock: change.stock, price_cp: change.price })),
+        delivered: [
+          ...changes.filter(change => change.added > 0).map(change => ({ name: change.good.name, added: change.added, stock: change.stock, price_cp: change.price })),
+          ...magic.map(row => ({ name: row.name, added: 1, stock: 1, price_cp: row.price, rarity: row.rarity }))
+        ],
         full: changes.filter(change => change.added === 0).map(change => change.good.name)
       };
     })();

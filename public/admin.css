@@ -1795,3 +1795,9 @@ button.sheet-hud-tile { cursor: pointer; }
 .wm-battle-map { width: 96px; display: grid; gap: 2px; color: #dbdee1; text-decoration: none; }
 .wm-battle-map img { width: 96px; height: 66px; object-fit: cover; border-radius: 4px; border: 1px solid #3f4147; display: block; }
 .wm-battle-map span { overflow-wrap: anywhere; }
+
+/* An artisan's random magic items (a pawn shop). */
+.artisan-magic { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)); gap: 8px; border: 1px solid #3f4147; border-radius: 6px; padding: 8px 10px 10px; margin: 0; min-width: 0; }
+.artisan-magic legend { padding: 0 4px; font-weight: 600; }
+.artisan-magic p { grid-column: 1 / -1; margin: 0; }
+.artisan-magic input { width: 100%; box-sizing: border-box; }

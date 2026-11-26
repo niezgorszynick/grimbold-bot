@@ -95,6 +95,19 @@ function nextDeliveryAt(row, now = new Date(), random = Math.random) {
   return moment ? moment.toISOString() : null;
 }
 
+// Random magic items a week by rarity, and the most held at once (0 = none).
+function readMagicFields(fields) {
+  const magic = {
+    common: whole(fields.magic_common || 0, 0, 10, 'Common magic items a week'),
+    uncommon: whole(fields.magic_uncommon || 0, 0, 10, 'Uncommon magic items a week'),
+    rare: whole(fields.magic_rare || 0, 0, 5, 'Rare magic items a week'),
+    cap: whole(fields.magic_cap || 0, 0, 50, 'Most magic items at once')
+  };
+  const weekly = magic.common + magic.uncommon + magic.rare;
+  if (weekly && magic.cap < 1) throw new Error('Set how many magic items they can hold at once (at least 1).');
+  return magic;
+}
+
 const SCHEDULE_KEYS = ['delivery_day_from', 'delivery_day_to', 'delivery_hour_from', 'delivery_hour_to', 'active', 'mode'];
 
 function saveArtisan(fields, { now = new Date(), random = Math.random } = {}) {
@@ -110,6 +123,12 @@ function saveArtisan(fields, { now = new Date(), random = Math.random } = {}) {
     if (id && !before) throw new Error('Artisan not found.');
     const rowId = id || Number(db.prepare('INSERT INTO artisans (name, description, active, mode) VALUES (?, ?, ?, ?)').run(...values).lastInsertRowid);
     if (id) db.prepare('UPDATE artisans SET name = ?, description = ?, active = ?, mode = ? WHERE id = ?').run(...values, id);
+    // Random magic items (a resident only): fields left out keep what's stored.
+    if (fields.magic_cap !== undefined) {
+      const magic = readMagicFields(fields);
+      db.prepare('UPDATE artisans SET magic_common = ?, magic_uncommon = ?, magic_rare = ?, magic_cap = ? WHERE id = ?')
+        .run(magic.common, magic.uncommon, magic.rare, magic.cap, rowId);
+    }
     if (hasDelivery) {
       db.prepare('UPDATE artisans SET delivery_day_from = ?, delivery_day_to = ?, delivery_hour_from = ?, delivery_hour_to = ?, delivery_note = ? WHERE id = ?')
         .run(window ? window.dayFrom : null, window ? window.dayTo : null, window ? window.hourFrom : null, window ? window.hourTo : null, note, rowId);
@@ -156,6 +175,21 @@ function activeArtisanGoods() {
     SELECT g.*, a.name AS artisan, a.delivery_day_from IS NOT NULL AS scheduled FROM artisan_goods g JOIN artisans a ON a.id = g.artisan_id
     WHERE a.active = 1 AND a.mode = 'resident' ORDER BY g.id
   `).all().map(good => ({ ...good, scheduled: Boolean(good.scheduled) }));
+}
+
+// Active resident artisans' random magic settings, for the restock and their
+// deliveries: [{ id, name, common, uncommon, rare, cap, scheduled }]. Every
+// active resident is listed (a pawn shop whose counts are 0 keeps what it holds).
+function activeArtisanMagic() {
+  return db.prepare("SELECT * FROM artisans WHERE active = 1 AND mode = 'resident' ORDER BY id").all().map(row => ({
+    id: row.id,
+    name: row.name,
+    common: row.magic_common || 0,
+    uncommon: row.magic_uncommon || 0,
+    rare: row.magic_rare || 0,
+    cap: row.magic_cap || 0,
+    scheduled: Boolean(row.delivery_day_from)
+  }));
 }
 
 // A travelling artisan's goods as a visiting merchant sells them (their weekly
@@ -295,6 +329,7 @@ module.exports = {
   saveArtisanGood,
   deleteArtisanGood,
   activeArtisanGoods,
+  activeArtisanMagic,
   listShopEvents,
   getShopEvent,
   saveShopEvent,

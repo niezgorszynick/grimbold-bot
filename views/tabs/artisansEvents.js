@@ -73,6 +73,21 @@ function deliveryFields(artisan) {
     </script>`;
 }
 
+// A resident's random magic items (a pawn shop): so many of each rarity a
+// week from what Grimbold may sell, up to a cap held at once.
+function magicFields(artisan) {
+  const number = (name, label, max, value) => `<label>${label}<input name="${name}" type="number" min="0" max="${max}" value="${Number(value) || 0}"></label>`;
+  return `
+    <fieldset class="artisan-magic">
+      <legend>🎲 Random magic items <span class="muted small">(a pawn shop: drawn each week from the magic items the shop may sell, by the restock rules; each stays until sold)</span></legend>
+      ${number('magic_common', 'Common a week', 10, artisan.magic_common)}
+      ${number('magic_uncommon', 'Uncommon a week', 10, artisan.magic_uncommon)}
+      ${number('magic_rare', 'Rare a week', 5, artisan.magic_rare)}
+      ${number('magic_cap', 'Most at once', 50, artisan.magic_cap)}
+      <p class="muted small">Rare ones only from party level 5, and only Rare items the DMs allow in the shop. Never an item already on Grimbold's shelf. Prices are the catalog's, with the weekly fluctuation.</p>
+    </fieldset>`;
+}
+
 function artisanCard(artisan, openId) {
   const travelling = artisan.mode === 'travelling';
   return `
@@ -83,6 +98,7 @@ function artisanCard(artisan, openId) {
         ${!travelling && artisan.delivery ? `<span class="tag">🧺 ${escapeHtml(describeWindow(artisan.delivery))}</span>` : ''}
         ${artisan.active ? '' : '<span class="tag">Away</span>'}
         <span class="muted small">${artisan.goods.length} item${artisan.goods.length === 1 ? '' : 's'}</span>
+        ${!travelling && (artisan.magic_common || artisan.magic_uncommon || artisan.magic_rare) ? `<span class="tag" title="Random magic items each week">🎲 ${[[artisan.magic_common, 'C'], [artisan.magic_uncommon, 'U'], [artisan.magic_rare, 'R']].filter(([n]) => n).map(([n, r]) => n + r).join(' ')} · max ${artisan.magic_cap}</span>` : ''}
       </summary>
       <form method="POST" action="/admin/artisans/save" class="artisan-form">
         <input type="hidden" name="id" value="${artisan.id}">
@@ -93,6 +109,7 @@ function artisanCard(artisan, openId) {
         </select></label>
         <label class="creator-check"><input type="checkbox" name="active" value="1" ${artisan.active ? 'checked' : ''}> Available (untick while they're away: a resident's goods leave the shelf, a travelling one doesn't visit)</label>
         ${travelling ? '' : deliveryFields(artisan)}
+        ${travelling ? '' : magicFields(artisan)}
         <div class="vitals-actions">
           <button class="btn btn-small" type="submit">Save</button>
         </div>

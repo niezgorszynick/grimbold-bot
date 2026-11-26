@@ -10,6 +10,11 @@
 //             so about half the magic stock changes every week.
 //   scroll  — the scroll case: spell scrolls drawn from the whole spell list,
 //             spell level capped by the party level, all new each week.
+//   artisan_magic — an artisan's random magic items (a pawn shop): so many
+//             Common / Uncommon / Rare a week from the same items Grimbold
+//             may sell, never one already on the shelf, up to the artisan's
+//             cap; each stays until sold. Scheduled artisans bring theirs on
+//             delivery (db/deliveries.js).
 //   artisan — goods of resident artisans (db/artisans.js): each restock adds
 //             their weekly amount, up to a cap; unsold stock stays. Artisans
 //             with their own delivery window deliver then instead
@@ -33,7 +38,7 @@
 
 const { db } = require('./connection');
 const rules = require('../rules');
-const { activeArtisanGoods, travellingGoods, rollWeeklyEvent } = require('./artisans');
+const { activeArtisanGoods, activeArtisanMagic, travellingGoods, rollWeeklyEvent } = require('./artisans');
 
 const MAGIC_RARITIES = ['Common', 'Uncommon', 'Rare'];
 // Rare items only once the party reaches tier 2 (level 5).
@@ -128,6 +133,35 @@ function shuffle(list, random) {
   return copy;
 }
 
+// The magic items the shop may sell at this level: Common, Uncommon, Rare
+// (the DMs allow Rare ones item by item), not staples or scrolls.
+const shopMagicPool = (catalog, level) => catalog.filter(row => row.min_level <= level && row.availability !== 'adventure' && row.tier !== 'service'
+  && row.tier !== 'staple' && !isScrollRow(row) && MAGIC_RARITIES.includes(row.rarity));
+
+// An artisan's random magic items this time: their weekly counts by rarity
+// (Rare only from party level 5), in random order, cut to the room left under
+// their cap; each a catalog item nobody has on the shelf (taken: names, kept
+// up to date). held: how many of theirs are on the shelf now. Pure.
+function drawArtisanMagic({ artisan, held = 0, catalog, level, taken, fluctuate, random = Math.random }) {
+  const room = Math.max(0, (artisan.cap || 0) - held);
+  if (!room) return [];
+  const pool = shopMagicPool(catalog, level);
+  const wanted = shuffle([
+    ...Array(artisan.common || 0).fill('Common'),
+    ...Array(artisan.uncommon || 0).fill('Uncommon'),
+    ...Array(level >= RARE_FROM_LEVEL ? artisan.rare || 0 : 0).fill('Rare')
+  ], random).slice(0, room);
+  const rows = [];
+  for (const rarity of wanted) {
+    const choices = pool.filter(row => row.rarity === rarity && !taken.has(row.name.toLowerCase()));
+    if (!choices.length) continue;
+    const row = choices[Math.floor(random() * choices.length)];
+    taken.add(row.name.toLowerCase());
+    rows.push({ name: row.name, category: row.category, price: fluctuate(row.base_price_cp), stock: 1, description: row.description, source: 'artisan_magic', rarity, artisan_id: artisan.id });
+  }
+  return rows;
+}
+
 function scrollName(spell) {
   return spell.level === 0 ? `Spell Scroll (Cantrip: ${spell.name})` : `Spell Scroll (Level ${spell.level}: ${spell.name})`;
 }
@@ -136,8 +170,9 @@ function scrollName(spell) {
 // weeks); catalog: catalog rows; spells: spell list entries. Returns
 // { remove: [ids], keep: [{ id, weeks }], update: [{ id, stock, price }],
 // insert: [rows], partyLevel }. artisanGoods: active artisans' goods; event:
-// this week's event or null.
-function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisanGoods = [], event = null, heldIds = [], random = Math.random }) {
+// this week's event or null. artisanMagic: active residents' random magic
+// settings (activeArtisanMagic).
+function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisanGoods = [], artisanMagic = [], event = null, heldIds = [], random = Math.random }) {
   const plan = { remove: [], keep: [], update: [], insert: [], held: [], partyLevel: level };
   const params = (event && event.params) || {};
   const shortage = event && event.kind === 'shortage' ? params.target : null;
@@ -152,7 +187,7 @@ function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisa
   const shelf = wholeShelf.filter(item => !held.has(item.id));
 
   // Manual rows stay until sold out; their names are taken.
-  for (const row of shelf.filter(item => !['mundane', 'staple', 'magic', 'scroll', 'artisan', 'event'].includes(item.source))) {
+  for (const row of shelf.filter(item => !['mundane', 'staple', 'magic', 'scroll', 'artisan', 'artisan_magic', 'event'].includes(item.source))) {
     if (row.stock === 0 || row.source === 'legacy') plan.remove.push(row.id);
     else take(row);
   }
@@ -178,6 +213,17 @@ function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisa
     take(good);
   }
   artisanRows.forEach(item => plan.remove.push(item.id));
+
+  // Artisans' random magic: unsold ones stay (and count toward the cap);
+  // sold-out ones, and those of an artisan away or gone, leave.
+  const magicOwners = new Set(artisanMagic.map(artisan => artisan.id));
+  const heldMagic = new Map();
+  const countMagic = item => heldMagic.set(item.artisan_id, (heldMagic.get(item.artisan_id) || 0) + 1);
+  wholeShelf.filter(item => held.has(item.id) && item.source === 'artisan_magic').forEach(countMagic);
+  for (const item of shelf.filter(row => row.source === 'artisan_magic')) {
+    if (item.stock === 0 || !magicOwners.has(item.artisan_id)) plan.remove.push(item.id);
+    else { take(item); countMagic(item); }
+  }
 
   // Last week's visiting merchant has moved on; this week's sets up shop.
   shelf.filter(item => item.source === 'event').forEach(item => plan.remove.push(item.id));
@@ -218,6 +264,14 @@ function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisa
     const pool = allowed.filter(row => row.rarity === rarity && row.tier !== 'staple' && !isScrollRow(row) && !taken.has(row.name.toLowerCase()));
     for (const row of shuffle(pool, random).slice(0, missing)) {
       plan.insert.push(take({ name: row.name, category: row.category, price: fluctuate(row.base_price_cp), stock: Math.max(1, between(row.min_stock, row.max_stock)), description: row.description, source: 'magic', rarity }));
+    }
+  }
+
+  // Artisans' new random magic (after Grimbold's, never the same item; a
+  // magic shortage stops theirs too). Scheduled artisans bring theirs on delivery.
+  if (shortage !== 'magic') {
+    for (const artisan of artisanMagic.filter(entry => !entry.scheduled)) {
+      plan.insert.push(...drawArtisanMagic({ artisan, held: heldMagic.get(artisan.id) || 0, catalog, level, taken, fluctuate, random }));
     }
   }
 
@@ -275,7 +329,8 @@ function runRestock({ random = Math.random } = {}) {
   const catalog = db.prepare('SELECT * FROM catalog').all();
   const spells = Object.values(rules.getSpellCatalog()).filter(spell => Number.isInteger(spell.level));
   const reservations = require('./reservations');
-  const plan = planRestock({ shelf, catalog, spells, config, level, artisanGoods: activeArtisanGoods(), event, heldIds: reservations.heldItemIds(), random });
+  const artisanMagic = activeArtisanMagic();
+  const plan = planRestock({ shelf, catalog, spells, config, level, artisanGoods: activeArtisanGoods(), artisanMagic, event, heldIds: reservations.heldItemIds(), random });
   db.transaction(() => {
     const remove = db.prepare('DELETE FROM items WHERE id = ?');
     plan.remove.forEach(id => remove.run(id));
@@ -290,12 +345,12 @@ function runRestock({ random = Math.random } = {}) {
         ? { title: event.title, at: new Date().toISOString(), kind: event.kind, params: event.kind === 'sale' || event.kind === 'shortage' ? { target: event.params.target, percent: event.params.percent } : {} }
         : { title: null, at: new Date().toISOString() }));
     const insert = db.prepare(`
-      INSERT INTO items (name, category, price, stock, description, is_active, source, rarity, weeks)
-      VALUES (@name, @category, @price, @stock, @description, 1, @source, @rarity, 0)
+      INSERT INTO items (name, category, price, stock, description, is_active, source, rarity, weeks, artisan_id)
+      VALUES (@name, @category, @price, @stock, @description, 1, @source, @rarity, 0, @artisan_id)
       ON CONFLICT(name) DO UPDATE SET category = excluded.category, price = excluded.price, stock = excluded.stock,
-        description = excluded.description, is_active = 1, source = excluded.source, rarity = excluded.rarity, weeks = 0
+        description = excluded.description, is_active = 1, source = excluded.source, rarity = excluded.rarity, weeks = 0, artisan_id = excluded.artisan_id
     `);
-    plan.insert.forEach(row => insert.run(row));
+    plan.insert.forEach(row => insert.run({ artisan_id: null, ...row }));
   })();
   // Reservations count down, run out, or are refunded if their item is gone.
   const reserved = reservations.afterRestock();
@@ -309,6 +364,11 @@ function runRestock({ random = Math.random } = {}) {
     mundane: newOf('mundane').length,
     artisanGoods: artisanStock,
     merchantGoods: newOf('event'),
+    // New random magic at each artisan: [{ artisan, names }].
+    artisanMagic: artisanMagic.map(artisan => ({
+      artisan: artisan.name,
+      names: plan.insert.filter(row => row.source === 'artisan_magic' && row.artisan_id === artisan.id).map(row => row.name)
+    })).filter(entry => entry.names.length),
     event: event ? { title: event.title, announcement: event.announcement, kind: event.kind } : null,
     reserved
   };
@@ -322,5 +382,6 @@ module.exports = {
   medianCharacterLevel,
   restockPartyLevel: partyLevel,
   planRestock,
+  drawArtisanMagic,
   runRestock
 };

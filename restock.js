@@ -38,6 +38,7 @@ async function sendDiscordAnnouncement(summary) {
           ...(summary.event ? [{ name: `📣 ${summary.event.title}`, value: summary.event.announcement.slice(0, 1000), inline: false }] : []),
           ...(summary.merchantGoods.length ? [{ name: '🧳 From the visiting merchant', value: listNames(summary.merchantGoods), inline: false }] : []),
           { name: '✨ New in the vault', value: listNames(summary.newMagic), inline: false },
+          ...(summary.artisanMagic || []).map(entry => ({ name: `🎲 New at ${entry.artisan}`, value: listNames(entry.names), inline: false })),
           { name: '📜 In the scroll case', value: listNames(summary.scrolls), inline: false },
           ...require('./shopAnnouncements').reservationRestockFields(summary.reserved)
         )

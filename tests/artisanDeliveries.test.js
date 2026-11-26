@@ -98,3 +98,19 @@ test('a delivery skips reserved items, other sources\' names, and a short catego
   const changes = db.planArtisanDelivery({ goods, shelf, heldIds: [2], event: { kind: 'shortage', params: { target: 'category:Armor' } } });
   assert.deepEqual(changes, []);
 });
+
+test('a scheduled pawn shop brings its random magic items on delivery', () => {
+  db.prepare("INSERT INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock, rarity, availability) VALUES ('Pawn Test Charm', 'Wondrous', 'magic', 5000, 'Charm.', 1, 1, 1, 'Common', 'shop')").run();
+  db.prepare("INSERT INTO catalog (name, category, tier, base_price_cp, description, min_level, min_stock, max_stock, rarity, availability) VALUES ('Pawn Test Lamp', 'Wondrous', 'magic', 5000, 'Lamp.', 1, 1, 1, 'Common', 'shop')").run();
+  db.prepare("INSERT INTO items (name, category, price, stock, description, source, rarity) VALUES ('Pawn Test Lamp', 'Wondrous', 5000, 1, 'Lamp.', 'magic', 'Common')").run();
+  const id = db.saveArtisan({ name: 'Wexley', active: true, delivery_day_from: '3', delivery_day_to: '3', delivery_hour_from: '12', delivery_hour_to: '14', magic_common: '2', magic_cap: '2' }, { now: wednesdayNoon, random: () => 0 });
+  db.prepare('UPDATE artisans SET next_delivery_at = ? WHERE id = ?').run('2026-11-18T10:00:00.000Z', id);
+  const [delivery] = db.deliverDueArtisans({ now: wednesdayNoon, random: () => 0 }).filter(entry => entry.artisan === 'Wexley');
+  const names = delivery.delivered.map(entry => entry.name);
+  assert.ok(names.includes('Pawn Test Charm'));
+  assert.ok(!names.includes('Pawn Test Lamp'), 'not one already on the shelf');
+  const row = db.prepare("SELECT * FROM items WHERE name = 'Pawn Test Charm'").get();
+  assert.equal(row.source, 'artisan_magic');
+  assert.equal(row.artisan_id, id);
+  assert.equal(row.stock, 1);
+});

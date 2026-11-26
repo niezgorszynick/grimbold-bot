@@ -102,3 +102,56 @@ test('travelling artisans visit through merchant events; shortages can hit stapl
   assert.deepEqual(options.map(option => option.value), ['scroll', 'magic', 'staple', 'category:Weapons']);
   assert.match(options[3].description, /Weapons.*2 items, e\.g\. Longsword/);
 });
+
+test('a pawn shop: random magic items by rarity, up to its cap, never one already on the shelf', () => {
+  const magicCatalog = [
+    ...catalog,
+    { id: 3, name: 'Potion of Watchful Rest', category: 'Potion', tier: 'magic', base_price_cp: 5000, description: 'Rest.', min_level: 1, min_stock: 1, max_stock: 1, rarity: 'Common', availability: 'shop' },
+    { id: 8, name: 'Cloak of Many Fashions', category: 'Wondrous', tier: 'magic', base_price_cp: 5000, description: 'Style.', min_level: 1, min_stock: 1, max_stock: 1, rarity: 'Common', availability: 'shop' },
+    { id: 4, name: 'Bag of Holding', category: 'Wondrous', tier: 'magic', base_price_cp: 40000, description: 'Bag.', min_level: 1, min_stock: 1, max_stock: 1, rarity: 'Uncommon', availability: 'shop' },
+    { id: 5, name: 'Flame Tongue', category: 'Weapon', tier: 'magic', base_price_cp: 400000, description: 'Fire.', min_level: 1, min_stock: 1, max_stock: 1, rarity: 'Rare', availability: 'shop' },
+    { id: 6, name: 'Vorpal Sword', category: 'Weapon', tier: 'magic', base_price_cp: 9000000, description: 'Snicker-snack.', min_level: 1, min_stock: 1, max_stock: 1, rarity: 'Rare', availability: 'adventure' },
+    { id: 7, name: 'Spell Scroll (Shield)', category: 'Spell Scroll', tier: 'magic', base_price_cp: 5000, description: '', min_level: 1, min_stock: 1, max_stock: 1, rarity: 'Common', availability: 'shop' }
+  ];
+  const pawn = { id: 42, name: 'Old Wexley', common: 2, uncommon: 1, rare: 1, cap: 3, scheduled: false };
+  const run = extra => db.planRestock({ shelf: [], catalog: magicCatalog, spells, config, level: 3, random: () => 0, artisanMagic: [pawn], ...extra });
+
+  let result = run();
+  const pawned = result.insert.filter(row => row.source === 'artisan_magic');
+  const grimbolds = result.insert.filter(row => row.source === 'magic').map(row => row.name);
+  assert.equal(pawned.length, 3, 'three: two Common and one Uncommon (no Rare below level 5)');
+  assert.ok(pawned.every(row => row.artisan_id === 42 && row.stock === 1));
+  assert.ok(!pawned.some(row => row.rarity === 'Rare'));
+  assert.ok(!pawned.some(row => grimbolds.includes(row.name)), 'never Grimbold\'s own');
+  assert.ok(!pawned.some(row => /Scroll/.test(row.name)), 'no scrolls');
+  assert.equal(pawned.find(row => row.name === 'Bag of Holding').price, Math.round(40000 * 0.85 / 100) * 100, 'catalog price with the fluctuation');
+
+  result = run({ level: 5 });
+  const rare = result.insert.filter(row => row.source === 'artisan_magic' && row.rarity === 'Rare').map(row => row.name);
+  assert.ok(rare.every(name => name === 'Flame Tongue'), 'adventure-only Rare items never');
+
+  // Unsold ones stay and fill the cap; sold-out ones leave; an artisan gone takes theirs.
+  const shelf = [
+    { id: 1, name: 'Potion of Watchful Rest', source: 'artisan_magic', artisan_id: 42, stock: 1, rarity: 'Common' },
+    { id: 2, name: 'Bag of Holding', source: 'artisan_magic', artisan_id: 42, stock: 1, rarity: 'Uncommon' },
+    { id: 3, name: 'Potion of Climbing', source: 'artisan_magic', artisan_id: 42, stock: 0, rarity: 'Common' },
+    { id: 4, name: 'Old Ring', source: 'artisan_magic', artisan_id: 99, stock: 1, rarity: 'Uncommon' }
+  ];
+  result = run({ shelf });
+  assert.ok(!result.remove.includes(1) && !result.remove.includes(2), 'unsold ones stay');
+  assert.ok(result.remove.includes(3), 'sold out');
+  assert.ok(result.remove.includes(4), 'their artisan is away or gone');
+  assert.equal(result.insert.filter(row => row.source === 'artisan_magic').length, 1, 'room for one under the cap of 3');
+  assert.equal(run({ shelf, event: { kind: 'shortage', params: { target: 'magic' } } }).insert.filter(row => row.source === 'artisan_magic').length, 0, 'a magic shortage');
+  assert.equal(run({ artisanMagic: [{ ...pawn, scheduled: true }] }).insert.filter(row => row.source === 'artisan_magic').length, 0, 'scheduled: they bring them on delivery');
+
+  // The form: saved and checked.
+  const id = db.saveArtisan({ name: 'Old Wexley', active: true, magic_common: '2', magic_uncommon: '1', magic_rare: '0', magic_cap: '4' });
+  const saved = db.listArtisans().find(artisan => artisan.id === id);
+  assert.deepEqual([saved.magic_common, saved.magic_uncommon, saved.magic_rare, saved.magic_cap], [2, 1, 0, 4]);
+  assert.throws(() => db.saveArtisan({ id, name: 'Old Wexley', active: true, magic_common: '1', magic_cap: '0' }), /hold at once/);
+  db.saveArtisan({ id, name: 'Old Wexley the Pawnbroker', active: true });
+  assert.equal(db.listArtisans().find(artisan => artisan.id === id).magic_cap, 4, 'other forms keep it');
+  assert.deepEqual(db.activeArtisanMagic().find(entry => entry.id === id), { id, name: 'Old Wexley the Pawnbroker', common: 2, uncommon: 1, rare: 0, cap: 4, scheduled: false });
+  db.deleteArtisan(id);
+});

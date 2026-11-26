@@ -1658,6 +1658,21 @@ const MIGRATIONS = [
     up(db) {
       db.exec('ALTER TABLE art_images ADD COLUMN also_art INTEGER NOT NULL DEFAULT 0');
     }
+  },
+  {
+    // Artisans with random magic items (a pawn shop): so many Common /
+    // Uncommon / Rare a week from the items Grimbold may sell, up to a cap
+    // held at once. Their shelf rows (source 'artisan_magic') say whose they are.
+    version: 62,
+    up(db) {
+      db.exec(`
+        ALTER TABLE artisans ADD COLUMN magic_common INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE artisans ADD COLUMN magic_uncommon INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE artisans ADD COLUMN magic_rare INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE artisans ADD COLUMN magic_cap INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE items ADD COLUMN artisan_id INTEGER;
+      `);
+    }
   }
 ];
 

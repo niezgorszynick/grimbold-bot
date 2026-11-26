@@ -68,7 +68,7 @@ module.exports = function renderRestockTab(ctx) {
         <div class="card">
           <h3>Restock now</h3>
           <p class="muted small">Party level for the next restock: <strong>${level}</strong>${cfg.party_level_auto ? ' (worked out from the characters)' : ''}.</p>
-          <p class="muted small">On the shelf now: ${count('mundane')} mundane, ${count('staple')} staples, ${count('magic')} magic, ${count('scroll')} scrolls, ${count('artisan')} artisan goods, ${count('event')} from a visiting merchant, ${count('manual')} added by hand${count('legacy') ? `, ${count('legacy')} from the old restock (cleared next time)` : ''}.</p>
+          <p class="muted small">On the shelf now: ${count('mundane')} mundane, ${count('staple')} staples, ${count('magic')} magic, ${count('scroll')} scrolls, ${count('artisan')} artisan goods, ${count('artisan_magic')} random magic at the artisans, ${count('event')} from a visiting merchant, ${count('manual')} added by hand${count('legacy') ? `, ${count('legacy')} from the old restock (cleared next time)` : ''}.</p>
           <p class="muted small">Last event: ${lastEvent ? (lastEvent.title ? `<strong>${escapeHtml(lastEvent.title)}</strong>` : 'none') + ` (${escapeHtml(String(lastEvent.at || '').slice(0, 10))})` : 'no restock yet'}.</p>
           <p class="muted small">Items a DM added by hand stay until they sell out or you delete them.</p>
           <form method="POST" action="/admin/restock" onsubmit="return confirm('Run the weekly restock now and announce it on Discord?');">
