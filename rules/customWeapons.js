@@ -6,14 +6,39 @@
 //
 // Stored on the equipment row as `weapon`:
 //   { base: 'Longsword' | null, damage: '1d8', damageType, kind: 'Melee'|'Ranged',
-//     ability: 'str'|'dex'|'finesse', proficient, action, attackBonus, damageBonus }
+//     ability: 'str'|'dex'|'finesse', proficient, action, attackBonus, damageBonus,
+//     extraDamage: [{ dice: '1d4', type: 'Fire' }] }
 // base set: damage, kind and ability come from the base weapon; damageType may override it.
+// extraDamage: more dice of their own type on every hit ("1d6 Piercing + 1d4
+// Fire"), with a base weapon or without; up to MAX_EXTRA_DAMAGE of them.
 
 const { WEAPONS } = require('./weapons');
 
 const DAMAGE_TYPES = ['Acid', 'Bludgeoning', 'Cold', 'Fire', 'Force', 'Lightning', 'Necrotic', 'Piercing', 'Poison', 'Psychic', 'Radiant', 'Slashing', 'Thunder'];
 const WEAPON_ACTIONS = ['Action', 'Bonus Action', 'Reaction'];
 const DICE = /^(\d{1,2}d(4|6|8|10|12|20)|\d{1,2})$/;
+const MAX_EXTRA_DAMAGE = 3;
+
+// The extra damage the player entered: empty rows skipped, the rest checked.
+function validateExtraDamage(list) {
+  if (list === undefined || list === null || list === '') return [];
+  if (!Array.isArray(list)) throw new Error('Extra damage must be a list of dice and damage types.');
+  const parts = list
+    .map(part => ({ dice: String((part && part.dice) || '').replace(/\s+/g, '').toLowerCase(), type: (part && part.type) || '' }))
+    .filter(part => part.dice || part.type);
+  if (parts.length > MAX_EXTRA_DAMAGE) throw new Error(`A weapon can have up to ${MAX_EXTRA_DAMAGE} extra damage dice.`);
+  for (const part of parts) {
+    if (!DICE.test(part.dice)) throw new Error('Extra damage dice must look like 1d4 or 2d6 (or a flat number).');
+    if (!DAMAGE_TYPES.includes(part.type)) throw new Error(`Choose a damage type for the extra ${part.dice}.`);
+  }
+  return parts;
+}
+
+// The stored extra damage, checked again for the attack list (older rows have none).
+const extraDamageOf = weapon => (Array.isArray(weapon.extraDamage) ? weapon.extraDamage : [])
+  .filter(part => part && DICE.test(String(part.dice || '')) && DAMAGE_TYPES.includes(part.type))
+  .slice(0, MAX_EXTRA_DAMAGE)
+  .map(part => ({ dice: String(part.dice), type: part.type }));
 
 function bonus(value, label) {
   if (value === undefined || value === null || value === '') return 0;
@@ -36,6 +61,8 @@ function validateCustomWeapon(input) {
     damageBonus: bonus(body.damageBonus, 'Damage bonus'),
     damageType: body.damageType || (base ? WEAPONS[base].damageType : null)
   };
+  const extraDamage = validateExtraDamage(body.extraDamage);
+  if (extraDamage.length) weapon.extraDamage = extraDamage;
   if (base) return weapon;
   const damage = String(body.damage || '').replace(/\s+/g, '').toLowerCase();
   if (!DICE.test(damage)) throw new Error('Damage dice must look like 1d8 or 2d6 (or a flat number).');
@@ -53,7 +80,7 @@ function validateCustomWeapon(input) {
 function customWeaponGear(row) {
   const weapon = row && row.weapon;
   if (!weapon || typeof weapon !== 'object') return null;
-  const custom = { action: weapon.action || 'Action', attackBonus: weapon.attackBonus || 0, damageBonus: weapon.damageBonus || 0 };
+  const custom = { action: weapon.action || 'Action', attackBonus: weapon.attackBonus || 0, damageBonus: weapon.damageBonus || 0, extraDamage: extraDamageOf(weapon) };
   if (weapon.base && WEAPONS[weapon.base]) {
     const real = WEAPONS[weapon.base];
     return { type: 'weapon', ...real, damageType: weapon.damageType || real.damageType, custom };
@@ -74,4 +101,4 @@ function customWeaponGear(row) {
   };
 }
 
-module.exports = { DAMAGE_TYPES, WEAPON_ACTIONS, validateCustomWeapon, customWeaponGear };
+module.exports = { DAMAGE_TYPES, WEAPON_ACTIONS, MAX_EXTRA_DAMAGE, validateCustomWeapon, customWeaponGear };

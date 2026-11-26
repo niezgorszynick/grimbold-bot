@@ -115,7 +115,7 @@ function buildView(sheetData, isAdmin, sale = { roll: null, discountPercent: 0 }
     // DMs let a player sell gear the sheet thinks wasn't paid for.
     isAdmin: Boolean(isAdmin),
     // Choices for custom weapon stats.
-    weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS },
+    weaponOptions: { bases: Object.keys(rules.WEAPONS), damageTypes: rules.DAMAGE_TYPES, actions: rules.WEAPON_ACTIONS, maxExtraDamage: rules.MAX_EXTRA_DAMAGE },
     // What item bonuses add up to now, for the skill and save numbers.
     itemBonuses: rules.itemBonusTotals(sheetData),
     // Choices for a custom bonus.

@@ -468,16 +468,21 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
     dueling ? { label: 'Dueling', value: dueling } : null,
     custom && custom.damageBonus ? { label: 'Weapon', value: custom.damageBonus } : null
   ].filter(Boolean);
-  let damage = damageText(die + '', damageMod, '').trim() + extraDice + ' ' + ((pact && pact.damageType) || weapon.damageType);
+  // A custom weapon's damage of other types ("+ 1d4 Fire"), on every hit and
+  // in every roll of it (two-handed, Sneak Attack, the off-hand attack).
+  const otherDamage = custom && custom.extraDamage ? custom.extraDamage : [];
+  const otherDice = otherDamage.map(part => '+' + part.dice).join('');
+  const otherText = otherDamage.map(part => ` + ${part.dice} ${part.type}`).join('');
+  let damage = damageText(die + '', damageMod, '').trim() + extraDice + ' ' + ((pact && pact.damageType) || weapon.damageType) + otherText;
   // The off-hand attack is made one-handed.
-  if (weapon.versatile && !offHand) damage += ` (${damageText(weapon.versatile, twoHandedMod, '').trim()}${extraDice} two-handed)`;
+  if (weapon.versatile && !offHand) damage += ` (${damageText(weapon.versatile, twoHandedMod, '').trim()}${extraDice}${otherDice} two-handed)`;
   // Sneak Attack: once per turn with a Finesse or ranged weapon, with Advantage
   // or an ally next to the target. A roll of its own: the weapon plus the dice.
   const rogueLevel = levelOf('Rogue');
   const sneakAttack = rogueLevel >= 1 && !offHand && (weapon.properties.includes('Finesse') || weapon.kind === 'Ranged')
     ? (() => {
       const dice = `${atLevel(getClass('Rogue').resources.sneakAttackDice, rogueLevel)}d6`;
-      return { dice, damage: `${damageText(die, damageMod, '').trim()}${extraDice}+${dice} ${(pact && pact.damageType) || weapon.damageType}` };
+      return { dice, damage: `${damageText(die, damageMod, '').trim()}${extraDice}+${dice} ${(pact && pact.damageType) || weapon.damageType}${otherText}` };
     })()
     : null;
 
@@ -533,6 +538,7 @@ function weaponAttack(piece, ctx, armorState, options = {}) {
     hitParts,
     damageParts,
     damageDie: die,
+    otherDamage,
     damage,
     sneakAttack,
     notes
@@ -740,7 +746,8 @@ function describeGear(gear) {
     custom.attackBonus ? `${signed(custom.attackBonus)} to hit` : null,
     custom.damageBonus ? `${signed(custom.damageBonus)} damage` : null
   ] : [];
-  return [`${gear.category} ${gear.kind} weapon · ${gear.damage} ${gear.damageType}`, props.join(', ') || null,
+  const other = custom && custom.extraDamage ? custom.extraDamage.map(part => ` + ${part.dice} ${part.type}`).join('') : '';
+  return [`${gear.category} ${gear.kind} weapon · ${gear.damage} ${gear.damageType}${other}`, props.join(', ') || null,
     gear.mastery ? `Mastery: ${gear.mastery}` : null, ...extras]
     .filter(Boolean).join(' · ');
 }

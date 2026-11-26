@@ -387,8 +387,34 @@
       field('Damage dice', damage), field('Melee or ranged', kind), field('Attacks with', ability),
       el('label', { className: 'weapon-field weapon-check' }, [proficient, ' Proficient'])
     ]);
+    // Damage of other types on every hit: "+ 1d4 Fire".
+    const maxExtra = options.maxExtraDamage || 3;
+    const extraRows = el('div', { className: 'weapon-extra-rows' });
+    const addExtra = el('button', { type: 'button', className: 'link-button small', text: '+ Add damage of another type' });
+    const syncExtra = () => { addExtra.hidden = extraRows.children.length >= maxExtra; };
+    const extraRow = part => {
+      const dice = el('input', { type: 'text', maxlength: '6', placeholder: '1d4', value: (part && part.dice) || '', 'aria-label': 'Extra damage dice' });
+      const type = select(['', ...options.damageTypes], (part && part.type) || '', item => item || 'Damage type');
+      type.setAttribute('aria-label', 'Extra damage type');
+      const row = el('div', { className: 'weapon-extra-row' }, [
+        el('span', { className: 'muted', text: '+' }), dice, type,
+        el('button', { type: 'button', className: 'link-button small', text: 'remove', onclick: () => { row.remove(); syncExtra(); refreshPreview(); } })
+      ]);
+      row.extraValue = () => ({ dice: dice.value.trim(), type: type.value });
+      return row;
+    };
+    (Array.isArray(start.extraDamage) ? start.extraDamage : []).slice(0, maxExtra).forEach(part => extraRows.append(extraRow(part)));
+    addExtra.addEventListener('click', () => {
+      if (extraRows.children.length >= maxExtra) return;
+      const row = extraRow(null);
+      extraRows.append(row);
+      syncExtra();
+      row.querySelector('input').focus();
+    });
+    syncExtra();
     const preview = el('div', { className: 'weapon-preview', 'aria-live': 'polite' });
     const value = () => ({
+      extraDamage: [...extraRows.children].map(row => row.extraValue()).filter(part => part.dice || part.type),
       base: base.value || null,
       damage: damage.value.trim(),
       kind: kind.value,
@@ -429,6 +455,7 @@
     const editor = el('div', { className: 'weapon-editor' }, [
       el('div', { className: 'weapon-fields' }, [field('Based on', base), field('Damage type', damageType), field('Takes', action)]),
       homebrew,
+      el('div', { className: 'weapon-extra' }, [el('span', { className: 'muted small', text: 'Extra damage on every hit' }), extraRows, addExtra]),
       el('div', { className: 'weapon-fields' }, [field('To-hit bonus', attackBonus), field('Damage bonus', damageBonus)]),
       preview,
       el('p', { className: 'muted small', text: 'Bonuses are on top of what the sheet works out (ability modifier and Proficiency Bonus), so they stay right as the character changes.' })

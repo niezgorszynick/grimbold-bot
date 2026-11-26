@@ -783,6 +783,13 @@ input, textarea, select { background: #1e1f22; border: 1px solid #3b3e45; color:
 .weapon-fields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .weapon-preview { display: grid; gap: 3px; padding: 8px 10px; background: #232428; border-radius: 6px; font-size: 13px; }
 .weapon-preview:empty { display: none; }
+.weapon-extra { display: grid; gap: 4px; justify-items: start; }
+.weapon-extra-rows { display: grid; gap: 6px; width: 100%; }
+.weapon-extra-rows:empty { display: none; }
+.weapon-extra-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.weapon-extra-row input { width: 70px; }
+.weapon-extra-row select { min-width: 0; max-width: 100%; }
+.weapon-extra button[hidden] { display: none; }
 
 /* Heroic Inspiration: a tile next to Proficiency Bonus. */
 .vitals-info { border: 0; background: none; color: #949ba4; cursor: pointer; font-size: 15px; padding: 2px 4px; }

@@ -71,3 +71,37 @@ test('the weapon editor shows how the sheet adds it up', () => {
   assert.equal(JSON.parse(db.getCharacterById(id).sheet_data).inventory, undefined, 'nothing is saved');
   assert.throws(() => db.previewCustomWeapon({ id, player_id: createPlayer(), is_admin: false, weapon: { base: 'Dagger' } }), /Forbidden/);
 });
+
+test('custom weapons can deal damage of other types too', () => {
+  assert.deepEqual(rules.validateCustomWeapon({ damage: '1d6', damageType: 'Piercing', extraDamage: [{ dice: '1D4 ', type: 'Fire' }, { dice: '', type: '' }] }).extraDamage,
+    [{ dice: '1d4', type: 'Fire' }], 'empty rows are skipped');
+  assert.throws(() => rules.validateCustomWeapon({ base: 'Dagger', extraDamage: [{ dice: '1d4', type: 'Fluffy' }] }), /Choose a damage type for the extra 1d4/);
+  assert.throws(() => rules.validateCustomWeapon({ base: 'Dagger', extraDamage: [{ dice: '1d5', type: 'Fire' }] }), /Extra damage dice must look like/);
+  assert.throws(() => rules.validateCustomWeapon({ base: 'Dagger', extraDamage: [1, 2, 3, 4].map(() => ({ dice: '1d4', type: 'Fire' })) }), /up to 3/);
+
+  const owner = createPlayer();
+  const id = Number(db.prepare(`
+    INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+    VALUES (?, 'Iskra', 'Human', 'Rogue', '', 1, 0, 'alive', 0, ?)
+  `).run(owner, JSON.stringify({ abilities: { str: { score: 10 }, dex: { score: 16 } }, weaponProficiencies: ['Simple weapons', 'Martial weapons'] })).lastInsertRowid);
+  const asOwner = { id, player_id: owner, is_admin: false };
+  const add = params => db.changeCharacterInventory({ ...asOwner, action: 'add', params });
+  add({ name: 'Ember Fang', weapon: { damage: '1d6', damageType: 'Piercing', ability: 'finesse', extraDamage: [{ dice: '1d4', type: 'Fire' }] } });
+  add({ name: 'Storm Blade', weapon: { base: 'Longsword', extraDamage: [{ dice: '1d6', type: 'Lightning' }, { dice: '2', type: 'Thunder' }] } });
+
+  const attacks = db.getCharacterCombat(asOwner).attacks;
+  const fang = attacks.find(attack => attack.name === 'Ember Fang');
+  assert.equal(fang.damage, '1d6+3 Piercing + 1d4 Fire');
+  assert.equal(fang.sneakAttack.damage, '1d6+3+1d6 Piercing + 1d4 Fire', 'Sneak Attack keeps the fire');
+  const blade = attacks.find(attack => attack.name === 'Storm Blade');
+  assert.equal(blade.damage, '1d8 Slashing + 1d6 Lightning + 2 Thunder (1d10+1d6+2 two-handed)');
+
+  const options = [...db.rollOptions(db.getCharacterById(id)).values()];
+  const fangRoll = options.find(option => option.label === 'Ember Fang damage (Piercing + Fire)');
+  assert.equal(fangRoll.formula, '1d6+3+1d4');
+  assert.ok(fangRoll.parts.some(part => part.label === '1d4 Fire'));
+  assert.equal(options.find(option => option.label === 'Ember Fang damage + Sneak Attack (Piercing + Fire)').formula, '1d6+3+1d6+1d4');
+  assert.equal(options.find(option => option.label === 'Storm Blade damage (Slashing + Lightning + Thunder)').formula, '1d8+1d6+2');
+  assert.equal(options.find(option => option.label === 'Storm Blade damage, two-handed (Slashing + Lightning + Thunder)').formula, '1d10+1d6+2');
+  assert.equal(rules.validateCustomWeapon({ base: 'Dagger' }).extraDamage, undefined, 'none stored when there is none');
+});

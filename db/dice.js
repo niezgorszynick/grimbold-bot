@@ -102,9 +102,17 @@ function hasFeature(classes, feature) {
 }
 
 // "1d8+4 Slashing (1d10+4 two-handed)" → { formula: '1d8+4', type: 'Slashing', twoHanded: '1d10+4' }
+// "1d6+3 Piercing + 1d4 Fire" (a custom weapon's other damage) → formula
+// '1d6+3+1d4', type 'Piercing + Fire': one roll, every die doubled on a crit.
 function parseDamage(text) {
-  const match = String(text || '').match(/^(\S+)\s+([A-Za-z]+)(?:\s+\((\S+) two-handed\))?/);
-  return match ? { formula: match[1], type: match[2], twoHanded: match[3] || null } : null;
+  const match = String(text || '').match(/^(\S+)\s+([A-Za-z]+)((?:\s+\+\s+\S+\s+[A-Za-z]+)*)(?:\s+\((\S+) two-handed\))?/);
+  if (!match) return null;
+  const others = [...match[3].matchAll(/\+\s+(\S+)\s+([A-Za-z]+)/g)];
+  return {
+    formula: match[1] + others.map(other => '+' + other[1]).join(''),
+    type: [match[2], ...others.map(other => other[2])].join(' + '),
+    twoHanded: match[4] || null
+  };
 }
 
 // Everything this character can roll, by id: "check:str", "save:dex",
@@ -197,7 +205,8 @@ function rollOptions(character) {
     if (damage) {
       add(`attack:${index}:damage`, `${attack.name} damage (${damage.type})`, damage.formula, 'damage', {
         parts: attack.damageParts && attack.damageDie
-          ? [{ label: `${attack.damageDie} (${attack.weapon || attack.name})`, dice: true }, ...parts(...attack.damageParts)]
+          ? [{ label: `${attack.damageDie} (${attack.weapon || attack.name})`, dice: true }, ...parts(...attack.damageParts),
+            ...(attack.otherDamage || []).map(part => ({ label: `${part.dice} ${part.type}`, dice: true }))]
           : undefined
       });
       if (damage.twoHanded) add(`attack:${index}:damage2`, `${attack.name} damage, two-handed (${damage.type})`, damage.twoHanded, 'damage');
