@@ -965,6 +965,7 @@ router.post('/tokens/upload', express.raw({ type: () => true, limit: db.TOKEN_MA
       subject: { kind: meta.kind, characterId: meta.characterId, npcId: meta.npcId, monster: meta.monster, name: meta.name },
       label: meta.label,
       main: Boolean(meta.main),
+      group: meta.group,
       monsterExists: name => Boolean(rules.getMonster(name))
     });
     return res.json({ id, url: db.getToken(user, id).url });

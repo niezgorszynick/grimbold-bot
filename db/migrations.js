@@ -1616,6 +1616,14 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS tokens_monster ON tokens (monster_name);
       `);
     }
+  },
+  {
+    // Tokens: a group set by hand (a humanoid race or a creature type) for a
+    // token's whole subject; '' = worked out from the statblock or species.
+    version: 59,
+    up(db) {
+      db.exec("ALTER TABLE tokens ADD COLUMN group_name TEXT NOT NULL DEFAULT ''");
+    }
   }
 ];
 

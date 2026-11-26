@@ -13,6 +13,51 @@ const { escapeHtml } = require('../helpers');
 
 const KIND_OPTIONS = { character: 'Character', npc: 'Notable NPC', monster: 'Monster (every one of its kind)', custom: 'Custom name', later: 'I’ll choose later' };
 
+// ─── Groups: humanoid races and creature types ──────────────────────────────
+
+// The species of character creation, and the humanoids NPCs often are.
+const RACES = [...new Set([...require('../../dndData').DND_SPECIES, 'Goblin', 'Hobgoblin', 'Bugbear', 'Kobold', 'Lizardfolk', 'Gnoll'])]
+  .sort((a, b) => a.localeCompare(b));
+const CREATURE_TYPES = rules.CREATURE_TYPES;
+const UNGROUPED = 'Ungrouped';
+const raceIn = text => {
+  const words = String(text || '').toLowerCase();
+  return RACES.find(race => new RegExp(`(^|[^a-z])${race.toLowerCase()}(s|es)?([^a-z]|$)`).test(words)) || null;
+};
+
+// A statblock's group: its creature type; a humanoid by the race its tag or name says.
+function statblockGroup(name) {
+  const monster = name ? rules.getMonster(name) : null;
+  if (!monster) return null;
+  if (monster.type !== 'Humanoid') return monster.type || null;
+  return raceIn(monster.typeText) || raceIn(monster.name) || 'Humanoid';
+}
+
+// The group a token sits in: the one set by hand, else the statblock's
+// (monsters, NPCs built on one) or the species' (characters).
+function groupOf(token) {
+  if (token.group) return token.group;
+  if (token.kind === 'monster') return statblockGroup(token.monster) || UNGROUPED;
+  if (token.kind === 'npc') return statblockGroup(token.baseMonster) || UNGROUPED;
+  if (token.kind === 'character') return raceIn(token.race) || (token.race ? 'Humanoid' : UNGROUPED);
+  return UNGROUPED;
+}
+
+// Races first, then creature types, then the rest.
+const groupRank = group => (RACES.includes(group) ? 0 : CREATURE_TYPES.includes(group) ? 1 : group === UNGROUPED ? 3 : 2);
+
+function groupSelectHtml(selected = '') {
+  const option = value => `<option value="${escapeHtml(value)}"${selected === value ? ' selected' : ''}>${escapeHtml(value)}</option>`;
+  const known = !selected || RACES.includes(selected) || CREATURE_TYPES.includes(selected);
+  return `<label class="art-form-label">Group <span class="muted small">(for all their tokens)</span>
+    <select name="group">
+      <option value=""${selected ? '' : ' selected'}>Automatic (statblock or species)</option>
+      ${known ? '' : option(selected)}
+      <optgroup label="Humanoid races">${RACES.map(option).join('')}</optgroup>
+      <optgroup label="Creature types">${CREATURE_TYPES.map(option).join('')}</optgroup>
+    </select></label>`;
+}
+
 // Where a token's subject lives in the panel.
 function subjectHref(token) {
   if (token.kind === 'character' && token.characterId) return `/admin?tab=character-sheet&edit_char=${token.characterId}`;
@@ -116,6 +161,7 @@ function tokenCardHtml(token, subjects) {
           <input type="hidden" name="return_to" value="/admin?tab=tokens#token-${token.id}">
           <label class="art-form-label">Label <input type="text" name="label" value="${escapeHtml(token.label)}" maxlength="60" placeholder="Disguised, wild shape…"></label>
           ${subjectFieldsHtml(subjects, token)}
+          ${groupSelectHtml(token.group)}
           <label class="small"><input type="checkbox" name="main" value="1"${token.main ? ' checked' : ''}> The main token</label>
           <div class="art-form-actions"><button type="submit" class="btn btn-small btn-green">Save</button></div>
         </form>
@@ -145,6 +191,7 @@ function uploadFormHtml(subjects, query) {
         ${subjectFieldsHtml(subjects, preset)}
         <div class="token-form-row">
           <label class="art-form-label">Label <span class="muted small">(optional: disguised, wild shape, mounted…)</span> <input type="text" name="label" maxlength="60"></label>
+          ${groupSelectHtml(query.group || '')}
           <label class="small token-main-check"><input type="checkbox" name="main" value="1"> Make it the main token <span class="muted">(the first one of a subject always is)</span></label>
         </div>
         <div class="art-form-actions">
@@ -169,7 +216,8 @@ function uploadFormHtml(subjects, query) {
             npcId: form.elements.npc_id.value,
             monster: form.elements.monster.value,
             name: form.elements.name.value,
-            label: form.elements.label.value
+            label: form.elements.label.value,
+            group: form.elements.group.value
           };
           const ids = [];
           try {
@@ -193,6 +241,38 @@ function uploadFormHtml(subjects, query) {
         });
       })();
     </script>`;
+}
+
+// One subject and its tokens (all waiting ones together, for "later").
+function subjectRowHtml(list, subjects) {
+  const first = list[0];
+  const cards = `<div class="token-grid">${list.map(token => `<div id="token-${token.id}">${tokenCardHtml(token, subjects)}</div>`).join('')}</div>`;
+  if (first.kind === 'later') {
+    return `
+      <div class="token-subject-row is-later" data-token-subject>
+        <h4 class="muted small">Uploaded without saying who they are of: open ✏️ on each to link it to a character, an NPC, a monster or a name.</h4>
+        ${cards}
+      </div>`;
+  }
+  const href = subjectHref(first);
+  return `
+      <div class="token-subject-row" data-token-subject>
+        <h4>${href ? `<a href="${escapeHtml(href)}">${escapeHtml(first.name)}</a>` : escapeHtml(first.name)}${first.privateNpc ? ' <span class="tag gold">🔒 Private</span>' : ''}${first.orphaned ? ` <span class="tag" title="Its ${first.kind === 'npc' ? 'NPC' : 'character'} was deleted">deleted</span>` : ''}
+          <a class="small" href="${escapeHtml(uploadHref(first))}">+ another</a></h4>
+        ${cards}
+      </div>`;
+}
+
+// Subjects by group (their main token's, which is first): [[group, [list]]],
+// races first, then creature types, then the rest.
+function byGroup(lists) {
+  const groups = new Map();
+  for (const list of lists) {
+    const name = groupOf(list[0]);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(list);
+  }
+  return [...groups.entries()].sort(([a], [b]) => groupRank(a) - groupRank(b) || a.localeCompare(b));
 }
 
 // The kind select shows its own field, in every subject picker on the page.
@@ -252,25 +332,13 @@ function renderTokensTab(ctx) {
     ${groups.length ? groups.map(group => `
       <section class="card token-group" data-token-group>
         <h3>${db.TOKEN_KIND_LABELS[group.kind]}</h3>
-        <div class="token-subjects">
-        ${group.subjects.map(list => {
-          const first = list[0];
-          const href = subjectHref(first);
-          if (first.kind === 'later') {
-            return `
-          <div class="token-subject-row is-later" data-token-subject>
-            <h4 class="muted small">Uploaded without saying who they are of: open ✏️ on each to link it to a character, an NPC, a monster or a name.</h4>
-            <div class="token-grid">${list.map(token => `<div id="token-${token.id}">${tokenCardHtml(token, subjects)}</div>`).join('')}</div>
-          </div>`;
-          }
-          return `
-          <div class="token-subject-row" data-token-subject>
-            <h4>${href ? `<a href="${escapeHtml(href)}">${escapeHtml(first.name)}</a>` : escapeHtml(first.name)}${first.privateNpc ? ' <span class="tag gold">🔒 Private</span>' : ''}${first.orphaned ? ` <span class="tag" title="Its ${first.kind === 'npc' ? 'NPC' : 'character'} was deleted">deleted</span>` : ''}
-              <a class="small" href="${escapeHtml(uploadHref(first))}">+ another</a></h4>
-            <div class="token-grid">${list.map(token => `<div id="token-${token.id}">${tokenCardHtml(token, subjects)}</div>`).join('')}</div>
-          </div>`;
-        }).join('')}
-        </div>
+        ${group.kind === 'later'
+          ? `<div class="token-subjects">${group.subjects.map(list => subjectRowHtml(list, subjects)).join('')}</div>`
+          : byGroup(group.subjects).map(([name, lists]) => `
+            <div class="token-type-group" data-token-type>
+              <h4 class="token-type-heading">${escapeHtml(name)} <span class="muted small">${lists.length}</span></h4>
+              <div class="token-subjects">${lists.map(list => subjectRowHtml(list, subjects)).join('')}</div>
+            </div>`).join('')}
       </section>`).join('') : `<section class="card"><p class="muted">${tokens.length ? 'No tokens of that kind yet.' : 'No tokens yet: upload the first above.'}</p></section>`}
     <datalist id="token-monster-list">${monsterNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
     <datalist id="token-custom-list">${subjects.customNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
@@ -293,6 +361,7 @@ function renderTokensTab(ctx) {
             });
             row.hidden = !any;
           });
+          document.querySelectorAll('[data-token-type]').forEach(type => { type.hidden = !type.querySelector('[data-token-subject]:not([hidden])'); });
           document.querySelectorAll('[data-token-group]').forEach(group => { group.hidden = !group.querySelector('[data-token-subject]:not([hidden])'); });
         };
         search.addEventListener('input', filter);

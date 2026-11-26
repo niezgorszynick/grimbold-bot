@@ -111,6 +111,50 @@ test('a token can wait for its subject: "I’ll choose later"', () => {
   assert.ok(page.indexOf('To choose later</h3>') < page.indexOf('<h3>Characters</h3>'), 'waiting ones first');
 });
 
+test('groups: humanoid races and creature types, automatic or set for a whole subject', () => {
+  const rules = require('../rules');
+  rules.setImportedMonsters([
+    { name: 'Test Dire Boar', type: 'Beast', typeText: 'Beast', size: 'Large', cr: 1, crText: '1', habitat: '', hitPoints: 30 },
+    { name: 'Test Elf Scout', type: 'Humanoid', typeText: 'Humanoid', size: 'Medium', cr: 1, crText: '1', habitat: '', hitPoints: 16 },
+    { name: 'Test Cultist', type: 'Humanoid', typeText: 'Humanoid (Wizard)', size: 'Medium', cr: 1, crText: '1', habitat: '', hitPoints: 9 }
+  ]);
+  const exists = name => Boolean(rules.getMonster(name));
+  const boar = db.uploadToken({ user: users.dm, buffer: PNG, subject: { kind: 'monster', monster: 'Test Dire Boar' }, monsterExists: exists });
+  db.uploadToken({ user: users.dm, buffer: PNG, subject: { kind: 'monster', monster: 'Test Elf Scout' }, monsterExists: exists });
+  db.uploadToken({ user: users.dm, buffer: PNG, subject: { kind: 'monster', monster: 'Test Cultist' }, monsterExists: exists });
+  const dwarf = Number(db.prepare(`INSERT INTO characters (player_id, name, race, class, subclass, level, xp, status, gold_cp, sheet_data)
+    VALUES (?, 'Borin', 'Dwarf', 'Fighter', '', 1, 0, 'alive', 0, '{}')`).run(player).lastInsertRowid);
+  db.uploadToken({ user: users.dm, buffer: PNG, subject: { kind: 'character', characterId: dwarf }, monsterExists: exists });
+
+  // Set by hand: for the whole subject, and a new token of it joins it.
+  const ruvo = upload(users.dm, { kind: 'custom', name: 'Ruvo' }, { group: 'Tiefling' });
+  const ruvo2 = upload(users.dm, { kind: 'custom', name: 'Ruvo' }, { label: 'Masked' });
+  assert.equal(db.getToken(users.dm, ruvo2).group, 'Tiefling');
+  db.updateToken({ user: users.dm, id: ruvo2, group: 'Fiend', monsterExists });
+  assert.equal(db.getToken(users.dm, ruvo).group, 'Fiend', 'both of Ruvo’s');
+  db.updateToken({ user: users.dm, id: ruvo, group: '', monsterExists });
+  assert.equal(db.getToken(users.dm, ruvo2).group, '', 'automatic again');
+  // Moving to another subject takes its group.
+  db.updateToken({ user: users.dm, id: ruvo, group: 'Human', monsterExists });
+  const stray = upload(users.dm, { kind: 'custom', name: 'Stray' }, { group: 'Beast' });
+  db.updateToken({ user: users.dm, id: stray, subject: { kind: 'custom', name: 'Ruvo' }, monsterExists });
+  assert.equal(db.getToken(users.dm, stray).group, 'Human');
+
+  const page = renderAdminPage({ session: { user: users.dm }, query: { tab: 'tokens', show: 'monster' } });
+  const heading = name => page.indexOf(`<h4 class="token-type-heading">${name} `);
+  assert.ok(heading('Elf') > -1, 'a humanoid by the race in its name');
+  assert.ok(heading('Humanoid') > -1, 'a humanoid with no race');
+  assert.ok(heading('Beast') > -1);
+  assert.ok(heading('Elf') < heading('Beast'), 'races before creature types');
+  assert.ok(page.indexOf('Test Dire Boar') > heading('Beast'));
+  const all = renderAdminPage({ session: { user: users.dm }, query: { tab: 'tokens' } });
+  assert.ok(all.includes('<h4 class="token-type-heading">Dwarf '), 'a character by species');
+  assert.ok(all.includes('<h4 class="token-type-heading">Human '), 'custom set by hand');
+  assert.match(all, /<optgroup label="Humanoid races">.*<option value="Hobgoblin">/s);
+  db.updateToken({ user: users.dm, id: boar, group: 'Fey', monsterExists });
+  assert.ok(renderAdminPage({ session: { user: users.dm }, query: { tab: 'tokens', show: 'monster' } }).includes('<h4 class="token-type-heading">Fey '), 'a monster set by hand');
+});
+
 test('the Tokens tab, the strips on subjects, and the routes', async () => {
   const page = (user, query) => renderAdminPage({ session: { user }, query });
   const tab = page(users.dm, { tab: 'tokens' });

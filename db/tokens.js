@@ -89,7 +89,23 @@ function settleMain(row, mainId = null) {
 
 // A DM uploads a token: the image (5 MB at most) and what it is of.
 // Returns its id.
-function uploadToken({ user, buffer, subject, label, main, monsterExists }) {
+// A group set by hand ('' = automatic, worked out by the tab from the
+// statblock or species) belongs to the whole subject: every token of it.
+function setSubjectGroup(row, group) {
+  const { sql, params } = row.kind === 'later' ? { sql: 'id = ?', params: [row.id] } : subjectWhere(row);
+  db.prepare(`UPDATE tokens SET group_name = ? WHERE ${sql}`).run(clean(group, 40), ...params);
+}
+
+// The subject's group so far (a new token of it joins it).
+function subjectGroup(row) {
+  if (row.kind === 'later') return '';
+  const { sql, params } = subjectWhere(row);
+  const found = db.prepare(`SELECT group_name FROM tokens WHERE ${sql} AND group_name != '' AND id != ? LIMIT 1`).get(...params, row.id);
+  return found ? found.group_name : '';
+}
+
+// group: undefined or '' keeps the subject's group (automatic for a new one).
+function uploadToken({ user, buffer, subject, label, main, group, monsterExists }) {
   requireDm(user);
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('Choose an image to upload.');
   if (buffer.length > MAX_BYTES) throw new Error('Tokens can be 5 MB at most.');
@@ -106,7 +122,9 @@ function uploadToken({ user, buffer, subject, label, main, monsterExists }) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(about.kind, about.characterId, about.npcId, about.monster, about.name, plain(about.name), clean(label, 60),
         file, Number(user.id) > 0 ? Number(user.id) : null).lastInsertRowid);
-      settleMain(db.prepare('SELECT * FROM tokens WHERE id = ?').get(id), main ? id : null);
+      const row = db.prepare('SELECT * FROM tokens WHERE id = ?').get(id);
+      settleMain(row, main ? id : null);
+      setSubjectGroup(row, clean(group, 40) || subjectGroup(row));
       return id;
     })();
   } catch (error) {
@@ -132,6 +150,9 @@ function present(row) {
     main: Boolean(row.is_main),
     orphaned: (row.kind === 'character' && !row.character_id) || (row.kind === 'npc' && !row.npc_id),
     privateNpc: Boolean(row.npc_private),
+    group: row.group_name || '',
+    race: row.character_race || null,
+    baseMonster: row.npc_base_monster || null,
     url: tokenUrl(row.file),
     file: row.file,
     uploadedBy: row.uploaded_by_tag || null,
@@ -140,7 +161,8 @@ function present(row) {
 }
 
 const SELECT = `
-  SELECT t.*, c.name AS character_name, n.name AS npc_name, n.private AS npc_private, n.owner_player_id AS npc_owner,
+  SELECT t.*, c.name AS character_name, c.race AS character_race, n.name AS npc_name, n.private AS npc_private,
+    n.owner_player_id AS npc_owner, n.base_monster AS npc_base_monster,
     p.discord_tag AS uploaded_by_tag
   FROM tokens t
   LEFT JOIN characters c ON c.id = t.character_id
@@ -177,7 +199,8 @@ function requireToken(user, id) {
 }
 
 // Change a token: { label, main, subject } (each optional).
-function updateToken({ user, id, label, main, subject, monsterExists }) {
+// group: undefined leaves it; '' makes the subject's group automatic again.
+function updateToken({ user, id, label, main, subject, group, monsterExists }) {
   const row = requireToken(user, id);
   // The same subject as now (the edit form always sends one): nothing to relink.
   const same = subject && subject.kind === row.kind && (
@@ -192,7 +215,11 @@ function updateToken({ user, id, label, main, subject, monsterExists }) {
       db.prepare('UPDATE tokens SET kind = ?, character_id = ?, npc_id = ?, monster_name = ?, name = ?, name_key = ?, is_main = 0 WHERE id = ?')
         .run(about.kind, about.characterId, about.npcId, about.monster, about.name, plain(about.name), row.id);
       settleMain(row);
+      // Joining another subject: its group, unless one is chosen below.
+      const moved = db.prepare('SELECT * FROM tokens WHERE id = ?').get(row.id);
+      if (group === undefined) setSubjectGroup(moved, subjectGroup(moved));
     }
+    if (group !== undefined) setSubjectGroup(db.prepare('SELECT * FROM tokens WHERE id = ?').get(row.id), group);
     if (label !== undefined) db.prepare('UPDATE tokens SET label = ? WHERE id = ?').run(clean(label, 60), row.id);
     const fresh = db.prepare('SELECT * FROM tokens WHERE id = ?').get(row.id);
     settleMain(fresh, main ? row.id : null);

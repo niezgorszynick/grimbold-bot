@@ -1770,3 +1770,6 @@ button.sheet-hud-tile { cursor: pointer; }
 .token-mini.is-main img { border-color: #d4af37; }
 .token-mini figcaption { overflow-wrap: anywhere; }
 .sheet-tokens summary { cursor: pointer; font-weight: 600; }
+.token-type-group { display: grid; gap: 8px; margin-bottom: 16px; }
+.token-type-group[hidden] { display: none; }
+.token-type-heading { margin: 0; padding-bottom: 4px; border-bottom: 1px solid #3f4147; color: #d4af37; font-size: 14px; letter-spacing: 0.03em; }

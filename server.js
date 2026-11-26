@@ -527,6 +527,7 @@ router.post('/tokens/update', (req, res) => {
       id: body.id,
       label: body.label,
       main: [].concat(body.main || []).includes('1'),
+      group: body.group,
       subject: body.kind ? { kind: body.kind, characterId: body.character_id, npcId: body.npc_id, monster: body.monster, name: body.name } : undefined,
       monsterExists: name => Boolean(require('./rules').getMonster(name))
     });
