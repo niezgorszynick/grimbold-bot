@@ -558,8 +558,8 @@
         ]) : null,
         marker.note ? el('p', { className: 'small wm-note', text: marker.note }) : null,
         // Owlbear maps used here (DMs).
-        (marker.maps || []).length ? el('div', { className: 'wm-maps' }, marker.maps.map(map => el('a', {
-          className: 'wm-map', href: '/admin?tab=battle-maps&adventure=' + map.adventureId + '#battle-map-' + map.id, title: map.name
+        (marker.maps || []).length ? el('div', { className: 'wm-battle-maps' }, marker.maps.map(map => el('a', {
+          className: 'wm-battle-map', href: '/admin?tab=battle-maps&adventure=' + map.adventureId + '#battle-map-' + map.id, title: map.name
         }, [el('img', { src: map.thumbUrl, alt: '', loading: 'lazy' }), el('span', { className: 'small', text: '🗺 ' + map.name + (map.hidden ? ' 🙈' : '') })]))) : null
       ])),
       !markers.length && known && !data.dm ? el('p', { className: 'muted small', text: 'Nothing marked here.' }) : null,
