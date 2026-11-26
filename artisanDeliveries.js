@@ -40,6 +40,13 @@ function deliveryEmbed(delivery) {
 }
 
 async function checkDeliveries() {
+  // Pawned items whose 7 days are up leave the shelf.
+  try {
+    const gone = db.expirePawnedItems();
+    if (gone.length) console.log(`🪙 Pawned items gone from the shelf: ${gone.join(', ')}.`);
+  } catch (error) {
+    console.warn(`Pawned items could not expire: ${error.message}`);
+  }
   let deliveries = [];
   try {
     deliveries = db.deliverDueArtisans();

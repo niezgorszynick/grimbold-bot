@@ -163,3 +163,35 @@ test('pawned items stand out in the shop with an outline', () => {
   assert.match(html, /class="shop-row-pawned" title="Pawned goods[^"]*">[\s\S]*?Pawned Lute of Echoes<\/strong><span class="visually-hidden"> \(pawned\)/);
   assert.doesNotMatch(html.replace(/[\s\S]*Pawned Lute of Echoes/, ''), /^[\s\S]{0,40}shop-row-pawned/, 'only that row');
 });
+
+test('pawned items last 7 days: gone after, unless sold first or reserved', () => {
+  const pawn = { id: 42, name: 'Old Wexley', common: 1, uncommon: 0, rare: 0, cap: 3, scheduled: false };
+  const now = new Date('2026-11-30T00:05:00Z');
+  const at = daysAgo => new Date(now.getTime() - daysAgo * 86400000).toISOString().replace('T', ' ').slice(0, 19);
+  const shelf = [
+    { id: 1, name: 'Fresh Ring', source: 'artisan_magic', artisan_id: 42, stock: 1, created_at: at(3) },
+    { id: 2, name: 'Last Week Ring', source: 'artisan_magic', artisan_id: 42, stock: 1, created_at: at(6.9) },
+    { id: 3, name: 'Old Ring', source: 'artisan_magic', artisan_id: 42, stock: 1, created_at: at(8) }
+  ];
+  const result = db.planRestock({ shelf, catalog, spells, config, level: 3, random: () => 0, artisanMagic: [pawn], now });
+  assert.ok(!result.remove.includes(1), 'three days old: stays');
+  assert.ok(result.remove.includes(2), 'its week is up within half a day: the restock clears it');
+  assert.ok(result.remove.includes(3));
+
+  // Between restocks, the bot takes them off once their 7 days are up.
+  const insert = db.prepare("INSERT INTO items (name, category, price, stock, description, source, rarity, artisan_id, created_at) VALUES (?, 'Wondrous', 5000, 1, '', 'artisan_magic', 'Common', 42, ?)");
+  insert.run('Expiry Test Old', at(7.01));
+  insert.run('Expiry Test New', at(6.5));
+  insert.run('Expiry Test Held', at(9));
+  const heldId = db.prepare("SELECT id FROM items WHERE name = 'Expiry Test Held'").get().id;
+  const reservations = require('../db/reservations');
+  const original = reservations.heldItemIds;
+  reservations.heldItemIds = () => [heldId];
+  try {
+    assert.deepEqual(db.expirePawnedItems({ now }), ['Expiry Test Old']);
+  } finally {
+    reservations.heldItemIds = original;
+  }
+  assert.ok(db.prepare("SELECT 1 FROM items WHERE name = 'Expiry Test New'").get(), 'not yet');
+  assert.ok(db.prepare("SELECT 1 FROM items WHERE name = 'Expiry Test Held'").get(), 'reserved: stays while reserved');
+});

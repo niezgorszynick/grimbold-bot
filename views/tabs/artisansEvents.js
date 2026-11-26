@@ -79,7 +79,7 @@ function magicFields(artisan) {
   const number = (name, label, max, value) => `<label>${label}<input name="${name}" type="number" min="0" max="${max}" value="${Number(value) || 0}"></label>`;
   return `
     <fieldset class="artisan-magic">
-      <legend>🎲 Random magic items <span class="muted small">(a pawn shop: drawn each week from the magic items the shop may sell, by the restock rules; each stays until sold)</span></legend>
+      <legend>🎲 Random magic items <span class="muted small">(a pawn shop: drawn each week from the magic items the shop may sell, by the restock rules; each stays 7 days unless sold)</span></legend>
       ${number('magic_common', 'Common a week', 10, artisan.magic_common)}
       ${number('magic_uncommon', 'Uncommon a week', 10, artisan.magic_uncommon)}
       ${number('magic_rare', 'Rare a week', 5, artisan.magic_rare)}

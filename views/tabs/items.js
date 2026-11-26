@@ -40,7 +40,7 @@ module.exports = function renderItemsTab(ctx) {
               ? `${shopModifier.percent > 0 ? '+' : ''}${shopModifier.percent}%`
               : 'None';
             return `
-            <tr data-search="${escapeHtml(`${item.name} ${item.category}`.toLowerCase())}" data-category="${escapeHtml(item.category)}"${item.source === 'artisan_magic' ? ' class="shop-row-pawned" title="Pawned goods: second-hand, from the pawn shop"' : ''}>
+            <tr data-search="${escapeHtml(`${item.name} ${item.category}`.toLowerCase())}" data-category="${escapeHtml(item.category)}"${item.source === 'artisan_magic' ? ' class="shop-row-pawned" title="Pawned goods: second-hand, from the pawn shop, and gone within a week"' : ''}>
               <td data-sort="${item.id}">${item.id}</td>
               <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong>${item.source === 'artisan_magic' ? '<span class="visually-hidden"> (pawned)</span>' : ''}</td>
               <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>

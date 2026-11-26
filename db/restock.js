@@ -13,8 +13,9 @@
 //   artisan_magic — an artisan's random magic items (a pawn shop): so many
 //             Common / Uncommon / Rare a week from the same items Grimbold
 //             may sell, never one already on the shelf, up to the artisan's
-//             cap; each stays until sold. Scheduled artisans bring theirs on
-//             delivery (db/deliveries.js).
+//             cap; each stays 7 days unless sold (expirePawnedItems, run
+//             every few minutes by the bot). Scheduled artisans bring theirs
+//             on delivery (db/deliveries.js).
 //   artisan — goods of resident artisans (db/artisans.js): each restock adds
 //             their weekly amount, up to a cap; unsold stock stays. Artisans
 //             with their own delivery window deliver then instead
@@ -133,6 +134,25 @@ function shuffle(list, random) {
   return copy;
 }
 
+// A pawned item stays this long after it arrived (unless sold or reserved).
+const PAWN_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// When a shelf row arrived (SQLite's "YYYY-MM-DD HH:MM:SS", UTC), in ms.
+const arrivedAt = item => Date.parse(`${String(item.created_at || '').replace(' ', 'T')}Z`);
+// Gone by then: its 7 days are up (or within slack of being up).
+const pawnExpired = (item, now, slackMs = 0) => Number.isFinite(arrivedAt(item)) && now.getTime() - arrivedAt(item) >= PAWN_DAYS * DAY_MS - slackMs;
+
+// Takes pawned items whose 7 days are up off the shelf (reserved ones stay
+// while reserved). Returns their names.
+function expirePawnedItems({ now = new Date() } = {}) {
+  const held = new Set(require('./reservations').heldItemIds().map(Number));
+  const expired = db.prepare("SELECT id, name, created_at FROM items WHERE source = 'artisan_magic'").all()
+    .filter(item => !held.has(item.id) && pawnExpired(item, now));
+  const remove = db.prepare('DELETE FROM items WHERE id = ?');
+  db.transaction(() => expired.forEach(item => remove.run(item.id)))();
+  return expired.map(item => item.name);
+}
+
 // The magic items the shop may sell at this level: Common, Uncommon, Rare
 // (the DMs allow Rare ones item by item), not staples or scrolls.
 const shopMagicPool = (catalog, level) => catalog.filter(row => row.min_level <= level && row.availability !== 'adventure' && row.tier !== 'service'
@@ -171,8 +191,8 @@ function scrollName(spell) {
 // { remove: [ids], keep: [{ id, weeks }], update: [{ id, stock, price }],
 // insert: [rows], partyLevel }. artisanGoods: active artisans' goods; event:
 // this week's event or null. artisanMagic: active residents' random magic
-// settings (activeArtisanMagic).
-function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisanGoods = [], artisanMagic = [], event = null, heldIds = [], random = Math.random }) {
+// settings (activeArtisanMagic). now: when it runs (pawned items expire).
+function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisanGoods = [], artisanMagic = [], event = null, heldIds = [], random = Math.random, now = new Date() }) {
   const plan = { remove: [], keep: [], update: [], insert: [], held: [], partyLevel: level };
   const params = (event && event.params) || {};
   const shortage = event && event.kind === 'shortage' ? params.target : null;
@@ -214,14 +234,15 @@ function planRestock({ shelf: wholeShelf, catalog, spells, config, level, artisa
   }
   artisanRows.forEach(item => plan.remove.push(item.id));
 
-  // Artisans' random magic: unsold ones stay (and count toward the cap);
-  // sold-out ones, and those of an artisan away or gone, leave.
+  // Artisans' random magic: unsold ones stay (and count toward the cap) for
+  // their 7 days; those whose time is up by tomorrow, sold-out ones and those
+  // of an artisan away or gone leave now, making room for new ones.
   const magicOwners = new Set(artisanMagic.map(artisan => artisan.id));
   const heldMagic = new Map();
   const countMagic = item => heldMagic.set(item.artisan_id, (heldMagic.get(item.artisan_id) || 0) + 1);
   wholeShelf.filter(item => held.has(item.id) && item.source === 'artisan_magic').forEach(countMagic);
   for (const item of shelf.filter(row => row.source === 'artisan_magic')) {
-    if (item.stock === 0 || !magicOwners.has(item.artisan_id)) plan.remove.push(item.id);
+    if (item.stock === 0 || !magicOwners.has(item.artisan_id) || pawnExpired(item, now, DAY_MS / 2)) plan.remove.push(item.id);
     else { take(item); countMagic(item); }
   }
 
@@ -383,5 +404,7 @@ module.exports = {
   restockPartyLevel: partyLevel,
   planRestock,
   drawArtisanMagic,
+  expirePawnedItems,
+  PAWN_DAYS,
   runRestock
 };
