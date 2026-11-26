@@ -442,3 +442,49 @@ test('Memes and Reference filter by who is in them, adventure and artist, with t
   const memes = renderAdminPage({ session: { user: admin }, query: { tab: 'art', view: 'memes' } });
   assert.match(memes, /name="who"/);
 });
+
+test('art and reference at once: in the gallery and under Reference; Art + Reference shows all of someone', async () => {
+  const [image] = db.getArtMessage('m1');
+  db.updateArtImage(image.id, { category: 'art', characterIds: [elara], adventure: String(keep) });
+  const replies = [];
+  const press = customId => art.handleArtInteraction({
+    customId, values: [], user: { id: ownerDiscord }, component: { options: [] },
+    update: async payload => replies.push(payload), reply: async payload => replies.push(payload)
+  });
+  const buttons = () => replies.at(-1).components.at(-1).toJSON().components;
+
+  // In Discord: "Also reference", and back.
+  await press('art:k:m1:both');
+  const both = db.getArtImage(image.id);
+  assert.equal(both.category, 'both');
+  assert.equal(both.adventure_id, keep, 'art from a session keeps its adventure');
+  assert.match(replies.at(-1).content, /art and reference/);
+  assert.ok(buttons().some(button => button.custom_id === 'art:k:m1:art' && /Reference ✓/.test(button.label)));
+  assert.ok(buttons().length <= 5, 'one row holds five buttons');
+  assert.ok(db.listArtImages().some(entry => entry.id === image.id), 'in the gallery');
+  assert.ok(db.listArtImages({ view: 'references' }).some(entry => entry.id === image.id), 'and under Reference');
+  assert.ok(db.listArtImages({ characterId: elara }).some(entry => entry.id === image.id), 'and on the character\'s strip');
+
+  // A reference-only picture of Elara: not in the gallery, but in Art + Reference.
+  const [other] = db.getArtMessage('m1').filter(entry => entry.id !== image.id);
+  db.updateArtImage(other.id, { category: 'reference', characterIds: [elara] });
+  const all = db.listArtImages({ view: 'all', characterId: elara }).map(entry => entry.id);
+  assert.ok(all.includes(image.id) && all.includes(other.id));
+  assert.ok(!db.listArtImages({ characterId: elara }).some(entry => entry.id === other.id));
+  assert.equal(db.listArtImages({ view: 'all', characterId: elara }).filter(entry => entry.id === image.id).length, 1, 'once, not twice');
+
+  const player = { id: owner, discord_tag: 'owner', role: 'player' };
+  const page = query => renderAdminPage({ session: { user: player }, query: { tab: 'art', ...query } });
+  const byCharacter = page({ character: String(elara) });
+  assert.match(byCharacter, /<option value="all" selected>🎨📌 Art \+ Reference/, 'a character opens Art + Reference');
+  assert.match(byCharacter, new RegExp(`art=${other.id}#art-viewer`));
+  const galleryOnly = page({ view: 'gallery', who: `c${elara}` });
+  assert.doesNotMatch(galleryOnly, new RegExp(`art=${other.id}#art-viewer`), 'Gallery stays the gallery');
+  assert.match(galleryOnly, /view=gallery&who=c\d+&art=/, 'and its links keep it');
+  const sheet = renderAdminPage({ session: { user: player }, query: { tab: 'character-sheet', edit_char: String(elara) } });
+  assert.match(sheet, /tab=art&view=all&character=\d+">All their art and reference/);
+
+  await press('art:k:m1:art');
+  assert.equal(db.getArtImage(image.id).category, 'art');
+  assert.ok(!db.listArtImages({ view: 'references' }).some(entry => entry.id === image.id));
+});

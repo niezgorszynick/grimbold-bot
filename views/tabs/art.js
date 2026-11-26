@@ -97,7 +97,9 @@ function artStripHtml({ characterId, adventureId, title = '🎨 Art', limit = 12
       <div class="art-grid art-grid-small">
         ${images.slice(0, limit).map(image => `<figure>${thumb(image, `/admin?tab=art${filter}&art=${image.id}#art-viewer`)}</figure>`).join('')}
       </div>
-      ${images.length > limit ? `<p class="small"><a href="/admin?tab=art${filter}">See all in the Art tab →</a></p>` : ''}
+      ${characterId
+        ? `<p class="small"><a href="/admin?tab=art&view=all${filter}">All their art and reference in the Art tab →</a></p>`
+        : images.length > limit ? `<p class="small"><a href="/admin?tab=art${filter}">See all in the Art tab →</a></p>` : ''}
     </details>`;
 }
 
@@ -206,7 +208,7 @@ const TAGGED_BY = { name: 'named in the post', discord: 'tagged in Discord', dm:
 function viewerHtml(image, { canEdit, characters, back }) {
   const isAdmin = canEdit;
   // Its names link to the same view (Memes, Reference) filtered by them.
-  const inView = image.is_meme ? '&view=memes' : image.is_reference ? '&view=references' : '';
+  const inView = image.is_meme ? '&view=memes' : image.is_reference && !image.also_art ? '&view=references' : '';
   const adventures = isAdmin ? db.listArtAdventureChoices({ characterIds: image.characters.map(character => character.id), postedAt: image.posted_at }) : [];
   return `
     <section class="card art-viewer" id="art-viewer">
@@ -220,7 +222,7 @@ function viewerHtml(image, { canEdit, characters, back }) {
           <p class="muted small">
             ${image.adventure_id ? `<a href="/admin?tab=art${inView}&adventure=${image.adventure_id}">${escapeHtml(image.adventure_title)}</a>${image.adventure_by === 'guess' ? ' <span class="tag">guessed</span>' : ''}` : 'No adventure'}
             ${image.posted_by_tag ? ` · ${image.uploaded ? 'uploaded' : 'posted'} by ${escapeHtml(image.posted_by_tag)}` : ''}${image.posted_at ? ` on ${escapeHtml(date(image.posted_at))}` : ''}
-            ${image.not_art ? ' · <span class="tag red">Not art</span>' : image.is_meme ? ' · <span class="tag">😂 Meme</span>' : image.is_reference ? ' · <span class="tag">📌 Reference</span>' : ''}
+            ${image.not_art ? ' · <span class="tag red">Not art</span>' : image.is_meme ? ' · <span class="tag">😂 Meme</span>' : image.is_reference && image.also_art ? ' · <span class="tag">🎨📌 Art + Reference</span>' : image.is_reference ? ' · <span class="tag">📌 Reference</span>' : ''}
           </p>
           ${image.message_text ? `<p class="art-caption">${escapeHtml(image.message_text)}</p>` : ''}
         </div>
@@ -254,7 +256,7 @@ function viewerHtml(image, { canEdit, characters, back }) {
           <div class="art-form-actions">
             <fieldset class="art-category">
               <legend class="visually-hidden">Category</legend>
-              ${[['art', '🎨 Art'], ['meme', '😂 Meme'], ['reference', '📌 Reference'], ['not_art', '🚫 Not art']].map(([value, label]) =>
+              ${[['art', '🎨 Art'], ['both', '🎨📌 Art + Reference'], ['meme', '😂 Meme'], ['reference', '📌 Reference only'], ['not_art', '🚫 Not art']].map(([value, label]) =>
                 `<label><input type="radio" name="category" value="${value}"${image.category === value ? ' checked' : ''}> ${label}</label>`).join('')}
             </fieldset>
             <button type="submit" class="btn btn-green">Save</button>
@@ -296,6 +298,7 @@ function sortingHtml(images, { characters, keep }) {
             </label>
             <div class="art-form-actions">
               <button type="submit" name="category" value="meme" class="btn btn-small btn-secondary">😂 Meme</button>
+              <button type="submit" name="category" value="both" class="btn btn-small btn-secondary" title="In the gallery and under Reference">🎨📌 Art + Reference</button>
               <button type="submit" name="category" value="reference" class="btn btn-small btn-secondary">📌 Reference</button>
               <button type="submit" name="category" value="not_art" class="btn btn-small btn-secondary">🚫 Not art</button>
               <button type="submit" class="btn btn-green">Save</button>
@@ -391,10 +394,12 @@ module.exports = function renderArtTab(ctx) {
     ORDER BY (c.status = 'dead'), c.name COLLATE NOCASE
   `).all();
   const adventures = db.prepare("SELECT id, title FROM adventures WHERE status != 'cancelled' ORDER BY id DESC").all();
-  const view = ['memes', 'references'].includes(query.view) || (isAdmin && ['unsorted', 'not_art'].includes(query.view)) ? query.view : 'gallery';
   const who = String(query.who || (Number(query.character) > 0 ? `c${Number(query.character)}` : ''));
+  // all: art and reference together, what a link to someone's pictures opens.
+  const view = ['gallery', 'all', 'memes', 'references'].includes(query.view) || (isAdmin && ['unsorted', 'not_art'].includes(query.view)) ? query.view
+    : /^c\d+$/.test(who) ? 'all' : 'gallery';
   // Gallery, Memes and Reference filter by who is in it, adventure and artist.
-  const filtered = ['gallery', 'memes', 'references'].includes(view);
+  const filtered = ['gallery', 'all', 'memes', 'references'].includes(view);
   const characterId = filtered && /^c\d+$/.test(who) ? Number(who.slice(1)) : null;
   const figureId = filtered && /^f\d+$/.test(who) ? Number(who.slice(1)) : null;
   const adventureId = filtered && Number(query.adventure) > 0 ? Number(query.adventure) : null;
@@ -417,7 +422,8 @@ module.exports = function renderArtTab(ctx) {
     .sort((a, b) => a.label.localeCompare(b.label));
   const artists = [...byArtist.entries()].map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  const keep = `${view !== 'gallery' ? `&view=${view}` : ''}${characterId ? `&who=c${characterId}` : ''}${figureId ? `&who=f${figureId}` : ''}${adventureId ? `&adventure=${adventureId}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
+  // The view always goes along with a character: alone, a character opens Art + Reference.
+  const keep = `${view !== 'gallery' || characterId ? `&view=${view}` : ''}${characterId ? `&who=c${characterId}` : ''}${figureId ? `&who=f${figureId}` : ''}${adventureId ? `&adventure=${adventureId}` : ''}${artist ? `&artist=${encodeURIComponent(artist)}` : ''}`;
   const image = query.art ? db.getArtImage(query.art, { isAdmin: db.canEditArtImage(currentUser, query.art) }) : null;
   const canEditImage = Boolean(image && db.canEditArtImage(currentUser, image.id));
   const withForms = isAdmin || canEditImage;
@@ -439,14 +445,15 @@ module.exports = function renderArtTab(ctx) {
       <form method="GET" action="/admin" class="chronicle-filters">
         <input type="hidden" name="tab" value="art">
         <select name="view" aria-label="Show" onchange="this.form.submit()">
-          <option value="">🎨 Gallery (${counts.gallery})</option>
+          <option value="gallery">🎨 Gallery (${counts.gallery})</option>
+          <option value="all"${view === 'all' ? ' selected' : ''}>🎨📌 Art + Reference (${counts.all})</option>
           <option value="memes"${view === 'memes' ? ' selected' : ''}>😂 Memes (${counts.memes})</option>
           <option value="references"${view === 'references' ? ' selected' : ''}>📌 Reference (${counts.references})</option>
           ${isAdmin ? `<option value="unsorted"${view === 'unsorted' ? ' selected' : ''}>To sort (${counts.unsorted})</option>
           <option value="not_art"${view === 'not_art' ? ' selected' : ''}>🚫 Not art (${counts.notArt})</option>` : ''}
         </select>
         ${filtered ? `
-        <select name="who" aria-label="Who is in it" onchange="this.form.submit()">
+        <select name="who" aria-label="Who is in it" onchange="if (this.form.view.value === 'gallery' &amp;&amp; /^c/.test(this.value)) this.form.view.value = 'all'; this.form.submit()">
           <option value="">Everyone</option>
           ${withArt.length ? `<optgroup label="Characters">
             ${withArt.map(character => `<option value="c${character.id}"${characterId === character.id ? ' selected' : ''}>${escapeHtml(character.name)} (${byCharacter.get(character.id)})</option>`).join('')}

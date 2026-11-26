@@ -301,8 +301,8 @@ function recordArtMessage({ messageId, channelId, guildId, threadName, posterDis
       for (const id of created) {
         setTags(id, tags, tagged.tagged_by || 'name');
         setFigures(id, figures);
-        db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ?, not_art = ?, is_meme = ?, artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
-          .run(tagged.adventure_id, tagged.adventure_by, tagged.not_art, tagged.is_meme, tagged.artist_name, tagged.artist_url, tagged.artist_by, id);
+        db.prepare('UPDATE art_images SET adventure_id = ?, adventure_by = ?, not_art = ?, is_meme = ?, is_reference = ?, also_art = ?, artist_name = ?, artist_url = ?, artist_by = ? WHERE id = ?')
+          .run(tagged.adventure_id, tagged.adventure_by, tagged.not_art, tagged.is_meme, tagged.is_reference, tagged.also_art, tagged.artist_name, tagged.artist_url, tagged.artist_by, id);
       }
     }
     if (created.length || textChanged) {
@@ -322,18 +322,21 @@ function recordArtMessage({ messageId, channelId, guildId, threadName, posterDis
 
 // ─── Tagging ────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ['art', 'meme', 'reference', 'not_art'];
-const categoryOf = image => (image.not_art ? 'not_art' : image.is_meme ? 'meme' : image.is_reference ? 'reference' : 'art');
+// both: art and reference at once (art from a session that is also a
+// reference for the character): in the gallery and under Reference.
+const CATEGORIES = ['art', 'both', 'meme', 'reference', 'not_art'];
+const categoryOf = image => (image.not_art ? 'not_art' : image.is_meme ? 'meme' : image.is_reference ? (image.also_art ? 'both' : 'reference') : 'art');
 
-// category: 'art' | 'meme' | 'reference' | 'not_art'. notArt (true/false) is
-// the older way to say not_art or art.
+// category: 'art' | 'both' | 'meme' | 'reference' | 'not_art'. notArt
+// (true/false) is the older way to say not_art or art.
 function setCategory(imageId, { category, notArt }, by) {
   const value = category !== undefined ? category : notArt === undefined ? undefined : notArt ? 'not_art' : 'art';
   if (value === undefined) return;
   if (!CATEGORIES.includes(value)) throw new Error('Unknown category.');
-  db.prepare('UPDATE art_images SET not_art = ?, is_meme = ?, is_reference = ?, tagged_by = ? WHERE id = ?')
-    .run(value === 'not_art' ? 1 : 0, value === 'meme' ? 1 : 0, value === 'reference' ? 1 : 0, by, imageId);
-  // Reference material belongs to no adventure, unless one is chosen for it.
+  db.prepare('UPDATE art_images SET not_art = ?, is_meme = ?, is_reference = ?, also_art = ?, tagged_by = ? WHERE id = ?')
+    .run(value === 'not_art' ? 1 : 0, value === 'meme' ? 1 : 0, value === 'reference' || value === 'both' ? 1 : 0, value === 'both' ? 1 : 0, by, imageId);
+  // Reference material belongs to no adventure, unless one is chosen for it
+  // (art that is also reference keeps its adventure).
   if (value === 'reference') {
     db.prepare("UPDATE art_images SET adventure_id = NULL, adventure_by = 'none' WHERE id = ? AND (adventure_by IS NULL OR adventure_by IN ('guess', 'name'))").run(imageId);
   }
@@ -429,10 +432,14 @@ function updateArtImage(id, { characterIds, figureIds, others, adventure, notArt
 
 const HAS_SOMEONE = `(EXISTS (SELECT 1 FROM art_image_characters x WHERE x.image_id = i.id)
   OR EXISTS (SELECT 1 FROM art_image_figures z WHERE z.image_id = i.id))`;
-const VISIBLE = `i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 AND ${HAS_SOMEONE}`;
+// In the gallery: art (or art that is also reference) with somebody in it.
+const IN_GALLERY = 'i.not_art = 0 AND i.is_meme = 0 AND (i.is_reference = 0 OR i.also_art = 1)';
+const VISIBLE = `${IN_GALLERY} AND ${HAS_SOMEONE}`;
 const UNSORTED = `i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 AND NOT ${HAS_SOMEONE}`;
 const MEMES = 'i.not_art = 0 AND i.is_meme = 1';
 const REFERENCES = 'i.not_art = 0 AND i.is_reference = 1';
+// Art + Reference: everything about someone but memes.
+const EVERYTHING = `((${VISIBLE}) OR (${REFERENCES}))`;
 
 // Figures with the names they go by now: [{ id, kind, name, label, characterId }].
 const FIGURE_COLUMNS = `f.id, f.kind,
@@ -477,6 +484,7 @@ function present(row, characters, figures = []) {
     not_art: Boolean(row.not_art),
     is_meme: Boolean(row.is_meme),
     is_reference: Boolean(row.is_reference),
+    also_art: Boolean(row.also_art),
     uploaded: String(row.message_id || '').startsWith('upload:'),
     category: categoryOf(row),
     characters,
@@ -492,8 +500,8 @@ function present(row, characters, figures = []) {
 const COLUMNS = `i.*, a.title AS adventure_title,
   COALESCE((SELECT p.discord_tag FROM players p WHERE p.discord_id = i.posted_by_discord_id), i.posted_by_tag) AS poster_name`;
 
-// view: 'gallery' (tagged art), 'memes', 'unsorted' (art with nobody in it
-// yet), 'not_art'.
+// view: 'gallery' (tagged art), 'memes', 'references', 'all' (art and
+// reference), 'unsorted' (art with nobody in it yet), 'not_art'.
 // characterId / figureId / adventureId / artist narrow the gallery. limit:
 // the newest so many.
 function listArtImages({ view = 'gallery', characterId, figureId, adventureId, artist, limit } = {}) {
@@ -505,6 +513,7 @@ function listArtImages({ view = 'gallery', characterId, figureId, adventureId, a
   else if (view === 'not_art') where.push('i.not_art = 1');
   else if (view === 'memes') where.push(MEMES);
   else if (view === 'references') where.push(REFERENCES);
+  else if (view === 'all') where.push(EVERYTHING);
   else where.push(VISIBLE);
   if (characterId) { where.push('EXISTS (SELECT 1 FROM art_image_characters y WHERE y.image_id = i.id AND y.character_id = ?)'); params.push(Number(characterId)); }
   if (adventureId) { where.push('i.adventure_id = ?'); params.push(Number(adventureId)); }
@@ -533,7 +542,7 @@ function artCounts() {
   const count = sql => db.prepare(`SELECT COUNT(*) AS n FROM art_images i WHERE ${sql}`).get().n;
   const byCharacter = new Map(db.prepare(`
     SELECT t.character_id AS id, COUNT(*) AS n FROM art_image_characters t JOIN art_images i ON i.id = t.image_id
-    WHERE i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 GROUP BY t.character_id
+    WHERE ${IN_GALLERY} GROUP BY t.character_id
   `).all().map(row => [row.id, row.n]));
   const byAdventure = new Map(db.prepare(`
     SELECT i.adventure_id AS id, COUNT(*) AS n FROM art_images i WHERE i.adventure_id IS NOT NULL AND ${VISIBLE} GROUP BY i.adventure_id
@@ -544,6 +553,7 @@ function artCounts() {
     notArt: count('i.not_art = 1'),
     memes: count(MEMES),
     references: count(REFERENCES),
+    all: count(EVERYTHING),
     byCharacter,
     byAdventure
   };
@@ -554,7 +564,7 @@ function listArtFigures() {
   return db.prepare(`
     SELECT ${FIGURE_COLUMNS}, COUNT(*) AS count FROM art_image_figures t JOIN art_images i ON i.id = t.image_id
     JOIN art_figures f ON f.id = t.figure_id ${FIGURE_JOINS}
-    WHERE i.not_art = 0 AND i.is_meme = 0 AND i.is_reference = 0 GROUP BY f.id ORDER BY name COLLATE NOCASE
+    WHERE ${IN_GALLERY} GROUP BY f.id ORDER BY name COLLATE NOCASE
   `).all().map(row => ({ ...figureView(row), count: row.count }));
 }
 

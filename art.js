@@ -241,6 +241,7 @@ function tagView(messageId) {
     first.not_art
       ? '🚫 Marked **Not art**: it stays out of the gallery.'
       : first.is_meme ? '😂 Filed under **Memes** in the Art tab.'
+        : first.is_reference && first.also_art ? '🎨📌 In the Art tab as **art and reference** (the gallery and Reference).'
         : first.is_reference ? '📌 Filed under **Reference** in the Art tab.'
         : tagged.length || first.figures.length ? '✅ In the Art tab.' : '⏳ Waiting in “To sort” until somebody in it is tagged.'
   ];
@@ -282,7 +283,9 @@ function tagView(messageId) {
       }))
     ])));
 
-  // The category: art, a meme, or not art at all; the current one says how to go back.
+  // The category: art (also reference, or not), a meme, or not art at all;
+  // the current one says how to go back. (Five buttons is all a row holds:
+  // the menu closes with Discord's own Dismiss.)
   const buttons = [
     first.is_meme
       ? new ButtonBuilder().setCustomId(`art:k:${messageId}:art`).setLabel('Not a meme: art').setEmoji('🎨').setStyle(ButtonStyle.Success)
@@ -290,8 +293,10 @@ function tagView(messageId) {
     first.not_art
       ? new ButtonBuilder().setCustomId(`art:k:${messageId}:art`).setLabel('It is art after all').setStyle(ButtonStyle.Success)
       : new ButtonBuilder().setCustomId(`art:k:${messageId}:not_art`).setLabel('Not art (screenshot…)').setEmoji('🚫').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`art:o:${messageId}`).setLabel('NPCs, others & artist').setEmoji('🖌').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`art:d:${messageId}`).setLabel('Done').setStyle(ButtonStyle.Secondary)
+    first.is_reference
+      ? new ButtonBuilder().setCustomId(`art:k:${messageId}:art`).setLabel(first.also_art ? 'Reference ✓ (take off)' : 'Reference only: make it art').setEmoji('📌').setStyle(ButtonStyle.Success)
+      : new ButtonBuilder().setCustomId(`art:k:${messageId}:both`).setLabel('Also reference').setEmoji('📌').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`art:o:${messageId}`).setLabel('NPCs, others & artist').setEmoji('🖌').setStyle(ButtonStyle.Primary)
   ];
   const link = panelLink(images);
   if (link) buttons.push(new ButtonBuilder().setLabel('Open in the panel').setStyle(ButtonStyle.Link).setURL(link));

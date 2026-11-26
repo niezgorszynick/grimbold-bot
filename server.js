@@ -617,7 +617,7 @@ router.post('/art/update', (req, res) => {
       others: figures ? [].concat(req.body.others || []).filter(name => String(name).trim()) : undefined,
       adventure: req.body.adventure,
       notArt,
-      category: ['art', 'meme', 'reference', 'not_art'].includes(req.body.category) ? req.body.category : undefined,
+      category: ['art', 'both', 'meme', 'reference', 'not_art'].includes(req.body.category) ? req.body.category : undefined,
       caption: req.body.caption,
       artist: req.body.artist,
       artistUrl: req.body.artist_url

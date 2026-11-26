@@ -1650,6 +1650,14 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS battle_maps_marker ON battle_maps (marker_id);
       `);
     }
+  },
+  {
+    // Art: a picture can be art and reference at once (is_reference = 1 and
+    // also_art = 1): in the gallery and under Reference.
+    version: 61,
+    up(db) {
+      db.exec('ALTER TABLE art_images ADD COLUMN also_art INTEGER NOT NULL DEFAULT 0');
+    }
   }
 ];
 
