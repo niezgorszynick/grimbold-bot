@@ -155,3 +155,11 @@ test('a pawn shop: random magic items by rarity, up to its cap, never one alread
   assert.deepEqual(db.activeArtisanMagic().find(entry => entry.id === id), { id, name: 'Old Wexley the Pawnbroker', common: 2, uncommon: 1, rare: 0, cap: 4, scheduled: false });
   db.deleteArtisan(id);
 });
+
+test('pawned items stand out in the shop with an outline', () => {
+  db.prepare("INSERT INTO items (name, category, price, stock, description, source, rarity, artisan_id) VALUES ('Pawned Lute of Echoes', 'Wondrous', 5000, 1, 'Echo.', 'artisan_magic', 'Common', 1)").run();
+  const renderAdminPage = require('../views/adminPage');
+  const html = renderAdminPage({ session: { user: { id: 0, discord_tag: 'Root DM', role: 'admin' } }, query: { tab: 'items' } });
+  assert.match(html, /class="shop-row-pawned" title="Pawned goods[^"]*">[\s\S]*?Pawned Lute of Echoes<\/strong><span class="visually-hidden"> \(pawned\)/);
+  assert.doesNotMatch(html.replace(/[\s\S]*Pawned Lute of Echoes/, ''), /^[\s\S]{0,40}shop-row-pawned/, 'only that row');
+});

@@ -40,9 +40,9 @@ module.exports = function renderItemsTab(ctx) {
               ? `${shopModifier.percent > 0 ? '+' : ''}${shopModifier.percent}%`
               : 'None';
             return `
-            <tr data-search="${escapeHtml(`${item.name} ${item.category}`.toLowerCase())}" data-category="${escapeHtml(item.category)}">
+            <tr data-search="${escapeHtml(`${item.name} ${item.category}`.toLowerCase())}" data-category="${escapeHtml(item.category)}"${item.source === 'artisan_magic' ? ' class="shop-row-pawned" title="Pawned goods: second-hand, from the pawn shop"' : ''}>
               <td data-sort="${item.id}">${item.id}</td>
-              <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong></td>
+              <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong>${item.source === 'artisan_magic' ? '<span class="visually-hidden"> (pawned)</span>' : ''}</td>
               <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
               <td data-sort="${finalPrice}">${priceDisplay}</td>
               <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>

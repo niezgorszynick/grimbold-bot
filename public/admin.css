@@ -1801,3 +1801,8 @@ button.sheet-hud-tile { cursor: pointer; }
 .artisan-magic legend { padding: 0 4px; font-weight: 600; }
 .artisan-magic p { grid-column: 1 / -1; margin: 0; }
 .artisan-magic input { width: 100%; box-sizing: border-box; }
+
+/* Pawned magic items (an artisan's random magic) in the shop: a dashed brass outline. */
+tr.shop-row-pawned > td { border-top: 1px dashed #b8862f; border-bottom: 1px dashed #b8862f; background: rgba(184, 134, 47, 0.06); }
+tr.shop-row-pawned > td:first-child { border-left: 1px dashed #b8862f; }
+tr.shop-row-pawned > td:last-child { border-right: 1px dashed #b8862f; }
