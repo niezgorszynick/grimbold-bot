@@ -6,6 +6,7 @@ const { formatCp } = require('../../currency');
 const { applyModifier } = require('../../rollTracker');
 const { escapeHtml } = require('../helpers');
 const db = require('../../db');
+const { shopItemDetails } = require('../shopItemDetails');
 
 module.exports = function renderItemsTab(ctx) {
   const { isAdmin, status, catalogItems, activeItems, shopPlayer, shopRoll, shopModifier, currentUser } = ctx;
@@ -30,7 +31,11 @@ module.exports = function renderItemsTab(ctx) {
   // everyday mundane counter, which is folded away.
   const weekly = activeItems.filter(item => item.source !== 'mundane');
   const mundane = activeItems.filter(item => item.source === 'mundane');
+  // What opens when someone clicks an item's name (views/shopItemDetails.js), by item id.
+  const details = {};
   const shelfRow = item => {
+            const about = shopItemDetails(item);
+            if (about) details[item.id] = { name: item.name, ...about };
             const finalPrice = shopModifier ? applyModifier(item.price, shopModifier) : item.price;
             const hasPriceChange = shopModifier && shopModifier.percent !== 0 && finalPrice !== item.price;
             const priceDisplay = hasPriceChange
@@ -42,7 +47,7 @@ module.exports = function renderItemsTab(ctx) {
             return `
             <tr data-search="${escapeHtml(`${item.name} ${item.category}`.toLowerCase())}" data-category="${escapeHtml(item.category)}"${item.source === 'artisan_magic' ? ' class="shop-row-pawned" title="Pawned goods: second-hand, from the pawn shop, and gone within a week"' : ''}>
               <td data-sort="${item.id}">${item.id}</td>
-              <td data-sort="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong>${item.source === 'artisan_magic' ? '<span class="visually-hidden"> (pawned)</span>' : ''}</td>
+              <td data-sort="${escapeHtml(item.name)}">${about ? `<button type="button" class="shop-item-name" data-item-id="${item.id}" title="Read about it"><strong>${escapeHtml(item.name)}</strong></button>` : `<strong>${escapeHtml(item.name)}</strong>`}${item.source === 'artisan_magic' ? '<span class="visually-hidden"> (pawned)</span>' : ''}${about && about.summary ? `<div class="muted small shop-item-summary">${escapeHtml(about.summary)}</div>` : ''}</td>
               <td data-sort="${escapeHtml(item.category)}">${escapeHtml(item.category)}</td>
               <td data-sort="${finalPrice}">${priceDisplay}</td>
               <td data-sort="${item.stock === null ? 999999 : item.stock}">${item.stock === null ? '∞' : item.stock}</td>
@@ -178,6 +183,17 @@ module.exports = function renderItemsTab(ctx) {
       </div>
     </div>
 
+    <div id="shopItemModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="shopItemTitle" hidden>
+      <div class="card shop-modal-card shop-item-card">
+        <h3 id="shopItemTitle"></h3>
+        <p id="shopItemSummary" class="muted small"></p>
+        <div id="shopItemText"></div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+          <button type="button" id="shopItemClose" class="btn">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div id="shopPurchaseModal" class="shop-modal" role="dialog" aria-modal="true" aria-labelledby="shopPurchaseTitle" hidden>
       <div class="card shop-modal-card">
         <h3 id="shopPurchaseTitle">🪙 Purchase from Grimbold</h3>
@@ -232,7 +248,36 @@ module.exports = function renderItemsTab(ctx) {
       </div>
     </div>
 
+    <script src="/admin/assets/rules-text.js"></script>
     <script>
+      // Clicking an item's name: its rules text (views/shopItemDetails.js).
+      (function () {
+        const details = ${JSON.stringify(details).replace(/</g, '\\u003c')};
+        const modal = document.getElementById('shopItemModal');
+        const text = document.getElementById('shopItemText');
+        let opener = null;
+        const close = () => { modal.hidden = true; if (opener) opener.focus(); };
+        document.querySelectorAll('.shop-item-name').forEach(button => button.addEventListener('click', () => {
+          const about = details[button.dataset.itemId];
+          if (!about) return;
+          opener = button;
+          document.getElementById('shopItemTitle').textContent = about.name;
+          const summary = document.getElementById('shopItemSummary');
+          summary.textContent = about.summary;
+          summary.hidden = !about.summary;
+          text.replaceChildren();
+          if (about.text) {
+            if (window.renderRulesText) text.append(window.renderRulesText(about.text));
+            else text.textContent = about.text;
+          }
+          modal.hidden = false;
+          document.getElementById('shopItemClose').focus();
+        }));
+        document.getElementById('shopItemClose').addEventListener('click', close);
+        modal.addEventListener('click', event => { if (event.target === modal) close(); });
+        document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.hidden) close(); });
+      })();
+
       const catalogData = ${catalogJson};
       function autofillCatalog(idx) {
         const item = catalogData[idx];

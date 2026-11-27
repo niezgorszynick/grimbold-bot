@@ -1806,3 +1806,9 @@ button.sheet-hud-tile { cursor: pointer; }
 tr.shop-row-pawned > td { border-top: 1px dashed #b8862f; border-bottom: 1px dashed #b8862f; background: rgba(184, 134, 47, 0.06); }
 tr.shop-row-pawned > td:first-child { border-left: 1px dashed #b8862f; }
 tr.shop-row-pawned > td:last-child { border-right: 1px dashed #b8862f; }
+
+/* Shop: an item's name opens its rules text; a short line sits under it. */
+button.shop-item-name { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted rgba(184, 134, 47, 0.7); text-underline-offset: 3px; }
+button.shop-item-name:hover, button.shop-item-name:focus-visible { color: #e0b65c; }
+.shop-item-summary { margin-top: 2px; }
+.shop-modal-card.shop-item-card { width: min(640px, 100%); }

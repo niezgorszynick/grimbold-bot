@@ -160,7 +160,7 @@ test('pawned items stand out in the shop with an outline', () => {
   db.prepare("INSERT INTO items (name, category, price, stock, description, source, rarity, artisan_id) VALUES ('Pawned Lute of Echoes', 'Wondrous', 5000, 1, 'Echo.', 'artisan_magic', 'Common', 1)").run();
   const renderAdminPage = require('../views/adminPage');
   const html = renderAdminPage({ session: { user: { id: 0, discord_tag: 'Root DM', role: 'admin' } }, query: { tab: 'items' } });
-  assert.match(html, /class="shop-row-pawned" title="Pawned goods[^"]*">[\s\S]*?Pawned Lute of Echoes<\/strong><span class="visually-hidden"> \(pawned\)/);
+  assert.match(html, /class="shop-row-pawned" title="Pawned goods[^"]*">[\s\S]*?Pawned Lute of Echoes<\/strong>(?:<\/button>)?<span class="visually-hidden"> \(pawned\)/);
   assert.doesNotMatch(html.replace(/[\s\S]*Pawned Lute of Echoes/, ''), /^[\s\S]{0,40}shop-row-pawned/, 'only that row');
 });
 
